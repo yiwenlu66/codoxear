@@ -24,14 +24,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-
-def _default_app_dir() -> Path:
-    base = Path.home() / ".local" / "share"
-    new = base / "codoxear"
-    old = base / "codex-web"
-    if old.exists() and not new.exists():
-        return old
-    return new
+from .util import default_app_dir as _default_app_dir
+from .util import find_new_session_log as _find_new_session_log_impl
+from .util import iter_session_logs as _iter_session_logs_impl
+from .util import now as _now
+from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -106,10 +103,6 @@ def _unlink_quiet(path: Path) -> None:
         return
     except Exception:
         return
-
-
-def _now() -> float:
-    return time.time()
 
 
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
@@ -363,9 +356,7 @@ def _safe_filename(name: str) -> str:
 
 
 def _iter_session_logs() -> list[Path]:
-    if not CODEX_SESSIONS_DIR.exists():
-        return []
-    return sorted(CODEX_SESSIONS_DIR.rglob("rollout-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return _iter_session_logs_impl(CODEX_SESSIONS_DIR)
 
 
 def _find_session_log_for_session_id(session_id: str) -> Path | None:
@@ -381,47 +372,16 @@ def _find_new_session_log(
     preexisting: set[Path],
     timeout_s: float = 15.0,
 ) -> tuple[str, Path] | None:
-    deadline = _now() + timeout_s
-    while _now() < deadline:
-        for p in _iter_session_logs():
-            if p in preexisting:
-                continue
-            try:
-                if p.stat().st_mtime < after_ts - 2:
-                    continue
-            except FileNotFoundError:
-                continue
-            try:
-                with p.open("r", encoding="utf-8") as f:
-                    first = f.readline().strip()
-                obj = json.loads(first)
-                if obj.get("type") == "session_meta":
-                    sid = obj.get("payload", {}).get("id")
-                    if isinstance(sid, str) and sid:
-                        return sid, p
-            except Exception:
-                continue
-        time.sleep(0.2)
-    return None
+    return _find_new_session_log_impl(
+        sessions_dir=CODEX_SESSIONS_DIR,
+        after_ts=after_ts,
+        preexisting=preexisting,
+        timeout_s=timeout_s,
+    )
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 * 1024) -> tuple[list[dict[str, Any]], int]:
-    try:
-        with path.open("rb") as f:
-            f.seek(offset)
-            data = f.read(max_bytes)
-            new_off = f.tell()
-    except FileNotFoundError:
-        return [], offset
-
-    lines = data.splitlines()
-    out: list[dict[str, Any]] = []
-    for line in lines:
-        try:
-            out.append(json.loads(line))
-        except Exception:
-            continue
-    return out, new_off
+    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
