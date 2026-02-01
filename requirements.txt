@@ -1,0 +1,2 @@
+# Required for image upload validation/transcoding (used by /api/sessions/<id>/inject_image).
+Pillow>=9.0

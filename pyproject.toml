@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codoxear"
+version = "0.1.0"
+description = "Unofficial mobile handoff for Codex TUI sessions."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = ["Pillow>=9.0"]
+
+[project.scripts]
+codoxear-server = "codoxear.server:main"
+codoxear-broker = "codoxear.broker:main"
+
+[tool.setuptools]
+packages = ["codoxear"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+codoxear = ["static/*"]
+
