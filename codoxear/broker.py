@@ -194,6 +194,20 @@ def _read_session_id_from_log(log_path: Path) -> str | None:
         return None
 
 
+def _is_subagent_session_log(log_path: Path) -> bool:
+    try:
+        with log_path.open("r", encoding="utf-8") as f:
+            first = f.readline().strip()
+        obj = json.loads(first) if first else {}
+        if obj.get("type") != "session_meta":
+            return False
+        payload = obj.get("payload") or {}
+        src = payload.get("source")
+        return isinstance(src, dict) and ("subagent" in src)
+    except Exception:
+        return False
+
+
 @dataclass
 class State:
     codex_pid: int
@@ -745,6 +759,9 @@ class Broker:
         else:
             return
 
+        if _is_subagent_session_log(lp):
+            return
+
         sid = self._session_id_from_rollout_path(lp) or _read_session_id_from_log(lp)
         if not sid:
             return
@@ -819,11 +836,6 @@ class Broker:
                     except Exception:
                         pid = None
                     raw = parts[1].lstrip()
-                with self._lock:
-                    st = self.state
-                    agent_pid = int(st.agent_pid) if (st and st.agent_pid) else 0
-                if agent_pid > 0 and pid is not None and pid != agent_pid:
-                    continue
 
                 is_open = (
                     (" open(" in raw)
