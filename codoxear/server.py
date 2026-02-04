@@ -10,6 +10,7 @@ import http.server
 import io
 import json
 import os
+import re
 import signal
 import socket
 import socketserver
@@ -80,6 +81,9 @@ CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
+
+_ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
+_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -404,6 +408,136 @@ def _parse_iso8601_to_epoch(ts: str) -> float | None:
 def _discover_log_for_session_id(session_id: str) -> Path | None:
     return _find_session_log_for_session_id(session_id)
 
+def _session_id_from_rollout_path(log_path: Path) -> str | None:
+    try:
+        name = log_path.name
+    except Exception:
+        name = str(log_path)
+    m = _SESSION_ID_RE.findall(name)
+    return m[-1] if m else None
+
+
+def _is_subagent_session_log(log_path: Path) -> bool:
+    try:
+        with log_path.open("r", encoding="utf-8") as f:
+            first = f.readline().strip()
+        obj = json.loads(first) if first else {}
+        if obj.get("type") != "session_meta":
+            return False
+        payload = obj.get("payload") or {}
+        src = payload.get("source")
+        return isinstance(src, dict) and ("subagent" in src)
+    except Exception:
+        return False
+
+
+def _is_write_open_line(line: str) -> bool:
+    if ("O_WRONLY" in line) or ("O_RDWR" in line) or ("O_APPEND" in line):
+        return True
+    if "O_RDONLY" in line:
+        return False
+    if "O_CREAT" in line:
+        return True
+
+    m = re.search(r",\s*(0x[0-9a-fA-F]+|\d+)(?:\s*,|\s*\))", line)
+    if not m:
+        return False
+    try:
+        v = int(m.group(1), 16 if m.group(1).lower().startswith("0x") else 10)
+    except Exception:
+        return False
+    acc = v & 3
+    return acc in (1, 2)
+
+
+def _read_text_tail(path: Path, *, max_bytes: int) -> str:
+    try:
+        with path.open("rb") as f:
+            try:
+                sz = int(f.seek(0, os.SEEK_END))
+            except Exception:
+                sz = 0
+            start = max(0, sz - int(max_bytes))
+            drop_partial = False
+            if start > 0:
+                try:
+                    f.seek(start - 1)
+                    prev = f.read(1)
+                    drop_partial = (prev != b"\n")
+                except Exception:
+                    drop_partial = True
+            try:
+                f.seek(start)
+            except Exception:
+                f.seek(0)
+                start = 0
+                drop_partial = False
+            b = f.read(int(max_bytes))
+    except FileNotFoundError:
+        return ""
+    except Exception:
+        return ""
+
+    if start > 0 and drop_partial:
+        nl = b.find(b"\n")
+        if nl >= 0:
+            b = b[nl + 1 :]
+    try:
+        return b.decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+
+def _discover_log_from_trace(trace_path: Path) -> Path | None:
+    data = _read_text_tail(trace_path, max_bytes=8 * 1024 * 1024)
+    if not data:
+        return None
+
+    sessions_dir = CODEX_SESSIONS_DIR.resolve()
+    best: Path | None = None
+    for line in data.splitlines():
+        if "rollout-" not in line or ".jsonl" not in line:
+            continue
+        m = _ROLLOUT_PATH_RE.findall(line)
+        if not m:
+            continue
+        raw = line.strip()
+        is_open = (
+            (" open(" in raw)
+            or (" openat(" in raw)
+            or (" openat2(" in raw)
+            or (" creat(" in raw)
+            or raw.startswith("open(")
+            or raw.startswith("openat")
+            or raw.startswith("openat2")
+            or raw.startswith("creat")
+        )
+        is_rename = (
+            (" rename(" in raw)
+            or (" renameat(" in raw)
+            or (" renameat2(" in raw)
+            or raw.startswith("rename")
+            or raw.startswith("renameat")
+            or raw.startswith("renameat2")
+        )
+        if is_open and (not _is_write_open_line(raw)):
+            continue
+
+        p = Path(m[-1])
+        try:
+            p.resolve().relative_to(sessions_dir)
+        except Exception:
+            continue
+        if not (p.name.startswith("rollout-") and p.name.endswith(".jsonl")):
+            continue
+        if _is_subagent_session_log(p):
+            continue
+
+        if is_open or is_rename:
+            best = p
+
+    return best
+
 
 def _read_session_meta(log_path: Path) -> dict[str, Any]:
     try:
@@ -711,7 +845,19 @@ class SessionManager:
             log_path = None
             if isinstance(meta.get("log_path"), str) and meta["log_path"]:
                 log_path = Path(meta["log_path"])
-            if not log_path or not log_path.exists():
+            trace_path = None
+            if isinstance(meta.get("trace_path"), str) and meta["trace_path"]:
+                trace_path = Path(meta["trace_path"])
+                if not trace_path.exists():
+                    trace_path = None
+            if trace_path is not None:
+                lp2 = _discover_log_from_trace(trace_path)
+                if lp2 is not None:
+                    log_path = lp2
+                    sid2 = _session_id_from_rollout_path(lp2)
+                    if sid2:
+                        thread_id = sid2
+            if (not log_path) or (not log_path.exists()):
                 log_path = _discover_log_for_session_id(thread_id)
             if not log_path or not log_path.exists():
                 if not _pid_alive(codex_pid) and not _pid_alive(broker_pid):
@@ -976,6 +1122,18 @@ class SessionManager:
         log_path = None
         if isinstance(meta.get("log_path"), str) and meta["log_path"]:
             log_path = Path(meta["log_path"])
+        trace_path = None
+        if isinstance(meta.get("trace_path"), str) and meta["trace_path"]:
+            trace_path = Path(meta["trace_path"])
+            if not trace_path.exists():
+                trace_path = None
+        if trace_path is not None:
+            lp2 = _discover_log_from_trace(trace_path)
+            if lp2 is not None and lp2.exists():
+                log_path = lp2
+                sid2 = _session_id_from_rollout_path(lp2)
+                if sid2:
+                    thread_id = sid2
         if not log_path or not log_path.exists():
             log_path = _discover_log_for_session_id(thread_id)
         if not log_path or not log_path.exists():
