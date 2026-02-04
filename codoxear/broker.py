@@ -7,21 +7,23 @@ import fcntl
 import json
 import os
 import pty
+import pwd
 import re
 import signal
 import socket
 import struct
+import subprocess
 import sys
 import termios
 import threading
 import time
 import traceback
 import tty
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from shutil import which
 from typing import Any
-
 
 def _default_app_dir() -> Path:
     base = Path.home() / ".local" / "share"
@@ -38,7 +40,8 @@ STRACE_DIR = APP_DIR / "strace"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 STRACE_BIN = os.environ.get("CODEX_WEB_STRACE_BIN", "strace")
-STRACE_ENABLED = os.environ.get("CODEX_WEB_STRACE", "1") != "0"
+# This repo relies on strace for rollout log switching (/new). Do not add non-strace fallbacks.
+STRACE_ENABLED = True
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
@@ -64,6 +67,133 @@ def _dprint(msg: str) -> None:
 
 def _now() -> float:
     return time.time()
+
+
+def _set_pdeathsig(sig: int) -> None:
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        import ctypes
+
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        PR_SET_PDEATHSIG = 1
+        libc.prctl(PR_SET_PDEATHSIG, sig, 0, 0, 0)
+    except Exception:
+        return
+
+
+_STRACE_USABLE: bool | None = None
+
+
+def _tracer_pid() -> int:
+    if not sys.platform.startswith("linux"):
+        return 0
+    try:
+        for line in Path("/proc/self/status").read_text("utf-8", errors="replace").splitlines():
+            if line.startswith("TracerPid:"):
+                return int(line.split(":", 1)[1].strip() or "0")
+    except Exception:
+        return 0
+    return 0
+
+
+def _strace_usable() -> bool:
+    global _STRACE_USABLE
+    if _STRACE_USABLE is not None:
+        return _STRACE_USABLE
+    if (not STRACE_ENABLED) or (which(STRACE_BIN) is None):
+        _STRACE_USABLE = False
+        return False
+    try:
+        proc = subprocess.run(
+            [STRACE_BIN, "-qq", "-o", "/dev/null", "--", "/bin/true"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=1.5,
+            check=False,
+        )
+        _STRACE_USABLE = proc.returncode == 0
+        if (not _STRACE_USABLE) and DEBUG:
+            err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+            if err:
+                _dprint(f"broker: strace unusable (rc={proc.returncode}): {err}")
+    except Exception as e:
+        if DEBUG:
+            _dprint(f"broker: strace unusable: {e}")
+        _STRACE_USABLE = False
+    return bool(_STRACE_USABLE)
+
+
+def _require_strace() -> None:
+    if not _strace_usable():
+        tp = _tracer_pid()
+        if tp:
+            sys.stderr.write(
+                f"error: strace is required but not usable: this process is already ptrace-traced (TracerPid={tp}).\n"
+            )
+        else:
+            sys.stderr.write("error: strace is required but not usable. Check ptrace restrictions and strace install.\n")
+        raise SystemExit(2)
+
+def _user_shell() -> str:
+    sh = os.environ.get("SHELL")
+    if isinstance(sh, str) and sh.strip():
+        return sh.strip()
+    try:
+        return pwd.getpwuid(os.getuid()).pw_shell
+    except Exception:
+        return "/bin/zsh"
+
+
+def _shell_argv_for_command(cmd: str) -> list[str]:
+    shell = _user_shell()
+    base = Path(shell).name
+    if base not in ("zsh", "bash", "fish"):
+        sys.stderr.write(f"error: unsupported login shell for PTY launch: {shell}\n")
+        raise SystemExit(2)
+    # -l: login (read profile); -i: interactive (read rc); -c: run command; command begins with exec to avoid wrapper processes.
+    return [shell, "-l", "-i", "-c", cmd]
+
+
+def _exec_strace(*, trace_path: Path, cwd: str, codex_args: list[str]) -> None:
+    argv = [
+        STRACE_BIN,
+        "-qq",
+        "-f",
+        "-s",
+        "4096",
+        "-e",
+        _STRACE_TRACE,
+        "-o",
+        str(trace_path),
+        "--",
+        CODEX_BIN,
+        *codex_args,
+    ]
+    os.chdir(cwd)
+    os.execvpe(argv[0], argv, os.environ)
+
+def _exec_strace_via_login_shell(*, trace_path: Path, cwd: str, codex_args: list[str]) -> None:
+    q = shlex.quote
+    argv = [
+        STRACE_BIN,
+        "-qq",
+        "-f",
+        "-s",
+        "4096",
+        "-e",
+        _STRACE_TRACE,
+        "-o",
+        str(trace_path),
+        "--",
+        CODEX_BIN,
+        *codex_args,
+    ]
+    cmd = "exec " + " ".join(q(x) for x in argv)
+    shell_argv = _shell_argv_for_command(cmd)
+    os.chdir(cwd)
+    os.execvpe(shell_argv[0], shell_argv, os.environ)
 
 
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
@@ -220,6 +350,7 @@ class State:
     session_id: str | None = None
     sock_path: Path | None = None
     busy: bool = False
+    stdin_eof: bool = False
     queue: list[str] = field(default_factory=list)
     key_queue: list[bytes] = field(default_factory=list)
     output_tail: str = ""
@@ -229,7 +360,6 @@ class State:
     token: dict[str, Any] | None = None
     trace_path: Path | None = None
     trace_pid: int | None = None
-    agent_pid: int | None = None
     last_rollout_path: Path | None = None
 
 
@@ -242,104 +372,10 @@ class Broker:
         self.state: State | None = None
         self._emulate_terminal = (os.environ.get("CODEX_WEB_EMULATE_TERMINAL", "0") == "1") or (not sys.stdin.isatty())
         self._term_query_buf = b""
+        self._stdin_termios: list[Any] | None = None
 
         self.codex_home = DEFAULT_CODEX_HOME
         self.sessions_dir = self.codex_home / "sessions"
-
-    def _proc_children(self, pid: int) -> list[int]:
-        try:
-            p = Path(f"/proc/{pid}/task/{pid}/children")
-            raw = p.read_text(encoding="utf-8").strip()
-        except Exception:
-            return []
-        out: list[int] = []
-        for tok in raw.split():
-            try:
-                out.append(int(tok))
-            except Exception:
-                continue
-        return out
-
-    def _find_open_rollout_log_for_pid(self, pid: int) -> Path | None:
-        try:
-            fd_dir = Path(f"/proc/{pid}/fd")
-            if not fd_dir.exists():
-                return None
-        except Exception:
-            return None
-
-        best: tuple[float, Path] | None = None
-        try:
-            for ent in fd_dir.iterdir():
-                try:
-                    target = os.readlink(ent)
-                except Exception:
-                    continue
-                if target.endswith(" (deleted)"):
-                    target = target[: -len(" (deleted)")]
-                if not target.endswith(".jsonl"):
-                    continue
-                name = Path(target).name
-                if not (name.startswith("rollout-") and name.endswith(".jsonl")):
-                    continue
-                p = Path(target)
-                if not p.exists():
-                    continue
-                try:
-                    mt = p.stat().st_mtime
-                except Exception:
-                    mt = 0.0
-                if best is None or mt > best[0]:
-                    best = (mt, p)
-        except Exception:
-            return None
-        return best[1] if best else None
-
-    def _find_open_rollout_log_for_process_tree(self, root_pid: int, *, max_pids: int = 2000) -> Path | None:
-        if root_pid <= 0:
-            return None
-        if not Path("/proc").exists():
-            return None
-
-        seen: set[int] = set()
-        q: list[int] = [root_pid]
-        found: list[Path] = []
-        while q and len(seen) < max_pids:
-            pid = q.pop(0)
-            if pid in seen:
-                continue
-            seen.add(pid)
-            p = self._find_open_rollout_log_for_pid(pid)
-            if p is not None:
-                found.append(p)
-            for ch in self._proc_children(pid):
-                if ch not in seen:
-                    q.append(ch)
-        if not found:
-            return None
-        found.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0.0, reverse=True)
-        return found[0]
-
-    def _find_open_rollout_log_for_active_pid(self) -> Path | None:
-        with self._lock:
-            st = self.state
-            root_pid = int(st.codex_pid) if st else 0
-            agent_pid = int(st.agent_pid) if (st and st.agent_pid) else 0
-
-        if agent_pid > 0:
-            return self._find_open_rollout_log_for_pid(agent_pid)
-
-        # When CODEX_WEB_STRACE is enabled, root_pid is strace. Restrict search to the
-        # PTY child and its direct children to avoid switching to unrelated rollout logs
-        # opened by helper/sub-agent processes.
-        p = self._find_open_rollout_log_for_pid(root_pid)
-        if p is not None:
-            return p
-        for ch in self._proc_children(root_pid):
-            p2 = self._find_open_rollout_log_for_pid(int(ch))
-            if p2 is not None:
-                return p2
-        return None
 
     def _register_from_log(self, *, log_path: Path) -> bool:
         sid = self._session_id_from_rollout_path(log_path) or _read_session_id_from_log(log_path)
@@ -450,6 +486,10 @@ class Broker:
             try:
                 b = os.read(in_fd, 4096)
                 if not b:
+                    with self._lock:
+                        if self.state:
+                            self.state.stdin_eof = True
+                    self._stop.set()
                     break
                 with self._lock:
                     st2 = self.state
@@ -571,7 +611,7 @@ class Broker:
 
     def _write_meta(self) -> None:
         st = self.state
-        if not st or not st.session_id or not st.sock_path or not st.log_path:
+        if not st or not st.sock_path:
             return
         try:
             meta = {
@@ -579,11 +619,11 @@ class Broker:
                 "owner": OWNER_TAG if OWNER_TAG else None,
                 "broker_pid": os.getpid(),
                 "sessiond_pid": os.getpid(),
-                "codex_pid": st.agent_pid if st.agent_pid else st.codex_pid,
+                "codex_pid": st.codex_pid,
                 "trace_pid": st.trace_pid,
                 "cwd": st.cwd,
                 "start_ts": st.start_ts,
-                "log_path": str(st.log_path),
+                "log_path": str(st.log_path) if st.log_path else None,
                 "sock_path": str(st.sock_path),
                 "trace_path": str(st.trace_path) if st.trace_path else None,
             }
@@ -872,19 +912,27 @@ class Broker:
     def run(self) -> int:
         rows, cols = _term_size()
 
+        _require_strace()
+
         try:
             self.sessions_dir.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
         start_ts = _now()
+        headless = (OWNER_TAG == "web")
 
         pid, master_fd = pty.fork()
         if pid == 0:
             try:
+                _set_pdeathsig(signal.SIGHUP)
+                try:
+                    os.setpgid(0, 0)
+                except Exception:
+                    pass
                 os.environ.setdefault("TERM", os.environ.get("TERM") or "xterm-256color")
                 os.environ["COLUMNS"] = str(cols)
                 os.environ["LINES"] = str(rows)
-                os.chdir(self.cwd)
+                os.environ["CODEX_HOME"] = str(self.codex_home)
                 try:
                     fd = sys.stdin.fileno()
                     attrs = termios.tcgetattr(fd)
@@ -892,33 +940,24 @@ class Broker:
                     termios.tcsetattr(fd, termios.TCSANOW, attrs)
                 except Exception:
                     pass
-                if STRACE_ENABLED and which(STRACE_BIN) is not None:
-                    try:
-                        trace_dir = STRACE_DIR / str(os.getppid())
-                        trace_dir.mkdir(parents=True, exist_ok=True)
-                        trace_path = trace_dir / "syscalls.log"
-                        argv = [
-                            STRACE_BIN,
-                            "-qq",
-                            "-f",
-                            "-s",
-                            "4096",
-                            "-e",
-                            _STRACE_TRACE,
-                            "-o",
-                            str(trace_path),
-                            "--",
-                            CODEX_BIN,
-                            *self.codex_args,
-                        ]
-                        os.execvp(argv[0], argv)
-                    except Exception:
-                        pass
-                argv = [CODEX_BIN] + self.codex_args
-                os.execvp(argv[0], argv)
+                trace_dir = STRACE_DIR / str(os.getppid())
+                trace_dir.mkdir(parents=True, exist_ok=True)
+                trace_path = trace_dir / "syscalls.log"
+                if headless:
+                    _exec_strace_via_login_shell(trace_path=trace_path, cwd=self.cwd, codex_args=self.codex_args)
+                else:
+                    _exec_strace(trace_path=trace_path, cwd=self.cwd, codex_args=self.codex_args)
             except Exception:
                 traceback.print_exc()
                 os._exit(127)
+
+        if (not headless) and (not self._emulate_terminal) and sys.stdin.isatty():
+            try:
+                fd = sys.stdin.fileno()
+                self._stdin_termios = termios.tcgetattr(fd)
+                tty.setraw(fd)
+            except Exception:
+                self._stdin_termios = None
 
         try:
             _set_winsize(master_fd, rows, cols)
@@ -933,9 +972,10 @@ class Broker:
             codex_home=self.codex_home,
             sessions_dir=self.sessions_dir,
             busy=False,
-            trace_path=(STRACE_DIR / str(os.getpid()) / "syscalls.log") if (STRACE_ENABLED and which(STRACE_BIN) is not None) else None,
-            trace_pid=(pid if (STRACE_ENABLED and which(STRACE_BIN) is not None) else None),
+            trace_path=(STRACE_DIR / str(os.getpid()) / "syscalls.log"),
+            trace_pid=pid,
         )
+        st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
 
         def _sigwinch(_signo: int, _frame: Any) -> None:
@@ -947,28 +987,37 @@ class Broker:
 
         signal.signal(signal.SIGWINCH, _sigwinch)
 
+        self._write_meta()
+        threading.Thread(target=self._sock_server, daemon=True).start()
         threading.Thread(target=self._pty_to_stdout, daemon=True).start()
-        threading.Thread(target=self._stdin_to_pty, daemon=True).start()
+        if not headless:
+            threading.Thread(target=self._stdin_to_pty, daemon=True).start()
+        threading.Thread(target=self._log_watcher, daemon=True).start()
         # Start strace-based rollout detection (captures /new, /resume, and interactive selection).
         if st.trace_path is not None:
             threading.Thread(target=self._strace_watcher, kwargs={"trace_path": st.trace_path}, daemon=True).start()
-            threading.Thread(target=self._poll_agent_pid, daemon=True).start()
-        # Best-effort initial detection for already-open rollout logs (covers strace attach races).
-        threading.Thread(target=self._poll_open_rollout_fds, daemon=True).start()
 
         exit_code = 0
-        while not self._stop.is_set():
-            try:
-                wpid, status = os.waitpid(pid, os.WNOHANG)
-                if wpid == pid:
-                    if os.WIFEXITED(status):
-                        exit_code = int(os.WEXITSTATUS(status))
-                    elif os.WIFSIGNALED(status):
-                        exit_code = 128 + int(os.WTERMSIG(status))
+        try:
+            while not self._stop.is_set():
+                try:
+                    wpid, status = os.waitpid(pid, os.WNOHANG)
+                    if wpid == pid:
+                        if os.WIFEXITED(status):
+                            exit_code = int(os.WEXITSTATUS(status))
+                        elif os.WIFSIGNALED(status):
+                            exit_code = 128 + int(os.WTERMSIG(status))
+                        break
+                except ChildProcessError:
                     break
-            except ChildProcessError:
-                break
-            time.sleep(0.1)
+                time.sleep(0.1)
+        finally:
+            if self._stdin_termios is not None:
+                try:
+                    termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, self._stdin_termios)
+                except Exception:
+                    pass
+                self._stdin_termios = None
 
         self._stop.set()
         try:
@@ -987,46 +1036,6 @@ class Broker:
             except Exception:
                 pass
         return exit_code
-
-    def _poll_open_rollout_fds(self) -> None:
-        while not self._stop.is_set():
-            with self._lock:
-                st = self.state
-                root_pid = st.codex_pid if st else 0
-                have_sock = bool(st and st.sock_path)
-            if not root_pid or have_sock:
-                time.sleep(0.5)
-                continue
-            try:
-                p = self._find_open_rollout_log_for_active_pid()
-            except Exception:
-                p = None
-            if p is not None:
-                self._maybe_register_or_switch_rollout(log_path=p)
-            time.sleep(0.5)
-
-    def _poll_agent_pid(self) -> None:
-        # When Codex runs under strace, the PTY child pid is strace. Best-effort discover the
-        # traced Codex pid (for UI display / liveness checks).
-        while not self._stop.is_set():
-            with self._lock:
-                st = self.state
-                trace_pid = st.trace_pid if st else None
-                have = st.agent_pid if st else None
-            if not trace_pid or have:
-                time.sleep(0.25)
-                continue
-            try:
-                kids = self._proc_children(trace_pid)
-            except Exception:
-                kids = []
-            if kids:
-                with self._lock:
-                    st2 = self.state
-                    if st2 and not st2.agent_pid:
-                        st2.agent_pid = int(kids[0])
-                self._write_meta()
-            time.sleep(0.25)
 
 
 def main() -> None:
@@ -1047,23 +1056,7 @@ def main() -> None:
         args = []
 
     b = Broker(cwd=str(ns.cwd), codex_args=args)
-
-    old = None
-    try:
-        old = termios.tcgetattr(sys.stdin.fileno())
-        tty.setraw(sys.stdin.fileno())
-    except Exception:
-        old = None
-
-    try:
-        code = b.run()
-    finally:
-        if old is not None:
-            try:
-                termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old)
-            except Exception:
-                pass
-    raise SystemExit(code)
+    raise SystemExit(b.run())
 
 
 if __name__ == "__main__":

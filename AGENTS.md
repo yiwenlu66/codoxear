@@ -49,4 +49,4 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
   - Install: `python3 -m pip install -e .`
   - Run server: `codoxear-server` or `python3 -m codoxear.server`
   - Broker: `codoxear-broker -- <codex args>`
-  - If `strace`/ptrace is blocked in your environment: `CODEX_WEB_STRACE=0`
+  - If `strace`/ptrace is blocked in your environment: the broker exits early (no fallback).
