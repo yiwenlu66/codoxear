@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import errno
 import hashlib
 import hmac
 import http.server
@@ -101,6 +102,14 @@ def _unlink_quiet(path: Path) -> None:
         return
     except Exception:
         return
+
+
+def _sock_error_definitely_stale(exc: BaseException) -> bool:
+    if isinstance(exc, (FileNotFoundError, ConnectionRefusedError)):
+        return True
+    if isinstance(exc, OSError):
+        return exc.errno in (errno.ENOENT, errno.ECONNREFUSED, errno.ENOTSOCK)
+    return False
 
 
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
@@ -733,11 +742,15 @@ class SessionManager:
             try:
                 # Validate socket is responsive.
                 resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=0.5)
-            except Exception:
+            except Exception as e:
+                if _sock_error_definitely_stale(e):
+                    _unlink_quiet(sock)
+                    _unlink_quiet(meta_path)
+                    continue
                 if not _pid_alive(codex_pid) and not _pid_alive(broker_pid):
                     _unlink_quiet(sock)
                     _unlink_quiet(meta_path)
-                continue
+                resp = {}
 
             try:
                 meta_log_off = int(log_path.stat().st_size)
@@ -784,11 +797,11 @@ class SessionManager:
                         prev.meta_system = 0
                         prev.meta_log_off = s.meta_log_off
 
-    def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> bool:
+    def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
         try:
             resp = self._sock_call(sock_path, {"cmd": "state"}, timeout_s=timeout_s)
-        except Exception:
-            return False
+        except Exception as e:
+            return False, e
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "busy" in resp:
@@ -817,7 +830,7 @@ class SessionManager:
                             s4 = self._sessions.get(session_id)
                             if s4:
                                 s4.busy = True
-        return True
+        return True, None
 
     def _prune_dead_sessions(self) -> None:
         with self._lock:
@@ -827,7 +840,11 @@ class SessionManager:
             if not s.sock_path.exists():
                 dead.append((sid, s.sock_path))
                 continue
-            if self._refresh_session_state(sid, s.sock_path, timeout_s=0.4):
+            ok, err = self._refresh_session_state(sid, s.sock_path, timeout_s=0.4)
+            if ok:
+                continue
+            if err is not None and _sock_error_definitely_stale(err):
+                dead.append((sid, s.sock_path))
                 continue
             if _pid_alive(s.broker_pid) or _pid_alive(s.codex_pid):
                 continue
@@ -1042,12 +1059,28 @@ class SessionManager:
                 argv,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 env=env,
                 start_new_session=True,
             )
         except Exception as e:
             raise RuntimeError(f"spawn failed: {e}") from e
+
+        time.sleep(0.15)
+        if proc.poll() is not None:
+            try:
+                _out, err = proc.communicate(timeout=0.5)
+            except Exception:
+                err = b""
+            msg = (err or b"").decode("utf-8", errors="replace").strip()
+            msg = msg[-4000:] if msg else ""
+            raise RuntimeError(f"broker exited early (rc={proc.returncode}): {msg}")
+
+        try:
+            if proc.stderr is not None:
+                proc.stderr.close()
+        except Exception:
+            pass
 
         # Prevent zombies when the broker exits.
         threading.Thread(target=proc.wait, daemon=True).start()
