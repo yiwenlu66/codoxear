@@ -33,7 +33,6 @@ SOCK_META_DIR = SOCK_DIR
 ROOT_REPO_DIR = APP_DIR / "root-repo"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-BOOTSTRAP_PROMPT = os.environ.get("CODEX_WEB_BOOTSTRAP_PROMPT", "Reply with the single word READY.")
 DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
 DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
@@ -307,9 +306,7 @@ class Sessiond:
                 ]
                 if self.cwd:
                     forced += ["--add-dir", self.cwd]
-                # Codex does not appear to create a rollout log until it starts a turn.
-                # Pass a bootstrap prompt to force session creation; the UI should hide it.
-                argv = [CODEX_BIN] + forced + self.codex_args + [BOOTSTRAP_PROMPT]
+                argv = [CODEX_BIN] + forced + self.codex_args
                 os.execvp(argv[0], argv)
             except Exception:
                 traceback.print_exc()

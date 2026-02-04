@@ -68,8 +68,6 @@ if _DOTENV.exists():
     for _k, _v in _load_env_file(_DOTENV).items():
         os.environ.setdefault(_k, _v)
 
-BOOTSTRAP_PROMPT = os.environ.get("CODEX_WEB_BOOTSTRAP_PROMPT", "Reply with the single word READY.")
-
 CONTEXT_WINDOW_BASELINE_TOKENS = 12000
 
 COOKIE_NAME = "codoxear_auth"
@@ -451,9 +449,6 @@ def _extract_chat_events(
             if pt == "user_message":
                 msg = p.get("message")
                 if isinstance(msg, str):
-                    if msg == BOOTSTRAP_PROMPT:
-                        skip_next_assistant = 1
-                        continue
                     turn_start = True
                     ets = event_ts(obj)
                     ev: dict[str, Any] = {"role": "user", "text": msg}
@@ -615,7 +610,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 pt = p.get("type")
                 if pt == "user_message":
                     msg = p.get("message")
-                    if isinstance(msg, str) and msg != BOOTSTRAP_PROMPT:
+                    if isinstance(msg, str):
                         last_user_idx = i
                         continue
                 if pt == "agent_message":
