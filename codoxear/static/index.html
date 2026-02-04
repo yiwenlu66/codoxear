@@ -52,6 +52,7 @@
       .app {
         display: grid;
         grid-template-columns: var(--sidebar-w) 1fr;
+        grid-template-rows: 1fr;
         position: fixed;
         top: var(--vvTop, 0px);
         left: 0;
@@ -73,6 +74,8 @@
         background: var(--panel);
         display: flex;
         flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
       }
       .sidebar header {
         padding: 12px 14px;
@@ -90,6 +93,7 @@
         padding: 10px;
         overflow: auto;
         flex: 1;
+        min-height: 0;
         -webkit-overflow-scrolling: touch;
       }
       .sidebar footer {
