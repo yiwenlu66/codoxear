@@ -1472,7 +1472,9 @@
 	          const data = await api("/api/sessions");
 	          sessionsWrap.innerHTML = "";
 	          sessionIndex = new Map();
-	          const sessions = (data.sessions || []).slice().sort((a, b) => (b.start_ts || 0) - (a.start_ts || 0));
+	          const sessions = (data.sessions || [])
+              .slice()
+              .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
 	          for (const s of sessions) {
 	            sessionIndex.set(s.session_id, s);
 	            const badge = el("span", { class: "badge" + (s.busy ? " busy" : ""), text: s.busy ? "busy" : "idle" });
@@ -1523,7 +1525,8 @@
 		              el("div", {}, badges),
 		            ]);
 	            const pid = s.pid ? String(s.pid) : "?";
-	            const meta = el("div", { class: "muted subLine", text: `id ${shortSessionId(s.session_id)}  pid ${pid}  ${fmtTs(s.start_ts)}` });
+              const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
+	            const meta = el("div", { class: "muted subLine", text: `id ${shortSessionId(s.session_id)}  pid ${pid}  last ${fmtTs(updatedTs)}` });
               const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
 	            card.appendChild(mainCol);
               if (delBtn) card.appendChild(el("div", { class: "sessionAction" }, [delBtn]));

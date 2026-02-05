@@ -1083,6 +1083,10 @@ class SessionManager:
         with self._lock:
             out = []
             for s in self._sessions.values():
+                try:
+                    updated_ts = float(s.log_path.stat().st_mtime)
+                except Exception:
+                    updated_ts = float(s.start_ts)
                 out.append(
                     {
                         "session_id": s.session_id,
@@ -1092,6 +1096,7 @@ class SessionManager:
                         "owned": s.owned,
                         "cwd": s.cwd,
                         "start_ts": s.start_ts,
+                        "updated_ts": updated_ts,
                         "log_path": str(s.log_path),
                         "busy": s.busy,
                         "queue_len": s.queue_len,
