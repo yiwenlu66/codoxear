@@ -393,6 +393,7 @@ class Broker:
         except Exception:
             off = 0
 
+        headless = (OWNER_TAG == "web")
         sock_path = SOCK_DIR / f"{sid}-{os.getpid()}.sock"
         with self._lock:
             st = self.state
@@ -400,13 +401,15 @@ class Broker:
                 return False
             st.log_path = log_path
             st.session_id = sid
-            st.sock_path = sock_path
+            if not headless:
+                st.sock_path = sock_path
             st.log_off = off
 
         _dprint(f"broker: registered session_id={sid} log_path={log_path} sock_path={sock_path}")
         self._write_meta()
-        threading.Thread(target=self._sock_server, daemon=True).start()
-        threading.Thread(target=self._log_watcher, daemon=True).start()
+        if not headless:
+            threading.Thread(target=self._sock_server, daemon=True).start()
+            threading.Thread(target=self._log_watcher, daemon=True).start()
         return True
 
     def _maybe_reply_to_terminal_queries(self, *, fd: int, b: bytes) -> None:

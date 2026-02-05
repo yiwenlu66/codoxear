@@ -138,6 +138,20 @@ def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: floa
         raise RuntimeError(f"{label} exited early (rc={rc}): {msg}")
 
 
+def _drain_stream(f: Any) -> None:
+    try:
+        while True:
+            b = f.read(65536)
+            if not b:
+                break
+    except Exception:
+        pass
+    try:
+        f.close()
+    except Exception:
+        pass
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -915,7 +929,7 @@ class Session:
     owned: bool
     start_ts: float
     cwd: str
-    log_path: Path
+    log_path: Path | None
     sock_path: Path
     busy: bool = False
     queue_len: int = 0
@@ -956,7 +970,7 @@ class SessionManager:
             broker_pid = int(meta.get("broker_pid") or meta.get("sessiond_pid") or 0)
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
 
-            log_path = None
+            log_path: Path | None = None
             if isinstance(meta.get("log_path"), str) and meta["log_path"]:
                 log_path = Path(meta["log_path"])
             trace_path = None
@@ -971,18 +985,22 @@ class SessionManager:
                     sid2 = _session_id_from_rollout_path(lp2)
                     if sid2:
                         thread_id = sid2
-            if (not log_path) or (not log_path.exists()):
-                log_path = _discover_log_for_session_id(thread_id)
-            if not log_path or not log_path.exists():
-                if not _pid_alive(codex_pid) and not _pid_alive(broker_pid):
-                    _unlink_quiet(sock)
-                    _unlink_quiet(meta_path)
+            if (log_path is None) or (not log_path.exists()):
+                lp3 = _discover_log_for_session_id(thread_id)
+                if lp3 is not None and lp3.exists():
+                    log_path = lp3
+            if log_path is not None and log_path.exists():
+                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+            else:
+                log_path = None
+
+            if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
+                _unlink_quiet(sock)
+                _unlink_quiet(meta_path)
                 continue
 
-            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
-
             cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else ""
-            if not cwd:
+            if (not cwd) and (log_path is not None):
                 sm = _read_session_meta(log_path)
                 cwd = sm.get("cwd") if isinstance(sm.get("cwd"), str) else ""
             if not cwd:
@@ -991,15 +1009,17 @@ class SessionManager:
             start_ts = None
             if isinstance(meta.get("start_ts"), (int, float)):
                 start_ts = float(meta["start_ts"])
-            if start_ts is None:
+            if start_ts is None and (log_path is not None):
                 sm = _read_session_meta(log_path)
                 if isinstance(sm.get("timestamp"), str):
                     start_ts = _parse_iso8601_to_epoch(sm["timestamp"])
-            if start_ts is None:
+            if start_ts is None and (log_path is not None):
                 try:
                     start_ts = log_path.stat().st_mtime
                 except Exception:
-                    start_ts = _now()
+                    start_ts = None
+            if start_ts is None:
+                start_ts = _now()
 
             try:
                 # Validate socket is responsive.
@@ -1014,9 +1034,12 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 resp = {}
 
-            try:
-                meta_log_off = int(log_path.stat().st_size)
-            except Exception:
+            if log_path is not None:
+                try:
+                    meta_log_off = int(log_path.stat().st_size)
+                except Exception:
+                    meta_log_off = 0
+            else:
                 meta_log_off = 0
 
             s = Session(
@@ -1148,17 +1171,18 @@ class SessionManager:
         with self._lock:
             items = list(self._sessions.items())
         for sid, s in items:
-            if not s.log_path.exists():
+            lp = s.log_path
+            if lp is None or (not lp.exists()):
                 continue
 
             try:
-                sz = int(s.log_path.stat().st_size)
+                sz = int(lp.stat().st_size)
             except Exception:
                 sz = s.meta_log_off
 
             if not s.busy:
                 if sz > s.meta_log_off:
-                    ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=8 * 1024 * 1024)
+                    ts = _last_conversation_ts_from_tail(lp, max_scan_bytes=8 * 1024 * 1024)
                     with self._lock:
                         s2 = self._sessions.get(sid)
                         if s2:
@@ -1179,7 +1203,7 @@ class SessionManager:
                         s2.meta_log_off = sz
                 continue
 
-            objs, new_off = _read_jsonl_from_offset(s.log_path, s.meta_log_off, max_bytes=256 * 1024)
+            objs, new_off = _read_jsonl_from_offset(lp, s.meta_log_off, max_bytes=256 * 1024)
             if new_off == s.meta_log_off:
                 continue
 
@@ -1235,13 +1259,13 @@ class SessionManager:
         for sid, s in items:
             with self._lock:
                 s2 = self._sessions.get(sid)
-            if s2 and s2.token is None:
+            if s2 and s2.token is None and s2.log_path is not None and s2.log_path.exists():
                 s2.token = _find_latest_token_update(s2.log_path, max_scan_bytes=8 * 1024 * 1024)
         self._update_meta_counters()
         with self._lock:
             out = []
             for s in self._sessions.values():
-                if s.last_chat_ts is None:
+                if s.last_chat_ts is None and s.log_path is not None and s.log_path.exists():
                     ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=128 * 1024 * 1024)
                     if ts is not None:
                         s.last_chat_ts = ts
@@ -1256,7 +1280,7 @@ class SessionManager:
                         "cwd": s.cwd,
                         "start_ts": s.start_ts,
                         "updated_ts": updated_ts,
-                        "log_path": str(s.log_path),
+                        "log_path": (str(s.log_path) if s.log_path is not None else None),
                         "busy": s.busy,
                         "queue_len": s.queue_len,
                         "token": s.token,
@@ -1401,6 +1425,8 @@ class SessionManager:
             raise RuntimeError(f"spawn failed: {e}") from e
 
         _wait_or_raise(proc, label=("broker" if use_broker else "sessiond"), timeout_s=1.5)
+        if proc.stderr is not None:
+            threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
 
         # Prevent zombies when the broker exits.
         threading.Thread(target=proc.wait, daemon=True).start()
@@ -1580,13 +1606,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id = parts[3]
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
-                if not s or not s.log_path:
+                if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
                 offset = int((qs.get("offset") or ["0"])[0])
                 init = (qs.get("init") or ["0"])[0] == "1"
-                log_path_str = str(s.log_path)
+                if s.log_path is None or (not s.log_path.exists()):
+                    try:
+                        state = MANAGER.get_state(session_id)
+                    except Exception:
+                        state = None
+                    state_busy = bool(state.get("busy")) if isinstance(state, dict) and ("busy" in state) else None
+                    state_queue = int(state.get("queue_len")) if isinstance(state, dict) and ("queue_len" in state) else None
+                    state_token = state.get("token") if isinstance(state, dict) and ("token" in state) else None
+                    busy_val = state_busy if state_busy is not None else bool(s.busy)
+                    queue_val = state_queue if state_queue is not None else int(s.queue_len)
+                    token_val = state_token if (isinstance(state_token, dict) or state_token is None) else None
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "thread_id": s.thread_id,
+                            "log_path": None,
+                            "offset": 0,
+                            "events": [],
+                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                            "turn_start": False,
+                            "turn_end": False,
+                            "turn_aborted": False,
+                            "diag": {"pending_log": True},
+                            "busy": bool(busy_val),
+                            "queue_len": int(queue_val),
+                            "token": token_val,
+                        },
+                    )
+                    return
 
                 if init and offset == 0:
                     limit_raw = (qs.get("limit") or ["160"])[0]

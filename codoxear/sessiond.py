@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import fcntl
 import json
 import os
@@ -31,12 +32,14 @@ APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 SOCK_META_DIR = SOCK_DIR
 ROOT_REPO_DIR = APP_DIR / "root-repo"
+PENDING_DIR = APP_DIR / "pending"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
 DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
 ENTER_SEQ = os.environ.get("CODEX_WEB_ENTER_SEQ", "\r")
+OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -49,17 +52,39 @@ def _set_winsize(fd: int, rows: int, cols: int) -> None:
 def _encode_enter() -> bytes:
     return ENTER_SEQ.encode("utf-8")
 
+
+def _seq_bytes(raw: str) -> bytes:
+    t = raw.strip().upper()
+    if t in ("NONE", "EMPTY", "NOENTER", "NO_ENTER"):
+        return b""
+    if t in ("ESC", "ESCAPE"):
+        return b"\x1b"
+    if t in ("ENTER", "CR"):
+        return b"\r"
+    if t in ("LF",):
+        return b"\n"
+    if t in ("CRLF",):
+        return b"\r\n"
+    try:
+        decoded = codecs.decode(raw.encode("utf-8"), "unicode_escape")
+        b = decoded.encode("utf-8")
+        return b
+    except Exception:
+        return raw.encode("utf-8", errors="replace")
+
+
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
 @dataclass
 class State:
-    session_id: str
+    session_id: str | None
     codex_pid: int
     log_path: Path
     sock_path: Path
     pty_master_fd: int
+    start_ts: float
     busy: bool = False
     queue: list[str] = field(default_factory=list)
     output_tail: str = ""
@@ -114,6 +139,30 @@ class Sessiond:
                     st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
             except OSError:
                 break
+
+    def _write_meta(self) -> None:
+        with self._lock:
+            st = self.state
+        if not st:
+            return
+        try:
+            meta = {
+                "session_id": st.session_id,
+                "owner": OWNER_TAG if OWNER_TAG else None,
+                "broker_pid": os.getpid(),
+                "sessiond_pid": os.getpid(),
+                "codex_pid": st.codex_pid,
+                "cwd": self.cwd,
+                "start_ts": float(st.start_ts),
+                "log_path": str(st.log_path),
+                "sock_path": str(st.sock_path),
+            }
+            SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
+            meta_path = st.sock_path.with_suffix(".json")
+            meta_path.write_text(json.dumps(meta), encoding="utf-8")
+            os.chmod(meta_path, 0o600)
+        except Exception:
+            pass
 
     def _log_watcher(self) -> None:
         st = self.state
@@ -240,6 +289,26 @@ class Sessiond:
                 f.flush()
                 return
 
+            if cmd == "keys":
+                seq = req.get("seq")
+                if not isinstance(seq, str) or not seq:
+                    resp = {"error": "seq required"}
+                else:
+                    b = _seq_bytes(seq)
+                    with self._lock:
+                        st = self.state
+                        if not st:
+                            resp = {"error": "no state"}
+                        else:
+                            try:
+                                os.write(st.pty_master_fd, b)
+                                resp = {"ok": True}
+                            except Exception as e:
+                                resp = {"error": str(e)}
+                f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                f.flush()
+                return
+
             if cmd == "shutdown":
                 self._stop.set()
                 with self._lock:
@@ -269,24 +338,62 @@ class Sessiond:
             except Exception:
                 pass
 
-    def launch(self) -> State:
-        SOCK_DIR.mkdir(parents=True, exist_ok=True)
-        pre = set(_iter_session_logs(self.sessions_dir))
-        start_ts = _now()
+    def _ensure_root_repo(self) -> None:
+        if (ROOT_REPO_DIR / ".git").exists():
+            return
+        ROOT_REPO_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=str(ROOT_REPO_DIR), check=True)
+        (ROOT_REPO_DIR / ".codoxear-root").write_text("codoxear\n", encoding="utf-8")
+        subprocess.run(["git", "add", ".codoxear-root"], cwd=str(ROOT_REPO_DIR), check=True)
+        subprocess.run(
+            ["git", "-c", "user.email=codoxear@local", "-c", "user.name=codoxear", "commit", "-qm", "init"],
+            cwd=str(ROOT_REPO_DIR),
+            check=True,
+        )
 
-        # Codex interactive mode expects to run in a Git repo. Use a small local repo as a stable root
-        # and add the requested cwd as an additional writable directory.
-        if not (ROOT_REPO_DIR / ".git").exists():
-            ROOT_REPO_DIR.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["git", "init", "-q"], cwd=str(ROOT_REPO_DIR), check=True)
-            # Create an initial commit to satisfy tooling that assumes HEAD exists.
-            (ROOT_REPO_DIR / ".codoxear-root").write_text("codoxear\n", encoding="utf-8")
-            subprocess.run(["git", "add", ".codoxear-root"], cwd=str(ROOT_REPO_DIR), check=True)
-            subprocess.run(
-                ["git", "-c", "user.email=codoxear@local", "-c", "user.name=codoxear", "commit", "-qm", "init"],
-                cwd=str(ROOT_REPO_DIR),
-                check=True,
+    def _discover_log(self, *, preexisting: set[Path], after_ts: float) -> None:
+        deadline = _now() + 120.0
+        while (not self._stop.is_set()) and (_now() < deadline):
+            found = _find_new_session_log(
+                sessions_dir=self.sessions_dir,
+                after_ts=after_ts,
+                preexisting=preexisting,
+                timeout_s=0.5,
             )
+            if found:
+                sid, lp = found
+                with self._lock:
+                    st = self.state
+                    if not st:
+                        return
+                    prev_lp = st.log_path
+                    st.session_id = sid
+                    st.log_path = lp
+                    st.log_off = 0
+                try:
+                    if prev_lp.exists() and str(prev_lp).startswith(str(PENDING_DIR.resolve())):
+                        prev_lp.unlink()
+                except Exception:
+                    pass
+                self._write_meta()
+                return
+            try:
+                with self._lock:
+                    st = self.state
+                    pid = st.codex_pid if st else 0
+                if pid > 0:
+                    wpid, _status = os.waitpid(pid, os.WNOHANG)
+                    if wpid == pid:
+                        return
+            except ChildProcessError:
+                return
+            except Exception:
+                pass
+
+    def _start(self) -> State:
+        SOCK_DIR.mkdir(parents=True, exist_ok=True)
+        self._ensure_root_repo()
+        start_ts = _now()
 
         pid, master_fd = pty.fork()
         if pid == 0:
@@ -318,113 +425,36 @@ class Sessiond:
         except Exception:
             pass
 
-        # Capture early output in case the child exits before producing a session log.
-        early = b""
-        early_deadline = _now() + 3.0
-        exited = False
-        while _now() < early_deadline:
-            try:
-                wpid, _status = os.waitpid(pid, os.WNOHANG)
-                if wpid == pid:
-                    exited = True
-                    break
-            except ChildProcessError:
-                exited = True
-                break
-            r, _, _ = select.select([master_fd], [], [], 0.1)
-            if master_fd in r:
-                try:
-                    chunk = os.read(master_fd, 4096)
-                    if b"\x1b[6n" in chunk:
-                        try:
-                            os.write(master_fd, b"\x1b[1;1R")
-                        except Exception:
-                            pass
-                    early += chunk
-                except Exception:
-                    break
-        if exited:
-            msg = early.decode("utf-8", errors="replace")
-            sys.stderr.write(f"codex exited before session log was created. output={msg[-2000:]}\n")
-            sys.stderr.flush()
-            os._exit(1)
+        PENDING_DIR.mkdir(parents=True, exist_ok=True)
+        pending_log = (PENDING_DIR / f"{os.getpid()}.jsonl").resolve()
+        try:
+            pending_log.touch(exist_ok=True)
+            os.chmod(pending_log, 0o600)
+        except Exception:
+            pass
 
-        found: tuple[str, Path] | None = None
-        scan_deadline = _now() + 120.0
-        while _now() < scan_deadline:
-            found = _find_new_session_log(sessions_dir=self.sessions_dir, after_ts=start_ts, preexisting=pre, timeout_s=0.5)
-            if found:
-                break
-            # Detect child exit while waiting.
-            try:
-                wpid, _status = os.waitpid(pid, os.WNOHANG)
-                if wpid == pid:
-                    tail = early.decode("utf-8", errors="replace")
-                    sys.stderr.write(f"codex exited before session log was created. output={tail[-2000:]}\n")
-                    sys.stderr.flush()
-                    os._exit(1)
-            except ChildProcessError:
-                tail = early.decode("utf-8", errors="replace")
-                sys.stderr.write(f"codex exited before session log was created. output={tail[-2000:]}\n")
-                sys.stderr.flush()
-                os._exit(1)
-            # Keep sampling early output while waiting.
-            r, _, _ = select.select([master_fd], [], [], 0.2)
-            if master_fd in r:
-                try:
-                    chunk = os.read(master_fd, 4096)
-                    if b"\x1b[6n" in chunk:
-                        try:
-                            os.write(master_fd, b"\x1b[1;1R")
-                        except Exception:
-                            pass
-                    early += chunk
-                except Exception:
-                    pass
-
-        if not found:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except Exception:
-                pass
-            raise RuntimeError("failed to discover codex session log within timeout")
-        session_id, log_path = found
-
-        sock_path = SOCK_DIR / f"{session_id}.sock"
+        sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         st = State(
-            session_id=session_id,
+            session_id=None,
             codex_pid=pid,
-            log_path=log_path,
+            log_path=pending_log,
             sock_path=sock_path,
             pty_master_fd=master_fd,
+            start_ts=float(start_ts),
             busy=False,
         )
         self.state = st
         return st
 
     def run(self) -> None:
-        st = self.launch()
-        # Persist enough metadata for the web server to rediscover sessions after restart.
-        try:
-            meta = {
-                "session_id": st.session_id,
-                "codex_pid": st.codex_pid,
-                "cwd": self.cwd,
-                "start_ts": _now(),
-                "log_path": str(st.log_path),
-                "sock_path": str(st.sock_path),
-            }
-            SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
-            meta_path = SOCK_META_DIR / f"{st.session_id}.json"
-            meta_path.write_text(json.dumps(meta), encoding="utf-8")
-            os.chmod(meta_path, 0o600)
-        except Exception:
-            pass
-        # First line to stdout is the handshake for the parent.
+        pre = set(_iter_session_logs(self.sessions_dir))
+        st = self._start()
+        self._write_meta()
         print(
             json.dumps(
                 {
                     "session_id": st.session_id,
+                    "broker_pid": os.getpid(),
                     "codex_pid": st.codex_pid,
                     "log_path": str(st.log_path),
                     "sock_path": str(st.sock_path),
@@ -436,6 +466,11 @@ class Sessiond:
         threading.Thread(target=self._pty_reader, daemon=True).start()
         threading.Thread(target=self._log_watcher, daemon=True).start()
         threading.Thread(target=self._sock_server, daemon=True).start()
+        threading.Thread(
+            target=self._discover_log,
+            kwargs={"preexisting": pre, "after_ts": float(st.start_ts)},
+            daemon=True,
+        ).start()
 
         try:
             while not self._stop.is_set():
@@ -450,6 +485,15 @@ class Sessiond:
                     pass
                 try:
                     st2.sock_path.unlink()
+                except Exception:
+                    pass
+                try:
+                    st2.sock_path.with_suffix(".json").unlink()
+                except Exception:
+                    pass
+                try:
+                    if st2.log_path.exists() and str(st2.log_path).startswith(str(PENDING_DIR.resolve())):
+                        st2.log_path.unlink()
                 except Exception:
                     pass
 
