@@ -68,6 +68,20 @@ Codoxear shows two kinds of sessions:
 
 If you start a web-owned session and later want to continue it in your terminal, use `codex resume`.
 
+## Known limitations
+
+### No elevated operations inside brokered Codex
+
+Codex instances started via `codoxear-broker` cannot reliably run elevated operations (for example `sudo`, `pkexec`, or other setuid/file-capability programs).
+
+Reason: the broker runs Codex under `strace -f` (ptrace) to detect which `rollout-*.jsonl` file is active (the rollout log can be opened by child processes, not just the top-level launcher).
+
+Workaround: run privileged commands outside the ptrace-traced Codex process tree. If you want a persistent systemd-based shell for this, use PiloTY (`https://github.com/yiwenlu66/PiloTY`) and run your long-lived shell sessions as transient user units:
+
+- `XDG_RUNTIME_DIR="/run/user/$(id -u)" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" systemd-run --user --pty bash --noprofile --norc`
+
+Run `sudo ...` inside that shell.
+
 ## Security model
 
 This project intentionally keeps security out of scope. It provides password gating only and does not provide TLS.
