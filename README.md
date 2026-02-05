@@ -1,8 +1,14 @@
 # Codoxear
 
+<p align="center">
+  <img src="codoxear/static/codoxear-icon.png" alt="Codoxear icon" width="140" />
+</p>
+
 Unofficial mobile handoff for Codex TUI sessions.
 
 Codoxear runs a small web server on your computer and exposes a phone-friendly UI for continuing the same live Codex TUI session from mobile. Your environment stays local (filesystem, tools, credentials). The phone is a view/controller.
+
+Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
 Not affiliated with OpenAI. "Codex" is referenced only for compatibility with the Codex CLI TUI.
 

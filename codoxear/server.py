@@ -1554,6 +1554,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = "text/javascript; charset=utf-8"
         elif path.suffix == ".css":
             ctype = "text/css; charset=utf-8"
+        elif path.suffix == ".png":
+            ctype = "image/png"
+        elif path.suffix in (".jpg", ".jpeg"):
+            ctype = "image/jpeg"
+        elif path.suffix == ".webp":
+            ctype = "image/webp"
+        elif path.suffix == ".svg":
+            ctype = "image/svg+xml; charset=utf-8"
+        elif path.suffix == ".ico":
+            ctype = "image/x-icon"
         else:
             ctype = "application/octet-stream"
         self.send_response(200)
@@ -1574,6 +1584,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             u = urllib.parse.urlparse(self.path)
             path = u.path
+            if path == "/favicon.ico":
+                self._send_static("favicon.png")
+                return
             if path == "/":
                 self._send_static("index.html")
                 return
