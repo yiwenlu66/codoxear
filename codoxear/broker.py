@@ -25,6 +25,11 @@ from pathlib import Path
 from shutil import which
 from typing import Any
 
+from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
+from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
+from codoxear.util import read_session_meta_payload as _read_session_meta_payload
+from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
+
 def _default_app_dir() -> Path:
     base = Path.home() / ".local" / "share"
     new = base / "codoxear"
@@ -799,10 +804,27 @@ class Broker:
         else:
             return
 
-        if _is_subagent_session_log(lp):
+        payload = _read_session_meta_payload(lp, timeout_s=1.5)
+        if not payload:
             return
+        if _is_subagent_session_meta(payload):
+            parent = _subagent_parent_thread_id(payload)
+            if not parent:
+                return
+            parent_log = _find_session_log_for_session_id(self.sessions_dir, parent)
+            if not parent_log:
+                return
+            parent_payload = _read_session_meta_payload(parent_log, timeout_s=0.2)
+            if not parent_payload:
+                return
+            if _is_subagent_session_meta(parent_payload):
+                return
+            lp = parent_log
+            payload = parent_payload
 
-        sid = self._session_id_from_rollout_path(lp) or _read_session_id_from_log(lp)
+        sid = payload.get("id")
+        if not isinstance(sid, str) or not sid:
+            sid = self._session_id_from_rollout_path(lp) or _read_session_id_from_log(lp)
         if not sid:
             return
 

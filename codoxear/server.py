@@ -27,10 +27,14 @@ from pathlib import Path
 from typing import Any
 
 from .util import default_app_dir as _default_app_dir
+from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
+from .util import find_session_log_for_session_id as _find_session_log_for_session_id_impl
+from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
+from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -417,20 +421,6 @@ def _session_id_from_rollout_path(log_path: Path) -> str | None:
     return m[-1] if m else None
 
 
-def _is_subagent_session_log(log_path: Path) -> bool:
-    try:
-        with log_path.open("r", encoding="utf-8") as f:
-            first = f.readline().strip()
-        obj = json.loads(first) if first else {}
-        if obj.get("type") != "session_meta":
-            return False
-        payload = obj.get("payload") or {}
-        src = payload.get("source")
-        return isinstance(src, dict) and ("subagent" in src)
-    except Exception:
-        return False
-
-
 def _is_write_open_line(line: str) -> bool:
     if ("O_WRONLY" in line) or ("O_RDWR" in line) or ("O_APPEND" in line):
         return True
@@ -530,7 +520,7 @@ def _discover_log_from_trace(trace_path: Path) -> Path | None:
             continue
         if not (p.name.startswith("rollout-") and p.name.endswith(".jsonl")):
             continue
-        if _is_subagent_session_log(p):
+        if _classify_session_log(p, timeout_s=0.0) != "main":
             continue
 
         if is_open or is_rename:
@@ -549,6 +539,21 @@ def _read_session_meta(log_path: Path) -> dict[str, Any]:
     except Exception:
         pass
     return {}
+
+
+def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
+    sm = _read_session_meta(log_path)
+    if not sm:
+        return thread_id, log_path
+    if not _is_subagent_session_meta(sm):
+        return thread_id, log_path
+    parent = _subagent_parent_thread_id(sm)
+    if not parent:
+        return thread_id, log_path
+    parent_log = _find_session_log_for_session_id_impl(CODEX_SESSIONS_DIR, parent)
+    if parent_log is None or not parent_log.exists():
+        return thread_id, log_path
+    return parent, parent_log
 
 
 def _extract_chat_events(
@@ -865,6 +870,8 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 continue
 
+            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+
             cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else ""
             if not cwd:
                 sm = _read_session_meta(log_path)
@@ -1138,6 +1145,8 @@ class SessionManager:
             log_path = _discover_log_for_session_id(thread_id)
         if not log_path or not log_path.exists():
             return
+
+        thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
         cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else s.cwd
         if not cwd:
