@@ -24,6 +24,7 @@ import urllib.parse
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
+from shutil import which
 from typing import Any
 
 from .util import default_app_dir as _default_app_dir
@@ -88,6 +89,53 @@ DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 
 _ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
+
+_STRACE_USABLE: bool | None = None
+_STRACE_ERR: str | None = None
+
+
+def _strace_usable() -> bool:
+    global _STRACE_USABLE, _STRACE_ERR
+    if _STRACE_USABLE is not None:
+        return bool(_STRACE_USABLE)
+    binp = os.environ.get("CODEX_WEB_STRACE_BIN", "strace")
+    if which(binp) is None:
+        _STRACE_USABLE = False
+        _STRACE_ERR = f"{binp} not found in PATH"
+        return False
+    try:
+        proc = subprocess.run(
+            [binp, "-qq", "-o", "/dev/null", "--", "/bin/true"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            timeout=1.5,
+            check=False,
+        )
+        _STRACE_USABLE = proc.returncode == 0
+        if not _STRACE_USABLE:
+            err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
+            _STRACE_ERR = err[-400:] if err else f"rc={proc.returncode}"
+    except Exception as e:
+        _STRACE_USABLE = False
+        _STRACE_ERR = str(e)
+    return bool(_STRACE_USABLE)
+
+
+def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: float = 1.5) -> None:
+    deadline = time.time() + float(timeout_s)
+    while time.time() < deadline:
+        rc = proc.poll()
+        if rc is None:
+            time.sleep(0.05)
+            continue
+        try:
+            _out, err = proc.communicate(timeout=0.5)
+        except Exception:
+            err = b""
+        msg = (err or b"").decode("utf-8", errors="replace").strip()
+        msg = msg[-4000:] if msg else ""
+        raise RuntimeError(f"{label} exited early (rc={rc}): {msg}")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -716,6 +764,66 @@ def _read_chat_events_from_tail(
     return best_events
 
 
+def _last_conversation_ts_from_tail(
+    log_path: Path,
+    *,
+    max_scan_bytes: int,
+) -> float | None:
+    def event_ts(o: dict[str, Any]) -> float | None:
+        ts = o.get("ts")
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        ts2 = o.get("timestamp")
+        if isinstance(ts2, (int, float)):
+            return float(ts2)
+        if isinstance(ts2, str):
+            v = _parse_iso8601_to_epoch(ts2)
+            if v is not None:
+                return float(v)
+        return None
+
+    def has_assistant_text(obj: dict[str, Any]) -> bool:
+        p = obj.get("payload") or {}
+        if p.get("type") != "message" or p.get("role") != "assistant":
+            return False
+        content = p.get("content") or []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
+                return True
+        return False
+
+    scan = 256 * 1024
+    while True:
+        objs = _read_jsonl_tail(log_path, scan)
+        last_idx: int | None = None
+        last_ts: float | None = None
+        for i, obj in enumerate(objs):
+            typ = obj.get("type")
+            if typ == "event_msg":
+                p = obj.get("payload") or {}
+                pt = p.get("type")
+                if pt == "user_message" and isinstance(p.get("message"), str):
+                    last_idx = i
+                    last_ts = event_ts(obj)
+                    continue
+                if pt == "agent_message":
+                    msg = p.get("message")
+                    if isinstance(msg, str) and msg.strip():
+                        last_idx = i
+                        last_ts = event_ts(obj)
+                        continue
+            if typ == "response_item" and has_assistant_text(obj):
+                last_idx = i
+                last_ts = event_ts(obj)
+                continue
+
+        if last_idx is not None:
+            return last_ts
+        if scan >= max_scan_bytes:
+            return None
+        scan *= 2
+
+
 def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) -> bool | None:
     """
     "Thread idle" (user spec; fail-busy):
@@ -813,6 +921,7 @@ class Session:
     queue_len: int = 0
     token: dict[str, Any] | None = None
     last_turn_id: str | None = None
+    last_chat_ts: float | None = None
     meta_thinking: int = 0
     meta_tools: int = 0
     meta_system: int = 0
@@ -948,6 +1057,7 @@ class SessionManager:
                         prev.meta_thinking = 0
                         prev.meta_tools = 0
                         prev.meta_system = 0
+                        prev.last_chat_ts = None
                         prev.meta_log_off = s.meta_log_off
 
     def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
@@ -1012,24 +1122,61 @@ class SessionManager:
             _unlink_quiet(sock.with_suffix(".json"))
 
     def _update_meta_counters(self) -> None:
+        def event_ts(o: dict[str, Any]) -> float | None:
+            ts = o.get("ts")
+            if isinstance(ts, (int, float)):
+                return float(ts)
+            ts2 = o.get("timestamp")
+            if isinstance(ts2, (int, float)):
+                return float(ts2)
+            if isinstance(ts2, str):
+                v = _parse_iso8601_to_epoch(ts2)
+                if v is not None:
+                    return float(v)
+            return None
+
+        def has_assistant_text(obj: dict[str, Any]) -> bool:
+            p = obj.get("payload") or {}
+            if p.get("type") != "message" or p.get("role") != "assistant":
+                return False
+            content = p.get("content") or []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
+                    return True
+            return False
+
         with self._lock:
             items = list(self._sessions.items())
         for sid, s in items:
             if not s.log_path.exists():
                 continue
 
+            try:
+                sz = int(s.log_path.stat().st_size)
+            except Exception:
+                sz = s.meta_log_off
+
             if not s.busy:
-                try:
-                    off = int(s.log_path.stat().st_size)
-                except Exception:
-                    off = s.meta_log_off
+                if sz > s.meta_log_off:
+                    ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=8 * 1024 * 1024)
+                    with self._lock:
+                        s2 = self._sessions.get(sid)
+                        if s2:
+                            if ts is not None:
+                                s2.last_chat_ts = ts if s2.last_chat_ts is None else max(s2.last_chat_ts, ts)
+                            s2.meta_thinking = 0
+                            s2.meta_tools = 0
+                            s2.meta_system = 0
+                            s2.meta_log_off = sz
+                    continue
+
                 with self._lock:
                     s2 = self._sessions.get(sid)
                     if s2:
                         s2.meta_thinking = 0
                         s2.meta_tools = 0
                         s2.meta_system = 0
-                        s2.meta_log_off = off
+                        s2.meta_log_off = sz
                 continue
 
             objs, new_off = _read_jsonl_from_offset(s.log_path, s.meta_log_off, max_bytes=256 * 1024)
@@ -1039,6 +1186,7 @@ class SessionManager:
             d_th = 0
             d_tools = 0
             d_sys = 0
+            last_chat_ts: float | None = None
             for obj in objs:
                 typ = obj.get("type")
                 if typ == "event_msg":
@@ -1050,6 +1198,12 @@ class SessionManager:
                         d_th = 0
                         d_tools = 0
                         d_sys = 0
+                        if isinstance(p.get("message"), str):
+                            last_chat_ts = event_ts(obj)
+                    if pt == "agent_message":
+                        msg = p.get("message")
+                        if isinstance(msg, str) and msg.strip():
+                            last_chat_ts = event_ts(obj)
                 if typ == "response_item":
                     p = obj.get("payload") or {}
                     pt = p.get("type")
@@ -1059,10 +1213,14 @@ class SessionManager:
                         d_tools += 1
                     if pt == "message" and p.get("role") in ("developer", "system"):
                         d_sys += 1
+                    if has_assistant_text(obj):
+                        last_chat_ts = event_ts(obj)
 
             with self._lock:
                 s2 = self._sessions.get(sid)
                 if s2:
+                    if last_chat_ts is not None:
+                        s2.last_chat_ts = last_chat_ts if s2.last_chat_ts is None else max(s2.last_chat_ts, last_chat_ts)
                     s2.meta_thinking += d_th
                     s2.meta_tools += d_tools
                     s2.meta_system += d_sys
@@ -1083,10 +1241,11 @@ class SessionManager:
         with self._lock:
             out = []
             for s in self._sessions.values():
-                try:
-                    updated_ts = float(s.log_path.stat().st_mtime)
-                except Exception:
-                    updated_ts = float(s.start_ts)
+                if s.last_chat_ts is None:
+                    ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=128 * 1024 * 1024)
+                    if ts is not None:
+                        s.last_chat_ts = ts
+                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 out.append(
                     {
                         "session_id": s.session_id,
@@ -1172,6 +1331,7 @@ class SessionManager:
                 s2.meta_thinking = 0
                 s2.meta_tools = 0
                 s2.meta_system = 0
+                s2.last_chat_ts = None
                 try:
                     s2.meta_log_off = int(log_path.stat().st_size)
                 except Exception:
@@ -1215,7 +1375,9 @@ class SessionManager:
         return True
 
     def spawn_web_session(self, *, cwd: str, args: list[str] | None = None) -> dict[str, Any]:
-        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd, "--"]
+        use_broker = _strace_usable()
+        mod = "codoxear.broker" if use_broker else "codoxear.sessiond"
+        argv = [sys.executable, "-m", mod, "--cwd", cwd, "--"]
         if args:
             argv.extend(args)
 
@@ -1238,21 +1400,7 @@ class SessionManager:
         except Exception as e:
             raise RuntimeError(f"spawn failed: {e}") from e
 
-        time.sleep(0.15)
-        if proc.poll() is not None:
-            try:
-                _out, err = proc.communicate(timeout=0.5)
-            except Exception:
-                err = b""
-            msg = (err or b"").decode("utf-8", errors="replace").strip()
-            msg = msg[-4000:] if msg else ""
-            raise RuntimeError(f"broker exited early (rc={proc.returncode}): {msg}")
-
-        try:
-            if proc.stderr is not None:
-                proc.stderr.close()
-        except Exception:
-            pass
+        _wait_or_raise(proc, label=("broker" if use_broker else "sessiond"), timeout_s=1.5)
 
         # Prevent zombies when the broker exits.
         threading.Thread(target=proc.wait, daemon=True).start()
