@@ -265,7 +265,7 @@ def _encode_enter() -> bytes:
     return b
 
 
-def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.02) -> None:
+def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.2) -> None:
     os.write(fd, text.encode("utf-8"))
     if suffix:
         time.sleep(delay_s)
@@ -713,13 +713,8 @@ class Broker:
                         if not st:
                             resp = {"error": "no state"}
                         else:
-                            recent_local = (_now() - st.last_local_input_ts) < 0.35
-                            if st.busy or recent_local:
-                                st.queue.append(text)
-                                resp = {"queued": True, "queue_len": len(st.queue)}
-                            else:
-                                fd = st.pty_master_fd
-                                resp = {"queued": False, "queue_len": len(st.queue)}
+                            fd = st.pty_master_fd
+                            resp = {"queued": False, "queue_len": len(st.queue)}
                     if fd is not None:
                         _inject(fd, text=text, suffix=seq)
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
@@ -738,13 +733,8 @@ class Broker:
                         if not st:
                             resp = {"error": "no state"}
                         else:
-                            recent_local = (_now() - st.last_local_input_ts) < 0.35
-                            if st.busy or recent_local:
-                                st.key_queue.append(b)
-                                resp = {"ok": True, "queued": True, "n": len(b), "key_queue_len": len(st.key_queue)}
-                            else:
-                                fd = st.pty_master_fd
-                                resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
+                            fd = st.pty_master_fd
+                            resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
                     if fd is not None:
                         try:
                             os.write(fd, b)

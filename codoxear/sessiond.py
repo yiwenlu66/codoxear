@@ -274,17 +274,20 @@ class Sessiond:
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
                 else:
+                    fd: int | None = None
+                    enter = _encode_enter()
                     with self._lock:
                         st = self.state
                         if not st:
                             resp = {"error": "no state"}
-                        elif st.busy:
-                            st.queue.append(text)
-                            resp = {"queued": True, "queue_len": len(st.queue)}
                         else:
-                            os.write(st.pty_master_fd, text.encode("utf-8") + _encode_enter())
-                            st.busy = True
+                            fd = st.pty_master_fd
                             resp = {"queued": False, "queue_len": len(st.queue)}
+                    if fd is not None:
+                        os.write(fd, text.encode("utf-8"))
+                        if enter:
+                            time.sleep(0.2)
+                            os.write(fd, enter)
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 return
