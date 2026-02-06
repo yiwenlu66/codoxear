@@ -59,6 +59,12 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
+6. (Optional) Enable Harness mode for a session:
+
+   - Click the Harness icon in the top bar, toggle it on, and edit the injected text.
+   - Harness runs in the server process (not the browser tab), so it continues even if you close the web page.
+   - Settings are per session; enabled sessions show a `harness` badge in the sidebar.
+
 ## User stories
 
 - Desktop Linux: start Codex in your GUI terminal emulator, then continue the same live TUI session on your phone or a laptop browser.
@@ -88,6 +94,8 @@ Workaround: run privileged commands outside the ptrace-traced Codex process tree
 
 Run `sudo ...` inside that shell.
 
+If you use Harness mode, prefer running long-lived commands inside PiloTY so the process keeps running even if the agent decides to end a turn; use the Codex session to inspect/monitor that background work.
+
 ## Security model
 
 This project intentionally keeps security out of scope. It provides password gating only and does not provide TLS.
@@ -108,6 +116,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_PORT` (default `8743`)
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
+- `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
 
 Runtime state is stored under `~/.local/share/codoxear` (or legacy `~/.local/share/codex-web`).
 

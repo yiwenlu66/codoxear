@@ -180,14 +180,19 @@
         color: var(--muted);
         background: #ffffff;
       }
-      .badge.busy {
-        color: var(--accent);
-        border-color: rgba(37, 99, 235, 0.5);
-      }
-      .badge.queue {
-        color: #f59e0b;
-        border-color: rgba(245, 158, 11, 0.5);
-      }
+	      .badge.busy {
+	        color: var(--accent);
+	        border-color: rgba(37, 99, 235, 0.5);
+	      }
+	      .badge.harness {
+	        color: var(--accent);
+	        border-color: rgba(37, 99, 235, 0.5);
+	        background: rgba(37, 99, 235, 0.08);
+	      }
+	      .badge.queue {
+	        color: #f59e0b;
+	        border-color: rgba(245, 158, 11, 0.5);
+	      }
 
       .main {
         display: flex;
@@ -244,21 +249,26 @@
         opacity: 0.6;
         cursor: default;
       }
-      .icon-btn {
-        width: 38px;
-        height: 38px;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 10px;
-        position: relative;
-      }
-      .icon {
-        width: 18px;
-        height: 18px;
-        display: inline-block;
-      }
+	      .icon-btn {
+	        width: 38px;
+	        height: 38px;
+	        padding: 0;
+	        display: inline-flex;
+	        align-items: center;
+	        justify-content: center;
+	        border-radius: 10px;
+	        position: relative;
+	      }
+	      .icon-btn.active {
+	        border-color: rgba(37, 99, 235, 0.5);
+	        background: rgba(37, 99, 235, 0.08);
+	        color: var(--accent);
+	      }
+	      .icon {
+	        width: 18px;
+	        height: 18px;
+	        display: inline-block;
+	      }
       .attachBadge {
         position: absolute;
         top: -4px;
@@ -628,14 +638,56 @@
       .login button {
         width: 100%;
       }
-      .login input[type="password"] {
-        font-size: 16px;
-      }
+	      .login input[type="password"] {
+	        font-size: 16px;
+	      }
 
-	      .backdrop {
+	      .harnessMenu {
 	        display: none;
-	        position: absolute;
-	        inset: 0;
+	        position: fixed;
+	        z-index: 60;
+	        width: min(92vw, 460px);
+	        background: var(--panel);
+	        border: 1px solid var(--border);
+	        border-radius: 16px;
+	        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+	        padding: 12px;
+	      }
+	      .harnessMenu .row {
+	        display: flex;
+	        align-items: center;
+	        justify-content: space-between;
+	        gap: 10px;
+	        margin-bottom: 10px;
+	      }
+	      .harnessMenu .label {
+	        font-size: 13px;
+	        color: var(--muted);
+	        margin: 6px 0 8px 0;
+	      }
+	      .harnessMenu label {
+	        display: inline-flex;
+	        align-items: center;
+	        gap: 8px;
+	        font-size: 14px;
+	      }
+	      .harnessMenu input[type="checkbox"] {
+	        width: 16px;
+	        height: 16px;
+	      }
+	      .harnessMenu textarea {
+	        min-height: 160px;
+	        height: 160px;
+	        max-height: 320px;
+	        overflow-y: auto;
+	        border-radius: 14px;
+	        resize: vertical;
+	      }
+
+		      .backdrop {
+		        display: none;
+		        position: absolute;
+		        inset: 0;
 	        background: rgba(15, 23, 42, 0.35);
 	        z-index: 20;
 	      }
@@ -1028,16 +1080,18 @@
         return html;
       }
 
-      function iconSvg(name) {
-        if (name === "menu")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
-        if (name === "refresh")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
-        if (name === "stop")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>`;
-        if (name === "plus")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`;
-        if (name === "logout")
+	      function iconSvg(name) {
+	        if (name === "menu")
+	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
+	        if (name === "refresh")
+	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
+	        if (name === "harness")
+	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
+	        if (name === "stop")
+	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>`;
+	        if (name === "plus")
+	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>`;
+	        if (name === "logout")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M21 3v18"/></svg>`;
         if (name === "send")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>`;
@@ -1119,20 +1173,25 @@
 	        let sessionsTimer = null;
 		        let sessionIndex = new Map(); // session_id -> session info
 		        let sending = false;
-		        let localEchoSeq = 0;
-		        const pendingUser = [];
-		        let attachedImages = 0;
-	        let autoScroll = true;
-		        let backfillToken = 0;
-	        let backfillState = null;
+			        let localEchoSeq = 0;
+			        const pendingUser = [];
+			        let attachedImages = 0;
+		        let autoScroll = true;
+			        let backfillToken = 0;
+		        let backfillState = null;
 			        let lastScrollTop = 0;
-			        let lastToken = null;
-			        let typingRow = null;
-			        let attachBadgeEl = null;
+				        let lastToken = null;
+				        let typingRow = null;
+				        let attachBadgeEl = null;
+					        const HARNESS_DEFAULT_TEXT =
+					          "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. Continue monitoring experiments running in the background to locate any issues.\n\n---\n";
+					        let harnessMenuOpen = false;
+					        let harnessCfg = { enabled: false, text: HARNESS_DEFAULT_TEXT };
+					        let harnessSaveTimer = null;
 
-		        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
-		        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
-		        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
+				        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
+				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
+				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
 		        const interruptBtn = el("button", {
 		          id: "interruptBtn",
@@ -1144,23 +1203,43 @@
 		        });
 		        interruptBtn.style.display = "none";
 		        const toast = el("div", { class: "muted toast", id: "toast" });
-		        const toggleSidebarBtn = el("button", {
-          id: "toggleSidebarBtn",
-          class: "icon-btn",
-          title: "Toggle sidebar",
-          "aria-label": "Toggle sidebar",
-          html: iconSvg("menu"),
-        });
+			        const toggleSidebarBtn = el("button", {
+	          id: "toggleSidebarBtn",
+	          class: "icon-btn",
+	          title: "Toggle sidebar",
+	          "aria-label": "Toggle sidebar",
+	          html: iconSvg("menu"),
+	        });
+			        const harnessBtn = el("button", {
+			          id: "harnessBtn",
+			          class: "icon-btn",
+			          title: "Harness mode",
+			          "aria-label": "Harness mode",
+				          type: "button",
+				          html: iconSvg("harness"),
+				        });
+				        harnessBtn.disabled = true;
+				        harnessBtn.classList.toggle("active", false);
+				        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
+				          el("div", { class: "row" }, [
+				            el("label", {}, [
+				              el("input", { type: "checkbox", id: "harnessEnabled" }),
+			              el("span", { text: "Harness mode" }),
+			            ]),
+			          ]),
+			          el("div", { class: "label", text: "Text to inject after 60s idle (per session)" }),
+			          el("textarea", { id: "harnessText", "aria-label": "Harness injection text" }),
+			        ]);
 
-		        const topbar = el("div", { class: "topbar" }, [
-		          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
-		          el("div", { class: "actions" }, [
-		            statusChip,
-		            ctxChip,
-		            interruptBtn,
-		            el("button", { id: "refreshBtnTop", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") }),
-		          ]),
-		        ]);
+			        const topbar = el("div", { class: "topbar" }, [
+			          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
+			          el("div", { class: "actions" }, [
+			            statusChip,
+			            ctxChip,
+			            interruptBtn,
+			            harnessBtn,
+			          ]),
+			        ]);
 
 	        const form = el("form", {}, [
 	          el("button", {
@@ -1194,10 +1273,11 @@
 	        main.appendChild(topbar);
 	        main.appendChild(chatWrap);
 	        main.appendChild(composer);
-	        app.appendChild(sidebar);
-	        app.appendChild(main);
-	        app.appendChild(backdrop);
-	        root.appendChild(app);
+		        app.appendChild(sidebar);
+		        app.appendChild(main);
+		        app.appendChild(backdrop);
+		        root.appendChild(app);
+		        root.appendChild(harnessMenu);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -1476,17 +1556,18 @@
 	          const sessions = (data.sessions || [])
               .slice()
               .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
-	          for (const s of sessions) {
-	            sessionIndex.set(s.session_id, s);
-	            const badge = el("span", { class: "badge" + (s.busy ? " busy" : ""), text: s.busy ? "busy" : "idle" });
-	            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
-	            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
+		          for (const s of sessions) {
+		            sessionIndex.set(s.session_id, s);
+		            const badge = el("span", { class: "badge" + (s.busy ? " busy" : ""), text: s.busy ? "busy" : "idle" });
+		            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
+		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
-	            const title = baseName(s.cwd) || s.session_id.slice(0, 12);
-	            const badges = [];
-	            badges.push(badge);
-	            if (q) badges.push(q);
-	            let delBtn = null;
+		            const title = baseName(s.cwd) || s.session_id.slice(0, 12);
+		            const badges = [];
+		            if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
+		            badges.push(badge);
+		            if (q) badges.push(q);
+		            let delBtn = null;
 	            if (s.owned) {
 	              delBtn = el("button", {
 	                class: "icon-btn danger sessionDel",
@@ -1501,22 +1582,24 @@
                 if (!confirm("Delete this session?")) return;
                 try {
 	                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-	                  if (selected === s.session_id) {
-	                    selected = null;
-                      offset = 0;
-                      activeLogPath = null;
-                      activeThreadId = null;
-                      turnOpen = false;
-	                    localStorage.removeItem("codexweb.selected");
-	                    titleLabel.textContent = "No session selected";
-                      setStatus({ running: false, queueLen: 0 });
-                      setContext(null);
-                      setTyping(false);
-                      setAttachCount(0);
-	                    resetChatRenderState();
-	                  }
-                  await refreshSessions();
-                } catch (err) {
+		                  if (selected === s.session_id) {
+		                    selected = null;
+	                      offset = 0;
+	                      activeLogPath = null;
+	                      activeThreadId = null;
+	                      turnOpen = false;
+		                    localStorage.removeItem("codexweb.selected");
+		                    titleLabel.textContent = "No session selected";
+	                      setStatus({ running: false, queueLen: 0 });
+	                      setContext(null);
+	                      setTyping(false);
+	                      setAttachCount(0);
+		                    resetChatRenderState();
+	                      if (harnessMenuOpen) hideHarnessMenu();
+	                      updateHarnessBtnState();
+		                  }
+	                  await refreshSessions();
+	                } catch (err) {
                   setToast(`delete error: ${err.message}`);
 	                }
 	              };
@@ -1537,34 +1620,37 @@
 	            };
 	            sessionsWrap.appendChild(card);
 	          }
-          if (selected && !sessionIndex.has(selected)) {
-            selected = null;
-            offset = 0;
-            activeLogPath = null;
-            activeThreadId = null;
+	          if (selected && !sessionIndex.has(selected)) {
+	            selected = null;
+	            offset = 0;
+	            activeLogPath = null;
+	            activeThreadId = null;
             pollGen += 1;
             if (pollTimer) clearTimeout(pollTimer);
             pollTimer = null;
             pollKickPending = false;
             localStorage.removeItem("codexweb.selected");
-            titleLabel.textContent = "No session selected";
-            setStatus({ running: false, queueLen: 0 });
-            setTyping(false);
-            resetChatRenderState();
-            turnOpen = false;
-          }
-          return sessions;
-        }
+	            titleLabel.textContent = "No session selected";
+	            setStatus({ running: false, queueLen: 0 });
+	            setTyping(false);
+	            resetChatRenderState();
+	            turnOpen = false;
+	            if (harnessMenuOpen) hideHarnessMenu();
+	            updateHarnessBtnState();
+	          }
+	          updateHarnessBtnState();
+	          return sessions;
+	        }
 
-        function appendEvent(ev) {
-          if (consumePendingUserIfMatches(ev)) return;
+	        function appendEvent(ev) {
+	          if (consumePendingUserIfMatches(ev)) return;
 
-          const stick = autoScroll || isNearBottom();
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
-          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-          chatInner.insertBefore(row, anchor);
-          rebuildDecorations({ preserveScroll: false });
+	          const stick = autoScroll || isNearBottom();
+	          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
+			          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+			          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+			          chatInner.insertBefore(row, anchor);
+	          rebuildDecorations({ preserveScroll: false });
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1574,22 +1660,21 @@
           }
         }
 
-	        function startInitialRender(allEvents) {
-	          backfillToken += 1;
-	          const myToken = backfillToken;
+		        function startInitialRender(allEvents) {
+		          backfillToken += 1;
+		          const myToken = backfillToken;
 
-	          const msgs = [];
-	          for (const ev of allEvents) {
-	            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-	            if (consumePendingUserIfMatches(ev)) continue;
-	            msgs.push(ev);
-	          }
-	          if (!msgs.length) return;
-
-	          const frag = document.createDocumentFragment();
-	          for (const ev of msgs) {
-	            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-	            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+		          const msgs = [];
+		          for (const ev of allEvents) {
+		            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+		            if (consumePendingUserIfMatches(ev)) continue;
+		            msgs.push(ev);
+		          }
+		          if (!msgs.length) return;
+			          const frag = document.createDocumentFragment();
+		          for (const ev of msgs) {
+		            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+		            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
 	          }
 	          chatInner.insertBefore(frag, bottomSentinel);
 	          rebuildDecorations({ preserveScroll: false });
@@ -1605,9 +1690,9 @@
 	          backfillState = null;
 	        }
 
-	        async function pollMessages(sid = selected, gen = pollGen) {
-	          if (!sid) return;
-	          try {
+		        async function pollMessages(sid = selected, gen = pollGen) {
+		          if (!sid) return;
+		          try {
             const prevOffset = offset;
             const reqOffset = offset;
 	            const data = await api(`/api/sessions/${sid}/messages?offset=${reqOffset}`);
@@ -1632,19 +1717,19 @@
                 offset = d2.offset;
                 const evs2 = Array.isArray(d2.events) ? d2.events : [];
                 if (evs2.length) startInitialRender(evs2);
-                const nowBusy2 = Boolean(d2.busy);
-                const turnStart2 = Boolean(d2.turn_start);
-                const turnEnd2 = Boolean(d2.turn_end);
-                const turnAborted2 = Boolean(d2.turn_aborted);
-                if (turnStart2 || nowBusy2) turnOpen = true;
-                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
-                setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
-                setContext(d2.token);
-                setTyping(Boolean(turnOpen || nowBusy2));
-              } catch {}
-              return;
+	                const nowBusy2 = Boolean(d2.busy);
+	                const turnStart2 = Boolean(d2.turn_start);
+	                const turnEnd2 = Boolean(d2.turn_end);
+	                const turnAborted2 = Boolean(d2.turn_aborted);
+	                if (turnStart2 || nowBusy2) turnOpen = true;
+	                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
+				            setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
+				            setContext(d2.token);
+				            setTyping(Boolean(turnOpen || nowBusy2));
+	              } catch {}
+	              return;
             }
-            const nowBusy = Boolean(data.busy);
+	            const nowBusy = Boolean(data.busy);
 
 	            offset = data.offset;
             const evs = Array.isArray(data.events) ? data.events : [];
@@ -1671,12 +1756,12 @@
 		              turnOpen = false;
 		            }
 
-		            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-		            setContext(data.token);
-		            setTyping(Boolean(turnOpen || nowBusy));
-            const s = sessionIndex.get(sid);
-            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${s.session_id.slice(0, 8)})`;
-	          } catch (e) {
+				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+				            setContext(data.token);
+				            setTyping(Boolean(turnOpen || nowBusy));
+	            const s = sessionIndex.get(sid);
+	            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${s.session_id.slice(0, 8)})`;
+		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 404) {
               selected = null;
@@ -1741,7 +1826,7 @@
           pollTimer = setTimeout(pollLoop, ms);
         }
 
-	        async function selectSession(id) {
+		        async function selectSession(id) {
 	          pollGen += 1;
 	          const myGen = pollGen;
 	          if (pollTimer) {
@@ -1750,52 +1835,153 @@
 	          }
 		          pollKickPending = false;
 		          const sid = id;
-		          selected = sid;
-		          offset = 0;
-              activeLogPath = null;
-              activeThreadId = null;
-		          resetChatRenderState();
-		          setAttachCount(0);
-		          localStorage.setItem("codexweb.selected", sid);
-			          setStatus({ running: false, queueLen: 0 });
+			          selected = sid;
+			          offset = 0;
+		              activeLogPath = null;
+		              activeThreadId = null;
+				          resetChatRenderState();
+				          setAttachCount(0);
+				          localStorage.setItem("codexweb.selected", sid);
+				          setStatus({ running: false, queueLen: 0 });
 			          setContext(null);
 		          setTyping(false);
 		          turnOpen = false;
-		          await refreshSessions();
-	          if (pollGen !== myGen || selected !== sid) return;
+			          await refreshSessions();
+		          if (pollGen !== myGen || selected !== sid) return;
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
-				          try {
-					            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=400`);
-				            if (pollGen !== myGen || selected !== sid) return;
+					          try {
+						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=400`);
+					            if (pollGen !== myGen || selected !== sid) return;
                     if (data && typeof data.log_path === "string") activeLogPath = data.log_path;
                     if (data && typeof data.thread_id === "string") activeThreadId = data.thread_id;
 				            offset = data.offset;
 				            const evs = Array.isArray(data.events) ? data.events : [];
-				            if (evs.length) startInitialRender(evs);
-			            const nowBusy = Boolean(data.busy);
-            const turnStart = Boolean(data.turn_start);
-            const turnEnd = Boolean(data.turn_end);
-            const turnAborted = Boolean(data.turn_aborted);
-		            if (turnStart || nowBusy) turnOpen = true;
-		            if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
-		            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-		            setContext(data.token);
-		            setTyping(Boolean(turnOpen || nowBusy));
-		          } catch {
-		            await pollMessages(sid, myGen);
-		            if (pollGen !== myGen || selected !== sid) return;
-		          }
-          kickPoll(900);
-          if (isMobile()) setSidebarOpen(false);
-        }
+					            if (evs.length) startInitialRender(evs);
+				            const nowBusy = Boolean(data.busy);
+	            const turnStart = Boolean(data.turn_start);
+	            const turnEnd = Boolean(data.turn_end);
+	            const turnAborted = Boolean(data.turn_aborted);
+				            if (turnStart || nowBusy) turnOpen = true;
+				            if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
+				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+				            setContext(data.token);
+				            setTyping(Boolean(turnOpen || nowBusy));
+			          } catch {
+			            await pollMessages(sid, myGen);
+			            if (pollGen !== myGen || selected !== sid) return;
+			          }
+	          kickPoll(900);
+	          if (isMobile()) setSidebarOpen(false);
+	          updateHarnessBtnState();
+	        }
 
-	        $("#refreshBtn").onclick = refreshSessions;
-	        $("#refreshBtnTop").onclick = refreshSessions;
-        $("#newBtn").onclick = async () => {
-          const cur = selected ? sessionIndex.get(selected) : null;
-          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
-          const cwd = prompt("New session cwd:", def);
+			        $("#refreshBtn").onclick = refreshSessions;
+			        function updateHarnessBtnState() {
+			          const s = selected ? sessionIndex.get(selected) : null;
+			          const on = Boolean(s && s.harness_enabled);
+			          harnessBtn.disabled = !selected;
+			          harnessBtn.classList.toggle("active", Boolean(selected && on));
+			        }
+			        async function loadHarnessCfgForSelected() {
+			          if (!selected) return;
+			          const sid = selected;
+				          try {
+				            const d = await api(`/api/sessions/${sid}/harness`);
+				            if (selected !== sid) return;
+				            harnessCfg = {
+				              enabled: Boolean(d && d.enabled),
+				              text:
+				                typeof (d && d.text) === "string" && d.text.trim()
+				                  ? d.text
+				                  : HARNESS_DEFAULT_TEXT,
+				            };
+				          } catch {
+				            if (selected !== sid) return;
+				            harnessCfg = { enabled: false, text: HARNESS_DEFAULT_TEXT };
+				          }
+			          const enabledEl = $("#harnessEnabled");
+			          const textEl = $("#harnessText");
+			          if (enabledEl) enabledEl.checked = harnessCfg.enabled;
+			          if (textEl) textEl.value = harnessCfg.text;
+			        }
+			        function scheduleHarnessSave() {
+			          if (!selected) return;
+			          const sid = selected;
+			          if (harnessSaveTimer) clearTimeout(harnessSaveTimer);
+			          harnessSaveTimer = setTimeout(async () => {
+			            if (selected !== sid) return;
+			            try {
+			              await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, text: harnessCfg.text } });
+			              await refreshSessions();
+			            } catch {}
+			            updateHarnessBtnState();
+			          }, 450);
+			        }
+			        function hideHarnessMenu() {
+			          harnessMenuOpen = false;
+			          harnessMenu.style.display = "none";
+			        }
+			        async function showHarnessMenu() {
+			          if (!selected) return;
+			          harnessMenuOpen = true;
+			          harnessMenu.style.display = "block";
+			          const rect = harnessBtn.getBoundingClientRect();
+			          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
+			          harnessMenu.style.top = `${top}px`;
+			          harnessMenu.style.left = "12px";
+			          harnessMenu.style.right = "auto";
+			          const w = harnessMenu.offsetWidth || 320;
+			          const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
+			          harnessMenu.style.left = `${left}px`;
+			          await loadHarnessCfgForSelected();
+			        }
+			        function toggleHarnessMenu() {
+			          if (harnessMenuOpen) hideHarnessMenu();
+			          else showHarnessMenu();
+			        }
+
+			        harnessBtn.onclick = (e) => {
+			          e.preventDefault();
+			          e.stopPropagation();
+		          toggleHarnessMenu();
+		        };
+		        harnessMenu.onclick = (e) => e.stopPropagation();
+		        if (window.__codexwebHarnessGlobalHandlers) {
+		          const h = window.__codexwebHarnessGlobalHandlers;
+		          if (h.docClick) document.removeEventListener("click", h.docClick);
+		          if (h.resize) window.removeEventListener("resize", h.resize);
+		        }
+		        const onDocClick = () => {
+		          if (harnessMenuOpen) hideHarnessMenu();
+		        };
+		        const onResize = () => {
+		          if (harnessMenuOpen) hideHarnessMenu();
+		        };
+		        window.__codexwebHarnessGlobalHandlers = { docClick: onDocClick, resize: onResize };
+		        document.addEventListener("click", onDocClick);
+			        window.addEventListener("resize", onResize);
+			        const harnessEnabledEl = $("#harnessEnabled");
+			        const harnessTextEl = $("#harnessText");
+			        if (harnessEnabledEl)
+			          harnessEnabledEl.onchange = (e) => {
+			            if (!selected) return;
+			            harnessCfg.enabled = Boolean(e.target.checked);
+			            const s = sessionIndex.get(selected);
+			            if (s) s.harness_enabled = harnessCfg.enabled;
+			            updateHarnessBtnState();
+			            scheduleHarnessSave();
+			          };
+			        if (harnessTextEl)
+			          harnessTextEl.oninput = (e) => {
+			            if (!selected) return;
+			            harnessCfg.text = String(e.target.value ?? "");
+			            scheduleHarnessSave();
+			          };
+	        $("#newBtn").onclick = async () => {
+	          const cur = selected ? sessionIndex.get(selected) : null;
+	          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+	          const cwd = prompt("New session cwd:", def);
           if (!cwd) return;
           try {
             setToast("starting...");

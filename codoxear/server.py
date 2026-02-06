@@ -69,6 +69,7 @@ SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 UPLOAD_DIR = APP_DIR / "uploads"
+HARNESS_PATH = APP_DIR / "harness.json"
 
 _DOTENV = (Path.cwd() / ".env").resolve()
 if _DOTENV.exists():
@@ -86,6 +87,14 @@ CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
+HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "60"))
+HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
+HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
+HARNESS_DEFAULT_TEXT = (
+    "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. "
+    "Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. "
+    "Continue monitoring experiments running in the background to locate any issues.\n\n---\n"
+)
 
 _ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
@@ -920,6 +929,70 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     return end_idx[0] in ("assistant", "aborted")
 
 
+def _last_chat_role_ts_from_tail(
+    path: Path,
+    *,
+    max_scan_bytes: int,
+) -> tuple[str, float] | None:
+    def event_ts(o: dict[str, Any]) -> float | None:
+        ts = o.get("ts")
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        ts2 = o.get("timestamp")
+        if isinstance(ts2, (int, float)):
+            return float(ts2)
+        if isinstance(ts2, str):
+            v = _parse_iso8601_to_epoch(ts2)
+            if v is not None:
+                return float(v)
+        return None
+
+    def has_assistant_text(obj: dict[str, Any]) -> bool:
+        p = obj.get("payload") or {}
+        if p.get("type") != "message" or p.get("role") != "assistant":
+            return False
+        content = p.get("content") or []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
+                return True
+        return False
+
+    scan = 256 * 1024
+    while scan <= max_scan_bytes:
+        objs = _read_jsonl_tail(path, scan)
+        last_user: tuple[int, float | None] | None = None
+        last_assistant: tuple[int, float | None] | None = None
+        for i, obj in enumerate(objs):
+            typ = obj.get("type")
+            if typ == "event_msg":
+                p = obj.get("payload") or {}
+                pt = p.get("type")
+                if pt == "user_message" and isinstance(p.get("message"), str):
+                    last_user = (i, event_ts(obj))
+                    continue
+                if pt == "agent_message":
+                    msg = p.get("message")
+                    if isinstance(msg, str) and msg.strip():
+                        last_assistant = (i, event_ts(obj))
+                        continue
+            if typ == "response_item" and has_assistant_text(obj):
+                last_assistant = (i, event_ts(obj))
+
+        best: tuple[str, tuple[int, float | None]] | None = None
+        if last_user is not None:
+            best = ("user", last_user)
+        if last_assistant is not None:
+            if best is None or last_assistant[0] > best[1][0]:
+                best = ("assistant", last_assistant)
+        if best is not None:
+            role, (_i, ts) = best
+            if ts is None:
+                return None
+            return (role, float(ts))
+        scan *= 2
+    return None
+
+
 @dataclass
 class Session:
     session_id: str
@@ -947,10 +1020,135 @@ class SessionManager:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
+        self._harness: dict[str, dict[str, Any]] = {}
+        self._harness_last_injected: dict[str, float] = {}
         self._discover_existing()
+        self._load_harness()
+        self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
+        self._harness_thr.start()
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _load_harness(self) -> None:
+        try:
+            raw = HARNESS_PATH.read_text(encoding="utf-8")
+        except Exception:
+            return
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            return
+        if not isinstance(obj, dict):
+            return
+        cleaned: dict[str, dict[str, Any]] = {}
+        for sid, v in obj.items():
+            if not isinstance(sid, str) or not sid:
+                continue
+            if not isinstance(v, dict):
+                continue
+            enabled = bool(v.get("enabled")) if "enabled" in v else False
+            text = v.get("text")
+            if not isinstance(text, str):
+                text = ""
+            cleaned[sid] = {"enabled": enabled, "text": text}
+        with self._lock:
+            self._harness = cleaned
+
+    def _save_harness(self) -> None:
+        with self._lock:
+            obj = dict(self._harness)
+        try:
+            os.makedirs(APP_DIR, exist_ok=True)
+            tmp = HARNESS_PATH.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            os.replace(tmp, HARNESS_PATH)
+        except Exception:
+            return
+
+    def harness_get(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            cfg = dict(self._harness.get(session_id) or {})
+        enabled = bool(cfg.get("enabled"))
+        text = cfg.get("text")
+        if not isinstance(text, str):
+            text = ""
+        if not text.strip():
+            text = HARNESS_DEFAULT_TEXT
+        return {"enabled": enabled, "text": text}
+
+    def harness_set(self, session_id: str, *, enabled: bool | None = None, text: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            cur = dict(self._harness.get(session_id) or {})
+            if enabled is not None:
+                cur["enabled"] = bool(enabled)
+            if text is not None:
+                cur["text"] = str(text)
+            if bool(cur.get("enabled")) and (not isinstance(cur.get("text"), str) or (not str(cur.get("text")).strip())):
+                cur["text"] = HARNESS_DEFAULT_TEXT
+            self._harness[session_id] = cur
+            if enabled is not None and bool(enabled) is False:
+                self._harness_last_injected.pop(session_id, None)
+        self._save_harness()
+        return self.harness_get(session_id)
+
+    def _harness_loop(self) -> None:
+        # Persist across browser disconnects: server is the scheduler.
+        while not self._stop.is_set():
+            try:
+                self._harness_sweep()
+            except Exception:
+                pass
+            self._stop.wait(HARNESS_SWEEP_SECONDS)
+
+    def _harness_sweep(self) -> None:
+        now = time.time()
+        # Keep discovery fresh; sessions can appear/disappear without UI polling.
+        self._discover_existing()
+        self._prune_dead_sessions()
+        with self._lock:
+            items = [(sid, s, dict(self._harness.get(sid) or {}), float(self._harness_last_injected.get(sid, 0.0))) for sid, s in self._sessions.items()]
+
+        for sid, s, cfg, last_inj in items:
+            if not bool(cfg.get("enabled")):
+                continue
+            text = cfg.get("text")
+            if not isinstance(text, str) or not text.strip():
+                text = HARNESS_DEFAULT_TEXT
+            if last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS):
+                continue
+            lp = s.log_path
+            if lp is None or (not lp.exists()):
+                continue
+            try:
+                st = self.get_state(sid)
+                busy = bool(st.get("busy"))
+                ql = int(st.get("queue_len", 0))
+            except Exception:
+                # Fail-busy: do not inject when state cannot be queried.
+                continue
+            if busy or ql > 0:
+                continue
+            last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
+            if not last:
+                continue
+            role, ts = last
+            if role != "assistant":
+                continue
+            if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
+                continue
+            try:
+                self.send(sid, text)
+            except Exception:
+                continue
+            with self._lock:
+                self._harness_last_injected[sid] = now
 
     def _discover_existing(self) -> None:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -1265,6 +1463,7 @@ class SessionManager:
         with self._lock:
             out = []
             for s in self._sessions.values():
+                h_enabled = bool((self._harness.get(s.session_id) or {}).get("enabled"))
                 if s.last_chat_ts is None and s.log_path is not None and s.log_path.exists():
                     ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=128 * 1024 * 1024)
                     if ts is not None:
@@ -1287,6 +1486,7 @@ class SessionManager:
                         "thinking": s.meta_thinking,
                         "tools": s.meta_tools,
                         "system": s.meta_system,
+                        "harness_enabled": h_enabled,
                     }
                 )
             return out
@@ -1743,6 +1943,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"tail": tail})
                 return
 
+            if path.startswith("/api/sessions/") and path.endswith("/harness"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                if len(parts) < 4:
+                    self.send_error(404)
+                    return
+                session_id = parts[3]
+                try:
+                    cfg = MANAGER.harness_get(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                _json_response(self, 200, {"ok": True, **cfg})
+                return
+
             self.send_error(404)
         except Exception as e:
             _json_response(self, 500, {"error": str(e)})
@@ -1837,6 +2054,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 res = MANAGER.send(session_id, text)
                 _json_response(self, 200, res)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/harness"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                obj = json.loads(body.decode("utf-8") or "{}")
+                enabled_raw = obj.get("enabled", None)
+                text_raw = obj.get("text", None)
+                enabled: bool | None
+                if enabled_raw is None:
+                    enabled = None
+                else:
+                    enabled = bool(enabled_raw)
+                text: str | None
+                if text_raw is None:
+                    text = None
+                elif isinstance(text_raw, str):
+                    text = text_raw
+                else:
+                    _json_response(self, 400, {"error": "text must be a string"})
+                    return
+                cfg = MANAGER.harness_set(session_id, enabled=enabled, text=text)
+                _json_response(self, 200, {"ok": True, **cfg})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/interrupt"):
