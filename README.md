@@ -82,6 +82,12 @@ If you start a web-owned session and later want to continue it in your terminal,
 
 ## Known limitations
 
+### No Default/Plan confirmation interaction from web UI
+
+Codoxear cannot drive Codex confirmation prompts in `default` mode or `plan` mode from the browser UI.
+
+For full remote interaction, run Codex in YOLO mode so confirmations do not block on interactive terminal prompts.
+
 ### No elevated operations inside brokered Codex
 
 Codex instances started via `codoxear-broker` cannot reliably run elevated operations (for example `sudo`, `pkexec`, or other setuid/file-capability programs).
