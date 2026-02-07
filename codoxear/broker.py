@@ -52,9 +52,24 @@ DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".co
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
 
 CONTEXT_WINDOW_BASELINE_TOKENS = 12000
+try:
+    BUSY_QUIET_SECONDS = max(float(os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS", "3.0") or "3.0"), 0.0)
+except Exception:
+    BUSY_QUIET_SECONDS = 3.0
+try:
+    BUSY_INTERRUPT_GRACE_SECONDS = max(
+        float(os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS", "3.0") or "3.0"),
+        0.0,
+    )
+except Exception:
+    BUSY_INTERRUPT_GRACE_SECONDS = 3.0
+
+INTERRUPT_HINT_TAIL_MAX = 4096
 
 _ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
+_ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
+_ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
 
 # Keep strace noise low but include all plausible file-open entry points.
 _STRACE_TRACE = "trace=open,openat,openat2,creat,rename,renameat,renameat2"
@@ -315,6 +330,148 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024
     return out, new_off
 
 
+def _strip_ansi(text: str) -> str:
+    return _ANSI_CSI_RE.sub("", _ANSI_OSC_RE.sub("", text))
+
+
+def _line_has_interrupt_hint(line: str) -> bool:
+    return "esc to interrupt" in line.lower()
+
+
+def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
+    cleaned = _strip_ansi(text)
+    if not cleaned:
+        return
+    scan_text = (st.interrupt_hint_tail[-64:] + cleaned)
+    st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
+    if _line_has_interrupt_hint(scan_text):
+        st.busy = True
+        st.last_interrupt_hint_ts = now_ts
+        if now_ts > st.last_turn_activity_ts:
+            st.last_turn_activity_ts = now_ts
+        return
+
+
+def _response_call_started(payload: dict[str, Any]) -> str | None:
+    t = payload.get("type")
+    if t not in ("function_call", "custom_tool_call"):
+        return None
+    call_id = payload.get("call_id")
+    return call_id if isinstance(call_id, str) and call_id else None
+
+
+def _response_call_finished(payload: dict[str, Any]) -> str | None:
+    t = payload.get("type")
+    if t not in ("function_call_output", "custom_tool_call_output"):
+        return None
+    call_id = payload.get("call_id")
+    return call_id if isinstance(call_id, str) and call_id else None
+
+
+def _should_clear_busy_state(st: "State", now_ts: float) -> bool:
+    if not st.busy:
+        return False
+    if st.queue or st.key_queue:
+        return False
+    if st.pending_calls:
+        return False
+    if st.turn_open and (not st.turn_has_completion_candidate):
+        return False
+    if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < BUSY_INTERRUPT_GRACE_SECONDS:
+        return False
+    if st.last_turn_activity_ts <= 0.0:
+        return False
+    return (now_ts - st.last_turn_activity_ts) >= BUSY_QUIET_SECONDS
+
+
+def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
+    typ = obj.get("type")
+
+    if typ == "event_msg":
+        payload = obj.get("payload") or {}
+        ev_type = payload.get("type")
+        if ev_type == "user_message":
+            msg = payload.get("message")
+            if isinstance(msg, str) and msg.strip():
+                st.pending_calls.clear()
+                st.busy = True
+                st.turn_open = True
+                st.turn_has_completion_candidate = False
+                st.last_interrupt_hint_ts = 0.0
+                st.last_turn_activity_ts = now_ts
+            return
+        if ev_type in ("turn_aborted", "thread_rolled_back"):
+            st.pending_calls.clear()
+            st.busy = False
+            st.turn_open = False
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = 0.0
+            return
+        if ev_type == "agent_message":
+            msg = payload.get("message")
+            if isinstance(msg, str) and msg.strip() and st.turn_open:
+                st.turn_has_completion_candidate = True
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        if ev_type == "agent_reasoning":
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        if ev_type == "token_count" and st.busy:
+            st.last_turn_activity_ts = now_ts
+            return
+        return
+
+    if typ != "response_item":
+        return
+    payload = obj.get("payload") or {}
+
+    started = _response_call_started(payload)
+    if started is not None:
+        st.pending_calls.add(started)
+        if st.turn_open:
+            st.turn_has_completion_candidate = False
+        st.busy = True
+        st.last_turn_activity_ts = now_ts
+        return
+
+    finished = _response_call_finished(payload)
+    if finished is not None:
+        st.pending_calls.discard(finished)
+        if st.turn_open:
+            st.turn_has_completion_candidate = False
+        st.busy = True
+        st.last_turn_activity_ts = now_ts
+        return
+
+    item_type = payload.get("type")
+    role = payload.get("role")
+    if item_type in ("reasoning", "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output"):
+        if st.turn_open:
+            st.turn_has_completion_candidate = False
+        st.busy = True
+        st.last_turn_activity_ts = now_ts
+        return
+    if item_type == "message" and role == "assistant":
+        content = payload.get("content") or []
+        has_text = any(
+            isinstance(part, dict)
+            and part.get("type") == "output_text"
+            and isinstance(part.get("text"), str)
+            and part.get("text")
+            for part in content
+        )
+        if has_text and st.turn_open:
+            st.turn_has_completion_candidate = True
+        st.busy = True
+        st.last_turn_activity_ts = now_ts
+        return
+
+
 def _read_session_id_from_log(log_path: Path) -> str | None:
     try:
         with log_path.open("r", encoding="utf-8") as f:
@@ -362,6 +519,13 @@ class State:
     output_tail_max: int = 256 * 1024
     log_off: int = 0
     last_local_input_ts: float = 0.0
+    last_turn_activity_ts: float = 0.0
+    last_interrupt_hint_ts: float = 0.0
+    pending_calls: set[str] = field(default_factory=set)
+    turn_open: bool = False
+    turn_has_completion_candidate: bool = False
+    interrupt_hint_tail: str = ""
+    interrupt_hint_tail_max: int = INTERRUPT_HINT_TAIL_MAX
     token: dict[str, Any] | None = None
     trace_path: Path | None = None
     trace_pid: int | None = None
@@ -481,6 +645,7 @@ class Broker:
                         st2 = self.state
                         if st2:
                             st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
+                            _update_busy_from_pty_text(st2, s, now_ts=_now())
             except OSError:
                 break
 
@@ -525,15 +690,7 @@ class Broker:
                 continue
 
             objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
-            if new_off == off:
-                time.sleep(0.25)
-                continue
-            with self._lock:
-                st2 = self.state
-                if st2:
-                    st2.log_off = new_off
-
-            def flush_queues() -> None:
+            def drain_queues(*, clear_busy: bool) -> None:
                 q: list[str] = []
                 kq: list[bytes] = []
                 fd: int | None = None
@@ -541,9 +698,10 @@ class Broker:
                     st3 = self.state
                     if not st3:
                         return
-                    if not st3.queue and not st3.key_queue and not st3.busy:
+                    if clear_busy:
+                        st3.busy = False
+                    if not st3.queue and not st3.key_queue:
                         return
-                    st3.busy = False
                     kq = st3.key_queue[:]
                     st3.key_queue.clear()
                     q = st3.queue[:]
@@ -562,25 +720,39 @@ class Broker:
                     except Exception:
                         break
 
+            def maybe_mark_idle() -> None:
+                now_ts = _now()
+                should_clear = False
+                with self._lock:
+                    st3 = self.state
+                    if st3 and _should_clear_busy_state(st3, now_ts):
+                        st3.busy = False
+                        st3.turn_open = False
+                        st3.turn_has_completion_candidate = False
+                        st3.last_turn_activity_ts = 0.0
+                        st3.last_interrupt_hint_ts = 0.0
+                        should_clear = bool(st3.queue or st3.key_queue)
+                if should_clear:
+                    drain_queues(clear_busy=False)
+
+            if new_off == off:
+                maybe_mark_idle()
+                time.sleep(0.25)
+                continue
+
+            with self._lock:
+                st2 = self.state
+                if st2:
+                    st2.log_off = new_off
+
             for obj in objs:
+                now_ts = _now()
+                aborted_or_rolled_back = False
                 if obj.get("type") == "event_msg":
                     p = obj.get("payload") or {}
                     pt = p.get("type")
-                    if pt == "user_message":
-                        msg = p.get("message")
-                        if isinstance(msg, str) and msg.strip():
-                            with self._lock:
-                                if self.state:
-                                    self.state.busy = True
-                        continue
-                    if pt == "turn_aborted":
-                        flush_queues()
-                        continue
-                    if pt == "agent_message":
-                        msg = p.get("message")
-                        if isinstance(msg, str) and msg.strip():
-                            flush_queues()
-                        continue
+                    if pt in ("turn_aborted", "thread_rolled_back"):
+                        aborted_or_rolled_back = True
                     if pt == "token_count":
                         info = p.get("info")
                         if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
@@ -600,22 +772,14 @@ class Broker:
                                     with self._lock:
                                         if self.state:
                                             self.state.token = token_update
-                        continue
+                with self._lock:
+                    st3 = self.state
+                    if st3:
+                        _apply_rollout_obj_to_state(st3, obj, now_ts=now_ts)
+                if aborted_or_rolled_back:
+                    drain_queues(clear_busy=False)
 
-                if obj.get("type") == "response_item":
-                    p = obj.get("payload") or {}
-                    if p.get("type") == "message" and p.get("role") == "assistant":
-                        content = p.get("content") or []
-                        for part in content:
-                            if (
-                                isinstance(part, dict)
-                                and part.get("type") == "output_text"
-                                and isinstance(part.get("text"), str)
-                                and part.get("text")
-                            ):
-                                flush_queues()
-                                break
-                        continue
+            maybe_mark_idle()
 
     def _write_meta(self) -> None:
         st = self.state

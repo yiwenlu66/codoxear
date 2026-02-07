@@ -230,7 +230,9 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _find_latest_token_update(log_path: Path, max_scan_bytes: int = 32 * 1024 * 1024) -> dict[str, Any] | None:
-    scan = 256 * 1024
+    scan = min(256 * 1024, max_scan_bytes)
+    if scan <= 0:
+        return None
     while scan <= max_scan_bytes:
         token = _extract_token_update(_read_jsonl_tail(log_path, scan))
         if token is not None:
@@ -775,7 +777,9 @@ def _read_chat_events_from_tail(
     min_events: int = 120,
     max_scan_bytes: int = 128 * 1024 * 1024,
 ) -> list[dict[str, Any]]:
-    scan = 256 * 1024
+    scan = min(256 * 1024, max_scan_bytes)
+    if scan <= 0:
+        return None
     best_events: list[dict[str, Any]] = []
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(log_path, scan)
@@ -851,9 +855,9 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     """
     "Thread idle" (user spec; fail-busy):
     - idle only if:
-      1) fresh session (no user/assistant/aborted events), or
-      2) the last message is an assistant response, or
-      3) a turn_aborted event occurred most recently (manual interrupt).
+      1) fresh session (no turn activity in scanned window), or
+      2) current turn has an assistant completion candidate and no later work,
+      3) latest terminal event is turn_aborted/thread_rolled_back.
     - otherwise busy.
     """
     try:
@@ -861,11 +865,14 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     except Exception:
         sz = 0
 
-    scan = 256 * 1024
+    scan = min(256 * 1024, max_scan_bytes)
+    if scan <= 0:
+        return None
     objs: list[dict[str, Any]] = []
-    last_user_idx: int | None = None
-    last_assistant_idx: int | None = None
-    last_aborted_idx: int | None = None
+    saw_user = False
+    turn_open = False
+    turn_has_completion_candidate = False
+    last_terminal_event: str | None = None
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
         p = obj.get("payload") or {}
@@ -879,10 +886,11 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
 
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(path, scan)
-        last_user_idx = None
-        last_assistant_idx = None
-        last_aborted_idx = None
-        for i, obj in enumerate(objs):
+        saw_user = False
+        turn_open = False
+        turn_has_completion_candidate = False
+        last_terminal_event = None
+        for obj in objs:
             typ = obj.get("type")
             if typ == "event_msg":
                 p = obj.get("payload") or {}
@@ -890,43 +898,63 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if pt == "user_message":
                     msg = p.get("message")
                     if isinstance(msg, str):
-                        last_user_idx = i
+                        saw_user = True
+                        turn_open = True
+                        turn_has_completion_candidate = False
+                        last_terminal_event = "user"
                         continue
                 if pt == "agent_message":
                     msg = p.get("message")
                     if isinstance(msg, str) and msg.strip():
-                        last_assistant_idx = i
+                        if turn_open:
+                            turn_has_completion_candidate = True
+                        last_terminal_event = "assistant"
                         continue
-                if pt == "turn_aborted":
-                    last_aborted_idx = i
+                if pt in ("turn_aborted", "thread_rolled_back"):
+                    turn_open = False
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "aborted"
                     continue
-            if typ == "response_item" and has_assistant_text(obj):
-                last_assistant_idx = i
+                if pt == "agent_reasoning" and turn_open:
+                    turn_has_completion_candidate = False
+                    continue
+            if typ == "response_item":
+                p = obj.get("payload") or {}
+                pt = p.get("type")
+                if has_assistant_text(obj):
+                    if turn_open:
+                        turn_has_completion_candidate = True
+                    last_terminal_event = "assistant"
+                    continue
+                if pt in (
+                    "reasoning",
+                    "function_call",
+                    "function_call_output",
+                    "custom_tool_call",
+                    "custom_tool_call_output",
+                    "web_search_call",
+                ) and turn_open:
+                    turn_has_completion_candidate = False
+                    continue
 
-        if (last_user_idx is not None) or (last_assistant_idx is not None) or (last_aborted_idx is not None) or scan >= max_scan_bytes:
+        if saw_user or (last_terminal_event is not None) or scan >= max_scan_bytes:
             break
         scan *= 2
 
     if not objs:
         return None
 
-    # Fresh session: very small log and no user/assistant/aborted events in the scanned window.
-    if last_user_idx is None and last_assistant_idx is None and last_aborted_idx is None:
+    if (not saw_user) and (last_terminal_event is None):
         return True if sz <= 128 * 1024 else False
 
-    # Determine the last relevant event.
-    end_idx: tuple[str, int] | None = None
-    if last_user_idx is not None:
-        end_idx = ("user", last_user_idx)
-    if last_assistant_idx is not None:
-        if end_idx is None or last_assistant_idx > end_idx[1]:
-            end_idx = ("assistant", last_assistant_idx)
-    if last_aborted_idx is not None:
-        if end_idx is None or last_aborted_idx > end_idx[1]:
-            end_idx = ("aborted", last_aborted_idx)
-    if end_idx is None:
+    if turn_open:
+        return bool(turn_has_completion_candidate)
+
+    if last_terminal_event in ("assistant", "aborted"):
+        return True
+    if last_terminal_event == "user":
         return False
-    return end_idx[0] in ("assistant", "aborted")
+    return False
 
 
 def _last_chat_role_ts_from_tail(
@@ -1304,25 +1332,18 @@ class SessionManager:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
                         s2.token = tok
-        # Broker busy can be stale/incorrect if a log chunk contains both a prior assistant
-        # response and a new user_message. When the rollout log was written very recently,
-        # cross-check with a fail-busy log scan.
+        # Broker busy can be stale/incorrect; cross-check against rollout with fail-busy semantics.
         if isinstance(resp, dict) and ("busy" in resp) and (not bool(resp.get("busy"))):
             with self._lock:
                 s3 = self._sessions.get(session_id)
                 lp = s3.log_path if s3 else None
             if lp and lp.exists():
-                try:
-                    mtime = float(lp.stat().st_mtime)
-                except Exception:
-                    mtime = 0.0
-                if mtime and (_now() - mtime) < 120.0:
-                    idle = _compute_idle_from_log(lp, max_scan_bytes=2 * 1024 * 1024)
-                    if idle is False:
-                        with self._lock:
-                            s4 = self._sessions.get(session_id)
-                            if s4:
-                                s4.busy = True
+                idle = _compute_idle_from_log(lp, max_scan_bytes=2 * 1024 * 1024)
+                if idle is False:
+                    with self._lock:
+                        s4 = self._sessions.get(session_id)
+                        if s4:
+                            s4.busy = True
         return True, None
 
     def _prune_dead_sessions(self) -> None:
