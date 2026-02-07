@@ -87,7 +87,7 @@ CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
-HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "60"))
+HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "300"))
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 HARNESS_DEFAULT_TEXT = (
@@ -1022,6 +1022,7 @@ class SessionManager:
         self._stop = threading.Event()
         self._harness: dict[str, dict[str, Any]] = {}
         self._harness_last_injected: dict[str, float] = {}
+        self._harness_last_injected_scope: dict[str, float] = {}
         self._discover_existing()
         self._load_harness()
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
@@ -1121,10 +1122,13 @@ class SessionManager:
             text = cfg.get("text")
             if not isinstance(text, str) or not text.strip():
                 text = HARNESS_DEFAULT_TEXT
-            if last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS):
-                continue
             lp = s.log_path
             if lp is None or (not lp.exists()):
+                continue
+            scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
+            with self._lock:
+                scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+            if (last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS)) or (scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS)):
                 continue
             try:
                 st = self.get_state(sid)
@@ -1144,11 +1148,16 @@ class SessionManager:
             if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
                 continue
             try:
+                with self._lock:
+                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+                if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
+                    continue
                 self.send(sid, text)
             except Exception:
                 continue
             with self._lock:
                 self._harness_last_injected[sid] = now
+                self._harness_last_injected_scope[scope_key] = now
 
     def _discover_existing(self) -> None:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
