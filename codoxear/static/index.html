@@ -336,6 +336,18 @@
         font-size: 12px;
         line-height: 1.1;
       }
+      .olderWrap {
+        display: none;
+        align-self: center;
+        margin: 4px 0 8px 0;
+      }
+      .olderBtn {
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        line-height: 1.1;
+        color: var(--muted);
+      }
       .msg-row {
         display: flex;
         margin-top: 6px;
@@ -865,7 +877,47 @@
         return n;
       };
 
+      const perfWindow = 200;
+      const perfSamples = new Map();
+
+      function pushPerfSample(name, valueMs) {
+        if (!(valueMs >= 0)) return;
+        const arr = perfSamples.get(name) || [];
+        arr.push(valueMs);
+        if (arr.length > perfWindow) arr.splice(0, arr.length - perfWindow);
+        perfSamples.set(name, arr);
+      }
+
+      function perfPercentile(sorted, p) {
+        if (!sorted.length) return 0;
+        if (sorted.length === 1) return sorted[0];
+        const pos = Math.max(0, Math.min(1, p)) * (sorted.length - 1);
+        const lo = Math.floor(pos);
+        const hi = Math.min(lo + 1, sorted.length - 1);
+        const frac = pos - lo;
+        return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+      }
+
+      function summarizePerf() {
+        const out = {};
+        for (const [k, arr] of perfSamples.entries()) {
+          if (!arr.length) continue;
+          const s = arr.slice().sort((a, b) => a - b);
+          out[k] = {
+            count: s.length,
+            p50_ms: Math.round(perfPercentile(s, 0.5) * 100) / 100,
+            p95_ms: Math.round(perfPercentile(s, 0.95) * 100) / 100,
+            max_ms: Math.round(s[s.length - 1] * 100) / 100,
+            last_ms: Math.round(arr[arr.length - 1] * 100) / 100,
+          };
+        }
+        return out;
+      }
+
+      window.codoxearPerf = summarizePerf;
+
       async function api(path, { method = "GET", body } = {}) {
+        const t0 = performance.now();
         const opts = { method, headers: {} };
         if (body !== undefined) {
           opts.headers["Content-Type"] = "application/json";
@@ -878,6 +930,12 @@
           obj = JSON.parse(txt);
         } catch {
           obj = { raw: txt };
+        }
+        const dt = performance.now() - t0;
+        if (path === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
+        else if (path.includes("/messages") && method === "GET") {
+          if (path.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
+          else pushPerfSample("api_messages_poll_ms", dt);
         }
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
         return obj;
@@ -1146,6 +1204,14 @@
         const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
         const chat = el("div", { class: "chat", id: "chat" });
         const chatInner = el("div", { class: "chatInner", id: "chatInner" });
+        const olderWrap = el("div", { class: "olderWrap", id: "olderWrap" });
+        const olderBtn = el("button", {
+          class: "olderBtn",
+          id: "olderBtn",
+          type: "button",
+          text: "Load older messages",
+        });
+        olderWrap.appendChild(olderBtn);
         const bottomSentinel = el("div", { id: "bottomSentinel" });
         const jumpBtn = el("button", {
           class: "jumpBtn",
@@ -1154,16 +1220,22 @@
           "aria-label": "Jump to latest",
           html: iconSvg("down"),
         });
+        chatInner.appendChild(olderWrap);
         chatInner.appendChild(bottomSentinel);
         chat.appendChild(chatInner);
         chatWrap.appendChild(chat);
         chatWrap.appendChild(jumpBtn);
         const composer = el("div", { class: "composer" });
 
-        let selected = null;
+	        let selected = null;
         let offset = 0;
+        const INIT_PAGE_LIMIT = 80;
+        const CHAT_DOM_WINDOW = 260;
         let activeLogPath = null;
         let activeThreadId = null;
+        let olderBefore = 0;
+        let hasOlder = false;
+        let loadingOlder = false;
         let pollTimer = null;
         let pollGen = 0;
         let pollLoopBusy = false;
@@ -1183,6 +1255,8 @@
 				        let lastToken = null;
 				        let typingRow = null;
 				        let attachBadgeEl = null;
+                let clickLoadT0 = 0;
+                let clickMetricPending = false;
 					        const HARNESS_DEFAULT_TEXT =
 					          "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. Continue monitoring experiments running in the background to locate any issues.\n\n---\n";
 					        let harnessMenuOpen = false;
@@ -1334,8 +1408,14 @@
               pendingUser.length = 0;
               sending = false;
               localEchoSeq = 0;
+              olderBefore = 0;
+              hasOlder = false;
+              loadingOlder = false;
+              clickMetricPending = false;
 		          chatInner.innerHTML = "";
+	          chatInner.appendChild(olderWrap);
 	          chatInner.appendChild(bottomSentinel);
+              setOlderState({ hasMore: false, isLoading: false });
 	          typingRow = null;
 	          jumpBtn.style.display = "none";
 	          backfillState = null;
@@ -1343,6 +1423,21 @@
 	          lastScrollTop = 0;
 	          chat.scrollTop = 0;
 	        }
+
+          function setOlderState({ hasMore, isLoading }) {
+            hasOlder = Boolean(hasMore);
+            loadingOlder = Boolean(isLoading);
+            olderWrap.style.display = hasOlder ? "flex" : "none";
+            olderBtn.disabled = loadingOlder;
+            olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+          }
+
+          function markClickFirstPaint() {
+            if (!clickMetricPending) return;
+            clickMetricPending = false;
+            const dt = performance.now() - clickLoadT0;
+            pushPerfSample("click_to_first_message_ms", dt);
+          }
 
 	        function ensureTypingRow() {
 	          if (typingRow && typingRow.isConnected) return typingRow;
@@ -1446,6 +1541,17 @@
             jumpBtn.style.display = "none";
           } else {
             jumpBtn.style.display = "inline-flex";
+          }
+        }
+
+        function trimRenderedRows({ fromTop }) {
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          if (rows.length <= CHAT_DOM_WINDOW) return;
+          const extra = rows.length - CHAT_DOM_WINDOW;
+          if (fromTop) {
+            for (const row of rows.slice(0, extra)) row.remove();
+          } else {
+            for (const row of rows.slice(rows.length - extra)) row.remove();
           }
         }
 
@@ -1650,7 +1756,9 @@
 			          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
 			          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 			          chatInner.insertBefore(row, anchor);
+            trimRenderedRows({ fromTop: true });
 	          rebuildDecorations({ preserveScroll: false });
+            if (!ev.pending) markClickFirstPaint();
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1658,6 +1766,28 @@
           } else {
             jumpBtn.style.display = "inline-flex";
           }
+        }
+
+        function prependOlderEvents(allEvents) {
+          const msgs = [];
+          for (const ev of allEvents) {
+            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            msgs.push(ev);
+          }
+          if (!msgs.length) return;
+          const oldTop = chat.scrollTop;
+          const oldH = chat.scrollHeight;
+          const frag = document.createDocumentFragment();
+          for (const ev of msgs) {
+            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+          }
+          const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
+          const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
+          chatInner.insertBefore(frag, anchor);
+          trimRenderedRows({ fromTop: false });
+          rebuildDecorations({ preserveScroll: true });
+          chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
         }
 
 		        function startInitialRender(allEvents) {
@@ -1676,8 +1806,11 @@
 		            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
 		            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
 	          }
-	          chatInner.insertBefore(frag, bottomSentinel);
+	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+	          chatInner.insertBefore(frag, anchor);
+            trimRenderedRows({ fromTop: true });
 	          rebuildDecorations({ preserveScroll: false });
+            markClickFirstPaint();
 	          // Ensure scroll-to-bottom happens after layout.
 	          requestAnimationFrame(() => {
 	            if (myToken !== backfillToken) return;
@@ -1710,13 +1843,15 @@
               turnOpen = false;
               setStatus({ running: false, queueLen: 0 });
               try {
-                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=400`);
+                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
                 if (gen !== pollGen || sid !== selected) return;
                 if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
                 if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
                 offset = d2.offset;
                 const evs2 = Array.isArray(d2.events) ? d2.events : [];
                 if (evs2.length) startInitialRender(evs2);
+                olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
+                setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
 	                const nowBusy2 = Boolean(d2.busy);
 	                const turnStart2 = Boolean(d2.turn_start);
 	                const turnEnd2 = Boolean(d2.turn_end);
@@ -1733,7 +1868,7 @@
 
 	            offset = data.offset;
             const evs = Array.isArray(data.events) ? data.events : [];
-            if (prevOffset === 0 && !chatInner.querySelector(".msg-row") && evs.length) {
+            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
               startInitialRender(evs);
             } else {
               for (const ev of evs) appendEvent(ev);
@@ -1846,18 +1981,21 @@
 			          setContext(null);
 		          setTyping(false);
 		          turnOpen = false;
-			          await refreshSessions();
+                clickLoadT0 = performance.now();
+                clickMetricPending = true;
 		          if (pollGen !== myGen || selected !== sid) return;
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
 					          try {
-						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=400`);
+						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
 					            if (pollGen !== myGen || selected !== sid) return;
                     if (data && typeof data.log_path === "string") activeLogPath = data.log_path;
                     if (data && typeof data.thread_id === "string") activeThreadId = data.thread_id;
 				            offset = data.offset;
 				            const evs = Array.isArray(data.events) ? data.events : [];
 					            if (evs.length) startInitialRender(evs);
+                    olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+                    setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
 				            const nowBusy = Boolean(data.busy);
 	            const turnStart = Boolean(data.turn_start);
 	            const turnEnd = Boolean(data.turn_end);
@@ -1871,6 +2009,7 @@
 			            await pollMessages(sid, myGen);
 			            if (pollGen !== myGen || selected !== sid) return;
 			          }
+            refreshSessions().catch(() => {});
 	          kickPoll(900);
 	          if (isMobile()) setSidebarOpen(false);
 	          updateHarnessBtnState();
@@ -2078,6 +2217,24 @@
           autoScroll = true;
           jumpBtn.style.display = "none";
           scrollToBottom();
+        };
+        olderBtn.onclick = async () => {
+          if (!selected || !hasOlder || loadingOlder) return;
+          const sid = selected;
+          const gen = pollGen;
+          setOlderState({ hasMore: hasOlder, isLoading: true });
+          try {
+            const reqBefore = Math.max(0, Number(olderBefore) || 0);
+            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=${reqBefore}`);
+            if (selected !== sid || pollGen !== gen) return;
+            const evs = Array.isArray(data.events) ? data.events : [];
+            if (evs.length) prependOlderEvents(evs);
+            olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
+            setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+          } catch {
+            if (selected !== sid || pollGen !== gen) return;
+            setOlderState({ hasMore: hasOlder, isLoading: false });
+          }
         };
 
 	        const textarea = $("#msg");

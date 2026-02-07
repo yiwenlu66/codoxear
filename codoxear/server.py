@@ -90,6 +90,13 @@ DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "300"))
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
+DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
+CHAT_INIT_SEED_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_SEED_SCAN_BYTES", str(512 * 1024)))
+CHAT_INIT_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_MAX_SCAN_BYTES", str(128 * 1024 * 1024)))
+CHAT_INDEX_INCREMENT_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_INCREMENT_BYTES", str(2 * 1024 * 1024)))
+CHAT_INDEX_RESEED_THRESHOLD_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_RESEED_THRESHOLD_BYTES", str(16 * 1024 * 1024)))
+CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "12000"))
+METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 HARNESS_DEFAULT_TEXT = (
     "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. "
     "Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. "
@@ -101,6 +108,57 @@ _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[
 
 _STRACE_USABLE: bool | None = None
 _STRACE_ERR: str | None = None
+_METRICS_LOCK = threading.Lock()
+_METRICS: dict[str, list[float]] = {}
+
+
+def _record_metric(name: str, value_ms: float) -> None:
+    if not isinstance(name, str) or not name:
+        return
+    try:
+        v = float(value_ms)
+    except Exception:
+        return
+    if not (v >= 0):
+        return
+    with _METRICS_LOCK:
+        arr = _METRICS.get(name)
+        if arr is None:
+            arr = []
+            _METRICS[name] = arr
+        arr.append(v)
+        if len(arr) > METRICS_WINDOW:
+            del arr[: len(arr) - METRICS_WINDOW]
+
+
+def _metric_percentile(sorted_values: list[float], p: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return float(sorted_values[0])
+    pos = max(0.0, min(1.0, float(p))) * float(len(sorted_values) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_values) - 1)
+    frac = pos - float(lo)
+    return float(sorted_values[lo] * (1.0 - frac) + sorted_values[hi] * frac)
+
+
+def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
+    out: dict[str, dict[str, float | int]] = {}
+    with _METRICS_LOCK:
+        items = list(_METRICS.items())
+    for name, samples in items:
+        if not samples:
+            continue
+        srt = sorted(float(x) for x in samples)
+        out[name] = {
+            "count": len(srt),
+            "last_ms": float(samples[-1]),
+            "p50_ms": _metric_percentile(srt, 0.50),
+            "p95_ms": _metric_percentile(srt, 0.95),
+            "max_ms": float(srt[-1]),
+        }
+    return out
 
 
 def _strace_usable() -> bool:
@@ -777,18 +835,115 @@ def _read_chat_events_from_tail(
     min_events: int = 120,
     max_scan_bytes: int = 128 * 1024 * 1024,
 ) -> list[dict[str, Any]]:
-    scan = min(256 * 1024, max_scan_bytes)
+    events, _token, _scan_bytes, _scan_complete, _size = _read_chat_tail_snapshot(
+        log_path,
+        min_events=min_events,
+        initial_scan_bytes=min(256 * 1024, max_scan_bytes),
+        max_scan_bytes=max_scan_bytes,
+    )
+    return events
+
+
+def _read_chat_tail_snapshot(
+    log_path: Path,
+    *,
+    min_events: int,
+    initial_scan_bytes: int,
+    max_scan_bytes: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, int, bool, int]:
+    try:
+        size = int(log_path.stat().st_size)
+    except Exception:
+        size = 0
+    scan = min(max(256 * 1024, int(initial_scan_bytes)), int(max_scan_bytes))
     if scan <= 0:
-        return None
+        return [], None, 0, True, size
+
     best_events: list[dict[str, Any]] = []
-    while scan <= max_scan_bytes:
+    best_token: dict[str, Any] | None = None
+    while True:
         objs = _read_jsonl_tail(log_path, scan)
         events, _meta, _flags, _diag = _extract_chat_events(objs)
         best_events = events
-        if len(events) >= min_events:
+        tok = _extract_token_update(objs)
+        if tok is not None:
+            best_token = tok
+        if len(events) >= min_events or scan >= max_scan_bytes:
             break
-        scan *= 2
-    return best_events
+        next_scan = min(scan * 2, max_scan_bytes)
+        if next_scan <= scan:
+            break
+        scan = next_scan
+
+    scan_complete = (size <= scan)
+    return best_events, best_token, scan, scan_complete, size
+
+
+def _event_ts(obj: dict[str, Any]) -> float | None:
+    ts = obj.get("ts")
+    if isinstance(ts, (int, float)):
+        return float(ts)
+    ts2 = obj.get("timestamp")
+    if isinstance(ts2, (int, float)):
+        return float(ts2)
+    if isinstance(ts2, str):
+        v = _parse_iso8601_to_epoch(ts2)
+        if v is not None:
+            return float(v)
+    return None
+
+
+def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
+    p = obj.get("payload") or {}
+    if p.get("type") != "message" or p.get("role") != "assistant":
+        return False
+    content = p.get("content") or []
+    for part in content:
+        if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
+            return True
+    return False
+
+
+def _analyze_log_chunk(
+    objs: list[dict[str, Any]],
+) -> tuple[int, int, int, float | None, dict[str, Any] | None, list[dict[str, Any]]]:
+    d_th = 0
+    d_tools = 0
+    d_sys = 0
+    last_chat_ts: float | None = None
+    token_update = _extract_token_update(objs)
+    chat_events, _meta, _flags, _diag = _extract_chat_events(objs)
+
+    for obj in objs:
+        typ = obj.get("type")
+        if typ == "event_msg":
+            p = obj.get("payload") or {}
+            pt = p.get("type")
+            if pt == "agent_reasoning":
+                d_th += 1
+            if pt == "user_message":
+                d_th = 0
+                d_tools = 0
+                d_sys = 0
+                if isinstance(p.get("message"), str):
+                    last_chat_ts = _event_ts(obj)
+            if pt == "agent_message":
+                msg = p.get("message")
+                if isinstance(msg, str) and msg.strip():
+                    last_chat_ts = _event_ts(obj)
+        if typ == "response_item":
+            p = obj.get("payload") or {}
+            pt = p.get("type")
+            if pt == "reasoning":
+                d_th += 1
+            if pt in ("function_call", "function_call_output"):
+                d_tools += 1
+            if pt == "message" and p.get("role") in ("developer", "system"):
+                d_sys += 1
+            if _has_assistant_output_text(obj):
+                last_chat_ts = _event_ts(obj)
+
+    return d_th, d_tools, d_sys, last_chat_ts, token_update, chat_events
 
 
 def _last_conversation_ts_from_tail(
@@ -1041,6 +1196,12 @@ class Session:
     meta_tools: int = 0
     meta_system: int = 0
     meta_log_off: int = 0
+    chat_index_events: list[dict[str, Any]] = field(default_factory=list)
+    chat_index_scan_bytes: int = 0
+    chat_index_scan_complete: bool = False
+    chat_index_log_off: int = 0
+    idle_cache_log_off: int = -1
+    idle_cache_value: bool | None = None
 
 
 class SessionManager:
@@ -1048,16 +1209,41 @@ class SessionManager:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
+        self._last_discover_ts = 0.0
         self._harness: dict[str, dict[str, Any]] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
-        self._discover_existing()
+        self._discover_existing(force=True)
         self._load_harness()
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
+        s.meta_thinking = 0
+        s.meta_tools = 0
+        s.meta_system = 0
+        s.last_chat_ts = None
+        s.meta_log_off = int(meta_log_off)
+        s.chat_index_events = []
+        s.chat_index_scan_bytes = 0
+        s.chat_index_scan_complete = False
+        s.chat_index_log_off = int(meta_log_off)
+        s.idle_cache_log_off = -1
+        s.idle_cache_value = None
+
+    def _discover_existing_if_stale(self, *, force: bool = False) -> None:
+        now = time.time()
+        with self._lock:
+            last = float(getattr(self, "_last_discover_ts", 0.0))
+        if (not force) and ((now - last) < DISCOVER_MIN_INTERVAL_SECONDS):
+            return
+        try:
+            self._discover_existing(force=force)
+        except TypeError:
+            self._discover_existing()
 
     def _load_harness(self) -> None:
         try:
@@ -1139,7 +1325,7 @@ class SessionManager:
     def _harness_sweep(self) -> None:
         now = time.time()
         # Keep discovery fresh; sessions can appear/disappear without UI polling.
-        self._discover_existing()
+        self._discover_existing_if_stale()
         self._prune_dead_sessions()
         with self._lock:
             items = [(sid, s, dict(self._harness.get(sid) or {}), float(self._harness_last_injected.get(sid, 0.0))) for sid, s in self._sessions.items()]
@@ -1187,7 +1373,13 @@ class SessionManager:
                 self._harness_last_injected[sid] = now
                 self._harness_last_injected_scope[scope_key] = now
 
-    def _discover_existing(self) -> None:
+    def _discover_existing(self, *, force: bool = False) -> None:
+        if not force:
+            now = time.time()
+            with self._lock:
+                last = float(self._last_discover_ts)
+            if (now - last) < DISCOVER_MIN_INTERVAL_SECONDS:
+                return
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
         for sock in sorted(SOCK_DIR.glob("*.sock")):
             session_id = sock.stem
@@ -1298,6 +1490,7 @@ class SessionManager:
             with self._lock:
                 prev = self._sessions.get(session_id)
                 if not prev:
+                    self._reset_log_caches(s, meta_log_off=meta_log_off)
                     self._sessions[session_id] = s
                 else:
                     prev.sock_path = s.sock_path
@@ -1312,11 +1505,9 @@ class SessionManager:
                     prev.token = s.token
                     if prev.log_path != s.log_path:
                         prev.log_path = s.log_path
-                        prev.meta_thinking = 0
-                        prev.meta_tools = 0
-                        prev.meta_system = 0
-                        prev.last_chat_ts = None
-                        prev.meta_log_off = s.meta_log_off
+                        self._reset_log_caches(prev, meta_log_off=meta_log_off)
+        with self._lock:
+            self._last_discover_ts = time.time()
 
     def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
         try:
@@ -1332,18 +1523,6 @@ class SessionManager:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
                         s2.token = tok
-        # Broker busy can be stale/incorrect; cross-check against rollout with fail-busy semantics.
-        if isinstance(resp, dict) and ("busy" in resp) and (not bool(resp.get("busy"))):
-            with self._lock:
-                s3 = self._sessions.get(session_id)
-                lp = s3.log_path if s3 else None
-            if lp and lp.exists():
-                idle = _compute_idle_from_log(lp, max_scan_bytes=2 * 1024 * 1024)
-                if idle is False:
-                    with self._lock:
-                        s4 = self._sessions.get(session_id)
-                        if s4:
-                            s4.busy = True
         return True, None
 
     def _prune_dead_sessions(self) -> None:
@@ -1373,29 +1552,6 @@ class SessionManager:
             _unlink_quiet(sock.with_suffix(".json"))
 
     def _update_meta_counters(self) -> None:
-        def event_ts(o: dict[str, Any]) -> float | None:
-            ts = o.get("ts")
-            if isinstance(ts, (int, float)):
-                return float(ts)
-            ts2 = o.get("timestamp")
-            if isinstance(ts2, (int, float)):
-                return float(ts2)
-            if isinstance(ts2, str):
-                v = _parse_iso8601_to_epoch(ts2)
-                if v is not None:
-                    return float(v)
-            return None
-
-        def has_assistant_text(obj: dict[str, Any]) -> bool:
-            p = obj.get("payload") or {}
-            if p.get("type") != "message" or p.get("role") != "assistant":
-                return False
-            content = p.get("content") or []
-            for part in content:
-                if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                    return True
-            return False
-
         with self._lock:
             items = list(self._sessions.items())
         for sid, s in items:
@@ -1407,97 +1563,63 @@ class SessionManager:
                 sz = int(lp.stat().st_size)
             except Exception:
                 sz = s.meta_log_off
+            off = int(s.meta_log_off)
+            if sz < off:
+                off = 0
 
-            if not s.busy:
-                if sz > s.meta_log_off:
-                    ts = _last_conversation_ts_from_tail(lp, max_scan_bytes=8 * 1024 * 1024)
-                    with self._lock:
-                        s2 = self._sessions.get(sid)
-                        if s2:
-                            if ts is not None:
-                                s2.last_chat_ts = ts if s2.last_chat_ts is None else max(s2.last_chat_ts, ts)
-                            s2.meta_thinking = 0
-                            s2.meta_tools = 0
-                            s2.meta_system = 0
-                            s2.meta_log_off = sz
-                    continue
-
-                with self._lock:
-                    s2 = self._sessions.get(sid)
-                    if s2:
-                        s2.meta_thinking = 0
-                        s2.meta_tools = 0
-                        s2.meta_system = 0
-                        s2.meta_log_off = sz
-                continue
-
-            objs, new_off = _read_jsonl_from_offset(lp, s.meta_log_off, max_bytes=256 * 1024)
-            if new_off == s.meta_log_off:
-                continue
-
-            d_th = 0
-            d_tools = 0
-            d_sys = 0
-            last_chat_ts: float | None = None
-            for obj in objs:
-                typ = obj.get("type")
-                if typ == "event_msg":
-                    p = obj.get("payload") or {}
-                    pt = p.get("type")
-                    if pt == "agent_reasoning":
-                        d_th += 1
-                    if pt == "user_message":
-                        d_th = 0
-                        d_tools = 0
-                        d_sys = 0
-                        if isinstance(p.get("message"), str):
-                            last_chat_ts = event_ts(obj)
-                    if pt == "agent_message":
-                        msg = p.get("message")
-                        if isinstance(msg, str) and msg.strip():
-                            last_chat_ts = event_ts(obj)
-                if typ == "response_item":
-                    p = obj.get("payload") or {}
-                    pt = p.get("type")
-                    if pt == "reasoning":
-                        d_th += 1
-                    if pt in ("function_call", "function_call_output"):
-                        d_tools += 1
-                    if pt == "message" and p.get("role") in ("developer", "system"):
-                        d_sys += 1
-                    if has_assistant_text(obj):
-                        last_chat_ts = event_ts(obj)
+            total_th = 0
+            total_tools = 0
+            total_sys = 0
+            latest_chat_ts: float | None = None
+            latest_token: dict[str, Any] | None = None
+            loops = 0
+            while off < sz and loops < 16:
+                objs, new_off = _read_jsonl_from_offset(lp, off, max_bytes=256 * 1024)
+                if new_off <= off:
+                    break
+                d_th, d_tools, d_sys, chunk_chat_ts, token_update, _chat_events = _analyze_log_chunk(objs)
+                total_th += d_th
+                total_tools += d_tools
+                total_sys += d_sys
+                if chunk_chat_ts is not None:
+                    latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
+                if token_update is not None:
+                    latest_token = token_update
+                off = new_off
+                loops += 1
 
             with self._lock:
                 s2 = self._sessions.get(sid)
-                if s2:
-                    if last_chat_ts is not None:
-                        s2.last_chat_ts = last_chat_ts if s2.last_chat_ts is None else max(s2.last_chat_ts, last_chat_ts)
-                    s2.meta_thinking += d_th
-                    s2.meta_tools += d_tools
-                    s2.meta_system += d_sys
-                    s2.meta_log_off = new_off
+                if not s2:
+                    continue
+                if latest_chat_ts is not None:
+                    s2.last_chat_ts = latest_chat_ts if s2.last_chat_ts is None else max(s2.last_chat_ts, latest_chat_ts)
+                if latest_token is not None:
+                    s2.token = latest_token
+                if s2.busy:
+                    s2.meta_thinking += total_th
+                    s2.meta_tools += total_tools
+                    s2.meta_system += total_sys
+                else:
+                    s2.meta_thinking = 0
+                    s2.meta_tools = 0
+                    s2.meta_system = 0
+                s2.meta_log_off = off if off >= 0 else s2.meta_log_off
 
     def list_sessions(self) -> list[dict[str, Any]]:
         # Rescan sockets to pick up sessions created before the server started.
-        self._discover_existing()
+        self._discover_existing_if_stale()
         self._prune_dead_sessions()
-        with self._lock:
-            items = list(self._sessions.items())
-        for sid, s in items:
-            with self._lock:
-                s2 = self._sessions.get(sid)
-            if s2 and s2.token is None and s2.log_path is not None and s2.log_path.exists():
-                s2.token = _find_latest_token_update(s2.log_path, max_scan_bytes=8 * 1024 * 1024)
         self._update_meta_counters()
         with self._lock:
             out = []
             for s in self._sessions.values():
                 h_enabled = bool((self._harness.get(s.session_id) or {}).get("enabled"))
                 if s.last_chat_ts is None and s.log_path is not None and s.log_path.exists():
-                    ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=128 * 1024 * 1024)
-                    if ts is not None:
-                        s.last_chat_ts = ts
+                    try:
+                        s.last_chat_ts = float(s.log_path.stat().st_mtime)
+                    except Exception:
+                        s.last_chat_ts = None
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 out.append(
                     {
@@ -1528,7 +1650,6 @@ class SessionManager:
     def refresh_session_meta(self, session_id: str) -> None:
         # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
         # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
-        self._discover_existing()
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -1582,14 +1703,212 @@ class SessionManager:
             s2.owned = bool(owned)
             if s2.log_path != log_path:
                 s2.log_path = log_path
-                s2.meta_thinking = 0
-                s2.meta_tools = 0
-                s2.meta_system = 0
-                s2.last_chat_ts = None
                 try:
-                    s2.meta_log_off = int(log_path.stat().st_size)
+                    log_off = int(log_path.stat().st_size)
                 except Exception:
-                    s2.meta_log_off = 0
+                    log_off = 0
+                self._reset_log_caches(s2, meta_log_off=log_off)
+
+    def _set_chat_index_snapshot(
+        self,
+        *,
+        session_id: str,
+        events: list[dict[str, Any]],
+        token_update: dict[str, Any] | None,
+        scan_bytes: int,
+        scan_complete: bool,
+        log_off: int,
+    ) -> None:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return
+            s.chat_index_events = list(events[-CHAT_INDEX_MAX_EVENTS:])
+            s.chat_index_scan_bytes = int(scan_bytes)
+            s.chat_index_scan_complete = bool(scan_complete) and (len(events) <= CHAT_INDEX_MAX_EVENTS)
+            s.chat_index_log_off = int(log_off)
+            if token_update is not None:
+                s.token = token_update
+
+    def _append_chat_events(self, session_id: str, new_events: list[dict[str, Any]], *, new_off: int, latest_token: dict[str, Any] | None) -> None:
+        if not new_events and latest_token is None:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if s:
+                    s.chat_index_log_off = int(new_off)
+            return
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return
+            if new_events:
+                merged = s.chat_index_events + new_events
+                if len(merged) > CHAT_INDEX_MAX_EVENTS:
+                    merged = merged[-CHAT_INDEX_MAX_EVENTS:]
+                    s.chat_index_scan_complete = False
+                s.chat_index_events = merged
+                for ev in new_events:
+                    ts = ev.get("ts")
+                    if isinstance(ts, (int, float)):
+                        tsf = float(ts)
+                        s.last_chat_ts = tsf if s.last_chat_ts is None else max(s.last_chat_ts, tsf)
+            s.chat_index_log_off = int(new_off)
+            if latest_token is not None:
+                s.token = latest_token
+
+    def _ensure_chat_index(self, session_id: str, *, min_events: int, before: int) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return [], 0, False, 0, None
+            lp = s.log_path
+            scan_bytes = int(s.chat_index_scan_bytes) if s.chat_index_scan_bytes > 0 else CHAT_INIT_SEED_SCAN_BYTES
+            idx_off = int(s.chat_index_log_off)
+        if lp is None or (not lp.exists()):
+            return [], 0, False, 0, None
+
+        try:
+            sz = int(lp.stat().st_size)
+        except Exception:
+            sz = idx_off
+
+        if sz < idx_off:
+            idx_off = 0
+            self._set_chat_index_snapshot(
+                session_id=session_id,
+                events=[],
+                token_update=None,
+                scan_bytes=CHAT_INIT_SEED_SCAN_BYTES,
+                scan_complete=False,
+                log_off=0,
+            )
+
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            ready = bool(s2 and ((s2.chat_index_events is not None)))
+            cached_count = len(s2.chat_index_events) if s2 else 0
+            scan_complete = bool(s2.chat_index_scan_complete) if s2 else False
+
+        target_events = max(0, int(min_events) + max(0, int(before)))
+        if (not ready) or ((target_events > cached_count) and (not scan_complete)):
+            events, token_update, used_scan, complete, log_size = _read_chat_tail_snapshot(
+                lp,
+                min_events=max(20, target_events),
+                initial_scan_bytes=max(CHAT_INIT_SEED_SCAN_BYTES, scan_bytes),
+                max_scan_bytes=CHAT_INIT_MAX_SCAN_BYTES,
+            )
+            self._set_chat_index_snapshot(
+                session_id=session_id,
+                events=events,
+                token_update=token_update,
+                scan_bytes=used_scan,
+                scan_complete=complete,
+                log_off=log_size,
+            )
+
+        with self._lock:
+            s3 = self._sessions.get(session_id)
+            if not s3:
+                return [], 0, False, 0, None
+            lp3 = s3.log_path
+            off3 = int(s3.chat_index_log_off)
+            prev_events = list(s3.chat_index_events)
+        if lp3 is None or (not lp3.exists()):
+            return [], off3, False, 0, None
+
+        try:
+            sz2 = int(lp3.stat().st_size)
+        except Exception:
+            sz2 = off3
+
+        if sz2 > off3:
+            delta = sz2 - off3
+            if delta >= CHAT_INDEX_RESEED_THRESHOLD_BYTES:
+                events, token_update, used_scan, complete, log_size = _read_chat_tail_snapshot(
+                    lp3,
+                    min_events=max(20, target_events),
+                    initial_scan_bytes=max(CHAT_INIT_SEED_SCAN_BYTES, scan_bytes),
+                    max_scan_bytes=CHAT_INIT_MAX_SCAN_BYTES,
+                )
+                self._set_chat_index_snapshot(
+                    session_id=session_id,
+                    events=events,
+                    token_update=token_update,
+                    scan_bytes=used_scan,
+                    scan_complete=complete,
+                    log_off=log_size,
+                )
+            else:
+                cur = off3
+                loops = 0
+                latest_token: dict[str, Any] | None = None
+                aggregated_events: list[dict[str, Any]] = []
+                while cur < sz2 and loops < 16:
+                    objs, new_off = _read_jsonl_from_offset(lp3, cur, max_bytes=CHAT_INDEX_INCREMENT_BYTES)
+                    if new_off <= cur:
+                        break
+                    _th, _tools, _sys, _last_ts, token_update, new_events = _analyze_log_chunk(objs)
+                    if token_update is not None:
+                        latest_token = token_update
+                    if new_events:
+                        aggregated_events.extend(new_events)
+                    cur = new_off
+                    loops += 1
+                self._append_chat_events(session_id, aggregated_events, new_off=cur, latest_token=latest_token)
+
+        with self._lock:
+            s4 = self._sessions.get(session_id)
+            if not s4:
+                return prev_events, off3, False, 0, None
+            events2 = list(s4.chat_index_events)
+            log_off2 = int(s4.chat_index_log_off)
+            scan_complete2 = bool(s4.chat_index_scan_complete)
+            token2 = s4.token if isinstance(s4.token, dict) or s4.token is None else None
+
+        n = len(events2)
+        b = max(0, int(before))
+        end = max(0, n - b)
+        start = max(0, end - max(20, int(min_events)))
+        page = events2[start:end]
+        has_older = (start > 0) or ((not scan_complete2) and bool(page))
+        next_before = b + len(page) if has_older else 0
+        return page, log_off2, has_older, next_before, token2
+
+    def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
+        _th, _tools, _sys, _last_ts, token_update, new_events = _analyze_log_chunk(objs)
+        self._append_chat_events(session_id, new_events, new_off=new_off, latest_token=token_update)
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if s:
+                s.idle_cache_log_off = -1
+
+    def busy_from_log_fallback(self, session_id: str) -> bool:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return True
+            lp = s.log_path
+            cached_off = int(s.idle_cache_log_off)
+            cached_idle = s.idle_cache_value
+        if lp is None or (not lp.exists()):
+            return True
+        try:
+            sz = int(lp.stat().st_size)
+        except Exception:
+            sz = -1
+        if (sz >= 0) and (cached_off == sz) and isinstance(cached_idle, bool):
+            return not bool(cached_idle)
+        idle = _compute_idle_from_log(lp)
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            if s2:
+                s2.idle_cache_log_off = sz
+                s2.idle_cache_value = idle
+        if idle is None:
+            with self._lock:
+                s3 = self._sessions.get(session_id)
+                return bool(s3.busy) if s3 else True
+        return not bool(idle)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float = 2.0) -> dict[str, Any]:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -1835,26 +2154,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                _json_response(self, 200, {"sessions": MANAGER.list_sessions()})
+                t0 = time.perf_counter()
+                sessions = MANAGER.list_sessions()
+                dt_ms = (time.perf_counter() - t0) * 1000.0
+                _record_metric("api_sessions_ms", dt_ms)
+                _json_response(self, 200, {"sessions": sessions})
+                return
+
+            if path == "/api/metrics":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                _json_response(self, 200, {"metrics": _metrics_snapshot()})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/messages"):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
+                t0_total = time.perf_counter()
                 parts = path.split("/")
                 if len(parts) < 4:
                     self.send_error(404)
                     return
                 session_id = parts[3]
+                t0_meta = time.perf_counter()
                 MANAGER.refresh_session_meta(session_id)
+                dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
-                offset = int((qs.get("offset") or ["0"])[0])
+                try:
+                    offset = int((qs.get("offset") or ["0"])[0])
+                except Exception:
+                    offset = 0
+                if offset < 0:
+                    offset = 0
                 init = (qs.get("init") or ["0"])[0] == "1"
+                try:
+                    before = int((qs.get("before") or ["0"])[0])
+                except Exception:
+                    before = 0
+                before = max(0, before)
                 if s.log_path is None or (not s.log_path.exists()):
                     try:
                         state = MANAGER.get_state(session_id)
@@ -1882,38 +2225,47 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "busy": bool(busy_val),
                             "queue_len": int(queue_val),
                             "token": token_val,
+                            "has_older": False,
+                            "next_before": 0,
                         },
                     )
+                    dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
+                    _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
                     return
 
                 if init and offset == 0:
-                    limit_raw = (qs.get("limit") or ["160"])[0]
+                    limit_raw = (qs.get("limit") or ["80"])[0]
                     try:
                         limit = int(limit_raw)
                     except Exception:
-                        limit = 160
-                    limit = max(20, min(400, limit))
-                    events = _read_chat_events_from_tail(s.log_path, min_events=limit)
+                        limit = 80
+                    limit = max(20, min(200, limit))
+                    t0_index = time.perf_counter()
+                    events, new_off, has_older, next_before, token_update = MANAGER._ensure_chat_index(
+                        session_id,
+                        min_events=limit,
+                        before=before,
+                    )
+                    dt_index_ms = (time.perf_counter() - t0_index) * 1000.0
                     meta_delta = {"thinking": 0, "tool": 0, "system": 0}
                     flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
-                    diag = {"tool_names": [], "last_tool": None}
-                    try:
-                        new_off = int(s.log_path.stat().st_size)
-                    except Exception:
-                        new_off = offset
-                    token_update = _find_latest_token_update(s.log_path)
+                    diag = {"tool_names": [], "last_tool": None, "init_index_ms": round(dt_index_ms, 3)}
                 else:
+                    has_older = False
+                    next_before = 0
                     objs, new_off = _read_jsonl_from_offset(s.log_path, offset)
                     events, meta_delta, flags, diag = _extract_chat_events(objs)
                     token_update = _extract_token_update(objs)
+                    MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
+                t0_state = time.perf_counter()
                 try:
                     state = MANAGER.get_state(session_id)
                 except Exception:
                     state = None
+                dt_state_ms = (time.perf_counter() - t0_state) * 1000.0
                 s2 = MANAGER.get_session(session_id)
                 if token_update is not None and s2 is not None:
                     s2.token = token_update
-                idle = _compute_idle_from_log(s.log_path)
                 state_busy: bool | None = None
                 state_queue: int | None = None
                 token_sentinel = object()
@@ -1928,10 +2280,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if isinstance(state, dict) and ("token" in state):
                     state_token = state.get("token")
 
-                if state_busy is True:
-                    busy_val = True
+                if state_busy is not None:
+                    busy_val = bool(state_busy)
                 else:
-                    busy_val = ((not idle) if idle is not None else (s2.busy if s2 else True))
+                    t0_idle = time.perf_counter()
+                    busy_val = MANAGER.busy_from_log_fallback(session_id)
+                    dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
+                    diag["busy_fallback_ms"] = round(dt_idle_ms, 3)
 
                 queue_val = state_queue if state_queue is not None else (s2.queue_len if s2 else 0)
 
@@ -1939,6 +2294,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     token_val = state_token
                 else:
                     token_val = s2.token if s2 else None
+                diag["state_ms"] = round(dt_state_ms, 3)
+                diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
                 _json_response(
                     self,
                     200,
@@ -1955,8 +2312,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "busy": bool(busy_val),
                         "queue_len": int(queue_val),
                         "token": token_val,
+                        "has_older": bool(has_older),
+                        "next_before": int(next_before),
                     },
                 )
+                dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
+                _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/tail"):
