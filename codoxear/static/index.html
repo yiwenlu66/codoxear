@@ -1245,6 +1245,8 @@
         let olderBefore = 0;
         let hasOlder = false;
         let loadingOlder = false;
+        let olderAutoTriggerAt = 0;
+        const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
         let pollGen = 0;
         let pollLoopBusy = false;
@@ -1420,6 +1422,7 @@
               olderBefore = 0;
               hasOlder = false;
               loadingOlder = false;
+              olderAutoTriggerAt = 0;
               clickMetricPending = false;
 		          chatInner.innerHTML = "";
 	          chatInner.appendChild(olderWrap);
@@ -1797,6 +1800,35 @@
           trimRenderedRows({ fromTop: false });
           rebuildDecorations({ preserveScroll: true });
           chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
+        }
+
+        async function loadOlderMessages({ auto = false } = {}) {
+          if (!selected || !hasOlder || loadingOlder) return;
+          if (auto) {
+            const now = performance.now();
+            if (now - olderAutoTriggerAt < OLDER_AUTO_COOLDOWN_MS) return;
+            olderAutoTriggerAt = now;
+          }
+          const sid = selected;
+          const gen = pollGen;
+          setOlderState({ hasMore: hasOlder, isLoading: true });
+          try {
+            const reqBefore = Math.max(0, Number(olderBefore) || 0);
+            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=${reqBefore}`);
+            if (selected !== sid || pollGen !== gen) return;
+            const evs = Array.isArray(data.events) ? data.events : [];
+            if (evs.length) prependOlderEvents(evs);
+            olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
+            setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+          } catch {
+            if (selected !== sid || pollGen !== gen) return;
+            setOlderState({ hasMore: hasOlder, isLoading: false });
+          }
+        }
+
+        function maybeAutoLoadOlder() {
+          if (chat.scrollTop > 1) return;
+          void loadOlderMessages({ auto: true });
         }
 
 		        function startInitialRender(allEvents) {
@@ -2194,6 +2226,7 @@
             if (e.deltaY < 0) {
               autoScroll = false;
               jumpBtn.style.display = "inline-flex";
+              maybeAutoLoadOlder();
             }
           },
           { passive: true }
@@ -2218,6 +2251,7 @@
             if (dy > 0) {
               autoScroll = false;
               jumpBtn.style.display = "inline-flex";
+              maybeAutoLoadOlder();
             }
           },
           { passive: true }
@@ -2227,23 +2261,8 @@
           jumpBtn.style.display = "none";
           scrollToBottom();
         };
-        olderBtn.onclick = async () => {
-          if (!selected || !hasOlder || loadingOlder) return;
-          const sid = selected;
-          const gen = pollGen;
-          setOlderState({ hasMore: hasOlder, isLoading: true });
-          try {
-            const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=${reqBefore}`);
-            if (selected !== sid || pollGen !== gen) return;
-            const evs = Array.isArray(data.events) ? data.events : [];
-            if (evs.length) prependOlderEvents(evs);
-            olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
-            setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
-          } catch {
-            if (selected !== sid || pollGen !== gen) return;
-            setOlderState({ hasMore: hasOlder, isLoading: false });
-          }
+        olderBtn.onclick = () => {
+          void loadOlderMessages({ auto: false });
         };
 
 	        const textarea = $("#msg");
