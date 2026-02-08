@@ -94,13 +94,13 @@ Codex instances started via `codoxear-broker` cannot reliably run elevated opera
 
 Reason: the broker runs Codex under `strace -f` (ptrace) to detect which `rollout-*.jsonl` file is active (the rollout log can be opened by child processes, not just the top-level launcher).
 
-Workaround: run privileged commands outside the ptrace-traced Codex process tree. If you want a persistent systemd-based shell for this, use PiloTY (`https://github.com/yiwenlu66/PiloTY`) and run your long-lived shell sessions as transient user units:
+Workaround: run privileged commands outside the ptrace-traced Codex process tree. If you want a persistent systemd-based shell for this, use [PiloTY](https://github.com/yiwenlu66/PiloTY) and run your long-lived shell sessions as transient user units:
 
 - `XDG_RUNTIME_DIR="/run/user/$(id -u)" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" systemd-run --user --pty bash --noprofile --norc`
 
 Run `sudo ...` inside that shell.
 
-If you use Harness mode, prefer running long-lived commands inside PiloTY so the process keeps running even if the agent decides to end a turn; use the Codex session to inspect/monitor that background work.
+If you use Harness mode, prefer running long-lived commands inside [PiloTY](https://github.com/yiwenlu66/PiloTY) so the process keeps running even if the agent decides to end a turn; use the Codex session to inspect/monitor that background work.
 
 ## Security model
 

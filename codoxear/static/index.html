@@ -89,6 +89,15 @@
       .sidebar header .title {
         font-weight: 650;
         letter-spacing: 0.2px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sidebarLogo {
+        width: 20px;
+        height: 20px;
+        display: block;
+        object-fit: contain;
       }
       .sidebar .sessions {
         padding: 10px;
@@ -1198,7 +1207,7 @@
         const sidebar = el("div", { class: "sidebar" });
         const sessionsWrap = el("div", { class: "sessions" });
         const sidebarFooter = el("footer", {}, [
-          el("button", { id: "logoutBtnSide", class: "icon-btn", title: "Logout", "aria-label": "Logout", html: iconSvg("logout") }),
+          el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", text: "Log out" }),
         ]);
         const main = el("div", { class: "main" });
         const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
@@ -1335,7 +1344,7 @@
 
         sidebar.appendChild(
           el("header", {}, [
-            el("div", { class: "title", text: "Codex" }),
+            el("div", { class: "title", html: `<img class="sidebarLogo" src="/static/codoxear-icon.png" alt="" />Codoxear` }),
             el("div", { class: "actions" }, [
               el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
               el("button", { id: "refreshBtn", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") }),
