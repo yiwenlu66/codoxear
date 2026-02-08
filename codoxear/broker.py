@@ -375,28 +375,45 @@ def _strip_ansi(text: str) -> str:
     return _ANSI_CSI_RE.sub("", _ANSI_OSC_RE.sub("", text))
 
 
-def _line_has_interrupt_hint(line: str) -> bool:
-    return "esc to interrupt" in line.lower()
+def _hint_seen_in_new_text(*, tail: str, cleaned: str, phrase: str) -> bool:
+    low_cleaned = cleaned.lower()
+    low_phrase = phrase.lower()
+    if low_phrase in low_cleaned:
+        return True
+    overlap = max(len(low_phrase) - 1, 0)
+    if overlap <= 0:
+        return False
+    stitched = tail[-overlap:].lower() + low_cleaned
+    pos = stitched.find(low_phrase)
+    if pos < 0:
+        return False
+    return (pos + len(low_phrase)) > overlap
 
 
-def _line_has_compacting_hint(line: str) -> bool:
-    low = line.lower()
-    return ("compacting context" in low) or ("compacting conversation" in low)
+def _interrupt_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
+    return _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="esc to interrupt")
+
+
+def _compacting_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
+    return (
+        _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="compacting context")
+        or _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="compacting conversation")
+    )
 
 
 def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     cleaned = _strip_ansi(text)
     if not cleaned:
         return
-    scan_text = (st.interrupt_hint_tail[-64:] + cleaned)
+    tail = st.interrupt_hint_tail
     st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
-    if _line_has_interrupt_hint(scan_text):
+    if _interrupt_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
         st.last_interrupt_hint_ts = now_ts
         if now_ts > st.last_turn_activity_ts:
             st.last_turn_activity_ts = now_ts
         return
-    if _line_has_compacting_hint(scan_text):
+    if _compacting_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
         if now_ts > st.last_turn_activity_ts:
             st.last_turn_activity_ts = now_ts

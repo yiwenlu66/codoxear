@@ -277,6 +277,15 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(st.last_turn_activity_ts, 30.0)
         self.assertEqual(st.last_interrupt_hint_ts, 0.0)
 
+    def test_stale_interrupt_tail_does_not_rearm_busy_on_unrelated_text(self) -> None:
+        st = _state()
+        _update_busy_from_pty_text(st, "\x1b[2mWorking (1s • esc to interrupt)\x1b[0m", now_ts=10.0)
+        self.assertTrue(st.busy)
+        self.assertEqual(st.last_turn_activity_ts, 10.0)
+        _update_busy_from_pty_text(st, " •", now_ts=20.0)
+        self.assertEqual(st.last_turn_activity_ts, 10.0)
+        self.assertEqual(st.last_interrupt_hint_ts, 10.0)
+
 
 if __name__ == "__main__":
     unittest.main()
