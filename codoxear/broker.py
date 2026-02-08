@@ -22,7 +22,7 @@ import tty
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from shutil import which
+from shutil import rmtree, which
 from typing import Any
 
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
@@ -117,6 +117,47 @@ def _tracer_pid() -> int:
     return 0
 
 
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+    return True
+
+
+def _prune_stale_trace_dirs(*, keep_pids: set[int] | None = None) -> None:
+    keep = set(keep_pids or ())
+    try:
+        STRACE_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return
+    try:
+        entries = list(STRACE_DIR.iterdir())
+    except Exception:
+        return
+    for p in entries:
+        if not p.is_dir():
+            continue
+        try:
+            pid = int(p.name)
+        except Exception:
+            continue
+        if pid in keep:
+            continue
+        if _pid_alive(pid):
+            continue
+        try:
+            rmtree(p)
+        except Exception:
+            continue
+
+
 def _strace_usable() -> bool:
     global _STRACE_USABLE
     if _STRACE_USABLE is not None:
@@ -181,8 +222,8 @@ def _exec_strace(*, trace_path: Path, cwd: str, codex_args: list[str]) -> None:
         STRACE_BIN,
         "-qq",
         "-f",
-        "-s",
-        "4096",
+        "--seccomp-bpf",
+        "-z",
         "-e",
         _STRACE_TRACE,
         "-o",
@@ -200,8 +241,8 @@ def _exec_strace_via_login_shell(*, trace_path: Path, cwd: str, codex_args: list
         STRACE_BIN,
         "-qq",
         "-f",
-        "-s",
-        "4096",
+        "--seccomp-bpf",
+        "-z",
         "-e",
         _STRACE_TRACE,
         "-o",
@@ -1032,8 +1073,12 @@ class Broker:
 
     def _strace_watcher(self, *, trace_path: Path) -> None:
         off = 0
-        last_stat = 0.0
+        last_prune = 0.0
         while not self._stop.is_set():
+            now = _now()
+            if now - last_prune > 60.0:
+                last_prune = now
+                _prune_stale_trace_dirs(keep_pids={os.getpid()})
             try:
                 if not trace_path.exists():
                     time.sleep(0.1)
@@ -1053,9 +1098,6 @@ class Broker:
                 continue
 
             if not data:
-                now = _now()
-                if now - last_stat > 1.0:
-                    last_stat = now
                 time.sleep(0.2)
                 continue
 
@@ -1111,6 +1153,7 @@ class Broker:
         rows, cols = _term_size()
 
         _require_strace()
+        _prune_stale_trace_dirs(keep_pids={os.getpid()})
 
         try:
             self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -1231,6 +1274,15 @@ class Broker:
                 pass
             try:
                 st2.sock_path.with_suffix(".json").unlink()
+            except Exception:
+                pass
+        if st2 and st2.trace_path:
+            try:
+                st2.trace_path.unlink()
+            except Exception:
+                pass
+            try:
+                st2.trace_path.parent.rmdir()
             except Exception:
                 pass
         return exit_code
