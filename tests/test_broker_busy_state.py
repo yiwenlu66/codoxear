@@ -117,6 +117,44 @@ class TestBrokerBusyState(unittest.TestCase):
         )
         self.assertFalse(_should_clear_busy_state(st, now_ts=13.0 + BUSY_QUIET_SECONDS + 5.0))
 
+    def test_web_search_activity_after_assistant_resets_completion_candidate(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "working"}},
+            now_ts=11.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "response_item", "payload": {"type": "web_search_call", "status": "completed"}},
+            now_ts=12.0,
+        )
+        self.assertFalse(_should_clear_busy_state(st, now_ts=12.0 + BUSY_QUIET_SECONDS + 5.0))
+
+    def test_local_shell_activity_after_assistant_resets_completion_candidate(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "working"}},
+            now_ts=11.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "response_item", "payload": {"type": "local_shell_call", "status": "completed"}},
+            now_ts=12.0,
+        )
+        self.assertFalse(_should_clear_busy_state(st, now_ts=12.0 + BUSY_QUIET_SECONDS + 5.0))
+
     def test_turn_aborted_clears_busy_and_pending_calls(self) -> None:
         st = _state()
         st.busy = True
@@ -140,6 +178,68 @@ class TestBrokerBusyState(unittest.TestCase):
         )
         self.assertTrue(st.busy)
         self.assertEqual(st.last_turn_activity_ts, 15.0)
+
+    def test_reasoning_reopens_turn_after_idle_clear(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "done"}],
+                },
+            },
+            now_ts=11.0,
+        )
+        self.assertTrue(_should_clear_busy_state(st, now_ts=11.0 + BUSY_QUIET_SECONDS + 0.05))
+
+        st.busy = False
+        st.turn_open = False
+        st.turn_has_completion_candidate = False
+        st.last_turn_activity_ts = 0.0
+        st.last_interrupt_hint_ts = 0.0
+
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_reasoning"}},
+            now_ts=15.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertFalse(_should_clear_busy_state(st, now_ts=15.0 + BUSY_QUIET_SECONDS + 60.0))
+
+    def test_tool_call_reopens_turn_after_idle_clear(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "response_item", "payload": {"type": "function_call", "call_id": "call-1"}},
+            now_ts=20.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+
+    def test_agent_message_does_not_reopen_closed_turn(self) -> None:
+        st = _state()
+        st.turn_open = False
+        st.turn_has_completion_candidate = False
+        st.busy = False
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "done"}},
+            now_ts=25.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
 
     def test_token_count_alone_does_not_start_busy(self) -> None:
         st = _state()

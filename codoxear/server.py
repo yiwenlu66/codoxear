@@ -744,7 +744,6 @@ def _extract_chat_events(
                 turn_aborted = True
                 continue
             if pt == "token_count":
-                turn_end = True
                 continue
 
         if typ == "response_item":
@@ -786,7 +785,13 @@ def _extract_chat_events(
                     last_tool = nm
                 total_tools += 1
                 continue
-            if pt == "function_call_output":
+            if pt in (
+                "function_call_output",
+                "custom_tool_call",
+                "custom_tool_call_output",
+                "web_search_call",
+                "local_shell_call",
+            ):
                 total_tools += 1
                 continue
 
@@ -937,7 +942,14 @@ def _analyze_log_chunk(
             pt = p.get("type")
             if pt == "reasoning":
                 d_th += 1
-            if pt in ("function_call", "function_call_output"):
+            if pt in (
+                "function_call",
+                "function_call_output",
+                "custom_tool_call",
+                "custom_tool_call_output",
+                "web_search_call",
+                "local_shell_call",
+            ):
                 d_tools += 1
             if pt == "message" and p.get("role") in ("developer", "system"):
                 d_sys += 1
@@ -1089,6 +1101,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     "custom_tool_call",
                     "custom_tool_call_output",
                     "web_search_call",
+                    "local_shell_call",
                 ) and turn_open:
                     turn_has_completion_candidate = False
                     continue

@@ -64,6 +64,34 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
+    def test_web_search_after_assistant_reopens_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {"type": "event_msg", "payload": {"type": "agent_message", "message": "starting"}},
+                    {"type": "response_item", "payload": {"type": "web_search_call", "status": "completed"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_local_shell_after_assistant_reopens_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {"type": "event_msg", "payload": {"type": "agent_message", "message": "starting"}},
+                    {"type": "response_item", "payload": {"type": "local_shell_call", "status": "completed"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
     def test_turn_aborted_is_idle(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

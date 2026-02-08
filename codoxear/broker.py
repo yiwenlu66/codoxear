@@ -384,6 +384,13 @@ def _should_clear_busy_state(st: "State", now_ts: float) -> bool:
     return (now_ts - st.last_turn_activity_ts) >= BUSY_QUIET_SECONDS
 
 
+def _reopen_turn_on_activity(st: "State") -> None:
+    if st.turn_open:
+        return
+    st.turn_open = True
+    st.turn_has_completion_candidate = False
+
+
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
     typ = obj.get("type")
 
@@ -416,6 +423,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_turn_activity_ts = now_ts
             return
         if ev_type == "agent_reasoning":
+            _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
             st.busy = True
@@ -433,6 +441,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
     started = _response_call_started(payload)
     if started is not None:
         st.pending_calls.add(started)
+        _reopen_turn_on_activity(st)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
@@ -442,6 +451,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
     finished = _response_call_finished(payload)
     if finished is not None:
         st.pending_calls.discard(finished)
+        _reopen_turn_on_activity(st)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
@@ -450,7 +460,16 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
 
     item_type = payload.get("type")
     role = payload.get("role")
-    if item_type in ("reasoning", "function_call", "function_call_output", "custom_tool_call", "custom_tool_call_output"):
+    if item_type in (
+        "reasoning",
+        "function_call",
+        "function_call_output",
+        "custom_tool_call",
+        "custom_tool_call_output",
+        "web_search_call",
+        "local_shell_call",
+    ):
+        _reopen_turn_on_activity(st)
         if st.turn_open:
             st.turn_has_completion_candidate = False
         st.busy = True
