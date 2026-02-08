@@ -270,6 +270,13 @@ class TestBrokerBusyState(unittest.TestCase):
         )
         self.assertTrue(_should_clear_busy_state(st, now_ts=clear_ts))
 
+    def test_compacting_hint_from_pty_marks_busy(self) -> None:
+        st = _state()
+        _update_busy_from_pty_text(st, "\x1b[2mCompacting context...\x1b[0m", now_ts=30.0)
+        self.assertTrue(st.busy)
+        self.assertEqual(st.last_turn_activity_ts, 30.0)
+        self.assertEqual(st.last_interrupt_hint_ts, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

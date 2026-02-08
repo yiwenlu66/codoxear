@@ -379,6 +379,11 @@ def _line_has_interrupt_hint(line: str) -> bool:
     return "esc to interrupt" in line.lower()
 
 
+def _line_has_compacting_hint(line: str) -> bool:
+    low = line.lower()
+    return ("compacting context" in low) or ("compacting conversation" in low)
+
+
 def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     cleaned = _strip_ansi(text)
     if not cleaned:
@@ -388,6 +393,11 @@ def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     if _line_has_interrupt_hint(scan_text):
         st.busy = True
         st.last_interrupt_hint_ts = now_ts
+        if now_ts > st.last_turn_activity_ts:
+            st.last_turn_activity_ts = now_ts
+        return
+    if _line_has_compacting_hint(scan_text):
+        st.busy = True
         if now_ts > st.last_turn_activity_ts:
             st.last_turn_activity_ts = now_ts
         return
