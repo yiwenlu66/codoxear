@@ -100,6 +100,7 @@ METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 HARNESS_DEFAULT_TEXT = (
     "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. "
     "Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. "
+    "If you believe you are done with all of the tasks, spawn a critic sub-agent to review your work and examine whether if fully addresses the user request. "
     "Continue monitoring experiments running in the background to locate any issues.\n\n---\n"
 )
 
