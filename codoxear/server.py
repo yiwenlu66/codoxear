@@ -24,7 +24,6 @@ import urllib.parse
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from shutil import which
 from typing import Any
 
 from .util import default_app_dir as _default_app_dir
@@ -104,11 +103,7 @@ HARNESS_DEFAULT_TEXT = (
     "Continue monitoring experiments running in the background to locate any issues.\n\n---\n"
 )
 
-_ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
-
-_STRACE_USABLE: bool | None = None
-_STRACE_ERR: str | None = None
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
 
@@ -160,34 +155,6 @@ def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
             "max_ms": float(srt[-1]),
         }
     return out
-
-
-def _strace_usable() -> bool:
-    global _STRACE_USABLE, _STRACE_ERR
-    if _STRACE_USABLE is not None:
-        return bool(_STRACE_USABLE)
-    binp = os.environ.get("CODEX_WEB_STRACE_BIN", "strace")
-    if which(binp) is None:
-        _STRACE_USABLE = False
-        _STRACE_ERR = f"{binp} not found in PATH"
-        return False
-    try:
-        proc = subprocess.run(
-            [binp, "-qq", "-o", "/dev/null", "--", "/bin/true"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            timeout=1.5,
-            check=False,
-        )
-        _STRACE_USABLE = proc.returncode == 0
-        if not _STRACE_USABLE:
-            err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
-            _STRACE_ERR = err[-400:] if err else f"rc={proc.returncode}"
-    except Exception as e:
-        _STRACE_USABLE = False
-        _STRACE_ERR = str(e)
-    return bool(_STRACE_USABLE)
 
 
 def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: float = 1.5) -> None:
@@ -551,114 +518,6 @@ def _session_id_from_rollout_path(log_path: Path) -> str | None:
         name = str(log_path)
     m = _SESSION_ID_RE.findall(name)
     return m[-1] if m else None
-
-
-def _is_write_open_line(line: str) -> bool:
-    if ("O_WRONLY" in line) or ("O_RDWR" in line) or ("O_APPEND" in line):
-        return True
-    if "O_RDONLY" in line:
-        return False
-    if "O_CREAT" in line:
-        return True
-
-    m = re.search(r",\s*(0x[0-9a-fA-F]+|\d+)(?:\s*,|\s*\))", line)
-    if not m:
-        return False
-    try:
-        v = int(m.group(1), 16 if m.group(1).lower().startswith("0x") else 10)
-    except Exception:
-        return False
-    acc = v & 3
-    return acc in (1, 2)
-
-
-def _read_text_tail(path: Path, *, max_bytes: int) -> str:
-    try:
-        with path.open("rb") as f:
-            try:
-                sz = int(f.seek(0, os.SEEK_END))
-            except Exception:
-                sz = 0
-            start = max(0, sz - int(max_bytes))
-            drop_partial = False
-            if start > 0:
-                try:
-                    f.seek(start - 1)
-                    prev = f.read(1)
-                    drop_partial = (prev != b"\n")
-                except Exception:
-                    drop_partial = True
-            try:
-                f.seek(start)
-            except Exception:
-                f.seek(0)
-                start = 0
-                drop_partial = False
-            b = f.read(int(max_bytes))
-    except FileNotFoundError:
-        return ""
-    except Exception:
-        return ""
-
-    if start > 0 and drop_partial:
-        nl = b.find(b"\n")
-        if nl >= 0:
-            b = b[nl + 1 :]
-    try:
-        return b.decode("utf-8", errors="replace")
-    except Exception:
-        return ""
-
-
-def _discover_log_from_trace(trace_path: Path) -> Path | None:
-    data = _read_text_tail(trace_path, max_bytes=8 * 1024 * 1024)
-    if not data:
-        return None
-
-    sessions_dir = CODEX_SESSIONS_DIR.resolve()
-    best: Path | None = None
-    for line in data.splitlines():
-        if "rollout-" not in line or ".jsonl" not in line:
-            continue
-        m = _ROLLOUT_PATH_RE.findall(line)
-        if not m:
-            continue
-        raw = line.strip()
-        is_open = (
-            (" open(" in raw)
-            or (" openat(" in raw)
-            or (" openat2(" in raw)
-            or (" creat(" in raw)
-            or raw.startswith("open(")
-            or raw.startswith("openat")
-            or raw.startswith("openat2")
-            or raw.startswith("creat")
-        )
-        is_rename = (
-            (" rename(" in raw)
-            or (" renameat(" in raw)
-            or (" renameat2(" in raw)
-            or raw.startswith("rename")
-            or raw.startswith("renameat")
-            or raw.startswith("renameat2")
-        )
-        if is_open and (not _is_write_open_line(raw)):
-            continue
-
-        p = Path(m[-1])
-        try:
-            p.resolve().relative_to(sessions_dir)
-        except Exception:
-            continue
-        if not (p.name.startswith("rollout-") and p.name.endswith(".jsonl")):
-            continue
-        if _classify_session_log(p, timeout_s=0.0) != "main":
-            continue
-
-        if is_open or is_rename:
-            best = p
-
-    return best
 
 
 def _read_session_meta(log_path: Path) -> dict[str, Any]:
@@ -1412,21 +1271,10 @@ class SessionManager:
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
 
             log_path: Path | None = None
+            meta_has_log_path = ("log_path" in meta)
             if isinstance(meta.get("log_path"), str) and meta["log_path"]:
                 log_path = Path(meta["log_path"])
-            trace_path = None
-            if isinstance(meta.get("trace_path"), str) and meta["trace_path"]:
-                trace_path = Path(meta["trace_path"])
-                if not trace_path.exists():
-                    trace_path = None
-            if trace_path is not None:
-                lp2 = _discover_log_from_trace(trace_path)
-                if lp2 is not None:
-                    log_path = lp2
-                    sid2 = _session_id_from_rollout_path(lp2)
-                    if sid2:
-                        thread_id = sid2
-            if (log_path is None) or (not log_path.exists()):
+            if (not meta_has_log_path) and ((log_path is None) or (not log_path.exists())):
                 lp3 = _discover_log_for_session_id(thread_id)
                 if lp3 is not None and lp3.exists():
                     log_path = lp3
@@ -1679,30 +1527,19 @@ class SessionManager:
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
-        log_path = None
+        meta_has_log_path = ("log_path" in meta)
+        log_path: Path | None = None
         if isinstance(meta.get("log_path"), str) and meta["log_path"]:
             log_path = Path(meta["log_path"])
-        trace_path = None
-        if isinstance(meta.get("trace_path"), str) and meta["trace_path"]:
-            trace_path = Path(meta["trace_path"])
-            if not trace_path.exists():
-                trace_path = None
-        if trace_path is not None:
-            lp2 = _discover_log_from_trace(trace_path)
-            if lp2 is not None and lp2.exists():
-                log_path = lp2
-                sid2 = _session_id_from_rollout_path(lp2)
-                if sid2:
-                    thread_id = sid2
-        if not log_path or not log_path.exists():
+        if meta_has_log_path and ((log_path is None) or (not log_path.exists())):
+            log_path = None
+        if (not meta_has_log_path) and ((log_path is None) or (not log_path.exists())):
             log_path = _discover_log_for_session_id(thread_id)
-        if not log_path or not log_path.exists():
-            return
-
-        thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+        if log_path is not None and log_path.exists():
+            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
         cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else s.cwd
-        if not cwd:
+        if (not cwd) and (log_path is not None):
             sm = _read_session_meta(log_path)
             cwd = sm.get("cwd") if isinstance(sm.get("cwd"), str) else ""
         if not cwd:
@@ -1717,9 +1554,12 @@ class SessionManager:
             s2.owned = bool(owned)
             if s2.log_path != log_path:
                 s2.log_path = log_path
-                try:
-                    log_off = int(log_path.stat().st_size)
-                except Exception:
+                if log_path is not None:
+                    try:
+                        log_off = int(log_path.stat().st_size)
+                    except Exception:
+                        log_off = 0
+                else:
                     log_off = 0
                 self._reset_log_caches(s2, meta_log_off=log_off)
 
@@ -1962,9 +1802,7 @@ class SessionManager:
         return True
 
     def spawn_web_session(self, *, cwd: str, args: list[str] | None = None) -> dict[str, Any]:
-        use_broker = _strace_usable()
-        mod = "codoxear.broker" if use_broker else "codoxear.sessiond"
-        argv = [sys.executable, "-m", mod, "--cwd", cwd, "--"]
+        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd, "--"]
         if args:
             argv.extend(args)
 
@@ -1987,7 +1825,7 @@ class SessionManager:
         except Exception as e:
             raise RuntimeError(f"spawn failed: {e}") from e
 
-        _wait_or_raise(proc, label=("broker" if use_broker else "sessiond"), timeout_s=1.5)
+        _wait_or_raise(proc, label="broker", timeout_s=1.5)
         if proc.stderr is not None:
             threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
 

@@ -12,7 +12,6 @@ import re
 import signal
 import socket
 import struct
-import subprocess
 import sys
 import termios
 import threading
@@ -22,7 +21,6 @@ import tty
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from shutil import rmtree, which
 from typing import Any
 
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
@@ -41,15 +39,13 @@ def _default_app_dir() -> Path:
 
 APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
-STRACE_DIR = APP_DIR / "strace"
+PROC_ROOT = Path("/proc")
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-STRACE_BIN = os.environ.get("CODEX_WEB_STRACE_BIN", "strace")
-# This repo relies on strace for rollout log switching (/new). Do not add non-strace fallbacks.
-STRACE_ENABLED = True
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
+FD_POLL_SECONDS_RAW = os.environ.get("CODEX_WEB_FD_POLL_SECONDS", "1.0")
 
 CONTEXT_WINDOW_BASELINE_TOKENS = 12000
 try:
@@ -66,13 +62,9 @@ except Exception:
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 
-_ROLLOUT_PATH_RE = re.compile(r'"([^"]*rollout-[^"]*\.jsonl)"')
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
 _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
-
-# Keep strace noise low but include all plausible file-open entry points.
-_STRACE_TRACE = "trace=open,openat,openat2,creat,rename,renameat,renameat2"
 
 
 def _dprint(msg: str) -> None:
@@ -102,21 +94,6 @@ def _set_pdeathsig(sig: int) -> None:
         return
 
 
-_STRACE_USABLE: bool | None = None
-
-
-def _tracer_pid() -> int:
-    if not sys.platform.startswith("linux"):
-        return 0
-    try:
-        for line in Path("/proc/self/status").read_text("utf-8", errors="replace").splitlines():
-            if line.startswith("TracerPid:"):
-                return int(line.split(":", 1)[1].strip() or "0")
-    except Exception:
-        return 0
-    return 0
-
-
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -131,71 +108,123 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _prune_stale_trace_dirs(*, keep_pids: set[int] | None = None) -> None:
-    keep = set(keep_pids or ())
-    try:
-        STRACE_DIR.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        return
-    try:
-        entries = list(STRACE_DIR.iterdir())
-    except Exception:
-        return
-    for p in entries:
-        if not p.is_dir():
-            continue
-        try:
-            pid = int(p.name)
-        except Exception:
-            continue
-        if pid in keep:
-            continue
-        if _pid_alive(pid):
-            continue
-        try:
-            rmtree(p)
-        except Exception:
-            continue
+def _require_proc() -> None:
+    if not sys.platform.startswith("linux"):
+        sys.stderr.write("error: codoxear-broker requires linux (/proc, pty, termios).\n")
+        raise SystemExit(2)
+    if not (PROC_ROOT / "self" / "fd").is_dir():
+        sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
+        raise SystemExit(2)
 
 
-def _strace_usable() -> bool:
-    global _STRACE_USABLE
-    if _STRACE_USABLE is not None:
-        return _STRACE_USABLE
-    if (not STRACE_ENABLED) or (which(STRACE_BIN) is None):
-        _STRACE_USABLE = False
+def _proc_children_pids(proc_root: Path, pid: int) -> list[int]:
+    try:
+        data = (proc_root / str(pid) / "task" / str(pid) / "children").read_text("utf-8", errors="replace")
+    except FileNotFoundError:
+        return []
+    toks = [t for t in data.strip().split() if t.isdigit()]
+    out: list[int] = []
+    for t in toks:
+        try:
+            out.append(int(t))
+        except Exception:
+            continue
+    return out
+
+
+def _proc_descendants(proc_root: Path, root_pid: int) -> set[int]:
+    seen: set[int] = set()
+    q: list[int] = [int(root_pid)]
+    while q:
+        pid = q.pop()
+        if pid <= 0 or pid in seen:
+            continue
+        seen.add(pid)
+        for c in _proc_children_pids(proc_root, pid):
+            if c not in seen:
+                q.append(c)
+    return seen
+
+
+def _fd_is_writable(proc_root: Path, pid: int, fd: int) -> bool:
+    try:
+        data = (proc_root / str(pid) / "fdinfo" / str(fd)).read_text("utf-8", errors="replace")
+    except FileNotFoundError:
+        return False
+    flags = None
+    for line in data.splitlines():
+        if line.startswith("flags:"):
+            flags = line.split(":", 1)[1].strip()
+            break
+    if not flags:
         return False
     try:
-        proc = subprocess.run(
-            [STRACE_BIN, "-qq", "-o", "/dev/null", "--", "/bin/true"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            timeout=1.5,
-            check=False,
-        )
-        _STRACE_USABLE = proc.returncode == 0
-        if (not _STRACE_USABLE) and DEBUG:
-            err = (proc.stderr or b"").decode("utf-8", errors="replace").strip()
-            if err:
-                _dprint(f"broker: strace unusable (rc={proc.returncode}): {err}")
-    except Exception as e:
-        if DEBUG:
-            _dprint(f"broker: strace unusable: {e}")
-        _STRACE_USABLE = False
-    return bool(_STRACE_USABLE)
+        v = int(flags, 8)
+    except Exception:
+        return False
+    acc = v & os.O_ACCMODE
+    return acc != os.O_RDONLY
 
 
-def _require_strace() -> None:
-    if not _strace_usable():
-        tp = _tracer_pid()
-        if tp:
-            sys.stderr.write(
-                f"error: strace is required but not usable: this process is already ptrace-traced (TracerPid={tp}).\n"
-            )
-        else:
-            sys.stderr.write("error: strace is required but not usable. Check ptrace restrictions and strace install.\n")
-        raise SystemExit(2)
+def _rollout_path_from_fd_link(link: str) -> Path | None:
+    s = (link or "").strip()
+    if not s:
+        return None
+    if s.endswith(" (deleted)"):
+        s = s[: -len(" (deleted)")].rstrip()
+    if not s.startswith("/"):
+        return None
+    p = Path(s)
+    if (not p.name.startswith("rollout-")) or (not p.name.endswith(".jsonl")):
+        return None
+    return p
+
+
+def _iter_writable_rollout_paths(
+    *,
+    proc_root: Path,
+    pid: int,
+    sessions_dir: Path,
+) -> list[Path]:
+    try:
+        fd_dir = proc_root / str(pid) / "fd"
+        entries = list(fd_dir.iterdir())
+    except FileNotFoundError:
+        return []
+    out: list[Path] = []
+    sessions_root = sessions_dir.resolve()
+    for e in entries:
+        name = e.name
+        if not name.isdigit():
+            continue
+        try:
+            fd = int(name)
+        except Exception:
+            continue
+        try:
+            link = os.readlink(e)
+        except FileNotFoundError:
+            continue
+        except PermissionError:
+            raise
+        except Exception:
+            continue
+        p = _rollout_path_from_fd_link(link)
+        if p is None:
+            continue
+        try:
+            rp = p.resolve()
+        except Exception:
+            rp = p
+        try:
+            rp.relative_to(sessions_root)
+        except Exception:
+            continue
+        if not _fd_is_writable(proc_root, pid, fd):
+            continue
+        out.append(rp)
+    return out
+
 
 def _user_shell() -> str:
     sh = os.environ.get("SHELL")
@@ -217,40 +246,14 @@ def _shell_argv_for_command(cmd: str) -> list[str]:
     return [shell, "-l", "-i", "-c", cmd]
 
 
-def _exec_strace(*, trace_path: Path, cwd: str, codex_args: list[str]) -> None:
-    argv = [
-        STRACE_BIN,
-        "-qq",
-        "-f",
-        "--seccomp-bpf",
-        "-z",
-        "-e",
-        _STRACE_TRACE,
-        "-o",
-        str(trace_path),
-        "--",
-        CODEX_BIN,
-        *codex_args,
-    ]
+def _exec_codex(*, cwd: str, codex_args: list[str]) -> None:
+    argv = [CODEX_BIN, *codex_args]
     os.chdir(cwd)
     os.execvpe(argv[0], argv, os.environ)
 
-def _exec_strace_via_login_shell(*, trace_path: Path, cwd: str, codex_args: list[str]) -> None:
+def _exec_codex_via_login_shell(*, cwd: str, codex_args: list[str]) -> None:
     q = shlex.quote
-    argv = [
-        STRACE_BIN,
-        "-qq",
-        "-f",
-        "--seccomp-bpf",
-        "-z",
-        "-e",
-        _STRACE_TRACE,
-        "-o",
-        str(trace_path),
-        "--",
-        CODEX_BIN,
-        *codex_args,
-    ]
+    argv = [CODEX_BIN, *codex_args]
     cmd = "exec " + " ".join(q(x) for x in argv)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
@@ -264,29 +267,6 @@ def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -
     used = max(tokens_in_context - CONTEXT_WINDOW_BASELINE_TOKENS, 0)
     remaining = max(effective - used, 0)
     return int(round((remaining / effective) * 100.0))
-
-
-def _is_write_open_line(line: str) -> bool:
-    # Fast path: symbolic flags.
-    if ("O_WRONLY" in line) or ("O_RDWR" in line) or ("O_APPEND" in line):
-        return True
-    if "O_RDONLY" in line:
-        return False
-    if "O_CREAT" in line:
-        # In practice Codex creates the rollout log with write flags; treat creat-like opens as write.
-        return True
-
-    # Fallback: numeric flags (e.g. 0x241). Determine access mode from low 2 bits.
-    # O_RDONLY=0, O_WRONLY=1, O_RDWR=2.
-    m = re.search(r",\s*(0x[0-9a-fA-F]+|\d+)(?:\s*,|\s*\))", line)
-    if not m:
-        return False
-    try:
-        v = int(m.group(1), 16 if m.group(1).lower().startswith("0x") else 10)
-    except Exception:
-        return False
-    acc = v & 3
-    return acc in (1, 2)
 
 
 def _enter_seq_bytes() -> bytes:
@@ -350,6 +330,24 @@ def _paths_match(a: Path, b: Path) -> bool:
             return a.absolute() == b.absolute()
         except Exception:
             return str(a) == str(b)
+
+
+def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -> bool:
+    # Codex TUI prints this line when closing a thread on /new and similar flows.
+    # The line can be split across PTY reads and may include ANSI escape sequences.
+    phrase = "To continue this session, run "
+    if not _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase=phrase):
+        return False
+    for p in (st.log_path, st.last_rollout_path, st.last_detected_rollout_path):
+        if p is not None:
+            st.ignored_rollout_paths.add(p)
+    st.log_path = None
+    st.session_id = None
+    st.log_off = 0
+    st.last_rollout_path = None
+    st.last_detected_rollout_path = None
+    st.new_session_hint_tail = ""
+    return True
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
@@ -613,10 +611,12 @@ class State:
     turn_has_completion_candidate: bool = False
     interrupt_hint_tail: str = ""
     interrupt_hint_tail_max: int = INTERRUPT_HINT_TAIL_MAX
+    new_session_hint_tail: str = ""
+    new_session_hint_tail_max: int = 8192
     token: dict[str, Any] | None = None
-    trace_path: Path | None = None
-    trace_pid: int | None = None
     last_rollout_path: Path | None = None
+    last_detected_rollout_path: Path | None = None
+    ignored_rollout_paths: set[Path] = field(default_factory=set)
 
 
 class Broker:
@@ -733,6 +733,11 @@ class Broker:
                         if st2:
                             st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
                             _update_busy_from_pty_text(st2, s, now_ts=_now())
+                            cleaned = _strip_ansi(s)
+                            tail = st2.new_session_hint_tail
+                            st2.new_session_hint_tail = (tail + cleaned)[-st2.new_session_hint_tail_max :]
+                            if _maybe_detach_on_new_session_hint(st=st2, tail=tail, cleaned=cleaned):
+                                self._write_meta()
             except OSError:
                 break
 
@@ -879,12 +884,10 @@ class Broker:
                 "broker_pid": os.getpid(),
                 "sessiond_pid": os.getpid(),
                 "codex_pid": st.codex_pid,
-                "trace_pid": st.trace_pid,
                 "cwd": st.cwd,
                 "start_ts": st.start_ts,
                 "log_path": str(st.log_path) if st.log_path else None,
                 "sock_path": str(st.sock_path),
-                "trace_path": str(st.trace_path) if st.trace_path else None,
             }
             meta_path = st.sock_path.with_suffix(".json")
             SOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -1098,89 +1101,96 @@ class Broker:
         elif prev_lp is None or not _paths_match(prev_lp, lp):
             self._write_meta()
 
-    def _strace_watcher(self, *, trace_path: Path) -> None:
-        off = 0
-        last_prune = 0.0
-        while not self._stop.is_set():
-            now = _now()
-            if now - last_prune > 60.0:
-                last_prune = now
-                _prune_stale_trace_dirs(keep_pids={os.getpid()})
-            try:
-                if not trace_path.exists():
-                    time.sleep(0.1)
-                    continue
-                try:
-                    st = trace_path.stat()
-                    if st.st_size < off:
-                        off = 0
-                except Exception:
-                    pass
-                with trace_path.open("r", encoding="utf-8", errors="replace") as f:
-                    f.seek(off)
-                    data = f.read()
-                    off = f.tell()
-            except Exception:
-                time.sleep(0.2)
-                continue
+    def _proc_fd_watcher(self) -> None:
+        try:
+            poll_s = float(FD_POLL_SECONDS_RAW)
+        except Exception:
+            sys.stderr.write(f"error: invalid CODEX_WEB_FD_POLL_SECONDS={FD_POLL_SECONDS_RAW!r}\n")
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+        if not (poll_s > 0.0):
+            sys.stderr.write(f"error: invalid CODEX_WEB_FD_POLL_SECONDS={FD_POLL_SECONDS_RAW!r}\n")
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+        try:
+            while not self._stop.is_set():
+                with self._lock:
+                    st = self.state
+                    if not st:
+                        return
+                    root_pid = int(st.codex_pid)
+                    sessions_dir = st.sessions_dir
+                    last_detected = st.last_detected_rollout_path
+                    ignored = set(st.ignored_rollout_paths)
+                    need_clear = bool(
+                        st.log_path is not None
+                        or st.session_id is not None
+                        or st.last_rollout_path is not None
+                        or st.last_detected_rollout_path is not None
+                    )
 
-            if not data:
-                time.sleep(0.2)
-                continue
-
-            for line in data.splitlines():
-                if "rollout-" not in line or ".jsonl" not in line:
-                    continue
-                m = _ROLLOUT_PATH_RE.findall(line)
-                if not m:
-                    continue
-                raw = line.strip()
-                pid = None
-                parts = raw.split(None, 1)
-                if len(parts) == 2 and parts[0].isdigit():
-                    try:
-                        pid = int(parts[0])
-                    except Exception:
-                        pid = None
-                    raw = parts[1].lstrip()
-
-                is_open = (
-                    (" open(" in raw)
-                    or (" openat(" in raw)
-                    or (" openat2(" in raw)
-                    or (" creat(" in raw)
-                    or raw.startswith("open(")
-                    or raw.startswith("openat")
-                    or raw.startswith("openat2")
-                    or raw.startswith("creat")
-                )
-                is_rename = (
-                    (" rename(" in raw)
-                    or (" renameat(" in raw)
-                    or (" renameat2(" in raw)
-                    or raw.startswith("rename")
-                    or raw.startswith("renameat")
-                    or raw.startswith("renameat2")
-                )
-
-                if is_open:
-                    # Only treat a rollout path as active if it is opened for writing/appending.
-                    if not _is_write_open_line(raw):
-                        continue
-                    p = m[-1]
-                    self._maybe_register_or_switch_rollout(log_path=Path(p))
+                if root_pid <= 0:
+                    time.sleep(poll_s)
                     continue
 
-                if is_rename:
-                    # rename() has (src, dst); treat dst as the candidate.
-                    p = m[-1]
-                    self._maybe_register_or_switch_rollout(log_path=Path(p))
+                pids = _proc_descendants(PROC_ROOT, root_pid)
+                candidates: list[tuple[int, int, Path]] = []
+                had_any_rollout = False
+                for pid in pids:
+                    paths = _iter_writable_rollout_paths(proc_root=PROC_ROOT, pid=pid, sessions_dir=sessions_dir)
+                    for p in paths:
+                        had_any_rollout = True
+                        if p in ignored:
+                            continue
+                        try:
+                            mtime_ns = int(p.stat().st_mtime_ns)
+                        except Exception:
+                            continue
+                        candidates.append((mtime_ns, int(pid), p))
+
+                if not candidates:
+                    if need_clear:
+                        with self._lock:
+                            st3 = self.state
+                            if not st3:
+                                return
+                            st3.log_path = None
+                            st3.session_id = None
+                            st3.log_off = 0
+                            st3.last_rollout_path = None
+                            st3.last_detected_rollout_path = None
+                            if not had_any_rollout:
+                                st3.ignored_rollout_paths.clear()
+                        self._write_meta()
+                    time.sleep(poll_s)
+                    continue
+
+                candidates.sort(key=lambda t: (t[0], t[1], str(t[2])))
+                _mtime_ns, _pid, best_path = candidates[-1]
+
+                if last_detected is not None and _paths_match(last_detected, best_path):
+                    time.sleep(poll_s)
+                    continue
+
+                with self._lock:
+                    st2 = self.state
+                    if not st2:
+                        return
+                    st2.last_detected_rollout_path = best_path
+
+                self._maybe_register_or_switch_rollout(log_path=best_path)
+                with self._lock:
+                    st4 = self.state
+                    if st4 and st4.log_path is not None:
+                        st4.ignored_rollout_paths.clear()
+                time.sleep(poll_s)
+        except Exception:
+            sys.stderr.write(f"error: proc fd watcher crashed: {traceback.format_exc()}\n")
+            os.kill(os.getpid(), signal.SIGTERM)
 
     def run(self) -> int:
         rows, cols = _term_size()
-
-        _require_strace()
-        _prune_stale_trace_dirs(keep_pids={os.getpid()})
+        _require_proc()
 
         try:
             self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -1208,13 +1218,10 @@ class Broker:
                     termios.tcsetattr(fd, termios.TCSANOW, attrs)
                 except Exception:
                     pass
-                trace_dir = STRACE_DIR / str(os.getppid())
-                trace_dir.mkdir(parents=True, exist_ok=True)
-                trace_path = trace_dir / "syscalls.log"
                 if headless:
-                    _exec_strace_via_login_shell(trace_path=trace_path, cwd=self.cwd, codex_args=self.codex_args)
+                    _exec_codex_via_login_shell(cwd=self.cwd, codex_args=self.codex_args)
                 else:
-                    _exec_strace(trace_path=trace_path, cwd=self.cwd, codex_args=self.codex_args)
+                    _exec_codex(cwd=self.cwd, codex_args=self.codex_args)
             except Exception:
                 traceback.print_exc()
                 os._exit(127)
@@ -1240,8 +1247,6 @@ class Broker:
             codex_home=self.codex_home,
             sessions_dir=self.sessions_dir,
             busy=False,
-            trace_path=(STRACE_DIR / str(os.getpid()) / "syscalls.log"),
-            trace_pid=pid,
         )
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
@@ -1261,9 +1266,7 @@ class Broker:
         if not headless:
             threading.Thread(target=self._stdin_to_pty, daemon=True).start()
         threading.Thread(target=self._log_watcher, daemon=True).start()
-        # Start strace-based rollout detection (captures /new, /resume, and interactive selection).
-        if st.trace_path is not None:
-            threading.Thread(target=self._strace_watcher, kwargs={"trace_path": st.trace_path}, daemon=True).start()
+        threading.Thread(target=self._proc_fd_watcher, daemon=True).start()
 
         exit_code = 0
         try:
@@ -1303,22 +1306,11 @@ class Broker:
                 st2.sock_path.with_suffix(".json").unlink()
             except Exception:
                 pass
-        if st2 and st2.trace_path:
-            try:
-                st2.trace_path.unlink()
-            except Exception:
-                pass
-            try:
-                st2.trace_path.parent.rmdir()
-            except Exception:
-                pass
         return exit_code
 
 
 def main() -> None:
-    if not sys.platform.startswith("linux"):
-        sys.stderr.write("error: codoxear-broker requires Linux (/proc, pty, termios)\n")
-        raise SystemExit(2)
+    _require_proc()
     ap = argparse.ArgumentParser(
         description="Foreground PTY broker for codex: preserves terminal UX and registers a control socket for Codoxear."
     )

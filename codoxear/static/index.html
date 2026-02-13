@@ -1864,21 +1864,37 @@
 	          backfillState = null;
 	        }
 
-		        async function pollMessages(sid = selected, gen = pollGen) {
-		          if (!sid) return;
-		          try {
-            const prevOffset = offset;
-            const reqOffset = offset;
-	            const data = await api(`/api/sessions/${sid}/messages?offset=${reqOffset}`);
-            if (gen !== pollGen || sid !== selected) return;
-            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
-            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
-            if (!activeLogPath && lp) activeLogPath = lp;
-            if (activeLogPath && lp && lp !== activeLogPath) {
-              activeLogPath = lp;
-              activeThreadId = tid;
-              offset = 0;
-              resetChatRenderState();
+			        async function pollMessages(sid = selected, gen = pollGen) {
+			          if (!sid) return;
+			          try {
+	            const prevOffset = offset;
+	            const reqOffset = offset;
+		            const data = await api(`/api/sessions/${sid}/messages?offset=${reqOffset}`);
+	            if (gen !== pollGen || sid !== selected) return;
+	            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
+	            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
+	            const nowBusy = Boolean(data.busy);
+	            if (!activeLogPath && lp) activeLogPath = lp;
+	            if (activeLogPath && !lp) {
+	              activeLogPath = null;
+	              activeThreadId = tid;
+	              offset = 0;
+	              resetChatRenderState();
+	              setAttachCount(0);
+	              setTyping(false);
+	              turnOpen = false;
+	              setOlderState({ hasMore: false, isLoading: false });
+	              olderBefore = 0;
+	              setStatus({ running: Boolean(nowBusy), queueLen: data.queue_len });
+	              setContext(data.token);
+	              setTyping(Boolean(nowBusy));
+	              return;
+	            }
+	            if (activeLogPath && lp && lp !== activeLogPath) {
+	              activeLogPath = lp;
+	              activeThreadId = tid;
+	              offset = 0;
+	              resetChatRenderState();
               setAttachCount(0);
               setTyping(false);
               turnOpen = false;
@@ -1902,15 +1918,14 @@
 				            setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
 				            setContext(d2.token);
 				            setTyping(Boolean(turnOpen || nowBusy2));
-	              } catch {}
-	              return;
-            }
-	            const nowBusy = Boolean(data.busy);
-
-	            offset = data.offset;
-            const evs = Array.isArray(data.events) ? data.events : [];
-            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
-              startInitialRender(evs);
+		              } catch {}
+		              return;
+	            }
+	
+		            offset = data.offset;
+	            const evs = Array.isArray(data.events) ? data.events : [];
+	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
+	              startInitialRender(evs);
             } else {
               for (const ev of evs) appendEvent(ev);
             }

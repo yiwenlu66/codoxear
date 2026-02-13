@@ -16,11 +16,11 @@ Not affiliated with OpenAI. "Codex" is referenced only for compatibility with th
 
 Supported:
 
-- Linux (uses `/proc`, PTYs, and `strace` integration)
+- Linux (uses `/proc`, PTYs)
 
 Not supported:
 
-- macOS (no `/proc`, `strace` is Linux-specific)
+- macOS (no `/proc`)
 - Windows (no POSIX PTY/termios model; use WSL2 if you want a Linux environment)
 
 ## Quick start
@@ -88,19 +88,9 @@ Codoxear cannot drive Codex confirmation prompts in `default` mode or `plan` mod
 
 For full remote interaction, run Codex in YOLO mode so confirmations do not block on interactive terminal prompts.
 
-### No elevated operations inside brokered Codex
+### /new may show as pending until first prompt
 
-Codex instances started via `codoxear-broker` cannot reliably run elevated operations (for example `sudo`, `pkexec`, or other setuid/file-capability programs).
-
-Reason: the broker runs Codex under `strace -f` (ptrace) to detect which `rollout-*.jsonl` file is active (the rollout log can be opened by child processes, not just the top-level launcher).
-
-Workaround: run privileged commands outside the ptrace-traced Codex process tree. If you want a persistent systemd-based shell for this, use [PiloTY](https://github.com/yiwenlu66/PiloTY) and run your long-lived shell sessions as transient user units:
-
-- `XDG_RUNTIME_DIR="/run/user/$(id -u)" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus" systemd-run --user --pty bash --noprofile --norc`
-
-Run `sudo ...` inside that shell.
-
-If you use Harness mode, prefer running long-lived commands inside [PiloTY](https://github.com/yiwenlu66/PiloTY) so the process keeps running even if the agent decides to end a turn; use the Codex session to inspect/monitor that background work.
+Codex does not always materialize (open) the new `rollout-*.jsonl` file immediately after `/new`. Codoxear tracks the active rollout by scanning `/proc` for writable rollout file descriptors, so the UI may show the session as pending until the first prompt is sent and the rollout file is created/opened.
 
 ## Security model
 
@@ -123,6 +113,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
 - `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
+- `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 
 Runtime state is stored under `~/.local/share/codoxear` (or legacy `~/.local/share/codex-web`).
 

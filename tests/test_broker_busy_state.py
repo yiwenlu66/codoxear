@@ -6,6 +6,7 @@ from codoxear.broker import (
     BUSY_QUIET_SECONDS,
     State,
     _apply_rollout_obj_to_state,
+    _maybe_detach_on_new_session_hint,
     _should_clear_busy_state,
     _update_busy_from_pty_text,
 )
@@ -23,6 +24,31 @@ def _state() -> State:
 
 
 class TestBrokerBusyState(unittest.TestCase):
+    def test_new_session_hint_detaches_rollout(self) -> None:
+        st = _state()
+        st.log_path = Path("/tmp/sessions/rollout-old.jsonl")
+        st.session_id = "old"
+        ok = _maybe_detach_on_new_session_hint(
+            st=st,
+            tail="",
+            cleaned="To continue this session, run codex resume ...\n",
+        )
+        self.assertTrue(ok)
+        self.assertIsNone(st.log_path)
+        self.assertIsNone(st.session_id)
+        self.assertTrue(len(st.ignored_rollout_paths) >= 1)
+
+    def test_new_session_hint_matches_across_chunk_boundary(self) -> None:
+        st = _state()
+        st.log_path = Path("/tmp/sessions/rollout-old.jsonl")
+        st.session_id = "old"
+        ok = _maybe_detach_on_new_session_hint(
+            st=st,
+            tail="To continue this session, r",
+            cleaned="un codex resume ...\n",
+        )
+        self.assertTrue(ok)
+
     def test_user_message_starts_turn_and_resets_pending_calls(self) -> None:
         st = _state()
         st.pending_calls.add("old")

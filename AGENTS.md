@@ -18,9 +18,9 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
 - Foreground PTY wrapper intended to be run from a real terminal.
 - Starts Codex CLI, preserves terminal UX, and creates a Unix socket control channel under `~/.local/share/codoxear/socks/`.
 - Writes a `*.json` sidecar with: session_id, pid(s), cwd, log_path, sock_path, owner tag.
-- Detects the active rollout log and keeps `log_path` updated. It uses `/proc` and optionally `strace` to follow `rollout-*.jsonl` changes.
+- Detects the active rollout log and keeps `log_path` updated by scanning `/proc` for writable `rollout-*.jsonl` file descriptors in the Codex process tree.
 - Ignores sub-agent rollout logs (`session_meta.payload.source.subagent`) so the UI stays bound to the main session.
-- Linux-only (relies on `/proc`, `pty`, `termios`, and `strace` integration).
+- Linux-only (relies on `/proc`, `pty`, `termios`).
 
 ### `codoxear.sessiond`
 
@@ -49,4 +49,3 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
   - Install: `python3 -m pip install -e .`
   - Run server: `codoxear-server` or `python3 -m codoxear.server`
   - Broker: `codoxear-broker -- <codex args>`
-  - If `strace`/ptrace is blocked in your environment: the broker exits early (no fallback).
