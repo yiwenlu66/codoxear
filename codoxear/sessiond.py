@@ -35,7 +35,11 @@ ROOT_REPO_DIR = APP_DIR / "root-repo"
 PENDING_DIR = APP_DIR / "pending"
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
+_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
+if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
+    DEFAULT_CODEX_HOME = Path.home() / ".codex"
+else:
+    DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
 DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
 ENTER_SEQ = os.environ.get("CODEX_WEB_ENTER_SEQ", "\r")
@@ -119,18 +123,18 @@ class Sessiond:
                     try:
                         os.write(fd, b"\x1b[1;1R")
                     except Exception:
-                        pass
+                        traceback.print_exc()
                 # xterm "report terminal size" queries (some TUIs use these).
                 if b"\x1b[18t" in b:
                     try:
                         os.write(fd, f"\x1b[8;{self.rows};{self.cols}t".encode("ascii"))
                     except Exception:
-                        pass
+                        traceback.print_exc()
                 if b"\x1b[14t" in b:
                     try:
                         os.write(fd, b"\x1b[4;0;0t")
                     except Exception:
-                        pass
+                        traceback.print_exc()
                 s = b.decode("utf-8", errors="replace")
                 with self._lock:
                     st2 = self.state
@@ -145,24 +149,21 @@ class Sessiond:
             st = self.state
         if not st:
             return
-        try:
-            meta = {
-                "session_id": st.session_id,
-                "owner": OWNER_TAG if OWNER_TAG else None,
-                "broker_pid": os.getpid(),
-                "sessiond_pid": os.getpid(),
-                "codex_pid": st.codex_pid,
-                "cwd": self.cwd,
-                "start_ts": float(st.start_ts),
-                "log_path": str(st.log_path),
-                "sock_path": str(st.sock_path),
-            }
-            SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
-            meta_path = st.sock_path.with_suffix(".json")
-            meta_path.write_text(json.dumps(meta), encoding="utf-8")
-            os.chmod(meta_path, 0o600)
-        except Exception:
-            pass
+        meta = {
+            "session_id": st.session_id,
+            "owner": OWNER_TAG if OWNER_TAG else None,
+            "broker_pid": os.getpid(),
+            "sessiond_pid": os.getpid(),
+            "codex_pid": st.codex_pid,
+            "cwd": self.cwd,
+            "start_ts": float(st.start_ts),
+            "log_path": str(st.log_path),
+            "sock_path": str(st.sock_path),
+        }
+        SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
+        meta_path = st.sock_path.with_suffix(".json")
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        os.chmod(meta_path, 0o600)
 
     def _log_watcher(self) -> None:
         st = self.state
@@ -179,7 +180,9 @@ class Sessiond:
             saw_turn_end = False
             for obj in objs:
                 if obj.get("type") == "event_msg":
-                    p = obj.get("payload") or {}
+                    p = obj.get("payload")
+                    if not isinstance(p, dict):
+                        raise ValueError("invalid rollout event_msg payload")
                     if p.get("type") == "user_message":
                         saw_user = True
                     if p.get("type") == "token_count":
@@ -240,7 +243,7 @@ class Sessiond:
         try:
             s.close()
         except Exception:
-            pass
+            traceback.print_exc()
 
     def _handle_conn(self, conn: socket.socket) -> None:
         try:
@@ -320,10 +323,11 @@ class Sessiond:
                     try:
                         os.killpg(st.codex_pid, signal.SIGTERM)
                     except Exception:
+                        traceback.print_exc()
                         try:
                             os.kill(st.codex_pid, signal.SIGTERM)
                         except Exception:
-                            pass
+                            traceback.print_exc()
                 f.write(b'{"ok":true}\n')
                 f.flush()
                 return
@@ -334,12 +338,12 @@ class Sessiond:
             try:
                 conn.sendall((json.dumps({"error": "exception", "trace": traceback.format_exc()}) + "\n").encode("utf-8"))
             except Exception:
-                pass
+                traceback.print_exc()
         finally:
             try:
                 conn.close()
             except Exception:
-                pass
+                traceback.print_exc()
 
     def _ensure_root_repo(self) -> None:
         if (ROOT_REPO_DIR / ".git").exists():
@@ -377,7 +381,7 @@ class Sessiond:
                     if prev_lp.exists() and str(prev_lp).startswith(str(PENDING_DIR.resolve())):
                         prev_lp.unlink()
                 except Exception:
-                    pass
+                    traceback.print_exc()
                 self._write_meta()
                 return
             try:
@@ -391,7 +395,7 @@ class Sessiond:
             except ChildProcessError:
                 return
             except Exception:
-                pass
+                traceback.print_exc()
 
     def _start(self) -> State:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -426,7 +430,7 @@ class Sessiond:
         try:
             _set_winsize(master_fd, self.rows, self.cols)
         except Exception:
-            pass
+            traceback.print_exc()
 
         PENDING_DIR.mkdir(parents=True, exist_ok=True)
         pending_log = (PENDING_DIR / f"{os.getpid()}.jsonl").resolve()
@@ -434,7 +438,7 @@ class Sessiond:
             pending_log.touch(exist_ok=True)
             os.chmod(pending_log, 0o600)
         except Exception:
-            pass
+            traceback.print_exc()
 
         sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         st = State(
@@ -485,20 +489,20 @@ class Sessiond:
                 try:
                     os.close(st2.pty_master_fd)
                 except Exception:
-                    pass
+                    traceback.print_exc()
                 try:
                     st2.sock_path.unlink()
                 except Exception:
-                    pass
+                    traceback.print_exc()
                 try:
                     st2.sock_path.with_suffix(".json").unlink()
                 except Exception:
-                    pass
+                    traceback.print_exc()
                 try:
                     if st2.log_path.exists() and str(st2.log_path).startswith(str(PENDING_DIR.resolve())):
                         st2.log_path.unlink()
                 except Exception:
-                    pass
+                    traceback.print_exc()
 
 
 def main() -> None:

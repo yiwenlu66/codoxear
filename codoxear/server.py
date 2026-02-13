@@ -38,10 +38,7 @@ from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
-    try:
-        data = path.read_text("utf-8")
-    except Exception:
-        return {}
+    data = path.read_text("utf-8")
 
     out: dict[str, str] = {}
     for raw in data.splitlines():
@@ -81,7 +78,11 @@ COOKIE_NAME = "codoxear_auth"
 COOKIE_TTL_SECONDS = int(os.environ.get("CODEX_WEB_COOKIE_TTL_SECONDS", str(30 * 24 * 3600)))
 COOKIE_SECURE = os.environ.get("CODEX_WEB_COOKIE_SECURE", "0") == "1"
 
-CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
+_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
+if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
+    CODEX_HOME = Path.home() / ".codex"
+else:
+    CODEX_HOME = Path(_CODEX_HOME_ENV)
 CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
@@ -111,10 +112,7 @@ _METRICS: dict[str, list[float]] = {}
 def _record_metric(name: str, value_ms: float) -> None:
     if not isinstance(name, str) or not name:
         return
-    try:
-        v = float(value_ms)
-    except Exception:
-        return
+    v = float(value_ms)
     if not (v >= 0):
         return
     with _METRICS_LOCK:
@@ -164,27 +162,19 @@ def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: floa
         if rc is None:
             time.sleep(0.05)
             continue
-        try:
-            _out, err = proc.communicate(timeout=0.5)
-        except Exception:
-            err = b""
-        msg = (err or b"").decode("utf-8", errors="replace").strip()
+        _out, err = proc.communicate(timeout=0.5)
+        err2 = err if isinstance(err, (bytes, bytearray)) else b""
+        msg = bytes(err2).decode("utf-8", errors="replace").strip()
         msg = msg[-4000:] if msg else ""
         raise RuntimeError(f"{label} exited early (rc={rc}): {msg}")
 
 
 def _drain_stream(f: Any) -> None:
-    try:
-        while True:
-            b = f.read(65536)
-            if not b:
-                break
-    except Exception:
-        pass
-    try:
-        f.close()
-    except Exception:
-        pass
+    while True:
+        b = f.read(65536)
+        if not b:
+            break
+    f.close()
 
 
 def _pid_alive(pid: int) -> bool:
@@ -204,8 +194,6 @@ def _unlink_quiet(path: Path) -> None:
     try:
         path.unlink()
     except FileNotFoundError:
-        return
-    except Exception:
         return
 
 
@@ -231,7 +219,9 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     for obj in reversed(objs):
         if obj.get("type") != "event_msg":
             continue
-        p = obj.get("payload") or {}
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid token_count payload")
         if p.get("type") != "token_count":
             continue
         info = p.get("info")
@@ -330,7 +320,13 @@ def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj
 
 
 def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
-    n = int(handler.headers.get("Content-Length", "0") or "0")
+    cl = handler.headers.get("Content-Length")
+    if cl is None:
+        cl = "0"
+    cl2 = str(cl).strip()
+    if not cl2:
+        cl2 = "0"
+    n = int(cl2)
     if n < 0 or n > limit:
         raise ValueError(f"invalid content-length: {n}")
     return handler.rfile.read(n)
@@ -341,12 +337,12 @@ def _sha256_hex(data: bytes) -> str:
 
 
 def _load_or_create_hmac_secret() -> bytes:
-    try:
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    if HMAC_SECRET_PATH.exists():
         b = HMAC_SECRET_PATH.read_bytes()
-        if len(b) >= 32:
-            return b[:64]
-    except FileNotFoundError:
-        pass
+        if len(b) < 32:
+            raise ValueError(f"invalid hmac secret (too short): {HMAC_SECRET_PATH}")
+        return b[:64]
     secret = os.urandom(64)
     HMAC_SECRET_PATH.write_bytes(secret)
     os.chmod(HMAC_SECRET_PATH, 0o600)
@@ -382,11 +378,14 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
         payload = json.loads(raw.decode("utf-8"))
         if not isinstance(payload, dict):
             return None
-        exp = int(payload.get("exp", 0))
+        exp_raw = payload.get("exp")
+        if exp_raw is None:
+            return None
+        exp = int(exp_raw)
         if exp <= int(_now()):
             return None
         return payload
-    except Exception:
+    except (TypeError, ValueError, json.JSONDecodeError):
         return None
 
 
@@ -421,7 +420,8 @@ def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
         "SameSite=Strict",
         f"Max-Age={COOKIE_TTL_SECONDS}",
     ]
-    forwarded_proto = (handler.headers.get("X-Forwarded-Proto") or "").lower()
+    forwarded_proto_raw = handler.headers.get("X-Forwarded-Proto")
+    forwarded_proto = str(forwarded_proto_raw).lower() if forwarded_proto_raw is not None else ""
     if COOKIE_SECURE or forwarded_proto == "https":
         attrs.append("Secure")
     handler.send_header("Set-Cookie", "; ".join(attrs))
@@ -433,7 +433,8 @@ def _require_password() -> str:
     global _PASSWORD_CACHE
     if _PASSWORD_CACHE is not None:
         return _PASSWORD_CACHE
-    pw = (os.environ.get("CODEX_WEB_PASSWORD") or "").strip()
+    pw_raw = os.environ.get("CODEX_WEB_PASSWORD")
+    pw = str(pw_raw).strip() if pw_raw is not None else ""
     if not pw:
         raise RuntimeError("CODEX_WEB_PASSWORD is required (set it in .env)")
     _PASSWORD_CACHE = pw
@@ -499,37 +500,33 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 *
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
-    try:
-        t = ts.strip()
-        if t.endswith("Z"):
-            t = t[:-1] + "+00:00"
-        return datetime.datetime.fromisoformat(t).timestamp()
-    except Exception:
-        return None
+    t = ts.strip()
+    if t.endswith("Z"):
+        t = t[:-1] + "+00:00"
+    return datetime.datetime.fromisoformat(t).timestamp()
 
 
 def _discover_log_for_session_id(session_id: str) -> Path | None:
     return _find_session_log_for_session_id(session_id)
 
 def _session_id_from_rollout_path(log_path: Path) -> str | None:
-    try:
-        name = log_path.name
-    except Exception:
-        name = str(log_path)
+    name = log_path.name
     m = _SESSION_ID_RE.findall(name)
     return m[-1] if m else None
 
 
 def _read_session_meta(log_path: Path) -> dict[str, Any]:
-    try:
-        with log_path.open("r", encoding="utf-8") as f:
-            first = f.readline().strip()
-        obj = json.loads(first) if first else {}
-        if obj.get("type") == "session_meta":
-            return obj.get("payload") or {}
-    except Exception:
-        pass
-    return {}
+    with log_path.open("r", encoding="utf-8") as f:
+        first = f.readline().strip()
+    if not first:
+        raise ValueError(f"missing session_meta in {log_path}")
+    obj = json.loads(first)
+    if not isinstance(obj, dict) or obj.get("type") != "session_meta":
+        raise ValueError(f"invalid session_meta record in {log_path}")
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid session_meta payload in {log_path}")
+    return payload
 
 
 def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
@@ -583,7 +580,9 @@ def _extract_chat_events(
     for obj in objs:
         typ = obj.get("type")
         if typ == "event_msg":
-            p = obj.get("payload") or {}
+            p = obj.get("payload")
+            if not isinstance(p, dict):
+                raise ValueError("invalid event_msg payload")
             pt = p.get("type")
             if pt == "user_message":
                 msg = p.get("message")
@@ -606,7 +605,9 @@ def _extract_chat_events(
                 continue
 
         if typ == "response_item":
-            p = obj.get("payload") or {}
+            p = obj.get("payload")
+            if not isinstance(p, dict):
+                raise ValueError("invalid response_item payload")
             pt = p.get("type")
             if pt == "message":
                 role = p.get("role")
@@ -615,7 +616,9 @@ def _extract_chat_events(
                     continue
                 if role == "assistant":
                     # Extract output_text parts.
-                    content = p.get("content") or []
+                    content = p.get("content")
+                    if not isinstance(content, list):
+                        raise ValueError("invalid assistant message content")
                     out_text_parts: list[str] = []
                     for part in content:
                         if not isinstance(part, dict):
@@ -665,17 +668,12 @@ def _extract_chat_events(
 
 
 def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
-    try:
-        with path.open("rb") as f:
-            f.seek(0, os.SEEK_END)
-            size = f.tell()
-            start = max(0, size - max_bytes)
-            f.seek(start)
-            data = f.read()
-    except FileNotFoundError:
-        return []
-    except Exception:
-        return []
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        start = max(0, size - max_bytes)
+        f.seek(start)
+        data = f.read()
 
     if not data:
         return []
@@ -690,7 +688,7 @@ def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
             obj = json.loads(line)
             if isinstance(obj, dict):
                 out.append(obj)
-        except Exception:
+        except json.JSONDecodeError:
             continue
     return out
 
@@ -716,10 +714,7 @@ def _read_chat_tail_snapshot(
     initial_scan_bytes: int,
     max_scan_bytes: int,
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None, int, bool, int]:
-    try:
-        size = int(log_path.stat().st_size)
-    except Exception:
-        size = 0
+    size = int(log_path.stat().st_size)
     scan = min(max(256 * 1024, int(initial_scan_bytes)), int(max_scan_bytes))
     if scan <= 0:
         return [], None, 0, True, size
@@ -759,10 +754,14 @@ def _event_ts(obj: dict[str, Any]) -> float | None:
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
-    p = obj.get("payload") or {}
+    p = obj.get("payload")
+    if not isinstance(p, dict):
+        raise ValueError("invalid response_item payload")
     if p.get("type") != "message" or p.get("role") != "assistant":
         return False
-    content = p.get("content") or []
+    content = p.get("content")
+    if not isinstance(content, list):
+        raise ValueError("invalid assistant message content")
     for part in content:
         if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
             return True
@@ -782,7 +781,9 @@ def _analyze_log_chunk(
     for obj in objs:
         typ = obj.get("type")
         if typ == "event_msg":
-            p = obj.get("payload") or {}
+            p = obj.get("payload")
+            if not isinstance(p, dict):
+                raise ValueError("invalid event_msg payload")
             pt = p.get("type")
             if pt == "agent_reasoning":
                 d_th += 1
@@ -797,7 +798,9 @@ def _analyze_log_chunk(
                 if isinstance(msg, str) and msg.strip():
                     last_chat_ts = _event_ts(obj)
         if typ == "response_item":
-            p = obj.get("payload") or {}
+            p = obj.get("payload")
+            if not isinstance(p, dict):
+                raise ValueError("invalid response_item payload")
             pt = p.get("type")
             if pt == "reasoning":
                 d_th += 1
@@ -837,10 +840,14 @@ def _last_conversation_ts_from_tail(
         return None
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload") or {}
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid response_item payload")
         if p.get("type") != "message" or p.get("role") != "assistant":
             return False
-        content = p.get("content") or []
+        content = p.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
         for part in content:
             if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
                 return True
@@ -854,7 +861,9 @@ def _last_conversation_ts_from_tail(
         for i, obj in enumerate(objs):
             typ = obj.get("type")
             if typ == "event_msg":
-                p = obj.get("payload") or {}
+                p = obj.get("payload")
+                if not isinstance(p, dict):
+                    raise ValueError("invalid event_msg payload")
                 pt = p.get("type")
                 if pt == "user_message" and isinstance(p.get("message"), str):
                     last_idx = i
@@ -887,10 +896,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
       3) latest terminal event is turn_aborted/thread_rolled_back.
     - otherwise busy.
     """
-    try:
-        sz = int(path.stat().st_size)
-    except Exception:
-        sz = 0
+    sz = int(path.stat().st_size)
 
     scan = min(256 * 1024, max_scan_bytes)
     if scan <= 0:
@@ -902,10 +908,14 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     last_terminal_event: str | None = None
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload") or {}
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid response_item payload")
         if p.get("type") != "message" or p.get("role") != "assistant":
             return False
-        content = p.get("content") or []
+        content = p.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
         for part in content:
             if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
                 return True
@@ -920,7 +930,9 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         for obj in objs:
             typ = obj.get("type")
             if typ == "event_msg":
-                p = obj.get("payload") or {}
+                p = obj.get("payload")
+                if not isinstance(p, dict):
+                    raise ValueError("invalid event_msg payload")
                 pt = p.get("type")
                 if pt == "user_message":
                     msg = p.get("message")
@@ -946,7 +958,9 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     turn_has_completion_candidate = False
                     continue
             if typ == "response_item":
-                p = obj.get("payload") or {}
+                p = obj.get("payload")
+                if not isinstance(p, dict):
+                    raise ValueError("invalid response_item payload")
                 pt = p.get("type")
                 if has_assistant_text(obj):
                     if turn_open:
@@ -1004,10 +1018,14 @@ def _last_chat_role_ts_from_tail(
         return None
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload") or {}
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid response_item payload")
         if p.get("type") != "message" or p.get("role") != "assistant":
             return False
-        content = p.get("content") or []
+        content = p.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
         for part in content:
             if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
                 return True
@@ -1021,7 +1039,9 @@ def _last_chat_role_ts_from_tail(
         for i, obj in enumerate(objs):
             typ = obj.get("type")
             if typ == "event_msg":
-                p = obj.get("payload") or {}
+                p = obj.get("payload")
+                if not isinstance(p, dict):
+                    raise ValueError("invalid event_msg payload")
                 pt = p.get("type")
                 if pt == "user_message" and isinstance(p.get("message"), str):
                     last_user = (i, event_ts(obj))
@@ -1121,14 +1141,11 @@ class SessionManager:
     def _load_harness(self) -> None:
         try:
             raw = HARNESS_PATH.read_text(encoding="utf-8")
-        except Exception:
+        except FileNotFoundError:
             return
-        try:
-            obj = json.loads(raw)
-        except Exception:
-            return
+        obj = json.loads(raw)
         if not isinstance(obj, dict):
-            return
+            raise ValueError("invalid harness.json (expected object)")
         cleaned: dict[str, dict[str, Any]] = {}
         for sid, v in obj.items():
             if not isinstance(sid, str) or not sid:
@@ -1138,7 +1155,7 @@ class SessionManager:
             enabled = bool(v.get("enabled")) if "enabled" in v else False
             text = v.get("text")
             if not isinstance(text, str):
-                text = ""
+                raise ValueError(f"invalid harness text for session {sid!r}")
             cleaned[sid] = {"enabled": enabled, "text": text}
         with self._lock:
             self._harness = cleaned
@@ -1146,20 +1163,18 @@ class SessionManager:
     def _save_harness(self) -> None:
         with self._lock:
             obj = dict(self._harness)
-        try:
-            os.makedirs(APP_DIR, exist_ok=True)
-            tmp = HARNESS_PATH.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-            os.replace(tmp, HARNESS_PATH)
-        except Exception:
-            return
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = HARNESS_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, HARNESS_PATH)
 
     def harness_get(self, session_id: str) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            cfg = dict(self._harness.get(session_id) or {})
+            cfg0 = self._harness.get(session_id)
+            cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
         enabled = bool(cfg.get("enabled"))
         text = cfg.get("text")
         if not isinstance(text, str):
@@ -1173,7 +1188,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            cur = dict(self._harness.get(session_id) or {})
+            cur0 = self._harness.get(session_id)
+            cur = dict(cur0) if isinstance(cur0, dict) else {}
             if enabled is not None:
                 cur["enabled"] = bool(enabled)
             if text is not None:
@@ -1189,10 +1205,7 @@ class SessionManager:
     def _harness_loop(self) -> None:
         # Persist across browser disconnects: server is the scheduler.
         while not self._stop.is_set():
-            try:
-                self._harness_sweep()
-            except Exception:
-                pass
+            self._harness_sweep()
             self._stop.wait(HARNESS_SWEEP_SECONDS)
 
     def _harness_sweep(self) -> None:
@@ -1201,7 +1214,12 @@ class SessionManager:
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         with self._lock:
-            items = [(sid, s, dict(self._harness.get(sid) or {}), float(self._harness_last_injected.get(sid, 0.0))) for sid, s in self._sessions.items()]
+            items: list[tuple[str, Session, dict[str, Any], float]] = []
+            for sid, s in self._sessions.items():
+                cfg0 = self._harness.get(sid)
+                cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
+                last_inj = float(self._harness_last_injected.get(sid, 0.0))
+                items.append((sid, s, cfg, last_inj))
 
         for sid, s, cfg, last_inj in items:
             if not bool(cfg.get("enabled")):
@@ -1217,13 +1235,13 @@ class SessionManager:
                 scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
             if (last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS)) or (scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS)):
                 continue
-            try:
-                st = self.get_state(sid)
-                busy = bool(st.get("busy"))
-                ql = int(st.get("queue_len", 0))
-            except Exception:
-                # Fail-busy: do not inject when state cannot be queried.
-                continue
+            st = self.get_state(sid)
+            if not isinstance(st, dict):
+                raise ValueError("invalid broker state response")
+            if "busy" not in st or "queue_len" not in st:
+                raise ValueError("invalid broker state response")
+            busy = bool(st.get("busy"))
+            ql = int(st.get("queue_len"))
             if busy or ql > 0:
                 continue
             last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
@@ -1234,14 +1252,11 @@ class SessionManager:
                 continue
             if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
                 continue
-            try:
-                with self._lock:
-                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
-                if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
-                    continue
-                self.send(sid, text)
-            except Exception:
+            with self._lock:
+                scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+            if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
                 continue
+            self.send(sid, text)
             with self._lock:
                 self._harness_last_injected[sid] = now
                 self._harness_last_injected_scope[scope_key] = now
@@ -1258,26 +1273,33 @@ class SessionManager:
             session_id = sock.stem
             # Prefer metadata file written by sessiond.
             meta_path = sock.with_suffix(".json")
-            meta: dict[str, Any] = {}
-            if meta_path.exists():
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                except Exception:
-                    meta = {}
+            if not meta_path.exists():
+                raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if not isinstance(meta, dict):
+                raise ValueError(f"invalid metadata json for socket {sock}")
 
             thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
-            codex_pid = int(meta.get("codex_pid") or 0)
-            broker_pid = int(meta.get("broker_pid") or meta.get("sessiond_pid") or 0)
+            codex_pid_raw = meta.get("codex_pid")
+            broker_pid_raw = meta.get("broker_pid")
+            if not isinstance(codex_pid_raw, int):
+                raise ValueError(f"invalid codex_pid in metadata for socket {sock}")
+            if not isinstance(broker_pid_raw, int):
+                raise ValueError(f"invalid broker_pid in metadata for socket {sock}")
+            codex_pid = int(codex_pid_raw)
+            broker_pid = int(broker_pid_raw)
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
 
             log_path: Path | None = None
-            meta_has_log_path = ("log_path" in meta)
-            if isinstance(meta.get("log_path"), str) and meta["log_path"]:
-                log_path = Path(meta["log_path"])
-            if (not meta_has_log_path) and ((log_path is None) or (not log_path.exists())):
-                lp3 = _discover_log_for_session_id(thread_id)
-                if lp3 is not None and lp3.exists():
-                    log_path = lp3
+            if "log_path" not in meta:
+                raise ValueError(f"missing log_path in metadata for socket {sock}")
+            if meta.get("log_path") is None:
+                log_path = None
+            else:
+                log_path_raw = meta.get("log_path")
+                if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
+                    raise ValueError(f"invalid log_path in metadata for socket {sock}")
+                log_path = Path(log_path_raw)
             if log_path is not None and log_path.exists():
                 thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
             else:
@@ -1288,46 +1310,21 @@ class SessionManager:
                 _unlink_quiet(meta_path)
                 continue
 
-            cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else ""
-            if (not cwd) and (log_path is not None):
-                sm = _read_session_meta(log_path)
-                cwd = sm.get("cwd") if isinstance(sm.get("cwd"), str) else ""
-            if not cwd:
-                cwd = "?"
+            cwd_raw = meta.get("cwd")
+            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+                raise ValueError(f"invalid cwd in metadata for socket {sock}")
+            cwd = cwd_raw
 
-            start_ts = None
-            if isinstance(meta.get("start_ts"), (int, float)):
-                start_ts = float(meta["start_ts"])
-            if start_ts is None and (log_path is not None):
-                sm = _read_session_meta(log_path)
-                if isinstance(sm.get("timestamp"), str):
-                    start_ts = _parse_iso8601_to_epoch(sm["timestamp"])
-            if start_ts is None and (log_path is not None):
-                try:
-                    start_ts = log_path.stat().st_mtime
-                except Exception:
-                    start_ts = None
-            if start_ts is None:
-                start_ts = _now()
+            start_ts_raw = meta.get("start_ts")
+            if not isinstance(start_ts_raw, (int, float)):
+                raise ValueError(f"invalid start_ts in metadata for socket {sock}")
+            start_ts = float(start_ts_raw)
 
-            try:
-                # Validate socket is responsive.
-                resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=0.5)
-            except Exception as e:
-                if _sock_error_definitely_stale(e):
-                    _unlink_quiet(sock)
-                    _unlink_quiet(meta_path)
-                    continue
-                if not _pid_alive(codex_pid) and not _pid_alive(broker_pid):
-                    _unlink_quiet(sock)
-                    _unlink_quiet(meta_path)
-                resp = {}
+            # Validate socket is responsive.
+            resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=0.5)
 
             if log_path is not None:
-                try:
-                    meta_log_off = int(log_path.stat().st_size)
-                except Exception:
-                    meta_log_off = 0
+                meta_log_off = int(log_path.stat().st_size)
             else:
                 meta_log_off = 0
 
@@ -1341,9 +1338,9 @@ class SessionManager:
                 cwd=str(cwd),
                 log_path=log_path,
                 sock_path=sock,
-                busy=bool(resp.get("busy")) if isinstance(resp, dict) and "busy" in resp else False,
-                queue_len=int(resp.get("queue_len")) if isinstance(resp, dict) and "queue_len" in resp else 0,
-                token=resp.get("token") if isinstance(resp, dict) and ("token" in resp) and isinstance(resp.get("token"), (dict, type(None))) else None,
+                busy=bool(resp.get("busy")),
+                queue_len=int(resp.get("queue_len")),
+                token=(resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None),
                 meta_thinking=0,
                 meta_tools=0,
                 meta_system=0,
@@ -1378,9 +1375,11 @@ class SessionManager:
             return False, e
         with self._lock:
             s2 = self._sessions.get(session_id)
-            if s2 and "busy" in resp:
+            if s2:
+                if "busy" not in resp or "queue_len" not in resp:
+                    raise ValueError("invalid broker state response")
                 s2.busy = bool(resp.get("busy"))
-                s2.queue_len = int(resp.get("queue_len", s2.queue_len))
+                s2.queue_len = int(resp.get("queue_len"))
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -1420,11 +1419,7 @@ class SessionManager:
             lp = s.log_path
             if lp is None or (not lp.exists()):
                 continue
-
-            try:
-                sz = int(lp.stat().st_size)
-            except Exception:
-                sz = s.meta_log_off
+            sz = int(lp.stat().st_size)
             off = int(s.meta_log_off)
             if sz < off:
                 off = 0
@@ -1476,12 +1471,10 @@ class SessionManager:
         with self._lock:
             out = []
             for s in self._sessions.values():
-                h_enabled = bool((self._harness.get(s.session_id) or {}).get("enabled"))
+                cfg0 = self._harness.get(s.session_id)
+                h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
                 if s.last_chat_ts is None and s.log_path is not None and s.log_path.exists():
-                    try:
-                        s.last_chat_ts = float(s.log_path.stat().st_mtime)
-                    except Exception:
-                        s.last_chat_ts = None
+                    s.last_chat_ts = float(s.log_path.stat().st_mtime)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 out.append(
                     {
@@ -1518,32 +1511,31 @@ class SessionManager:
                 return
             sock = s.sock_path
         meta_path = sock.with_suffix(".json")
-        meta: dict[str, Any] = {}
-        if meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except Exception:
-                meta = {}
+        if not meta_path.exists():
+            raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            raise ValueError(f"invalid metadata json for socket {sock}")
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
-        meta_has_log_path = ("log_path" in meta)
-        log_path: Path | None = None
-        if isinstance(meta.get("log_path"), str) and meta["log_path"]:
-            log_path = Path(meta["log_path"])
-        if meta_has_log_path and ((log_path is None) or (not log_path.exists())):
+        if "log_path" not in meta:
+            raise ValueError(f"missing log_path in metadata for socket {sock}")
+        log_path: Path | None
+        if meta.get("log_path") is None:
             log_path = None
-        if (not meta_has_log_path) and ((log_path is None) or (not log_path.exists())):
-            log_path = _discover_log_for_session_id(thread_id)
+        else:
+            log_path_raw = meta.get("log_path")
+            if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
+                raise ValueError(f"invalid log_path in metadata for socket {sock}")
+            log_path = Path(log_path_raw)
         if log_path is not None and log_path.exists():
             thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
-        cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else s.cwd
-        if (not cwd) and (log_path is not None):
-            sm = _read_session_meta(log_path)
-            cwd = sm.get("cwd") if isinstance(sm.get("cwd"), str) else ""
-        if not cwd:
-            cwd = "?"
+        cwd_raw = meta.get("cwd")
+        if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+            raise ValueError(f"invalid cwd in metadata for socket {sock}")
+        cwd = cwd_raw
 
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -1555,10 +1547,7 @@ class SessionManager:
             if s2.log_path != log_path:
                 s2.log_path = log_path
                 if log_path is not None:
-                    try:
-                        log_off = int(log_path.stat().st_size)
-                    except Exception:
-                        log_off = 0
+                    log_off = int(log_path.stat().st_size)
                 else:
                     log_off = 0
                 self._reset_log_caches(s2, meta_log_off=log_off)
@@ -1621,10 +1610,7 @@ class SessionManager:
         if lp is None or (not lp.exists()):
             return [], 0, False, 0, None
 
-        try:
-            sz = int(lp.stat().st_size)
-        except Exception:
-            sz = idx_off
+        sz = int(lp.stat().st_size)
 
         if sz < idx_off:
             idx_off = 0
@@ -1670,10 +1656,7 @@ class SessionManager:
         if lp3 is None or (not lp3.exists()):
             return [], off3, False, 0, None
 
-        try:
-            sz2 = int(lp3.stat().st_size)
-        except Exception:
-            sz2 = off3
+        sz2 = int(lp3.stat().st_size)
 
         if sz2 > off3:
             delta = sz2 - off3
@@ -1736,22 +1719,19 @@ class SessionManager:
             if s:
                 s.idle_cache_log_off = -1
 
-    def busy_from_log_fallback(self, session_id: str) -> bool:
+    def idle_from_log(self, session_id: str) -> bool:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
-                return True
+                raise KeyError("unknown session")
             lp = s.log_path
             cached_off = int(s.idle_cache_log_off)
             cached_idle = s.idle_cache_value
         if lp is None or (not lp.exists()):
-            return True
-        try:
-            sz = int(lp.stat().st_size)
-        except Exception:
-            sz = -1
+            raise FileNotFoundError(f"missing rollout log for session {session_id}")
+        sz = int(lp.stat().st_size)
         if (sz >= 0) and (cached_off == sz) and isinstance(cached_idle, bool):
-            return not bool(cached_idle)
+            return bool(cached_idle)
         idle = _compute_idle_from_log(lp)
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -1759,10 +1739,8 @@ class SessionManager:
                 s2.idle_cache_log_off = sz
                 s2.idle_cache_value = idle
         if idle is None:
-            with self._lock:
-                s3 = self._sessions.get(session_id)
-                return bool(s3.busy) if s3 else True
-        return not bool(idle)
+            raise RuntimeError("unable to compute idle state from log")
+        return bool(idle)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float = 2.0) -> dict[str, Any]:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -1781,24 +1759,14 @@ class SessionManager:
                 return {"error": "empty response"}
             return json.loads(line.decode("utf-8"))
         finally:
-            try:
-                s.close()
-            except Exception:
-                pass
+            s.close()
 
     def kill_session(self, session_id: str) -> bool:
         with self._lock:
             s = self._sessions.get(session_id)
         if not s:
             return False
-        try:
-            self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
-        except Exception:
-            try:
-                if s.broker_pid:
-                    os.kill(s.broker_pid, signal.SIGTERM)
-            except Exception:
-                pass
+        self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
         return True
 
     def spawn_web_session(self, *, cwd: str, args: list[str] | None = None) -> dict[str, Any]:
@@ -1863,8 +1831,9 @@ class SessionManager:
             if s2:
                 if "busy" in resp:
                     s2.busy = bool(resp.get("busy"))
-                if "queue_len" in resp:
-                    s2.queue_len = int(resp.get("queue_len", s2.queue_len))
+                if "queue_len" not in resp:
+                    raise ValueError("invalid broker send response")
+                s2.queue_len = int(resp.get("queue_len"))
         return resp
 
     def get_state(self, session_id: str) -> dict[str, Any]:
@@ -1885,9 +1854,11 @@ class SessionManager:
             raise
         with self._lock:
             s2 = self._sessions.get(session_id)
-            if s2 and "busy" in resp:
+            if s2:
+                if "busy" not in resp or "queue_len" not in resp:
+                    raise ValueError("invalid broker state response")
                 s2.busy = bool(resp.get("busy"))
-                s2.queue_len = int(resp.get("queue_len", s2.queue_len))
+                s2.queue_len = int(resp.get("queue_len"))
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -1910,7 +1881,12 @@ class SessionManager:
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
             raise
-        return str(resp.get("tail") or "")
+        if "tail" not in resp:
+            raise ValueError("invalid broker tail response")
+        tail = resp.get("tail")
+        if not isinstance(tail, str):
+            raise ValueError("invalid broker tail response")
+        return tail
 
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         with self._lock:
@@ -2038,29 +2014,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
-                try:
-                    offset = int((qs.get("offset") or ["0"])[0])
-                except Exception:
+                offset_q = qs.get("offset")
+                if offset_q is None:
                     offset = 0
+                else:
+                    if not offset_q:
+                        raise ValueError("invalid offset")
+                    offset = int(offset_q[0])
                 if offset < 0:
                     offset = 0
-                init = (qs.get("init") or ["0"])[0] == "1"
-                try:
-                    before = int((qs.get("before") or ["0"])[0])
-                except Exception:
+                init_q = qs.get("init")
+                init = bool(init_q and init_q[0] == "1")
+                before_q = qs.get("before")
+                if before_q is None:
                     before = 0
+                else:
+                    if not before_q:
+                        raise ValueError("invalid before")
+                    before = int(before_q[0])
                 before = max(0, before)
                 if s.log_path is None or (not s.log_path.exists()):
-                    try:
-                        state = MANAGER.get_state(session_id)
-                    except Exception:
-                        state = None
-                    state_busy = bool(state.get("busy")) if isinstance(state, dict) and ("busy" in state) else None
-                    state_queue = int(state.get("queue_len")) if isinstance(state, dict) and ("queue_len" in state) else None
-                    state_token = state.get("token") if isinstance(state, dict) and ("token" in state) else None
-                    busy_val = state_busy if state_busy is not None else bool(s.busy)
-                    queue_val = state_queue if state_queue is not None else int(s.queue_len)
-                    token_val = state_token if (isinstance(state_token, dict) or state_token is None) else None
+                    state = MANAGER.get_state(session_id)
+                    if not isinstance(state, dict):
+                        raise ValueError("invalid broker state response")
+                    if "busy" not in state:
+                        raise ValueError("missing busy from broker state response")
+                    if "queue_len" not in state:
+                        raise ValueError("missing queue_len from broker state response")
+                    busy_val = bool(state.get("busy"))
+                    queue_val = int(state.get("queue_len"))
+                    state_token = state.get("token")
+                    if not (isinstance(state_token, dict) or (state_token is None)):
+                        raise ValueError("invalid token from broker state response")
+                    token_val = state_token
                     _json_response(
                         self,
                         200,
@@ -2086,11 +2072,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
 
                 if init and offset == 0:
-                    limit_raw = (qs.get("limit") or ["80"])[0]
-                    try:
-                        limit = int(limit_raw)
-                    except Exception:
+                    limit_q = qs.get("limit")
+                    if limit_q is None:
                         limit = 80
+                    else:
+                        if not limit_q:
+                            raise ValueError("invalid limit")
+                        limit = int(limit_q[0])
                     limit = max(20, min(200, limit))
                     t0_index = time.perf_counter()
                     events, new_off, has_older, next_before, token_update = MANAGER._ensure_chat_index(
@@ -2110,42 +2098,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     token_update = _extract_token_update(objs)
                     MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
                 t0_state = time.perf_counter()
-                try:
-                    state = MANAGER.get_state(session_id)
-                except Exception:
-                    state = None
+                state = MANAGER.get_state(session_id)
                 dt_state_ms = (time.perf_counter() - t0_state) * 1000.0
                 s2 = MANAGER.get_session(session_id)
                 if token_update is not None and s2 is not None:
                     s2.token = token_update
-                state_busy: bool | None = None
-                state_queue: int | None = None
-                token_sentinel = object()
-                state_token: dict[str, Any] | None | object = token_sentinel
-                if isinstance(state, dict) and ("busy" in state):
-                    state_busy = bool(state.get("busy"))
-                if isinstance(state, dict) and ("queue_len" in state):
-                    try:
-                        state_queue = int(state.get("queue_len"))
-                    except Exception:
-                        state_queue = None
-                if isinstance(state, dict) and ("token" in state):
+                if not isinstance(state, dict):
+                    raise ValueError("invalid broker state response")
+                if "busy" not in state:
+                    raise ValueError("missing busy from broker state response")
+                if "queue_len" not in state:
+                    raise ValueError("missing queue_len from broker state response")
+                state_busy = bool(state.get("busy"))
+                state_queue = int(state.get("queue_len"))
+
+                t0_idle = time.perf_counter()
+                idle_val = MANAGER.idle_from_log(session_id)
+                dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
+                diag["idle_from_log_ms"] = round(dt_idle_ms, 3)
+
+                busy_val = bool(state_busy) or (not bool(idle_val))
+                queue_val = state_queue
+
+                token_val: dict[str, Any] | None = None
+                if "token" in state:
                     state_token = state.get("token")
-
-                if state_busy is not None:
-                    busy_val = bool(state_busy)
-                else:
-                    t0_idle = time.perf_counter()
-                    busy_val = MANAGER.busy_from_log_fallback(session_id)
-                    dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
-                    diag["busy_fallback_ms"] = round(dt_idle_ms, 3)
-
-                queue_val = state_queue if state_queue is not None else (s2.queue_len if s2 else 0)
-
-                if state_token is not token_sentinel and (isinstance(state_token, dict) or state_token is None):
+                    if not (isinstance(state_token, dict) or (state_token is None)):
+                        raise ValueError("invalid token from broker state response")
                     token_val = state_token
-                else:
-                    token_val = s2.token if s2 else None
+                elif isinstance(token_update, dict):
+                    token_val = token_update
                 diag["state_ms"] = round(dt_state_ms, 3)
                 diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
                 _json_response(
@@ -2205,7 +2187,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             self.send_error(404)
         except Exception as e:
-            _json_response(self, 500, {"error": str(e)})
+            traceback.print_exc()
+            _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
 
     def do_POST(self) -> None:
         try:
@@ -2214,7 +2197,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             if path == "/api/login":
                 body = _read_body(self)
-                obj = json.loads(body.decode("utf-8") or "{}")
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
                 pw = obj.get("password")
                 if not isinstance(pw, str) or not _is_same_password(pw):
                     _json_response(self, 403, {"error": "bad password"})
@@ -2245,7 +2233,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._unauthorized()
                     return
                 body = _read_body(self)
-                obj = json.loads(body.decode("utf-8") or "{}")
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
                 cwd = obj.get("cwd")
                 if not isinstance(cwd, str) or not cwd.strip():
                     _json_response(self, 400, {"error": "cwd required"})
@@ -2290,7 +2283,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
-                obj = json.loads(body.decode("utf-8") or "{}")
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
                 text = obj.get("text")
                 if not isinstance(text, str) or not text.strip():
                     _json_response(self, 400, {"error": "text required"})
@@ -2306,7 +2304,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
-                obj = json.loads(body.decode("utf-8") or "{}")
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
                 enabled_raw = obj.get("enabled", None)
                 text_raw = obj.get("text", None)
                 enabled: bool | None
@@ -2350,14 +2353,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self, limit=20 * 1024 * 1024)
-                obj = json.loads(body.decode("utf-8") or "{}")
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
                 data_b64 = obj.get("data_b64")
-                filename = obj.get("filename") or "image"
+                filename = obj.get("filename")
+                if not isinstance(filename, str) or (not filename.strip()):
+                    raise ValueError("filename required")
                 if not isinstance(data_b64, str) or not data_b64:
                     _json_response(self, 400, {"error": "data_b64 required"})
                     return
-                if not isinstance(filename, str):
-                    filename = "image"
                 try:
                     raw = base64.b64decode(data_b64.encode("ascii"), validate=True)
                 except Exception:
@@ -2379,7 +2387,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": f"invalid image: {e}"})
                     return
 
-                stem = Path(_safe_filename(filename)).stem or "image"
+                stem = Path(_safe_filename(filename)).stem
+                if not stem:
+                    raise ValueError("invalid filename")
                 safe = stem + sniffed
 
                 subdir = UPLOAD_DIR / session_id
@@ -2390,10 +2400,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "bad path"})
                     return
                 out_path.write_bytes(raw)
-                try:
-                    os.chmod(out_path, 0o600)
-                except Exception:
-                    pass
+                os.chmod(out_path, 0o600)
 
                 # Bracketed paste: inject the image path; Codex TUI attaches if it exists and is an image.
                 seq = f"\x1b[200~{str(out_path)}\x1b[201~"
@@ -2415,6 +2422,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except KeyError:
             _json_response(self, 404, {"error": "unknown session"})
         except Exception as e:
+            traceback.print_exc()
             _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
 
     def log_message(self, fmt: str, *args: Any) -> None:
@@ -2430,12 +2438,9 @@ class ThreadingHTTPServerV6(ThreadingHTTPServer):
     address_family = socket.AF_INET6
 
     def server_bind(self) -> None:
-        try:
-            v6only = getattr(socket, "IPV6_V6ONLY", None)
-            if v6only is not None:
-                self.socket.setsockopt(socket.IPPROTO_IPV6, v6only, 0)
-        except Exception:
-            pass
+        v6only = getattr(socket, "IPV6_V6ONLY", None)
+        if v6only is not None:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, v6only, 0)
         super().server_bind()
 
 
@@ -2450,20 +2455,10 @@ def main() -> None:
 
     host = DEFAULT_HOST
     server: ThreadingHTTPServer
-    try:
-        if ":" in host:
-            server = ThreadingHTTPServerV6((host, DEFAULT_PORT), Handler)
-        else:
-            server = ThreadingHTTPServer((host, DEFAULT_PORT), Handler)
-    except Exception:
-        # Fallback to dual-stack bind on all addresses when host was unset/default.
-        if host == "::":
-            try:
-                server = ThreadingHTTPServerV6(("::", DEFAULT_PORT), Handler)
-            except Exception:
-                server = ThreadingHTTPServer(("0.0.0.0", DEFAULT_PORT), Handler)
-        else:
-            raise
+    if ":" in host:
+        server = ThreadingHTTPServerV6((host, DEFAULT_PORT), Handler)
+    else:
+        server = ThreadingHTTPServer((host, DEFAULT_PORT), Handler)
 
     def _sigterm(_signo: int, _frame: Any) -> None:
         # BaseServer.shutdown() must not run in the serve_forever thread.

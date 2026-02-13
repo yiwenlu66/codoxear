@@ -937,8 +937,9 @@
         let obj;
         try {
           obj = JSON.parse(txt);
-        } catch {
-          obj = { raw: txt };
+        } catch (e) {
+          console.error("api: invalid json response", { path, method, txt });
+          throw e;
         }
         const dt = performance.now() - t0;
         if (path === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
@@ -972,7 +973,7 @@
       }
 
       function shortSessionId(sid) {
-        const s = String(sid || "");
+        const s = sid == null ? "" : String(sid);
         const m = s.match(/^([0-9a-f]{8})[0-9a-f-]{28}-(\d+)$/i);
         if (m) return `${m[1]}-${m[2]}`;
         return s.slice(0, 8);
@@ -991,7 +992,9 @@
         try {
           const url = new URL(String(u), location.origin);
           if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:") return url.href;
-        } catch {}
+        } catch (e) {
+          console.error("safeUrl: invalid url", { u, e });
+        }
         return null;
       }
 
@@ -1915,12 +1918,15 @@
 	                const turnAborted2 = Boolean(d2.turn_aborted);
 	                if (turnStart2 || nowBusy2) turnOpen = true;
 	                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
-				            setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
-				            setContext(d2.token);
-				            setTyping(Boolean(turnOpen || nowBusy2));
-		              } catch {}
-		              return;
-	            }
+                setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
+                setContext(d2.token);
+                setTyping(Boolean(turnOpen || nowBusy2));
+                } catch (e2) {
+                  console.error("poll init reload failed", e2);
+                  throw e2;
+                }
+                return;
+             }
 	
 		            offset = data.offset;
 	            const evs = Array.isArray(data.events) ? data.events : [];
@@ -1969,10 +1975,13 @@
 		              setStatus({ running: false, queueLen: 0 });
 		              setTyping(false);
 		              resetChatRenderState();
-		              try {
-		                await refreshSessions();
-		              } catch {}
-		              return;
+                try {
+                  await refreshSessions();
+                } catch (e2) {
+                  console.error("refreshSessions failed after session disappeared", e2);
+                  toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
+                }
+                return;
             }
             toast.textContent = `error: ${e.message}`;
           }
@@ -2065,11 +2074,11 @@
 			            await pollMessages(sid, myGen);
 			            if (pollGen !== myGen || selected !== sid) return;
 			          }
-            refreshSessions().catch(() => {});
-	          kickPoll(900);
-	          if (isMobile()) setSidebarOpen(false);
-	          updateHarnessBtnState();
-	        }
+            refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+           kickPoll(900);
+           if (isMobile()) setSidebarOpen(false);
+           updateHarnessBtnState();
+         }
 
 			        $("#refreshBtn").onclick = refreshSessions;
 			        function updateHarnessBtnState() {
@@ -2078,41 +2087,36 @@
 			          harnessBtn.disabled = !selected;
 			          harnessBtn.classList.toggle("active", Boolean(selected && on));
 			        }
-			        async function loadHarnessCfgForSelected() {
-			          if (!selected) return;
-			          const sid = selected;
-				          try {
-				            const d = await api(`/api/sessions/${sid}/harness`);
-				            if (selected !== sid) return;
-				            harnessCfg = {
-				              enabled: Boolean(d && d.enabled),
-				              text:
-				                typeof (d && d.text) === "string" && d.text.trim()
-				                  ? d.text
-				                  : HARNESS_DEFAULT_TEXT,
-				            };
-				          } catch {
-				            if (selected !== sid) return;
-				            harnessCfg = { enabled: false, text: HARNESS_DEFAULT_TEXT };
-				          }
-			          const enabledEl = $("#harnessEnabled");
-			          const textEl = $("#harnessText");
-			          if (enabledEl) enabledEl.checked = harnessCfg.enabled;
-			          if (textEl) textEl.value = harnessCfg.text;
-			        }
+           async function loadHarnessCfgForSelected() {
+             if (!selected) return;
+             const sid = selected;
+              const d = await api(`/api/sessions/${sid}/harness`);
+              if (selected !== sid) return;
+              if (!d || typeof d !== "object") throw new Error("invalid harness response");
+              if (typeof d.enabled !== "boolean") throw new Error("invalid harness.enabled");
+              if (typeof d.text !== "string") throw new Error("invalid harness.text");
+              harnessCfg = { enabled: d.enabled, text: d.text };
+             const enabledEl = $("#harnessEnabled");
+             const textEl = $("#harnessText");
+             if (enabledEl) enabledEl.checked = harnessCfg.enabled;
+             if (textEl) textEl.value = harnessCfg.text;
+           }
 			        function scheduleHarnessSave() {
 			          if (!selected) return;
 			          const sid = selected;
 			          if (harnessSaveTimer) clearTimeout(harnessSaveTimer);
 			          harnessSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
-			            try {
-			              await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, text: harnessCfg.text } });
-			              await refreshSessions();
-			            } catch {}
-			            updateHarnessBtnState();
-			          }, 450);
-			        }
+               try {
+                 await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, text: harnessCfg.text } });
+                 await refreshSessions();
+               } catch (e) {
+                 console.error("save harness failed", e);
+                 setToast(`harness save error: ${e && e.message ? e.message : "unknown error"}`);
+               }
+               updateHarnessBtnState();
+             }, 450);
+           }
 			        function hideHarnessMenu() {
 			          harnessMenuOpen = false;
 			          harnessMenu.style.display = "none";
@@ -2126,11 +2130,17 @@
 			          harnessMenu.style.top = `${top}px`;
 			          harnessMenu.style.left = "12px";
 			          harnessMenu.style.right = "auto";
-			          const w = harnessMenu.offsetWidth || 320;
-			          const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
-			          harnessMenu.style.left = `${left}px`;
-			          await loadHarnessCfgForSelected();
-			        }
+             const w = harnessMenu.offsetWidth || 320;
+             const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
+             harnessMenu.style.left = `${left}px`;
+             try {
+               await loadHarnessCfgForSelected();
+             } catch (e) {
+               console.error("load harness failed", e);
+               setToast(`harness load error: ${e && e.message ? e.message : "unknown error"}`);
+               hideHarnessMenu();
+             }
+           }
 			        function toggleHarnessMenu() {
 			          if (harnessMenuOpen) hideHarnessMenu();
 			          else showHarnessMenu();
@@ -2516,11 +2526,13 @@
 	          if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
 	          autoGrow();
 
-	          if (sessionsTimer) clearInterval(sessionsTimer);
-	          sessionsTimer = setInterval(async () => {
-	            try {
+           if (sessionsTimer) clearInterval(sessionsTimer);
+           sessionsTimer = setInterval(async () => {
+             try {
               await refreshSessions();
-            } catch {}
+            } catch (e) {
+              console.error("refreshSessions timer failed", e);
+            }
           }, 2500);
         })();
       }
@@ -2529,8 +2541,16 @@
         try {
           await api("/api/me");
           renderApp();
-        } catch {
-          renderLogin(renderApp);
+        } catch (e) {
+          if (e && e.status === 401) {
+            renderLogin(renderApp);
+            return;
+          }
+          console.error("boot auth check failed", e);
+          const err = document.createElement("pre");
+          err.textContent = `error: unable to contact server (${e && e.message ? e.message : "unknown error"})`;
+          document.body.innerHTML = "";
+          document.body.appendChild(err);
         }
       })();
     </script>

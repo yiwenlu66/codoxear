@@ -1,17 +1,42 @@
 from __future__ import annotations
 
+import datetime
 import json
+import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Any
+
+
+_LEGACY_WARNED = False
+
+
+def _log_error(msg: str) -> None:
+    sys.stderr.write(msg.rstrip("\n") + "\n")
+    sys.stderr.flush()
+
+
+def _log_exception(context: str, exc: BaseException) -> None:
+    ts = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    _log_error(f"error: {context}: {type(exc).__name__}: {exc}")
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip("\n")
+    if tb:
+        _log_error(f"traceback ({ts}):\n{tb}")
 
 
 def default_app_dir() -> Path:
     base = Path.home() / ".local" / "share"
     new = base / "codoxear"
     old = base / "codex-web"
-    if old.exists() and not new.exists():
-        return old
+    if old.exists():
+        global _LEGACY_WARNED
+        if not _LEGACY_WARNED:
+            _LEGACY_WARNED = True
+            _log_error(
+                f"error: legacy runtime dir detected at {old}; it is no longer used. "
+                f"migrate runtime state to {new}."
+            )
     return new
 
 
@@ -25,20 +50,26 @@ def _read_session_meta_payload_once(log_path: Path, *, max_bytes: int) -> dict[s
             data = f.read(int(max_bytes))
     except FileNotFoundError:
         return None
-    except Exception:
-        return None
+    except Exception as e:
+        _log_exception(f"read session log {log_path}", e)
+        raise
 
     for raw in data.splitlines():
         if not raw:
             continue
         try:
             obj = json.loads(raw)
-        except Exception:
+        except json.JSONDecodeError:
             continue
+        except Exception as e:
+            _log_exception(f"decode session log line from {log_path}", e)
+            raise
         if obj.get("type") != "session_meta":
             continue
-        payload = obj.get("payload") or {}
-        return payload if isinstance(payload, dict) else {}
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError(f"invalid session_meta payload in {log_path}")
+        return payload
     return None
 
 
@@ -96,8 +127,9 @@ def iter_session_logs(sessions_dir: Path) -> list[Path]:
             mt = float(p.stat().st_mtime)
         except FileNotFoundError:
             continue
-        except Exception:
-            mt = 0.0
+        except Exception as e:
+            _log_exception(f"stat {p}", e)
+            raise
         out.append((mt, p))
     out.sort(key=lambda t: t[0], reverse=True)
     return [p for _mt, p in out]
@@ -129,17 +161,14 @@ def find_new_session_log(
                     continue
             except FileNotFoundError:
                 continue
-            try:
-                payload = read_session_meta_payload(p, timeout_s=0.0)
-                if not payload:
-                    continue
-                if is_subagent_session_meta(payload):
-                    continue
-                sid = payload.get("id")
-                if isinstance(sid, str) and sid:
-                    return sid, p
-            except Exception:
+            payload = read_session_meta_payload(p, timeout_s=0.0)
+            if not payload:
                 continue
+            if is_subagent_session_meta(payload):
+                continue
+            sid = payload.get("id")
+            if isinstance(sid, str) and sid:
+                return sid, p
         time.sleep(0.2)
     return None
 
@@ -150,14 +179,18 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
             f.seek(offset)
             data = f.read(int(max_bytes))
             new_off = f.tell()
-    except FileNotFoundError:
-        return [], offset
+    except Exception as e:
+        _log_exception(f"read jsonl {path} from offset {offset}", e)
+        raise
 
     lines = data.splitlines()
     out: list[dict[str, Any]] = []
     for line in lines:
         try:
             out.append(json.loads(line))
-        except Exception:
+        except json.JSONDecodeError:
             continue
+        except Exception as e:
+            _log_exception(f"decode jsonl line from {path}", e)
+            raise
     return out, new_off

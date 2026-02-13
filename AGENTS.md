@@ -11,7 +11,7 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
 - Session discovery: scans `~/.local/share/codoxear/socks/*.sock` for broker control sockets and reads the adjacent `*.json` metadata.
 - Web-owned sessions: `/api/sessions` (POST) spawns a new broker process with `CODEX_WEB_OWNER=web`. These sessions show a delete button in the UI and can be killed by the server.
 - Terminal-owned sessions: created by running `codoxear-broker` (usually via a shell wrapper for `codex`). The server can attach but should not kill them.
-- Runtime state directory: `~/.local/share/codoxear` (fallback to legacy `~/.local/share/codex-web` if it already exists).
+- Runtime state directory: `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 
 ### `codoxear.broker`
 

@@ -98,8 +98,8 @@ class TestMessageIndex(unittest.TestCase):
             mgr._sessions["sid"] = _make_session(sid="sid", log_path=p)
 
             with patch("codoxear.server._compute_idle_from_log", return_value=False) as compute_idle:
-                self.assertTrue(mgr.busy_from_log_fallback("sid"))
-                self.assertTrue(mgr.busy_from_log_fallback("sid"))
+                self.assertFalse(mgr.idle_from_log("sid"))
+                self.assertFalse(mgr.idle_from_log("sid"))
                 self.assertEqual(compute_idle.call_count, 1)
 
 

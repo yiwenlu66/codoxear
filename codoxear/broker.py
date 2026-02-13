@@ -23,18 +23,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
-
-def _default_app_dir() -> Path:
-    base = Path.home() / ".local" / "share"
-    new = base / "codoxear"
-    old = base / "codex-web"
-    if old.exists() and not new.exists():
-        return old
-    return new
 
 
 APP_DIR = _default_app_dir()
@@ -43,22 +36,24 @@ PROC_ROOT = Path("/proc")
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
-DEFAULT_CODEX_HOME = Path(os.environ.get("CODEX_HOME") or str(Path.home() / ".codex"))
+_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
+if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
+    DEFAULT_CODEX_HOME = Path.home() / ".codex"
+else:
+    DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
 FD_POLL_SECONDS_RAW = os.environ.get("CODEX_WEB_FD_POLL_SECONDS", "1.0")
 
 CONTEXT_WINDOW_BASELINE_TOKENS = 12000
-try:
-    BUSY_QUIET_SECONDS = max(float(os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS", "3.0") or "3.0"), 0.0)
-except Exception:
-    BUSY_QUIET_SECONDS = 3.0
-try:
-    BUSY_INTERRUPT_GRACE_SECONDS = max(
-        float(os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS", "3.0") or "3.0"),
-        0.0,
-    )
-except Exception:
-    BUSY_INTERRUPT_GRACE_SECONDS = 3.0
+_BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
+if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
+    _BUSY_QUIET_RAW = "3.0"
+BUSY_QUIET_SECONDS = max(float(_BUSY_QUIET_RAW), 0.0)
+
+_BUSY_INTERRUPT_GRACE_RAW = os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS")
+if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
+    _BUSY_INTERRUPT_GRACE_RAW = "3.0"
+BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 
@@ -70,11 +65,8 @@ _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
 def _dprint(msg: str) -> None:
     if not DEBUG:
         return
-    try:
-        sys.stderr.write(msg.rstrip("\n") + "\n")
-        sys.stderr.flush()
-    except Exception:
-        pass
+    sys.stderr.write(msg.rstrip("\n") + "\n")
+    sys.stderr.flush()
 
 
 def _now() -> float:
@@ -167,7 +159,7 @@ def _fd_is_writable(proc_root: Path, pid: int, fd: int) -> bool:
 
 
 def _rollout_path_from_fd_link(link: str) -> Path | None:
-    s = (link or "").strip()
+    s = str(link).strip()
     if not s:
         return None
     if s.endswith(" (deleted)"):
@@ -461,7 +453,9 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
     typ = obj.get("type")
 
     if typ == "event_msg":
-        payload = obj.get("payload") or {}
+        payload = obj.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("invalid rollout event_msg payload")
         ev_type = payload.get("type")
         if ev_type == "user_message":
             msg = payload.get("message")
@@ -502,7 +496,9 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
 
     if typ != "response_item":
         return
-    payload = obj.get("payload") or {}
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("invalid rollout response_item payload")
 
     started = _response_call_started(payload)
     if started is not None:
@@ -542,7 +538,9 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         st.last_turn_activity_ts = now_ts
         return
     if item_type == "message" and role == "assistant":
-        content = payload.get("content") or []
+        content = payload.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
         has_text = any(
             isinstance(part, dict)
             and part.get("type") == "output_text"
@@ -555,34 +553,6 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         st.busy = True
         st.last_turn_activity_ts = now_ts
         return
-
-
-def _read_session_id_from_log(log_path: Path) -> str | None:
-    try:
-        with log_path.open("r", encoding="utf-8") as f:
-            first = f.readline().strip()
-        obj = json.loads(first) if first else {}
-        if obj.get("type") != "session_meta":
-            return None
-        payload = obj.get("payload") or {}
-        sid = payload.get("id")
-        return sid if isinstance(sid, str) and sid else None
-    except Exception:
-        return None
-
-
-def _is_subagent_session_log(log_path: Path) -> bool:
-    try:
-        with log_path.open("r", encoding="utf-8") as f:
-            first = f.readline().strip()
-        obj = json.loads(first) if first else {}
-        if obj.get("type") != "session_meta":
-            return False
-        payload = obj.get("payload") or {}
-        src = payload.get("source")
-        return isinstance(src, dict) and ("subagent" in src)
-    except Exception:
-        return False
 
 
 @dataclass
@@ -634,7 +604,9 @@ class Broker:
         self.sessions_dir = self.codex_home / "sessions"
 
     def _register_from_log(self, *, log_path: Path) -> bool:
-        sid = self._session_id_from_rollout_path(log_path) or _read_session_id_from_log(log_path)
+        sid = self._session_id_from_rollout_path(log_path)
+        if sid is None:
+            raise RuntimeError(f"unable to determine session_id from rollout filename: {log_path}")
         if not sid:
             _dprint(f"broker: register_from_log: no session id: {log_path}")
             return False
@@ -671,43 +643,43 @@ class Broker:
             try:
                 os.write(fd, b"\x1b[0n")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[5n", b"")
         if b"\x1b[6n" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b[1;1R")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[6n", b"")
         if b"\x1b[c" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b[?1;2c")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[c", b"")
         if b"\x1b[>c" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b[>0;0;0c")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[>c", b"")
         if b"\x1b[?u" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b[?1u")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[?u", b"")
         if b"\x1b]10;?\x1b\\" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b]10;rgb:c0c0/c0c0/c0c0\x1b\\")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b]10;?\x1b\\", b"")
         if b"\x1b]11;?\x1b\\" in self._term_query_buf:
             try:
                 os.write(fd, b"\x1b]11;rgb:0000/0000/0000\x1b\\")
             except Exception:
-                pass
+                traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b]11;?\x1b\\", b"")
 
     def _pty_to_stdout(self) -> None:
@@ -723,10 +695,7 @@ class Broker:
                     break
                 os.write(out_fd, b)
                 self._maybe_reply_to_terminal_queries(fd=fd, b=b)
-                try:
-                    s = b.decode("utf-8", errors="replace")
-                except Exception:
-                    s = ""
+                s = b.decode("utf-8", errors="replace")
                 if s:
                     with self._lock:
                         st2 = self.state
@@ -841,7 +810,9 @@ class Broker:
                 now_ts = _now()
                 aborted_or_rolled_back = False
                 if obj.get("type") == "event_msg":
-                    p = obj.get("payload") or {}
+                    p = obj.get("payload")
+                    if not isinstance(p, dict):
+                        raise ValueError("invalid rollout event_msg payload")
                     pt = p.get("type")
                     if pt in ("turn_aborted", "thread_rolled_back"):
                         aborted_or_rolled_back = True
@@ -877,41 +848,34 @@ class Broker:
         st = self.state
         if not st or not st.sock_path:
             return
-        try:
-            meta = {
-                "session_id": st.session_id,
-                "owner": OWNER_TAG if OWNER_TAG else None,
-                "broker_pid": os.getpid(),
-                "sessiond_pid": os.getpid(),
-                "codex_pid": st.codex_pid,
-                "cwd": st.cwd,
-                "start_ts": st.start_ts,
-                "log_path": str(st.log_path) if st.log_path else None,
-                "sock_path": str(st.sock_path),
-            }
-            meta_path = st.sock_path.with_suffix(".json")
-            SOCK_DIR.mkdir(parents=True, exist_ok=True)
-            meta_path.write_text(json.dumps(meta), encoding="utf-8")
-            os.chmod(meta_path, 0o600)
-        except Exception:
-            pass
+        meta = {
+            "session_id": st.session_id,
+            "owner": OWNER_TAG if OWNER_TAG else None,
+            "broker_pid": os.getpid(),
+            "sessiond_pid": os.getpid(),
+            "codex_pid": st.codex_pid,
+            "cwd": st.cwd,
+            "start_ts": st.start_ts,
+            "log_path": str(st.log_path) if st.log_path else None,
+            "sock_path": str(st.sock_path),
+        }
+        meta_path = st.sock_path.with_suffix(".json")
+        SOCK_DIR.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        os.chmod(meta_path, 0o600)
 
     def _sock_server(self) -> None:
         st = self.state
         if not st or not st.sock_path:
             return
-        try:
-            SOCK_DIR.mkdir(parents=True, exist_ok=True)
-            if st.sock_path.exists():
-                st.sock_path.unlink()
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.bind(str(st.sock_path))
-            os.chmod(st.sock_path, 0o600)
-            s.listen(20)
-            s.settimeout(0.5)
-        except Exception:
-            _dprint(f"broker: sock_server init failed: {traceback.format_exc()}")
-            return
+        SOCK_DIR.mkdir(parents=True, exist_ok=True)
+        if st.sock_path.exists():
+            st.sock_path.unlink()
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.bind(str(st.sock_path))
+        os.chmod(st.sock_path, 0o600)
+        s.listen(20)
+        s.settimeout(0.5)
 
         while not self._stop.is_set():
             try:
@@ -922,10 +886,7 @@ class Broker:
                 break
             threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
 
-        try:
-            s.close()
-        except Exception:
-            pass
+        s.close()
 
     def _handle_conn(self, conn: socket.socket) -> None:
         try:
@@ -993,7 +954,7 @@ class Broker:
                         try:
                             os.write(fd, b)
                         except Exception:
-                            pass
+                            traceback.print_exc()
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 return
@@ -1006,10 +967,11 @@ class Broker:
                     try:
                         os.killpg(st.codex_pid, signal.SIGTERM)
                     except Exception:
+                        traceback.print_exc()
                         try:
                             os.kill(st.codex_pid, signal.SIGTERM)
                         except Exception:
-                            pass
+                            traceback.print_exc()
                 f.write(b'{"ok":true}\n')
                 f.flush()
                 return
@@ -1020,20 +982,17 @@ class Broker:
             try:
                 conn.sendall((json.dumps({"error": "exception", "trace": traceback.format_exc()}) + "\n").encode("utf-8"))
             except Exception:
-                pass
+                traceback.print_exc()
         finally:
             try:
                 conn.close()
             except Exception:
-                pass
+                traceback.print_exc()
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
         # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),
         # so path components are not a stable session id. Extract the id from the filename.
-        try:
-            name = log_path.name
-        except Exception:
-            name = str(log_path)
+        name = log_path.name
         m = _SESSION_ID_RE.findall(name)
         return m[-1] if m else None
 
@@ -1071,7 +1030,9 @@ class Broker:
 
         sid = payload.get("id")
         if not isinstance(sid, str) or not sid:
-            sid = self._session_id_from_rollout_path(lp) or _read_session_id_from_log(lp)
+            sid = self._session_id_from_rollout_path(lp)
+            if sid is None:
+                raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
         if not sid:
             return
 
@@ -1192,10 +1153,7 @@ class Broker:
         rows, cols = _term_size()
         _require_proc()
 
-        try:
-            self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
         start_ts = _now()
         headless = (OWNER_TAG == "web")
 
@@ -1203,21 +1161,23 @@ class Broker:
         if pid == 0:
             try:
                 _set_pdeathsig(signal.SIGHUP)
-                try:
-                    os.setpgid(0, 0)
-                except Exception:
-                    pass
-                os.environ.setdefault("TERM", os.environ.get("TERM") or "xterm-256color")
+                term_raw = os.environ.get("TERM")
+                term = str(term_raw).strip() if term_raw is not None else ""
+                if not term:
+                    term = "xterm-256color"
+                os.environ.setdefault("TERM", term)
                 os.environ["COLUMNS"] = str(cols)
                 os.environ["LINES"] = str(rows)
                 os.environ["CODEX_HOME"] = str(self.codex_home)
-                try:
-                    fd = sys.stdin.fileno()
-                    attrs = termios.tcgetattr(fd)
-                    attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR)
-                    termios.tcsetattr(fd, termios.TCSANOW, attrs)
-                except Exception:
-                    pass
+                if sys.stdin.isatty():
+                    try:
+                        fd = sys.stdin.fileno()
+                        attrs = termios.tcgetattr(fd)
+                        attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR)
+                        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+                    except (OSError, termios.error):
+                        if DEBUG:
+                            traceback.print_exc()
                 if headless:
                     _exec_codex_via_login_shell(cwd=self.cwd, codex_args=self.codex_args)
                 else:
@@ -1232,12 +1192,13 @@ class Broker:
                 self._stdin_termios = termios.tcgetattr(fd)
                 tty.setraw(fd)
             except Exception:
+                traceback.print_exc()
                 self._stdin_termios = None
 
         try:
             _set_winsize(master_fd, rows, cols)
         except Exception:
-            pass
+            traceback.print_exc()
 
         st = State(
             codex_pid=pid,
@@ -1256,7 +1217,7 @@ class Broker:
                 r, c = _term_size()
                 _set_winsize(master_fd, r, c)
             except Exception:
-                pass
+                traceback.print_exc()
 
         signal.signal(signal.SIGWINCH, _sigwinch)
 
@@ -1287,25 +1248,25 @@ class Broker:
                 try:
                     termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, self._stdin_termios)
                 except Exception:
-                    pass
+                    traceback.print_exc()
                 self._stdin_termios = None
 
         self._stop.set()
         try:
             os.close(master_fd)
         except Exception:
-            pass
+            traceback.print_exc()
         with self._lock:
             st2 = self.state
         if st2 and st2.sock_path:
             try:
                 st2.sock_path.unlink()
             except Exception:
-                pass
+                traceback.print_exc()
             try:
                 st2.sock_path.with_suffix(".json").unlink()
             except Exception:
-                pass
+                traceback.print_exc()
         return exit_code
 
 

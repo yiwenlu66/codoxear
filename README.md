@@ -115,7 +115,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 
-Runtime state is stored under `~/.local/share/codoxear` (or legacy `~/.local/share/codex-web`).
+Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 
 ## License
 
