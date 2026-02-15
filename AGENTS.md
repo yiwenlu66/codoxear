@@ -30,7 +30,7 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
 
 ### UI (`codoxear/static/index.html`)
 
-- Single-file UI served at `/` and `/static/index.html`.
+- UI shell served at `/` and `/static/index.html`, with assets under `codoxear/static/` (`app.css`, `app.js`).
 - Polls `/api/sessions` and `/api/sessions/<id>/messages`.
 - Supports creating web-owned sessions via the "New session" button.
 

@@ -2,25 +2,22 @@
 from __future__ import annotations
 
 import argparse
-import codecs
-import fcntl
 import json
 import os
 import pty
 import signal
 import socket
-import struct
 import subprocess
 import threading
 import time
 import traceback
 import select
 import sys
-import termios
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
 from .util import find_new_session_log as _find_new_session_log
 from .util import iter_session_logs as _iter_session_logs
@@ -47,10 +44,7 @@ OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
-    rows = max(1, int(rows))
-    cols = max(1, int(cols))
-    ws = struct.pack("HHHH", rows, cols, 0, 0)
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, ws)
+    _pty_util.set_winsize(fd, rows, cols)
 
 
 def _encode_enter() -> bytes:
@@ -58,23 +52,7 @@ def _encode_enter() -> bytes:
 
 
 def _seq_bytes(raw: str) -> bytes:
-    t = raw.strip().upper()
-    if t in ("NONE", "EMPTY", "NOENTER", "NO_ENTER"):
-        return b""
-    if t in ("ESC", "ESCAPE"):
-        return b"\x1b"
-    if t in ("ENTER", "CR"):
-        return b"\r"
-    if t in ("LF",):
-        return b"\n"
-    if t in ("CRLF",):
-        return b"\r\n"
-    try:
-        decoded = codecs.decode(raw.encode("utf-8"), "unicode_escape")
-        b = decoded.encode("utf-8")
-        return b
-    except Exception:
-        return raw.encode("utf-8", errors="replace")
+    return _pty_util.seq_bytes(raw)
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:

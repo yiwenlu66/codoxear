@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import codecs
-import fcntl
 import json
 import os
 import pty
@@ -11,7 +10,6 @@ import pwd
 import re
 import signal
 import socket
-import struct
 import sys
 import termios
 import threading
@@ -23,6 +21,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from codoxear import proc_fd_scan as _proc_fd_scan
+from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
@@ -43,8 +44,6 @@ else:
     DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
 FD_POLL_SECONDS_RAW = os.environ.get("CODEX_WEB_FD_POLL_SECONDS", "1.0")
-
-CONTEXT_WINDOW_BASELINE_TOKENS = 12000
 _BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
 if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
     _BUSY_QUIET_RAW = "3.0"
@@ -110,66 +109,19 @@ def _require_proc() -> None:
 
 
 def _proc_children_pids(proc_root: Path, pid: int) -> list[int]:
-    try:
-        data = (proc_root / str(pid) / "task" / str(pid) / "children").read_text("utf-8", errors="replace")
-    except FileNotFoundError:
-        return []
-    toks = [t for t in data.strip().split() if t.isdigit()]
-    out: list[int] = []
-    for t in toks:
-        try:
-            out.append(int(t))
-        except Exception:
-            continue
-    return out
+    return _proc_fd_scan._proc_children_pids(proc_root, pid)
 
 
 def _proc_descendants(proc_root: Path, root_pid: int) -> set[int]:
-    seen: set[int] = set()
-    q: list[int] = [int(root_pid)]
-    while q:
-        pid = q.pop()
-        if pid <= 0 or pid in seen:
-            continue
-        seen.add(pid)
-        for c in _proc_children_pids(proc_root, pid):
-            if c not in seen:
-                q.append(c)
-    return seen
+    return _proc_fd_scan._proc_descendants(proc_root, root_pid)
 
 
 def _fd_is_writable(proc_root: Path, pid: int, fd: int) -> bool:
-    try:
-        data = (proc_root / str(pid) / "fdinfo" / str(fd)).read_text("utf-8", errors="replace")
-    except FileNotFoundError:
-        return False
-    flags = None
-    for line in data.splitlines():
-        if line.startswith("flags:"):
-            flags = line.split(":", 1)[1].strip()
-            break
-    if not flags:
-        return False
-    try:
-        v = int(flags, 8)
-    except Exception:
-        return False
-    acc = v & os.O_ACCMODE
-    return acc != os.O_RDONLY
+    return _proc_fd_scan._fd_is_writable(proc_root, pid, fd)
 
 
 def _rollout_path_from_fd_link(link: str) -> Path | None:
-    s = str(link).strip()
-    if not s:
-        return None
-    if s.endswith(" (deleted)"):
-        s = s[: -len(" (deleted)")].rstrip()
-    if not s.startswith("/"):
-        return None
-    p = Path(s)
-    if (not p.name.startswith("rollout-")) or (not p.name.endswith(".jsonl")):
-        return None
-    return p
+    return _proc_fd_scan._rollout_path_from_fd_link(link)
 
 
 def _iter_writable_rollout_paths(
@@ -178,44 +130,7 @@ def _iter_writable_rollout_paths(
     pid: int,
     sessions_dir: Path,
 ) -> list[Path]:
-    try:
-        fd_dir = proc_root / str(pid) / "fd"
-        entries = list(fd_dir.iterdir())
-    except FileNotFoundError:
-        return []
-    out: list[Path] = []
-    sessions_root = sessions_dir.resolve()
-    for e in entries:
-        name = e.name
-        if not name.isdigit():
-            continue
-        try:
-            fd = int(name)
-        except Exception:
-            continue
-        try:
-            link = os.readlink(e)
-        except FileNotFoundError:
-            continue
-        except PermissionError:
-            raise
-        except Exception:
-            continue
-        p = _rollout_path_from_fd_link(link)
-        if p is None:
-            continue
-        try:
-            rp = p.resolve()
-        except Exception:
-            rp = p
-        try:
-            rp.relative_to(sessions_root)
-        except Exception:
-            continue
-        if not _fd_is_writable(proc_root, pid, fd):
-            continue
-        out.append(rp)
-    return out
+    return _proc_fd_scan._iter_writable_rollout_paths(proc_root=proc_root, pid=pid, sessions_dir=sessions_dir)
 
 
 def _user_shell() -> str:
@@ -301,10 +216,7 @@ def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.2) -> None:
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
-    rows = max(1, int(rows))
-    cols = max(1, int(cols))
-    ws = struct.pack("HHHH", rows, cols, 0, 0)
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, ws)
+    _pty_util.set_winsize(fd, rows, cols)
 
 
 def _term_size() -> tuple[int, int]:
