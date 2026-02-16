@@ -499,10 +499,8 @@
 				        let attachBadgeEl = null;
                 let clickLoadT0 = 0;
                 let clickMetricPending = false;
-					        const HARNESS_DEFAULT_TEXT =
-					          "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. Continue monitoring experiments running in the background to locate any issues.\n\n---\n";
 					        let harnessMenuOpen = false;
-					        let harnessCfg = { enabled: false, text: HARNESS_DEFAULT_TEXT };
+					        let harnessCfg = { enabled: false, request: "" };
 					        let harnessSaveTimer = null;
 
 				        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
@@ -543,8 +541,8 @@
 			              el("span", { text: "Harness mode" }),
 			            ]),
 			          ]),
-			          el("div", { class: "label", text: "Text to inject after idle timeout (default 5m; per session)" }),
-			          el("textarea", { id: "harnessText", "aria-label": "Harness injection text" }),
+			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
+			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
 
 			        const topbar = el("div", { class: "topbar" }, [
@@ -1330,12 +1328,12 @@
               if (selected !== sid) return;
               if (!d || typeof d !== "object") throw new Error("invalid harness response");
               if (typeof d.enabled !== "boolean") throw new Error("invalid harness.enabled");
-              if (typeof d.text !== "string") throw new Error("invalid harness.text");
-              harnessCfg = { enabled: d.enabled, text: d.text };
+              if (typeof d.request !== "string") throw new Error("invalid harness.request");
+              harnessCfg = { enabled: d.enabled, request: d.request };
              const enabledEl = $("#harnessEnabled");
-             const textEl = $("#harnessText");
+             const requestEl = $("#harnessRequest");
              if (enabledEl) enabledEl.checked = harnessCfg.enabled;
-             if (textEl) textEl.value = harnessCfg.text;
+             if (requestEl) requestEl.value = harnessCfg.request;
            }
 			        function scheduleHarnessSave() {
 			          if (!selected) return;
@@ -1344,7 +1342,7 @@
 			          harnessSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
                try {
-                 await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, text: harnessCfg.text } });
+                 await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, request: harnessCfg.request } });
                  await refreshSessions();
                } catch (e) {
                  console.error("save harness failed", e);
@@ -1399,11 +1397,11 @@
 		        const onResize = () => {
 		          if (harnessMenuOpen) hideHarnessMenu();
 		        };
-		        window.__codexwebHarnessGlobalHandlers = { docClick: onDocClick, resize: onResize };
-		        document.addEventListener("click", onDocClick);
+			        window.__codexwebHarnessGlobalHandlers = { docClick: onDocClick, resize: onResize };
+			        document.addEventListener("click", onDocClick);
 			        window.addEventListener("resize", onResize);
 			        const harnessEnabledEl = $("#harnessEnabled");
-			        const harnessTextEl = $("#harnessText");
+			        const harnessRequestEl = $("#harnessRequest");
 			        if (harnessEnabledEl)
 			          harnessEnabledEl.onchange = (e) => {
 			            if (!selected) return;
@@ -1413,10 +1411,10 @@
 			            updateHarnessBtnState();
 			            scheduleHarnessSave();
 			          };
-			        if (harnessTextEl)
-			          harnessTextEl.oninput = (e) => {
+			        if (harnessRequestEl)
+			          harnessRequestEl.oninput = (e) => {
 			            if (!selected) return;
-			            harnessCfg.text = String(e.target.value ?? "");
+			            harnessCfg.request = String(e.target.value ?? "");
 			            scheduleHarnessSave();
 			          };
 	        $("#newBtn").onclick = async () => {

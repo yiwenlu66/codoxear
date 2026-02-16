@@ -43,8 +43,8 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
             mgr._sessions["sid-b"] = _make_session(sid="sid-b", thread_id="thread-1", log_path=p)
-            mgr._harness["sid-a"] = {"enabled": True, "text": "A"}
-            mgr._harness["sid-b"] = {"enabled": True, "text": "B"}
+            mgr._harness["sid-a"] = {"enabled": True, "request": "A"}
+            mgr._harness["sid-b"] = {"enabled": True, "request": "B"}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -52,10 +52,10 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch("codoxear.server.HARNESS_IDLE_SECONDS", 300), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ):
+            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
                 mgr._harness_sweep()
 
-            self.assertEqual(sent, [("sid-a", "A")])
+            self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
             self.assertIn("thread:thread-1", mgr._harness_last_injected_scope)
 
     def test_injects_once_per_distinct_thread(self) -> None:
@@ -68,8 +68,8 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p1)
             mgr._sessions["sid-b"] = _make_session(sid="sid-b", thread_id="thread-2", log_path=p2)
-            mgr._harness["sid-a"] = {"enabled": True, "text": "A"}
-            mgr._harness["sid-b"] = {"enabled": True, "text": "B"}
+            mgr._harness["sid-a"] = {"enabled": True, "request": "A"}
+            mgr._harness["sid-b"] = {"enabled": True, "request": "B"}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -77,10 +77,16 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch("codoxear.server.HARNESS_IDLE_SECONDS", 300), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ):
+            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
                 mgr._harness_sweep()
 
-            self.assertEqual(sent, [("sid-a", "A"), ("sid-b", "B")])
+            self.assertEqual(
+                sent,
+                [
+                    ("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n"),
+                    ("sid-b", "PFX\n\n---\n\nAdditional request from user: B\n"),
+                ],
+            )
 
 
 if __name__ == "__main__":

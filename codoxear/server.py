@@ -95,12 +95,47 @@ CHAT_INDEX_INCREMENT_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_INCREMENT_
 CHAT_INDEX_RESEED_THRESHOLD_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_RESEED_THRESHOLD_BYTES", str(16 * 1024 * 1024)))
 CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "12000"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
-HARNESS_DEFAULT_TEXT = (
-    "[Automated message from Agent Harness] the user is currently away, and you should continue with your previous task. "
-    "Review whether what you have done fully complies with user intention. Self-reflect and make improvements when possible. "
-    "If you believe you are done with all of the tasks, spawn a critic sub-agent to review your work and examine whether if fully addresses the user request. "
-    "Continue monitoring experiments running in the background to locate any issues.\n\n---\n"
-)
+HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
+
+- Maintain three live lists: Deliverables, Next actions, Parked questions.
+- Default is to keep working in the same turn; do not yield while any Next actions remain.
+
+- Question handling:
+  - If blocked on a decision, write it to Parked questions (question, why it matters, what is blocked).
+  - Immediately continue with unblocked work; do not wait for an answer.
+  - Surface parked questions only when truly blocked on user-only input, preferably at the end as a compact list.
+
+- Progress loop (repeat):
+  - Choose the highest-leverage unblocked action.
+  - Execute it.
+  - Produce evidence using the strongest available verification that matches the request (full tests/builds/real runs/logs over minimal checks).
+  - Update lists and continue.
+
+- Long-running work:
+  - If you start a long task, actively monitor it (poll status/output/logs), diagnose stalls, and either fix, restart, or reroute to other unblocked work.
+  - Never claim background monitoring without returning observed state.
+
+- Anti-repetition:
+  - Do not repeat the same command/edit/analysis unless you can name the new evidence you expect.
+  - If you detect a loop, change strategy: new hypothesis, new subsystem boundary, new tool, or new verification path.
+
+- Turn minimization:
+  - Avoid mid-flight questions, progress check-ins, and "want me to do X next" prompts.
+  - Yield only when all deliverables are evidenced complete, or every remaining action is blocked by user-only input, or the next step is irreversible/high-risk.
+
+- End-of-turn gate (only when yielding is necessary):
+  - Run an extensive clean-room adversarial review via a dedicated subagent.
+  - Prompt the subagent with: original user intent, project architectural constraints/invariants, deliverables, objective evidence, changed artifacts (no approach narrative).
+  - Apply findings before yielding (or surface a concrete blocker/risk).
+"""
+
+
+def _render_harness_prompt(request: str | None) -> str:
+    base = HARNESS_PROMPT_PREFIX.rstrip()
+    r = (request or "").strip()
+    if not r:
+        return base + "\n"
+    return base + "\n\n---\n\nAdditional request from user: " + r + "\n"
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _METRICS_LOCK = threading.Lock()
@@ -638,10 +673,14 @@ class SessionManager:
             if not isinstance(v, dict):
                 continue
             enabled = bool(v.get("enabled")) if "enabled" in v else False
-            text = v.get("text")
-            if not isinstance(text, str):
-                raise ValueError(f"invalid harness text for session {sid!r}")
-            cleaned[sid] = {"enabled": enabled, "text": text}
+            if "text" in v:
+                raise ValueError(f"invalid harness config for session {sid!r} (use 'request', not 'text')")
+            request = v.get("request")
+            if request is None:
+                request = ""
+            if not isinstance(request, str):
+                raise ValueError(f"invalid harness request for session {sid!r}")
+            cleaned[sid] = {"enabled": enabled, "request": request}
         with self._lock:
             self._harness = cleaned
 
@@ -661,14 +700,12 @@ class SessionManager:
             cfg0 = self._harness.get(session_id)
             cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
         enabled = bool(cfg.get("enabled"))
-        text = cfg.get("text")
-        if not isinstance(text, str):
-            text = ""
-        if not text.strip():
-            text = HARNESS_DEFAULT_TEXT
-        return {"enabled": enabled, "text": text}
+        request = cfg.get("request")
+        if not isinstance(request, str):
+            request = ""
+        return {"enabled": enabled, "request": request}
 
-    def harness_set(self, session_id: str, *, enabled: bool | None = None, text: str | None = None) -> dict[str, Any]:
+    def harness_set(self, session_id: str, *, enabled: bool | None = None, request: str | None = None) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -677,10 +714,8 @@ class SessionManager:
             cur = dict(cur0) if isinstance(cur0, dict) else {}
             if enabled is not None:
                 cur["enabled"] = bool(enabled)
-            if text is not None:
-                cur["text"] = str(text)
-            if bool(cur.get("enabled")) and (not isinstance(cur.get("text"), str) or (not str(cur.get("text")).strip())):
-                cur["text"] = HARNESS_DEFAULT_TEXT
+            if request is not None:
+                cur["request"] = str(request)
             self._harness[session_id] = cur
             if enabled is not None and bool(enabled) is False:
                 self._harness_last_injected.pop(session_id, None)
@@ -709,9 +744,10 @@ class SessionManager:
         for sid, s, cfg, last_inj in items:
             if not bool(cfg.get("enabled")):
                 continue
-            text = cfg.get("text")
-            if not isinstance(text, str) or not text.strip():
-                text = HARNESS_DEFAULT_TEXT
+            request = cfg.get("request")
+            if not isinstance(request, str):
+                request = ""
+            prompt = _render_harness_prompt(request)
             lp = s.log_path
             if lp is None or (not lp.exists()):
                 continue
@@ -741,7 +777,7 @@ class SessionManager:
                 scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
             if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
                 continue
-            self.send(sid, text)
+            self.send(sid, prompt)
             with self._lock:
                 self._harness_last_injected[sid] = now
                 self._harness_last_injected_scope[scope_key] = now
@@ -1807,21 +1843,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(obj, dict):
                     raise ValueError("invalid json body (expected object)")
                 enabled_raw = obj.get("enabled", None)
-                text_raw = obj.get("text", None)
+                request_raw = obj.get("request", None)
+                if "text" in obj:
+                    _json_response(self, 400, {"error": "unknown field: text (use request)"})
+                    return
                 enabled: bool | None
                 if enabled_raw is None:
                     enabled = None
                 else:
                     enabled = bool(enabled_raw)
-                text: str | None
-                if text_raw is None:
-                    text = None
-                elif isinstance(text_raw, str):
-                    text = text_raw
-                else:
-                    _json_response(self, 400, {"error": "text must be a string"})
+
+                if request_raw is not None and (not isinstance(request_raw, str)):
+                    _json_response(self, 400, {"error": "request must be a string"})
                     return
-                cfg = MANAGER.harness_set(session_id, enabled=enabled, text=text)
+                request: str | None
+                if request_raw is not None:
+                    request = request_raw
+                else:
+                    request = None
+
+                cfg = MANAGER.harness_set(session_id, enabled=enabled, request=request)
                 _json_response(self, 200, {"ok": True, **cfg})
                 return
 
