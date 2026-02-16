@@ -1001,14 +1001,15 @@ class SessionManager:
         self._prune_dead_sessions()
         self._update_meta_counters()
         with self._lock:
-            out = []
+            items: list[dict[str, Any]] = []
             for s in self._sessions.values():
                 cfg0 = self._harness.get(s.session_id)
                 h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
-                if s.last_chat_ts is None and s.log_path is not None and s.log_path.exists():
+                log_exists = bool(s.log_path is not None and s.log_path.exists())
+                if s.last_chat_ts is None and log_exists and s.log_path is not None:
                     s.last_chat_ts = float(s.log_path.stat().st_mtime)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
-                out.append(
+                items.append(
                     {
                         "session_id": s.session_id,
                         "thread_id": s.thread_id,
@@ -1019,16 +1020,34 @@ class SessionManager:
                         "start_ts": s.start_ts,
                         "updated_ts": updated_ts,
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
-                        "busy": s.busy,
-                        "queue_len": s.queue_len,
+                        "log_exists": log_exists,
+                        "state_busy": bool(s.busy),
+                        "queue_len": int(s.queue_len),
                         "token": s.token,
-                        "thinking": s.meta_thinking,
-                        "tools": s.meta_tools,
-                        "system": s.meta_system,
+                        "thinking": int(s.meta_thinking),
+                        "tools": int(s.meta_tools),
+                        "system": int(s.meta_system),
                         "harness_enabled": h_enabled,
                     }
                 )
-            return out
+
+        out: list[dict[str, Any]] = []
+        for it in items:
+            sid = str(it["session_id"])
+            log_exists = bool(it.get("log_exists"))
+            state_busy = bool(it.get("state_busy"))
+            if not log_exists:
+                busy_out = False
+            else:
+                # When a log exists, unify semantics with /messages:
+                # busy if broker says busy OR log-derived idle is false.
+                busy_out = state_busy or (not bool(self.idle_from_log(sid)))
+            it2 = dict(it)
+            it2.pop("log_exists", None)
+            it2.pop("state_busy", None)
+            it2["busy"] = bool(busy_out)
+            out.append(it2)
+        return out
 
     def get_session(self, session_id: str) -> Session | None:
         with self._lock:
@@ -1573,7 +1592,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         raise ValueError("missing busy from broker state response")
                     if "queue_len" not in state:
                         raise ValueError("missing queue_len from broker state response")
-                    busy_val = bool(state.get("busy"))
                     queue_val = int(state.get("queue_len"))
                     state_token = state.get("token")
                     if not (isinstance(state_token, dict) or (state_token is None)):
@@ -1592,7 +1610,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "turn_end": False,
                             "turn_aborted": False,
                             "diag": {"pending_log": True},
-                            "busy": bool(busy_val),
+                            # Definition: a session with no associated rollout log is idle.
+                            "busy": False,
                             "queue_len": int(queue_val),
                             "token": token_val,
                             "has_older": False,
