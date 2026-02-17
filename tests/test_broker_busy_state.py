@@ -195,6 +195,24 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(st.pending_calls, set())
         self.assertEqual(st.last_turn_activity_ts, 0.0)
 
+    def test_task_complete_clears_busy_and_pending_calls(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = False
+        st.pending_calls.add("call-1")
+        st.last_turn_activity_ts = 10.0
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+            now_ts=11.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertEqual(st.pending_calls, set())
+        self.assertEqual(st.last_turn_activity_ts, 0.0)
+
     def test_reasoning_item_can_mark_busy_without_user_message(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

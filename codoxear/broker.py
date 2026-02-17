@@ -387,6 +387,14 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_interrupt_hint_ts = 0.0
             st.last_turn_activity_ts = 0.0
             return
+        if ev_type == "task_complete":
+            st.pending_calls.clear()
+            st.busy = False
+            st.turn_open = False
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = 0.0
+            return
         if ev_type == "agent_message":
             msg = payload.get("message")
             if isinstance(msg, str) and msg.strip() and st.turn_open:

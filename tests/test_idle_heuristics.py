@@ -105,6 +105,21 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
 
+    def test_task_complete_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {"type": "response_item", "payload": {"type": "function_call", "call_id": "c1"}},
+                    {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "c1"}},
+                    {"type": "event_msg", "payload": {"type": "task_complete"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
 
 if __name__ == "__main__":
     unittest.main()

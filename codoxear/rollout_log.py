@@ -452,6 +452,11 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     turn_has_completion_candidate = False
                     last_terminal_event = "aborted"
                     continue
+                if pt == "task_complete":
+                    turn_open = False
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "assistant"
+                    continue
                 if pt == "agent_reasoning" and turn_open:
                     turn_has_completion_candidate = False
                     continue
@@ -565,4 +570,3 @@ def _last_chat_role_ts_from_tail(
             return (role, float(ts))
         scan *= 2
     return None
-
