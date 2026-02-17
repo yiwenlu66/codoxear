@@ -210,7 +210,9 @@ def _encode_enter() -> bytes:
 
 def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.2) -> None:
     os.write(fd, text.encode("utf-8"))
-    if suffix:
+    if not suffix:
+        return
+    for _i in range(3):
         time.sleep(delay_s)
         os.write(fd, suffix)
 
