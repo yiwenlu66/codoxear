@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 
 from codoxear.util import (
     classify_session_log,
-    find_new_session_log_for_cwd,
+    find_new_session_log,
     find_session_log_for_session_id,
     is_subagent_session_meta,
     read_session_meta_payload,
@@ -64,7 +64,7 @@ class TestSessionLogClassification(unittest.TestCase):
             found = find_session_log_for_session_id(sessions, "dd")
             self.assertEqual(found, p)
 
-    def test_find_new_session_log_for_cwd_filters(self) -> None:
+    def test_find_new_session_log_filters_by_cwd(self) -> None:
         with TemporaryDirectory() as td:
             sessions = Path(td)
             a = sessions / "2026" / "02" / "04"
@@ -85,7 +85,7 @@ class TestSessionLogClassification(unittest.TestCase):
             os.utime(want, (t0 + 20, t0 + 20))
 
             preexisting = {pre}
-            found = find_new_session_log_for_cwd(
+            found = find_new_session_log(
                 sessions_dir=sessions,
                 cwd="/x",
                 after_ts=t0,

@@ -147,10 +147,14 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str) -> Path
 def find_new_session_log(
     *,
     sessions_dir: Path,
+    cwd: str | None = None,
     after_ts: float,
     preexisting: set[Path],
     timeout_s: float,
 ) -> tuple[str, Path] | None:
+    if cwd is not None:
+        if not isinstance(cwd, str) or (not cwd.strip()):
+            raise ValueError("cwd must be a non-empty string when provided")
     deadline = now() + float(timeout_s)
     while now() < deadline:
         for p in iter_session_logs(sessions_dir):
@@ -166,41 +170,10 @@ def find_new_session_log(
                 continue
             if is_subagent_session_meta(payload):
                 continue
-            sid = payload.get("id")
-            if isinstance(sid, str) and sid:
-                return sid, p
-        time.sleep(0.2)
-    return None
-
-
-def find_new_session_log_for_cwd(
-    *,
-    sessions_dir: Path,
-    cwd: str,
-    after_ts: float,
-    preexisting: set[Path],
-    timeout_s: float,
-) -> tuple[str, Path] | None:
-    if not isinstance(cwd, str) or (not cwd.strip()):
-        raise ValueError("cwd required")
-    deadline = now() + float(timeout_s)
-    while now() < deadline:
-        for p in iter_session_logs(sessions_dir):
-            if p in preexisting:
-                continue
-            try:
-                if p.stat().st_mtime < after_ts - 2:
+            if cwd is not None:
+                pcwd = payload.get("cwd")
+                if not (isinstance(pcwd, str) and pcwd == cwd):
                     continue
-            except FileNotFoundError:
-                continue
-            payload = read_session_meta_payload(p, timeout_s=0.0)
-            if not payload:
-                continue
-            if is_subagent_session_meta(payload):
-                continue
-            pcwd = payload.get("cwd")
-            if not (isinstance(pcwd, str) and pcwd == cwd):
-                continue
             sid = payload.get("id")
             if isinstance(sid, str) and sid:
                 return sid, p

@@ -341,6 +341,7 @@ class Sessiond:
         while (not self._stop.is_set()) and (_now() < deadline):
             found = _find_new_session_log(
                 sessions_dir=self.sessions_dir,
+                cwd=self.cwd,
                 after_ts=after_ts,
                 preexisting=preexisting,
                 timeout_s=0.5,

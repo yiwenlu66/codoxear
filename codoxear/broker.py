@@ -22,11 +22,10 @@ from pathlib import Path
 from typing import Any
 
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
-from codoxear import proc_fd_scan as _proc_fd_scan
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
-from codoxear.util import find_new_session_log_for_cwd as _find_new_session_log_for_cwd
+from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
@@ -45,7 +44,6 @@ if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
 else:
     DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
-FD_POLL_SECONDS_RAW = os.environ.get("CODEX_WEB_FD_POLL_SECONDS", "1.0")
 _BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
 if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
     _BUSY_QUIET_RAW = "3.0"
@@ -108,37 +106,6 @@ def _require_proc() -> None:
     if not (PROC_ROOT / "self" / "fd").is_dir():
         sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
         raise SystemExit(2)
-
-
-def _proc_children_pids(proc_root: Path, pid: int) -> list[int]:
-    return _proc_fd_scan._proc_children_pids(proc_root, pid)
-
-
-def _proc_descendants(proc_root: Path, root_pid: int) -> set[int]:
-    return _proc_fd_scan._proc_descendants(proc_root, root_pid)
-
-def _proc_descendants_owned(proc_root: Path, root_pid: int, uid: int) -> set[int]:
-    return _proc_fd_scan._proc_descendants_owned(proc_root, root_pid, uid)
-
-def _proc_pid_uid(proc_root: Path, pid: int) -> int | None:
-    return _proc_fd_scan._proc_pid_uid(proc_root, pid)
-
-
-def _fd_is_writable(proc_root: Path, pid: int, fd: int) -> bool:
-    return _proc_fd_scan._fd_is_writable(proc_root, pid, fd)
-
-
-def _rollout_path_from_fd_link(link: str) -> Path | None:
-    return _proc_fd_scan._rollout_path_from_fd_link(link)
-
-
-def _iter_writable_rollout_paths(
-    *,
-    proc_root: Path,
-    pid: int,
-    sessions_dir: Path,
-) -> list[Path]:
-    return _proc_fd_scan._iter_writable_rollout_paths(proc_root=proc_root, pid=pid, sessions_dir=sessions_dir)
 
 
 def _user_shell() -> str:
@@ -558,7 +525,7 @@ class Broker:
                 if not need:
                     time.sleep(0.25)
                     continue
-                found = _find_new_session_log_for_cwd(
+                found = _find_new_session_log(
                     sessions_dir=self.sessions_dir,
                     cwd=self.cwd,
                     after_ts=after_ts,
@@ -580,7 +547,7 @@ class Broker:
                     except ChildProcessError:
                         return
                     except Exception:
-                        pass
+                        raise
                 time.sleep(0.25)
         except Exception:
             sys.stderr.write(f"error: log discover watcher crashed: {traceback.format_exc()}\n")
@@ -1045,107 +1012,6 @@ class Broker:
         elif prev_lp is None or not _paths_match(prev_lp, lp):
             self._write_meta()
 
-    def _proc_fd_watcher(self) -> None:
-        try:
-            poll_s = float(FD_POLL_SECONDS_RAW)
-        except Exception:
-            sys.stderr.write(f"error: invalid CODEX_WEB_FD_POLL_SECONDS={FD_POLL_SECONDS_RAW!r}\n")
-            os.kill(os.getpid(), signal.SIGTERM)
-            return
-        if not (poll_s > 0.0):
-            sys.stderr.write(f"error: invalid CODEX_WEB_FD_POLL_SECONDS={FD_POLL_SECONDS_RAW!r}\n")
-            os.kill(os.getpid(), signal.SIGTERM)
-            return
-        try:
-            while not self._stop.is_set():
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        return
-                    root_pid = int(st.codex_pid)
-                    sessions_dir = st.sessions_dir
-                    last_detected = st.last_detected_rollout_path
-                    ignored = set(st.ignored_rollout_paths)
-                    need_clear = bool(
-                        st.log_path is not None
-                        or st.session_id is not None
-                        or st.last_rollout_path is not None
-                        or st.last_detected_rollout_path is not None
-                    )
-
-                if root_pid <= 0:
-                    time.sleep(poll_s)
-                    continue
-
-                uid = _proc_pid_uid(PROC_ROOT, root_pid)
-                if uid is None:
-                    time.sleep(poll_s)
-                    continue
-                pids = _proc_descendants_owned(PROC_ROOT, root_pid, int(uid))
-                candidates: list[tuple[int, int, Path]] = []
-                had_any_rollout = False
-                for pid in pids:
-                    # Defensive: the descendant PID can be reused between enumeration and scanning.
-                    pid_uid = _proc_pid_uid(PROC_ROOT, int(pid))
-                    if pid_uid is None or int(pid_uid) != int(uid):
-                        continue
-                    try:
-                        paths = _iter_writable_rollout_paths(proc_root=PROC_ROOT, pid=pid, sessions_dir=sessions_dir)
-                    except PermissionError as e:
-                        sys.stderr.write(f"error: permission denied scanning /proc/{pid}/fd for owned pid (uid={uid}): {e}\n")
-                        sys.stderr.flush()
-                        os.kill(os.getpid(), signal.SIGTERM)
-                        return
-                    for p in paths:
-                        had_any_rollout = True
-                        if p in ignored:
-                            continue
-                        try:
-                            mtime_ns = int(p.stat().st_mtime_ns)
-                        except Exception:
-                            continue
-                        candidates.append((mtime_ns, int(pid), p))
-
-                if not candidates:
-                    if need_clear:
-                        with self._lock:
-                            st3 = self.state
-                            if not st3:
-                                return
-                            st3.log_path = None
-                            st3.session_id = None
-                            st3.log_off = 0
-                            st3.last_rollout_path = None
-                            st3.last_detected_rollout_path = None
-                            if not had_any_rollout:
-                                st3.ignored_rollout_paths.clear()
-                        self._write_meta()
-                    time.sleep(poll_s)
-                    continue
-
-                candidates.sort(key=lambda t: (t[0], t[1], str(t[2])))
-                _mtime_ns, _pid, best_path = candidates[-1]
-
-                if last_detected is not None and _paths_match(last_detected, best_path):
-                    time.sleep(poll_s)
-                    continue
-
-                with self._lock:
-                    st2 = self.state
-                    if not st2:
-                        return
-                    st2.last_detected_rollout_path = best_path
-
-                self._maybe_register_or_switch_rollout(log_path=best_path)
-                with self._lock:
-                    st4 = self.state
-                    if st4 and st4.log_path is not None:
-                        st4.ignored_rollout_paths.clear()
-                time.sleep(poll_s)
-        except Exception:
-            sys.stderr.write(f"error: proc fd watcher crashed: {traceback.format_exc()}\n")
-            os.kill(os.getpid(), signal.SIGTERM)
-
     def run(self) -> int:
         rows, cols = _term_size()
         _require_proc()
@@ -1224,10 +1090,7 @@ class Broker:
         if not headless:
             threading.Thread(target=self._stdin_to_pty, daemon=True).start()
         threading.Thread(target=self._log_watcher, daemon=True).start()
-        if headless:
-            threading.Thread(target=self._discover_log_watcher, daemon=True).start()
-        else:
-            threading.Thread(target=self._proc_fd_watcher, daemon=True).start()
+        threading.Thread(target=self._discover_log_watcher, daemon=True).start()
 
         exit_code = 0
         try:
