@@ -26,6 +26,8 @@ from codoxear import proc_fd_scan as _proc_fd_scan
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
+from codoxear.util import find_new_session_log_for_cwd as _find_new_session_log_for_cwd
+from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -520,7 +522,13 @@ class State:
 class Broker:
     def __init__(self, *, cwd: str, codex_args: list[str]) -> None:
         self.cwd = cwd
-        self.codex_args = codex_args
+        # Headless web sessions need different defaults for robust injection and log discovery.
+        # These flags are forwarded to the interactive Codex CLI.
+        if OWNER_TAG == "web":
+            forced = ["-c", "disable_response_storage=false", "-c", "disable_paste_burst=true"]
+            self.codex_args = forced + codex_args
+        else:
+            self.codex_args = codex_args
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self.state: State | None = None
@@ -530,6 +538,53 @@ class Broker:
 
         self.codex_home = DEFAULT_CODEX_HOME
         self.sessions_dir = self.codex_home / "sessions"
+
+    def _discover_log_watcher(self) -> None:
+        try:
+            with self._lock:
+                st0 = self.state
+                if not st0:
+                    return
+                after_ts = float(st0.start_ts)
+            preexisting = set(_iter_session_logs(self.sessions_dir))
+
+            while not self._stop.is_set():
+                with self._lock:
+                    st = self.state
+                    if not st:
+                        return
+                    need = (st.log_path is None) or (not st.log_path.exists())
+                    root_pid = int(st.codex_pid)
+                if not need:
+                    time.sleep(0.25)
+                    continue
+                found = _find_new_session_log_for_cwd(
+                    sessions_dir=self.sessions_dir,
+                    cwd=self.cwd,
+                    after_ts=after_ts,
+                    preexisting=preexisting,
+                    timeout_s=0.5,
+                )
+                if found:
+                    _sid, lp = found
+                    preexisting.add(lp)
+                    self._maybe_register_or_switch_rollout(log_path=lp)
+                    time.sleep(0.25)
+                    continue
+                # Exit early if Codex is gone.
+                if root_pid > 0:
+                    try:
+                        wpid, _status = os.waitpid(root_pid, os.WNOHANG)
+                        if wpid == root_pid:
+                            return
+                    except ChildProcessError:
+                        return
+                    except Exception:
+                        pass
+                time.sleep(0.25)
+        except Exception:
+            sys.stderr.write(f"error: log discover watcher crashed: {traceback.format_exc()}\n")
+            os.kill(os.getpid(), signal.SIGTERM)
 
     def _register_from_log(self, *, log_path: Path) -> bool:
         sid = self._session_id_from_rollout_path(log_path)
@@ -1169,7 +1224,10 @@ class Broker:
         if not headless:
             threading.Thread(target=self._stdin_to_pty, daemon=True).start()
         threading.Thread(target=self._log_watcher, daemon=True).start()
-        threading.Thread(target=self._proc_fd_watcher, daemon=True).start()
+        if headless:
+            threading.Thread(target=self._discover_log_watcher, daemon=True).start()
+        else:
+            threading.Thread(target=self._proc_fd_watcher, daemon=True).start()
 
         exit_code = 0
         try:
