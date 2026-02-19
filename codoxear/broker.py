@@ -115,6 +115,12 @@ def _proc_children_pids(proc_root: Path, pid: int) -> list[int]:
 def _proc_descendants(proc_root: Path, root_pid: int) -> set[int]:
     return _proc_fd_scan._proc_descendants(proc_root, root_pid)
 
+def _proc_descendants_owned(proc_root: Path, root_pid: int, uid: int) -> set[int]:
+    return _proc_fd_scan._proc_descendants_owned(proc_root, root_pid, uid)
+
+def _proc_pid_uid(proc_root: Path, pid: int) -> int | None:
+    return _proc_fd_scan._proc_pid_uid(proc_root, pid)
+
 
 def _fd_is_writable(proc_root: Path, pid: int, fd: int) -> bool:
     return _proc_fd_scan._fd_is_writable(proc_root, pid, fd)
@@ -1016,11 +1022,25 @@ class Broker:
                     time.sleep(poll_s)
                     continue
 
-                pids = _proc_descendants(PROC_ROOT, root_pid)
+                uid = _proc_pid_uid(PROC_ROOT, root_pid)
+                if uid is None:
+                    time.sleep(poll_s)
+                    continue
+                pids = _proc_descendants_owned(PROC_ROOT, root_pid, int(uid))
                 candidates: list[tuple[int, int, Path]] = []
                 had_any_rollout = False
                 for pid in pids:
-                    paths = _iter_writable_rollout_paths(proc_root=PROC_ROOT, pid=pid, sessions_dir=sessions_dir)
+                    # Defensive: the descendant PID can be reused between enumeration and scanning.
+                    pid_uid = _proc_pid_uid(PROC_ROOT, int(pid))
+                    if pid_uid is None or int(pid_uid) != int(uid):
+                        continue
+                    try:
+                        paths = _iter_writable_rollout_paths(proc_root=PROC_ROOT, pid=pid, sessions_dir=sessions_dir)
+                    except PermissionError as e:
+                        sys.stderr.write(f"error: permission denied scanning /proc/{pid}/fd for owned pid (uid={uid}): {e}\n")
+                        sys.stderr.flush()
+                        os.kill(os.getpid(), signal.SIGTERM)
+                        return
                     for p in paths:
                         had_any_rollout = True
                         if p in ignored:

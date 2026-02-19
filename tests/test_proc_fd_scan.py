@@ -7,6 +7,8 @@ from codoxear.broker import (
     _fd_is_writable,
     _iter_writable_rollout_paths,
     _proc_descendants,
+    _proc_descendants_owned,
+    _proc_pid_uid,
     _rollout_path_from_fd_link,
 )
 
@@ -26,6 +28,29 @@ class TestProcFdScan(unittest.TestCase):
             _write(proc_root / "103" / "task" / "103" / "children", "\n")
 
             self.assertEqual(_proc_descendants(proc_root, 100), {100, 101, 102, 103})
+
+    def test_proc_descendants_raises_children_permission_error(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            proc_root = Path(td)
+            p = proc_root / "100" / "task" / "100" / "children"
+            _write(p, "101\n")
+            try:
+                os.chmod(p, 0o000)
+                with self.assertRaises(PermissionError):
+                    _proc_descendants(proc_root, 100)
+            finally:
+                os.chmod(p, 0o600)
+
+    def test_proc_pid_uid_missing_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            proc_root = Path(td)
+            self.assertIsNone(_proc_pid_uid(proc_root, 999))
+
+    def test_proc_descendants_owned_skips_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            proc_root = Path(td)
+            # PID directory missing.
+            self.assertEqual(_proc_descendants_owned(proc_root, 100, uid=os.getuid()), set())
 
     def test_rollout_path_from_fd_link(self) -> None:
         self.assertEqual(
@@ -80,3 +105,18 @@ class TestProcFdScan(unittest.TestCase):
             got = _iter_writable_rollout_paths(proc_root=proc_root, pid=300, sessions_dir=sessions_dir)
             self.assertEqual(got, [rollout.resolve()])
 
+    def test_iter_writable_rollout_paths_raises_fd_permission_error(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            sessions_dir = root / "sessions"
+            sessions_dir.mkdir(parents=True, exist_ok=True)
+
+            fd_dir = proc_root / "400" / "fd"
+            fd_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(fd_dir, 0o000)
+                with self.assertRaises(PermissionError):
+                    _iter_writable_rollout_paths(proc_root=proc_root, pid=400, sessions_dir=sessions_dir)
+            finally:
+                os.chmod(fd_dir, 0o700)

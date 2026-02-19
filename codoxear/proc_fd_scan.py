@@ -4,6 +4,38 @@ import os
 from pathlib import Path
 
 
+def _proc_pid_uid(proc_root: Path, pid: int) -> int | None:
+    try:
+        return int((proc_root / str(pid)).stat().st_uid)
+    except FileNotFoundError:
+        return None
+    except PermissionError:
+        return None
+    except Exception:
+        return None
+
+
+def _proc_children_pids_owned(proc_root: Path, pid: int, uid: int) -> list[int]:
+    pid_uid = _proc_pid_uid(proc_root, pid)
+    if pid_uid is None or int(pid_uid) != int(uid):
+        return []
+    try:
+        data = (proc_root / str(pid) / "task" / str(pid) / "children").read_text("utf-8", errors="replace")
+    except FileNotFoundError:
+        return []
+    # If the PID is owned but /proc denies access, treat as a real invariant break.
+    except PermissionError:
+        raise
+    toks = [t for t in data.strip().split() if t.isdigit()]
+    out: list[int] = []
+    for t in toks:
+        try:
+            out.append(int(t))
+        except Exception:
+            continue
+    return out
+
+
 def _proc_children_pids(proc_root: Path, pid: int) -> list[int]:
     try:
         data = (proc_root / str(pid) / "task" / str(pid) / "children").read_text("utf-8", errors="replace")
@@ -28,6 +60,24 @@ def _proc_descendants(proc_root: Path, root_pid: int) -> set[int]:
             continue
         seen.add(pid)
         for c in _proc_children_pids(proc_root, pid):
+            if c not in seen:
+                q.append(c)
+    return seen
+
+
+def _proc_descendants_owned(proc_root: Path, root_pid: int, uid: int) -> set[int]:
+    seen: set[int] = set()
+    q: list[int] = [int(root_pid)]
+    while q:
+        pid = q.pop()
+        if pid <= 0 or pid in seen:
+            continue
+        # If PID has been reused or is no longer owned, ignore it.
+        pid_uid = _proc_pid_uid(proc_root, pid)
+        if pid_uid is None or int(pid_uid) != int(uid):
+            continue
+        seen.add(pid)
+        for c in _proc_children_pids_owned(proc_root, pid, uid):
             if c not in seen:
                 q.append(c)
     return seen
@@ -92,8 +142,6 @@ def _iter_writable_rollout_paths(
             link = os.readlink(e)
         except FileNotFoundError:
             continue
-        except PermissionError:
-            raise
         except Exception:
             continue
         p = _rollout_path_from_fd_link(link)
@@ -111,4 +159,3 @@ def _iter_writable_rollout_paths(
             continue
         out.append(rp)
     return out
-
