@@ -104,6 +104,13 @@
 
       window.codoxearPerf = summarizePerf;
 
+      const appBaseUrl = new URL(".", window.location.href);
+      function resolveAppUrl(path) {
+        const s = String(path ?? "");
+        const rel = s.startsWith("/") ? s.slice(1) : s;
+        return new URL(rel, appBaseUrl).toString();
+      }
+
       async function api(path, { method = "GET", body } = {}) {
         const t0 = performance.now();
         const opts = { method, headers: {} };
@@ -111,19 +118,21 @@
           opts.headers["Content-Type"] = "application/json";
           opts.body = JSON.stringify(body);
         }
-        const res = await fetch(path, opts);
+        const url = resolveAppUrl(path);
+        const res = await fetch(url, opts);
         const txt = await res.text();
         let obj;
         try {
           obj = JSON.parse(txt);
         } catch (e) {
-          console.error("api: invalid json response", { path, method, txt });
+          console.error("api: invalid json response", { path, url, method, txt });
           throw e;
         }
         const dt = performance.now() - t0;
-        if (path === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
-        else if (path.includes("/messages") && method === "GET") {
-          if (path.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
+        const rawPath = String(path ?? "");
+        if (rawPath === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
+        else if (rawPath.includes("/messages") && method === "GET") {
+          if (rawPath.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
           else pushPerfSample("api_messages_poll_ms", dt);
         }
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });

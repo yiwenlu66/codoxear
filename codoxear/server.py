@@ -59,6 +59,35 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return out
 
 
+def _normalize_url_prefix(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if not s or s == "/":
+        return ""
+    if "://" in s:
+        raise ValueError("CODEX_WEB_URL_PREFIX must be a path prefix (not a URL)")
+    if "?" in s or "#" in s:
+        raise ValueError("CODEX_WEB_URL_PREFIX must not include '?' or '#'")
+    if not s.startswith("/"):
+        raise ValueError("CODEX_WEB_URL_PREFIX must start with '/'")
+    while len(s) > 1 and s.endswith("/"):
+        s = s[:-1]
+    if s == "/":
+        return ""
+    return s
+
+
+def _strip_url_prefix(prefix: str, path: str) -> str | None:
+    if not prefix:
+        return path
+    if path == prefix:
+        return "/"
+    if path.startswith(prefix + "/"):
+        return path[len(prefix) :]
+    return None
+
+
 APP_DIR = _default_app_dir()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 SOCK_DIR = APP_DIR / "socks"
@@ -75,6 +104,8 @@ if _DOTENV.exists():
 COOKIE_NAME = "codoxear_auth"
 COOKIE_TTL_SECONDS = int(os.environ.get("CODEX_WEB_COOKIE_TTL_SECONDS", str(30 * 24 * 3600)))
 COOKIE_SECURE = os.environ.get("CODEX_WEB_COOKIE_SECURE", "0") == "1"
+URL_PREFIX = _normalize_url_prefix(os.environ.get("CODEX_WEB_URL_PREFIX"))
+COOKIE_PATH = (URL_PREFIX + "/") if URL_PREFIX else "/"
 
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
@@ -400,7 +431,7 @@ def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
     token = _sign_cookie({"exp": exp})
     attrs = [
         f"{COOKIE_NAME}={token}",
-        "Path=/",
+        f"Path={COOKIE_PATH}",
         "HttpOnly",
         "SameSite=Strict",
         f"Max-Age={COOKIE_TTL_SECONDS}",
@@ -1512,7 +1543,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             u = urllib.parse.urlparse(self.path)
             path = u.path
+            if URL_PREFIX:
+                if path == URL_PREFIX:
+                    loc = URL_PREFIX + "/"
+                    if u.query:
+                        loc = loc + "?" + u.query
+                    self.send_response(308)
+                    self.send_header("Location", loc)
+                    self.end_headers()
+                    return
+                stripped = _strip_url_prefix(URL_PREFIX, path)
+                if stripped is None:
+                    self.send_error(404)
+                    return
+                path = stripped
             if path == "/favicon.ico":
+                self._send_static("favicon.png")
+                return
+            if path == "/app.js":
+                self._send_static("app.js")
+                return
+            if path == "/app.css":
+                self._send_static("app.css")
+                return
+            if path == "/favicon.png":
                 self._send_static("favicon.png")
                 return
             if path == "/":
@@ -1745,6 +1799,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             u = urllib.parse.urlparse(self.path)
             path = u.path
+            if URL_PREFIX:
+                if path == URL_PREFIX:
+                    loc = URL_PREFIX + "/"
+                    if u.query:
+                        loc = loc + "?" + u.query
+                    self.send_response(308)
+                    self.send_header("Location", loc)
+                    self.end_headers()
+                    return
+                stripped = _strip_url_prefix(URL_PREFIX, path)
+                if stripped is None:
+                    self.send_error(404)
+                    return
+                path = stripped
 
             if path == "/api/login":
                 body = _read_body(self)
@@ -1772,7 +1840,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header(
                     "Set-Cookie",
-                    f"{COOKIE_NAME}=deleted; Path=/; Max-Age=0; HttpOnly; SameSite=Strict",
+                    f"{COOKIE_NAME}=deleted; Path={COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Strict",
                 )
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()

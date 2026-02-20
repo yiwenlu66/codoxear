@@ -7,14 +7,25 @@
       content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
     />
     <title>Codoxear</title>
-    <link rel="icon" type="image/png" href="/static/favicon.png" />
+    <script>
+      (function () {
+        const p = window.location.pathname || "/";
+        const last = p.split("/").filter(Boolean).pop() || "";
+        if (!p.endsWith("/") && !last.includes(".")) {
+          const u = new URL(window.location.href);
+          u.pathname = p + "/";
+          window.location.replace(u.toString());
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/app.css" />
+    <link rel="stylesheet" href="app.css" />
   </head>
   <body>
     <div id="root"></div>
-    <script src="/static/app.js" defer></script>
+    <script src="app.js" defer></script>
   </body>
 </html>

@@ -110,6 +110,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_PASSWORD` (required)
 - `CODEX_WEB_HOST` (default `::`)
 - `CODEX_WEB_PORT` (default `8743`)
+- `CODEX_WEB_URL_PREFIX` (default empty). Example: `/codoxear` serves the UI at `/codoxear/` and the API under `/codoxear/api/*`.
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
 - `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
