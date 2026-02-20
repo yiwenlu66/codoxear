@@ -200,17 +200,18 @@
         if (alias) return alias;
         const cwdName = baseName(s.cwd);
         if (cwdName) return cwdName;
-        return s.session_id ? String(s.session_id) : "";
+        const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
+          ? s.updated_ts
+          : typeof s.start_ts === "number" && Number.isFinite(s.start_ts)
+            ? s.start_ts
+            : 0;
+        return ts ? `Session ${fmtTs(ts)}` : "Session";
       }
 
       function sessionTitleWithId(s) {
         if (!s || typeof s !== "object") return "No session selected";
         const name = sessionDisplayName(s);
-        const sid = s.session_id ? String(s.session_id) : "";
-        if (!name) return sid || "No session selected";
-        if (!sid) return name;
-        if (name === sid) return shortSessionId(sid);
-        return `${name} (${sid.slice(0, 8)})`;
+        return name || "No session selected";
       }
 
       function escapeHtml(s) {
@@ -1235,9 +1236,8 @@
 		              el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
 		              el("div", {}, badges),
 		            ]);
-	            const pid = s.pid ? String(s.pid) : "?";
               const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-	            const meta = el("div", { class: "muted subLine", text: `id ${shortSessionId(s.session_id)}  pid ${pid}  last ${fmtTs(updatedTs)}` });
+	            const meta = el("div", { class: "muted subLine", text: updatedTs ? `last ${fmtTs(updatedTs)}` : "" });
             const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
             if (selected === s.session_id && files.length) {
               const maxShow = 5;
