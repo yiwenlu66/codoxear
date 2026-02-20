@@ -308,11 +308,18 @@
 	        border-radius: 10px;
 	        position: relative;
 	      }
-	      .icon-btn.active {
-	        border-color: rgba(37, 99, 235, 0.5);
-	        background: rgba(37, 99, 235, 0.08);
-	        color: var(--accent);
-	      }
+      .icon-btn.active {
+        border-color: rgba(37, 99, 235, 0.5);
+        background: rgba(37, 99, 235, 0.08);
+        color: var(--accent);
+      }
+      .icon-btn.text-btn {
+        width: auto;
+        min-width: 46px;
+        padding: 0 10px;
+        font-size: 12px;
+        line-height: 1;
+      }
 	      .icon {
 	        width: 18px;
 	        height: 18px;
@@ -333,6 +340,9 @@
         text-align: center;
         display: none;
         box-shadow: 0 6px 14px rgba(15, 23, 42, 0.16);
+      }
+      .queueBadge {
+        background: rgba(245, 158, 11, 0.95);
       }
 
       .status-chip {
@@ -784,6 +794,11 @@ input[type="text"] {
         justify-content: space-between;
         gap: 10px;
       }
+      .fileViewerHeader .actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
       .filePathRow {
         display: flex;
         gap: 8px;
@@ -807,6 +822,79 @@ input[type="text"] {
         flex: 1 1 auto;
         min-height: 120px;
         -webkit-overflow-scrolling: touch;
+      }
+      .fileViewer.wrap .fileContent {
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+      }
+      .queueViewer {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: calc(50% + var(--vvTop, 0px));
+        transform: translate(-50%, -50%);
+        z-index: 80;
+        width: min(92vw, 520px);
+        max-height: calc(var(--appH, 100dvh) - 24px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        padding: 12px;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+      }
+      .queueHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .queueList {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .queueItem {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .queueText {
+        flex: 1 1 auto;
+        min-height: 64px;
+        max-height: 160px;
+        resize: vertical;
+        font-size: 13px;
+      }
+      .sendChoice {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: calc(50% + var(--vvTop, 0px));
+        transform: translate(-50%, -50%);
+        z-index: 80;
+        width: min(92vw, 420px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        padding: 12px;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+      }
+      .sendChoiceActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .sendChoiceActions button {
+        flex: 1 1 auto;
       }
 		      .backdrop {
 		        display: none;
@@ -916,6 +1004,17 @@ input[type="text"] {
           display: none;
         }
         .fileViewer {
+          width: 100vw;
+          max-height: none;
+          left: 0;
+          right: 0;
+          top: var(--vvTop, 0px);
+          bottom: 0;
+          transform: none;
+          border-radius: 0;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+        }
+        .queueViewer {
           width: 100vw;
           max-height: none;
           left: 0;

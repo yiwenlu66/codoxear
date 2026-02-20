@@ -433,11 +433,11 @@
         return html;
       }
 
-	      function iconSvg(name) {
-	        if (name === "menu")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
-	        if (name === "refresh")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
+      function iconSvg(name) {
+        if (name === "menu")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
+        if (name === "refresh")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
 	        if (name === "harness")
 	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
 	        if (name === "stop")
@@ -460,6 +460,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>`;
         if (name === "x")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
+        if (name === "queue")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
         return "";
       }
 
@@ -546,18 +548,24 @@
 	        let pollFastUntilMs = 0;
 	        let turnOpen = false;
 	        let sessionsTimer = null;
-		        let sessionIndex = new Map(); // session_id -> session info
-		        let sending = false;
-			        let localEchoSeq = 0;
-			        const pendingUser = [];
-			        let attachedImages = 0;
+	        let currentRunning = false;
+	        let deferInFlight = false;
+	        const deferredBySession = new Map();
+	        const deferredLoaded = new Set();
+	        let queueSaveTimer = null;
+	        let sessionIndex = new Map(); // session_id -> session info
+	        let sending = false;
+	        let localEchoSeq = 0;
+	        const pendingUser = [];
+	        let attachedImages = 0;
 		        let autoScroll = true;
 			        let backfillToken = 0;
 		        let backfillState = null;
 			        let lastScrollTop = 0;
 				        let lastToken = null;
 				        let typingRow = null;
-				        let attachBadgeEl = null;
+	        let attachBadgeEl = null;
+	        let queueBadgeEl = null;
                 let clickLoadT0 = 0;
                 let clickMetricPending = false;
 					        let harnessMenuOpen = false;
@@ -635,22 +643,23 @@
           ]),
         ]);
 
-	        const form = el("form", {}, [
-	          el("button", {
-	            class: "icon-btn",
-	            id: "attachBtn",
-	            type: "button",
-	            title: "Attach image",
-	            "aria-label": "Attach image",
-	            html: iconSvg("paperclip"),
-	          }),
+        const form = el("form", {}, [
+          el("button", {
+            class: "icon-btn",
+            id: "attachBtn",
+            type: "button",
+            title: "Attach image",
+            "aria-label": "Attach image",
+            html: iconSvg("paperclip"),
+          }),
           el("div", { class: "inputWrap" }, [
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
-	          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
-	          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
-	        ]);
+          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
+          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
+          el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
+        ]);
         composer.appendChild(form);
 
         sidebar.appendChild(
@@ -682,6 +691,14 @@
           type: "button",
           html: iconSvg("x"),
         });
+        const fileWrapBtn = el("button", {
+          id: "fileWrapBtn",
+          class: "icon-btn text-btn",
+          title: "Toggle line wrap",
+          "aria-label": "Toggle line wrap",
+          type: "button",
+          text: "Wrap",
+        });
         const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "/path/to/file" });
         const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
@@ -689,7 +706,7 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileCloseBtn]),
+            el("div", { class: "actions" }, [fileWrapBtn, fileCloseBtn]),
           ]),
           el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
           fileStatus,
@@ -697,6 +714,41 @@
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
+
+        const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
+        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
+          el("div", { class: "title", text: "Current response is running" }),
+          el("div", { class: "muted", text: "Choose how to handle your next message." }),
+          el("div", { class: "sendChoiceActions" }, [
+            el("button", { class: "primary", id: "sendChoiceNow", type: "button", text: "Send now" }),
+            el("button", { id: "sendChoiceLater", type: "button", text: "Send after current" }),
+            el("button", { id: "sendChoiceCancel", type: "button", text: "Cancel" }),
+          ]),
+        ]);
+        root.appendChild(sendChoiceBackdrop);
+        root.appendChild(sendChoice);
+
+        const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
+        const queueCloseBtn = el("button", {
+          id: "queueCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const queueList = el("div", { class: "queueList", id: "queueList" });
+        const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
+        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-label": "Queued messages" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Queued messages" }),
+            el("div", { class: "actions" }, [queueCloseBtn]),
+          ]),
+          queueEmpty,
+          queueList,
+        ]);
+        root.appendChild(queueBackdrop);
+        root.appendChild(queueViewer);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -706,20 +758,28 @@
           }, 2200);
         }
 
-			        function setStatus({ running, queueLen }) {
-			          const q = Number(queueLen || 0);
-			          const mobile = isMobile();
-			          if (running) {
-			            statusChip.style.display = "none";
-			            statusChip.classList.remove("running");
-			          } else {
-			            statusChip.style.display = "inline-flex";
+        function setStatus({ running, queueLen }) {
+          const q = Number(queueLen || 0);
+          const mobile = isMobile();
+          const wasRunning = currentRunning;
+          currentRunning = Boolean(running);
+          if (running) {
+            statusChip.style.display = "none";
+            statusChip.classList.remove("running");
+          } else {
+            statusChip.style.display = "inline-flex";
 			            if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
 			            else statusChip.textContent = "Idle";
-			          }
-			          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
-			          interruptBtn.disabled = !(running && selected);
-			        }
+          }
+          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
+          interruptBtn.disabled = !(running && selected);
+          if (wasRunning && !currentRunning) {
+            deferInFlight = false;
+          }
+          if (!currentRunning) {
+            maybeSendDeferred();
+          }
+        }
 
 	        function setContext(tok) {
 	          if (!tok || typeof tok !== "object") {
@@ -770,13 +830,114 @@
 	          chat.scrollTop = 0;
 	        }
 
-          function setOlderState({ hasMore, isLoading }) {
-            hasOlder = Boolean(hasMore);
-            loadingOlder = Boolean(isLoading);
-            olderWrap.style.display = hasOlder ? "flex" : "none";
-            olderBtn.disabled = loadingOlder;
-            olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+        function setOlderState({ hasMore, isLoading }) {
+          hasOlder = Boolean(hasMore);
+          loadingOlder = Boolean(isLoading);
+          olderWrap.style.display = hasOlder ? "flex" : "none";
+          olderBtn.disabled = loadingOlder;
+          olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+        }
+
+        function deferredStorageKey(sid) {
+          return `codexweb.deferred.${sid}`;
+        }
+
+        function loadDeferredFromStorage(sid) {
+          if (!sid || deferredLoaded.has(sid)) return;
+          deferredLoaded.add(sid);
+          try {
+            const raw = localStorage.getItem(deferredStorageKey(sid));
+            if (!raw) return;
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return;
+            const out = [];
+            for (const v of arr) {
+              if (typeof v !== "string") continue;
+              const t = v.trim();
+              if (!t) continue;
+              out.push(t);
+            }
+            if (out.length) deferredBySession.set(sid, out);
+          } catch {
+            // ignore corrupted storage
           }
+        }
+
+        function saveDeferredToStorage(sid) {
+          if (!sid) return;
+          const q = deferredBySession.get(sid) || [];
+          try {
+            localStorage.setItem(deferredStorageKey(sid), JSON.stringify(q));
+          } catch {
+            // ignore quota or serialization issues
+          }
+        }
+
+        function scheduleQueueSave() {
+          if (!selected) return;
+          if (queueSaveTimer) clearTimeout(queueSaveTimer);
+          queueSaveTimer = setTimeout(() => {
+            if (!selected) return;
+            saveDeferredToStorage(selected);
+          }, 350);
+        }
+
+        function getDeferredQueue(sid) {
+          if (!sid) return [];
+          loadDeferredFromStorage(sid);
+          let q = deferredBySession.get(sid);
+          if (!q) {
+            q = [];
+            deferredBySession.set(sid, q);
+          }
+          return q;
+        }
+
+        function updateQueueBadge() {
+          if (!queueBadgeEl) return;
+          if (!selected) {
+            queueBadgeEl.textContent = "";
+            queueBadgeEl.style.display = "none";
+            return;
+          }
+          const q = getDeferredQueue(selected);
+          const n = q.length;
+          if (n > 0) {
+            queueBadgeEl.textContent = String(n);
+            queueBadgeEl.style.display = "inline-flex";
+          } else {
+            queueBadgeEl.textContent = "";
+            queueBadgeEl.style.display = "none";
+          }
+          if (queueViewer.style.display === "flex") {
+            renderQueueList();
+          }
+        }
+
+        function queueLocalMessage(raw, { front = false } = {}) {
+          if (!selected) return;
+          const q = getDeferredQueue(selected);
+          if (front) q.unshift(raw);
+          else q.push(raw);
+          saveDeferredToStorage(selected);
+          updateQueueBadge();
+          setToast(`queued locally (${q.length})`);
+        }
+
+        function maybeSendDeferred() {
+          if (!selected) return;
+          if (sending || deferInFlight || currentRunning) return;
+          const q = getDeferredQueue(selected);
+          if (!q.length) {
+            updateQueueBadge();
+            return;
+          }
+          const raw = q.shift();
+          saveDeferredToStorage(selected);
+          deferInFlight = true;
+          updateQueueBadge();
+          void sendText(raw, { deferred: true });
+        }
 
           function markClickFirstPaint() {
             if (!clickMetricPending) return;
@@ -1047,22 +1208,23 @@
                 if (!confirm("Delete this session?")) return;
                 try {
 	                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-		                  if (selected === s.session_id) {
-		                    selected = null;
-	                      offset = 0;
-	                      activeLogPath = null;
-	                      activeThreadId = null;
-	                      turnOpen = false;
-		                    localStorage.removeItem("codexweb.selected");
-		                    titleLabel.textContent = "No session selected";
-	                      setStatus({ running: false, queueLen: 0 });
-	                      setContext(null);
-	                      setTyping(false);
-	                      setAttachCount(0);
-		                    resetChatRenderState();
-	                      if (harnessMenuOpen) hideHarnessMenu();
-	                      updateHarnessBtnState();
-		                  }
+                if (selected === s.session_id) {
+                  selected = null;
+                  offset = 0;
+                  activeLogPath = null;
+                  activeThreadId = null;
+                  turnOpen = false;
+                  localStorage.removeItem("codexweb.selected");
+                  titleLabel.textContent = "No session selected";
+                  setStatus({ running: false, queueLen: 0 });
+                  setContext(null);
+                  setTyping(false);
+                  setAttachCount(0);
+                  resetChatRenderState();
+                  updateQueueBadge();
+                  if (harnessMenuOpen) hideHarnessMenu();
+                  updateHarnessBtnState();
+                }
 	                  await refreshSessions();
 	                } catch (err) {
                   setToast(`delete error: ${err.message}`);
@@ -1110,30 +1272,32 @@
 	            };
 	            sessionsWrap.appendChild(card);
 	          }
-	          if (selected && !sessionIndex.has(selected)) {
-	            selected = null;
-	            offset = 0;
-	            activeLogPath = null;
-	            activeThreadId = null;
+          if (selected && !sessionIndex.has(selected)) {
+            selected = null;
+            offset = 0;
+            activeLogPath = null;
+            activeThreadId = null;
             pollGen += 1;
             if (pollTimer) clearTimeout(pollTimer);
             pollTimer = null;
             pollKickPending = false;
             localStorage.removeItem("codexweb.selected");
-	            titleLabel.textContent = "No session selected";
-	            setStatus({ running: false, queueLen: 0 });
-	            setTyping(false);
-	            resetChatRenderState();
-	            turnOpen = false;
-	            if (harnessMenuOpen) hideHarnessMenu();
-	            updateHarnessBtnState();
-	          } else if (selected) {
-	            const s = sessionIndex.get(selected);
+            titleLabel.textContent = "No session selected";
+            setStatus({ running: false, queueLen: 0 });
+            setTyping(false);
+            resetChatRenderState();
+            turnOpen = false;
+            if (harnessMenuOpen) hideHarnessMenu();
+            updateHarnessBtnState();
+            updateQueueBadge();
+          } else if (selected) {
+            const s = sessionIndex.get(selected);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
-	          }
-	          updateHarnessBtnState();
-	          return sessions;
-	        }
+          }
+          updateHarnessBtnState();
+          updateQueueBadge();
+          return sessions;
+        }
 
 	        function appendEvent(ev) {
 	          if (consumePendingUserIfMatches(ev)) return;
@@ -1342,14 +1506,15 @@
               pollTimer = null;
               pollKickPending = false;
               turnOpen = false;
-		              localStorage.removeItem("codexweb.selected");
-		              titleLabel.textContent = "No session selected";
-		              setStatus({ running: false, queueLen: 0 });
-		              setTyping(false);
-		              resetChatRenderState();
-                try {
-                  await refreshSessions();
-                } catch (e2) {
+              localStorage.removeItem("codexweb.selected");
+              titleLabel.textContent = "No session selected";
+              setStatus({ running: false, queueLen: 0 });
+              setTyping(false);
+              resetChatRenderState();
+              updateQueueBadge();
+              try {
+                await refreshSessions();
+              } catch (e2) {
                   console.error("refreshSessions failed after session disappeared", e2);
                   toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
                 }
@@ -1406,18 +1571,19 @@
 	            pollTimer = null;
 	          }
 		          pollKickPending = false;
-		          const sid = id;
-			          selected = sid;
-			          offset = 0;
-		              activeLogPath = null;
-		              activeThreadId = null;
-				          resetChatRenderState();
-				          setAttachCount(0);
-				          localStorage.setItem("codexweb.selected", sid);
-				          setStatus({ running: false, queueLen: 0 });
-			          setContext(null);
-		          setTyping(false);
-		          turnOpen = false;
+            const sid = id;
+            selected = sid;
+            offset = 0;
+            activeLogPath = null;
+            activeThreadId = null;
+            resetChatRenderState();
+            setAttachCount(0);
+            localStorage.setItem("codexweb.selected", sid);
+            updateQueueBadge();
+            setStatus({ running: false, queueLen: 0 });
+            setContext(null);
+            setTyping(false);
+            turnOpen = false;
 		          {
 		            const s = sessionIndex.get(sid);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
@@ -1588,9 +1754,17 @@
           e.stopPropagation();
           void renameSessionId(selected);
         };
+        let fileWrap = localStorage.getItem("codexweb.fileWrap") === "1";
+        function applyFileWrap() {
+          fileViewer.classList.toggle("wrap", fileWrap);
+          fileWrapBtn.classList.toggle("active", fileWrap);
+        }
+        applyFileWrap();
+
         function showFileViewer() {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          applyFileWrap();
           const s = selected ? sessionIndex.get(selected) : null;
           const last = localStorage.getItem("codexweb.filePath") || "";
           const def = last || (s && s.cwd ? String(s.cwd) : "");
@@ -1630,6 +1804,13 @@
           e.stopPropagation();
           showFileViewer();
         };
+        fileWrapBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileWrap = !fileWrap;
+          localStorage.setItem("codexweb.fileWrap", fileWrap ? "1" : "0");
+          applyFileWrap();
+        };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -1643,8 +1824,110 @@
           openFilePath();
         });
         document.addEventListener("keydown", (e) => {
-          if (e.key === "Escape" && fileViewer.style.display === "flex") hideFileViewer();
+          if (e.key !== "Escape") return;
+          if (fileViewer.style.display === "flex") hideFileViewer();
+          if (sendChoice.style.display === "flex") hideSendChoice();
+          if (queueViewer.style.display === "flex") hideQueueViewer();
         });
+
+        let sendChoicePending = null;
+        function showSendChoice(raw) {
+          sendChoicePending = raw;
+          sendChoiceBackdrop.style.display = "block";
+          sendChoice.style.display = "flex";
+        }
+        function hideSendChoice() {
+          sendChoicePending = null;
+          sendChoiceBackdrop.style.display = "none";
+          sendChoice.style.display = "none";
+        }
+        const sendChoiceNowBtn = $("#sendChoiceNow");
+        const sendChoiceLaterBtn = $("#sendChoiceLater");
+        const sendChoiceCancelBtn = $("#sendChoiceCancel");
+        if (sendChoiceNowBtn)
+          sendChoiceNowBtn.onclick = async () => {
+            const raw = sendChoicePending;
+            hideSendChoice();
+            if (!raw) return;
+            clearComposer();
+            await sendText(raw);
+          };
+        if (sendChoiceLaterBtn)
+          sendChoiceLaterBtn.onclick = () => {
+            const raw = sendChoicePending;
+            hideSendChoice();
+            if (!raw) return;
+            clearComposer();
+            queueLocalMessage(raw);
+          };
+        if (sendChoiceCancelBtn)
+          sendChoiceCancelBtn.onclick = () => {
+            hideSendChoice();
+          };
+        sendChoiceBackdrop.onclick = () => hideSendChoice();
+
+        function renderQueueList() {
+          queueList.innerHTML = "";
+          const sid = selected;
+          if (!sid) {
+            queueEmpty.style.display = "block";
+            return;
+          }
+          const q = getDeferredQueue(sid);
+          queueEmpty.style.display = q.length ? "none" : "block";
+          if (!q.length) return;
+          q.forEach((text, idx) => {
+            const row = el("div", { class: "queueItem" });
+            const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
+            ta.value = text;
+            ta.oninput = () => {
+              const q2 = getDeferredQueue(sid);
+              if (idx >= q2.length) return;
+              q2[idx] = String(ta.value || "");
+              scheduleQueueSave();
+            };
+            const del = el("button", { class: "icon-btn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
+            del.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const q2 = getDeferredQueue(sid);
+              if (idx >= q2.length) return;
+              q2.splice(idx, 1);
+              saveDeferredToStorage(sid);
+              updateQueueBadge();
+              renderQueueList();
+            };
+            row.appendChild(ta);
+            row.appendChild(del);
+            queueList.appendChild(row);
+          });
+        }
+
+        function showQueueViewer() {
+          queueBackdrop.style.display = "block";
+          queueViewer.style.display = "flex";
+          renderQueueList();
+        }
+
+        function hideQueueViewer() {
+          queueBackdrop.style.display = "none";
+          queueViewer.style.display = "none";
+        }
+
+        const queueBtn = $("#queueBtn");
+        if (queueBtn) {
+          queueBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showQueueViewer();
+          };
+        }
+        queueCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideQueueViewer();
+        };
+        queueBackdrop.onclick = () => hideQueueViewer();
         $("#newBtn").onclick = async () => {
           const cur = selected ? sessionIndex.get(selected) : null;
           const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
@@ -1755,24 +2038,29 @@
 	        const textarea = $("#msg");
 	        const msgPh = $("#msgPh");
 	        const imgInput = $("#imgInput");
-	        const attachBtn = $("#attachBtn");
-	        if (!attachBadgeEl) {
-	          attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
-	          attachBtn.appendChild(attachBadgeEl);
-	        }
-	        const setAttachCount = (n) => {
-	          const next = Math.max(0, Number(n) || 0);
-	          attachedImages = next;
-	          if (!attachBadgeEl) return;
-	          if (next > 0) {
-	            attachBadgeEl.textContent = String(next);
-	            attachBadgeEl.style.display = "inline-flex";
-	          } else {
-	            attachBadgeEl.textContent = "";
-	            attachBadgeEl.style.display = "none";
-	          }
-	        };
-	        setAttachCount(0);
+        const attachBtn = $("#attachBtn");
+        if (!attachBadgeEl) {
+          attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
+          attachBtn.appendChild(attachBadgeEl);
+        }
+        if (!queueBadgeEl && queueBtn) {
+          queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
+          queueBtn.appendChild(queueBadgeEl);
+        }
+        const setAttachCount = (n) => {
+          const next = Math.max(0, Number(n) || 0);
+          attachedImages = next;
+          if (!attachBadgeEl) return;
+          if (next > 0) {
+            attachBadgeEl.textContent = String(next);
+            attachBadgeEl.style.display = "inline-flex";
+          } else {
+            attachBadgeEl.textContent = "";
+            attachBadgeEl.style.display = "none";
+          }
+        };
+        setAttachCount(0);
+        updateQueueBadge();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
 	          const maxPx = 180;
@@ -1937,43 +2225,63 @@
 	          }
 	        });
 
-        form.onsubmit = async (e) => {
-          e.preventDefault();
+        function clearComposer() {
+          $("#msg").value = "";
+          autoGrow();
+        }
+
+        async function sendText(raw, { deferred = false } = {}) {
           if (!selected) return;
-          const raw = $("#msg").value;
           if (!raw || !raw.trim()) return;
           if (sending) return;
           sending = true;
           $("#sendBtn").disabled = true;
           setToast("sending...");
-          $("#msg").value = "";
-          autoGrow();
 
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
           pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
           appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
           turnOpen = true;
-	          try {
-	            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
-	            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
-	            else setToast("sent");
-	            setAttachCount(0);
-	            pollFastUntilMs = Date.now() + 5000;
-	            kickPoll(0);
-	            await refreshSessions();
-	          } catch (e2) {
-	            setToast(`send error: ${e2.message}`);
+          currentRunning = true;
+          try {
+            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
+            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
+            else setToast("sent");
+            setAttachCount(0);
+            pollFastUntilMs = Date.now() + 5000;
+            kickPoll(0);
+            await refreshSessions();
+          } catch (e2) {
+            setToast(`send error: ${e2.message}`);
             const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
             if (pendingEl) {
               pendingEl.style.opacity = "1";
               pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
               pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
             }
+            if (deferred && selected) {
+              queueLocalMessage(raw, { front: true });
+            }
           } finally {
             sending = false;
             $("#sendBtn").disabled = false;
+            if (deferred) deferInFlight = false;
           }
+        }
+
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          if (!selected) return;
+          const raw = $("#msg").value;
+          if (!raw || !raw.trim()) return;
+          if (sending) return;
+          if (currentRunning) {
+            showSendChoice(raw);
+            return;
+          }
+          clearComposer();
+          await sendText(raw);
         };
 
 	        (async () => {
