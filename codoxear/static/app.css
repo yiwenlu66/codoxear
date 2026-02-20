@@ -13,22 +13,34 @@
         --bubble-assistant: #ffffff;
       }
 
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
       html,
       body {
         height: 100%;
+        width: 100%;
+        max-width: 100%;
         margin: 0;
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial,
           "Noto Sans", "Liberation Sans", sans-serif;
         font-optical-sizing: auto;
         -webkit-text-size-adjust: 100%;
         text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
         background: var(--bg);
         color: var(--text);
         overflow: hidden;
+        overflow-x: hidden;
       }
 
       #root {
         height: 100%;
+        width: 100%;
+        max-width: 100%;
       }
 
       #bottomSentinel {
@@ -44,6 +56,8 @@
         top: var(--vvTop, 0px);
         left: 0;
         right: 0;
+        width: 100vw;
+        max-width: 100vw;
         height: 100svh;
         height: 100dvh;
         height: var(--appH, 100dvh);
@@ -112,6 +126,7 @@
         display: flex;
         gap: 12px;
         align-items: stretch;
+        touch-action: manipulation;
       }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
@@ -128,6 +143,39 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        gap: 6px;
+      }
+      .sessionFiles {
+        margin-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .sessionFilesLabel {
+        font-size: 11px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .sessionFile {
+        text-align: left;
+        padding: 6px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.2;
+        border: 1px solid var(--border);
+        background: #ffffff;
+        color: var(--text);
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        touch-action: manipulation;
+      }
+      .sessionFile:hover {
+        background: rgba(15, 23, 42, 0.04);
+      }
+      .sessionFilesMore {
+        font-size: 11px;
       }
       .sessionAction > .icon-btn {
         width: 36px;
@@ -194,6 +242,7 @@
         flex-direction: column;
         height: 100%;
         min-height: 0;
+        min-width: 0;
       }
       .topbar {
         padding: calc(10px + env(safe-area-inset-top)) 12px 10px 12px;
@@ -204,12 +253,15 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
+        flex-wrap: wrap;
+        row-gap: 6px;
       }
       .pill {
         display: inline-flex;
         align-items: center;
         gap: 10px;
         min-width: 0;
+        flex: 1 1 auto;
       }
       #threadTitle {
         font-weight: 650;
@@ -226,6 +278,8 @@
         display: flex;
         gap: 8px;
         flex: 0 0 auto;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       button {
         border: 1px solid var(--border);
@@ -304,12 +358,14 @@
         min-height: 0;
         position: relative;
         overflow: hidden;
+        min-width: 0;
       }
       .chat {
         height: 100%;
         padding: 14px 12px;
         overflow: auto;
         overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
       .chat {
         overflow-x: hidden;
@@ -319,6 +375,7 @@
         margin: 0 auto;
         display: flex;
         flex-direction: column;
+        width: 100%;
       }
       .day-sep {
         align-self: center;
@@ -455,6 +512,10 @@
         text-decoration-thickness: 1px;
         text-underline-offset: 2px;
       }
+      .md img {
+        max-width: 100%;
+        height: auto;
+      }
       .md code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         font-size: 13px;
@@ -544,13 +605,14 @@
         padding: 6px 10px;
         white-space: normal;
       }
-      textarea,
-      input[type="password"] {
-        width: 100%;
-        box-sizing: border-box;
-        border: 1px solid var(--border);
-        background: #ffffff;
-        color: var(--text);
+textarea,
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text);
         border-radius: 18px;
         padding: 10px 12px;
         font-family: inherit;
@@ -682,15 +744,70 @@
 	        width: 16px;
 	        height: 16px;
 	      }
-	      .harnessMenu textarea {
-	        min-height: 160px;
-	        height: 160px;
-	        max-height: 320px;
-	        overflow-y: auto;
-	        border-radius: 14px;
-	        resize: vertical;
-	      }
+      .harnessMenu textarea {
+        min-height: 160px;
+        height: 160px;
+        max-height: 320px;
+        overflow-y: auto;
+        border-radius: 14px;
+        resize: vertical;
+      }
 
+      .modalBackdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        z-index: 70;
+      }
+      .fileViewer {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: calc(50% + var(--vvTop, 0px));
+        transform: translate(-50%, -50%);
+        z-index: 80;
+        width: min(92vw, 980px);
+        max-height: calc(var(--appH, 100dvh) - 24px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        padding: 12px;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+      }
+      .fileViewerHeader {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .filePathRow {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .filePathRow input[type="text"] {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .fileContent {
+        margin: 0;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        background: #0b1220;
+        color: #e5e7eb;
+        overflow: auto;
+        white-space: pre;
+        font-size: 12px;
+        line-height: 1.4;
+        flex: 1 1 auto;
+        min-height: 120px;
+        -webkit-overflow-scrolling: touch;
+      }
 		      .backdrop {
 		        display: none;
 		        position: absolute;
@@ -757,9 +874,11 @@
         .topbar {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
           gap: 10px;
+          align-items: stretch;
+          flex-direction: column;
         }
         #threadTitle {
-          max-width: 44vw;
+          max-width: 100%;
         }
         .status-chip {
           font-size: 11px;
@@ -787,6 +906,58 @@
         }
         .actions {
           gap: 6px;
+          justify-content: flex-start;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          padding-bottom: 2px;
+        }
+        .actions::-webkit-scrollbar {
+          display: none;
+        }
+        .fileViewer {
+          width: 100vw;
+          max-height: none;
+          left: 0;
+          right: 0;
+          top: var(--vvTop, 0px);
+          bottom: 0;
+          transform: none;
+          border-radius: 0;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+        }
+        .sessionFilesLabel {
+          font-size: 10px;
+        }
+        .sessionFile {
+          font-size: 11px;
+        }
+        .fileContent {
+          font-size: 11px;
+        }
+      }
+
+      @media (hover: none) and (pointer: coarse) {
+        button {
+          min-height: 40px;
+          touch-action: manipulation;
+        }
+        .icon-btn {
+          width: 40px;
+          height: 40px;
+        }
+        .composer {
+          --composerCtl: 40px;
+        }
+        textarea,
+        input[type="password"] {
+          font-size: 16px;
+        }
+        .composer textarea {
+          font-size: 16px;
+        }
+        .session {
+          padding: 12px;
         }
       }
 

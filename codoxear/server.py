@@ -95,6 +95,8 @@ STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 UPLOAD_DIR = APP_DIR / "uploads"
 HARNESS_PATH = APP_DIR / "harness.json"
+ALIAS_PATH = APP_DIR / "session_aliases.json"
+FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 
 _DOTENV = (Path.cwd() / ".env").resolve()
 if _DOTENV.exists():
@@ -126,6 +128,8 @@ CHAT_INDEX_INCREMENT_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_INCREMENT_
 CHAT_INDEX_RESEED_THRESHOLD_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_RESEED_THRESHOLD_BYTES", str(16 * 1024 * 1024)))
 CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "12000"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
+FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
+FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain three live lists: Deliverables, Next actions, Parked questions.
@@ -475,6 +479,18 @@ def _safe_read_text(path: Path, max_bytes: int = 512 * 1024) -> str:
         return ""
 
 
+def _read_text_file_strict(path: Path, *, max_bytes: int) -> tuple[str, int]:
+    st = path.stat()
+    size = int(st.st_size)
+    if size > max_bytes:
+        raise ValueError(f"file too large (max {max_bytes} bytes)")
+    data = path.read_bytes()
+    if b"\x00" in data:
+        raise ValueError("binary file not supported")
+    text = data.decode("utf-8", errors="replace")
+    return text, size
+
+
 def _safe_filename(name: str) -> str:
     out = []
     for ch in name:
@@ -484,6 +500,18 @@ def _safe_filename(name: str) -> str:
     if not s:
         return "image"
     return s[:96]
+
+
+def _clean_alias(name: str) -> str:
+    if not isinstance(name, str):
+        return ""
+    # Collapse whitespace and cap length to keep titles readable.
+    cleaned = " ".join(name.split()).strip()
+    if not cleaned:
+        return ""
+    if len(cleaned) > 80:
+        cleaned = cleaned[:80].rstrip()
+    return cleaned
 
 
 def _iter_session_logs() -> list[Path]:
@@ -655,10 +683,14 @@ class SessionManager:
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
         self._harness: dict[str, dict[str, Any]] = {}
+        self._aliases: dict[str, str] = {}
+        self._files: dict[str, list[str]] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
         self._discover_existing(force=True)
         self._load_harness()
+        self._load_aliases()
+        self._load_files()
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
 
@@ -722,6 +754,123 @@ class SessionManager:
         tmp = HARNESS_PATH.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, HARNESS_PATH)
+
+    def _load_aliases(self) -> None:
+        try:
+            raw = ALIAS_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid session_aliases.json (expected object)")
+        cleaned: dict[str, str] = {}
+        for sid, v in obj.items():
+            if not isinstance(sid, str) or not sid:
+                continue
+            if not isinstance(v, str):
+                continue
+            alias = _clean_alias(v)
+            if alias:
+                cleaned[sid] = alias
+        with self._lock:
+            self._aliases = cleaned
+
+    def _save_aliases(self) -> None:
+        with self._lock:
+            obj = dict(self._aliases)
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = ALIAS_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, ALIAS_PATH)
+
+    def alias_set(self, session_id: str, name: str) -> str:
+        alias = _clean_alias(name)
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            if alias:
+                self._aliases[session_id] = alias
+            else:
+                self._aliases.pop(session_id, None)
+        self._save_aliases()
+        return alias
+
+    def alias_get(self, session_id: str) -> str:
+        with self._lock:
+            alias = self._aliases.get(session_id)
+        return alias if isinstance(alias, str) else ""
+
+    def alias_clear(self, session_id: str) -> None:
+        with self._lock:
+            if session_id not in self._aliases:
+                return
+            self._aliases.pop(session_id, None)
+        self._save_aliases()
+
+    def _load_files(self) -> None:
+        try:
+            raw = FILE_HISTORY_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid session_files.json (expected object)")
+        cleaned: dict[str, list[str]] = {}
+        for sid, arr in obj.items():
+            if not isinstance(sid, str) or not sid:
+                continue
+            if not isinstance(arr, list):
+                continue
+            out: list[str] = []
+            for v in arr:
+                if not isinstance(v, str):
+                    continue
+                p = v.strip()
+                if not p or p in out:
+                    continue
+                out.append(p)
+                if len(out) >= FILE_HISTORY_MAX:
+                    break
+            if out:
+                cleaned[sid] = out
+        with self._lock:
+            self._files = cleaned
+
+    def _save_files(self) -> None:
+        with self._lock:
+            obj = dict(self._files)
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = FILE_HISTORY_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, FILE_HISTORY_PATH)
+
+    def files_get(self, session_id: str) -> list[str]:
+        with self._lock:
+            arr = self._files.get(session_id, [])
+        return list(arr)
+
+    def files_add(self, session_id: str, path: str) -> list[str]:
+        p = str(path).strip()
+        if not p:
+            return self.files_get(session_id)
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            cur = list(self._files.get(session_id, []))
+            cur = [x for x in cur if x != p]
+            cur.insert(0, p)
+            if len(cur) > FILE_HISTORY_MAX:
+                cur = cur[:FILE_HISTORY_MAX]
+            self._files[session_id] = cur
+        self._save_files()
+        return list(cur)
+
+    def files_clear(self, session_id: str) -> None:
+        with self._lock:
+            if session_id not in self._files:
+                return
+            self._files.pop(session_id, None)
+        self._save_files()
 
     def harness_get(self, session_id: str) -> dict[str, Any]:
         with self._lock:
@@ -1036,6 +1185,12 @@ class SessionManager:
             for s in self._sessions.values():
                 cfg0 = self._harness.get(s.session_id)
                 h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
+                alias = self._aliases.get(s.session_id)
+                if not isinstance(alias, str):
+                    alias = ""
+                files = self._files.get(s.session_id)
+                if not isinstance(files, list):
+                    files = []
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 if s.last_chat_ts is None and log_exists and s.log_path is not None:
                     s.last_chat_ts = float(s.log_path.stat().st_mtime)
@@ -1059,6 +1214,8 @@ class SessionManager:
                         "tools": int(s.meta_tools),
                         "system": int(s.meta_system),
                         "harness_enabled": h_enabled,
+                        "alias": alias,
+                        "files": list(files),
                     }
                 )
 
@@ -1390,7 +1547,11 @@ class SessionManager:
             return False
         if not s.owned:
             raise PermissionError("not owned by web")
-        return self.kill_session(session_id)
+        ok = self.kill_session(session_id)
+        if ok:
+            self.alias_clear(session_id)
+            self.files_clear(session_id)
+        return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
         with self._lock:
@@ -1874,6 +2035,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, **res})
                 return
 
+            if path == "/api/files/read":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                path_raw = obj.get("path")
+                if not isinstance(path_raw, str) or not path_raw.strip():
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                session_id_raw = obj.get("session_id")
+                session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
+                path_obj = Path(path_raw).expanduser()
+                if not path_obj.is_absolute():
+                    path_obj = (Path.cwd() / path_obj).resolve()
+                else:
+                    path_obj = path_obj.resolve()
+                if not path_obj.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not path_obj.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                try:
+                    text, size = _read_text_file_strict(path_obj, max_bytes=FILE_READ_MAX_BYTES)
+                except PermissionError:
+                    _json_response(self, 403, {"error": "permission denied"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                if session_id:
+                    try:
+                        MANAGER.files_add(session_id, str(path_obj))
+                    except KeyError:
+                        pass
+                _json_response(self, 200, {"ok": True, "path": str(path_obj), "size": int(size), "text": text})
+                return
+
             if path.startswith("/api/sessions/") and path.endswith("/delete"):
                 if not _require_auth(self):
                     self._unauthorized()
@@ -1893,6 +2098,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 _json_response(self, 200, {"ok": True})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/rename"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                name = obj.get("name")
+                if not isinstance(name, str):
+                    _json_response(self, 400, {"error": "name required"})
+                    return
+                try:
+                    alias = MANAGER.alias_set(session_id, name)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                _json_response(self, 200, {"ok": True, "alias": alias})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/send"):

@@ -153,6 +153,33 @@
         }
       }
 
+      function fmtBytes(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return String(n ?? "");
+        if (v < 1024) return `${v} B`;
+        const units = ["KB", "MB", "GB", "TB"];
+        let val = v;
+        let u = 0;
+        while (val >= 1024 && u < units.length - 1) {
+          val /= 1024;
+          u += 1;
+        }
+        const dec = val >= 100 ? 0 : val >= 10 ? 1 : 2;
+        return `${val.toFixed(dec)} ${units[u]}`;
+      }
+
+      function listFromFilesField(val) {
+        if (!Array.isArray(val)) return [];
+        const out = [];
+        for (const v of val) {
+          if (typeof v !== "string") continue;
+          const p = v.trim();
+          if (!p || out.includes(p)) continue;
+          out.push(p);
+        }
+        return out;
+      }
+
       function baseName(p) {
         if (!p) return "";
         const s = String(p);
@@ -165,6 +192,25 @@
         const m = s.match(/^([0-9a-f]{8})[0-9a-f-]{28}-(\d+)$/i);
         if (m) return `${m[1]}-${m[2]}`;
         return s.slice(0, 8);
+      }
+
+      function sessionDisplayName(s) {
+        if (!s || typeof s !== "object") return "";
+        const alias = typeof s.alias === "string" ? s.alias.trim() : "";
+        if (alias) return alias;
+        const cwdName = baseName(s.cwd);
+        if (cwdName) return cwdName;
+        return s.session_id ? String(s.session_id) : "";
+      }
+
+      function sessionTitleWithId(s) {
+        if (!s || typeof s !== "object") return "No session selected";
+        const name = sessionDisplayName(s);
+        const sid = s.session_id ? String(s.session_id) : "";
+        if (!name) return sid || "No session selected";
+        if (!sid) return name;
+        if (name === sid) return shortSessionId(sid);
+        return `${name} (${sid.slice(0, 8)})`;
       }
 
       function escapeHtml(s) {
@@ -408,6 +454,12 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
         if (name === "trash")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+        if (name === "edit")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+        if (name === "file")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>`;
+        if (name === "x")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
         return "";
       }
 
@@ -516,16 +568,16 @@
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
 				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
-		        const interruptBtn = el("button", {
-		          id: "interruptBtn",
-		          class: "icon-btn",
-		          title: "Interrupt (Esc)",
-		          "aria-label": "Interrupt (Esc)",
-		          type: "button",
-		          html: iconSvg("stop"),
-		        });
-		        interruptBtn.style.display = "none";
-		        const toast = el("div", { class: "muted toast", id: "toast" });
+        const interruptBtn = el("button", {
+          id: "interruptBtn",
+          class: "icon-btn",
+          title: "Interrupt (Esc)",
+          "aria-label": "Interrupt (Esc)",
+          type: "button",
+          html: iconSvg("stop"),
+        });
+        interruptBtn.style.display = "none";
+        const toast = el("div", { class: "muted toast", id: "toast" });
 			        const toggleSidebarBtn = el("button", {
 	          id: "toggleSidebarBtn",
 	          class: "icon-btn",
@@ -533,36 +585,55 @@
 	          "aria-label": "Toggle sidebar",
 	          html: iconSvg("menu"),
 	        });
-			        const harnessBtn = el("button", {
-			          id: "harnessBtn",
-			          class: "icon-btn",
-			          title: "Harness mode",
-			          "aria-label": "Harness mode",
-				          type: "button",
-				          html: iconSvg("harness"),
-				        });
-				        harnessBtn.disabled = true;
-				        harnessBtn.classList.toggle("active", false);
-				        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
-				          el("div", { class: "row" }, [
-				            el("label", {}, [
-				              el("input", { type: "checkbox", id: "harnessEnabled" }),
-			              el("span", { text: "Harness mode" }),
+        const harnessBtn = el("button", {
+          id: "harnessBtn",
+          class: "icon-btn",
+          title: "Harness mode",
+          "aria-label": "Harness mode",
+            type: "button",
+            html: iconSvg("harness"),
+          });
+          harnessBtn.disabled = true;
+          harnessBtn.classList.toggle("active", false);
+        const renameBtn = el("button", {
+          id: "renameBtn",
+          class: "icon-btn",
+          title: "Rename session",
+          "aria-label": "Rename session",
+          type: "button",
+          html: iconSvg("edit"),
+        });
+        renameBtn.disabled = true;
+        const fileBtn = el("button", {
+          id: "fileBtn",
+          class: "icon-btn",
+          title: "View file",
+          "aria-label": "View file",
+          type: "button",
+          html: iconSvg("file"),
+        });
+        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
+          el("div", { class: "row" }, [
+            el("label", {}, [
+              el("input", { type: "checkbox", id: "harnessEnabled" }),
+              el("span", { text: "Harness mode" }),
 			            ]),
 			          ]),
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
 			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
 
-			        const topbar = el("div", { class: "topbar" }, [
-			          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
-			          el("div", { class: "actions" }, [
-			            statusChip,
-			            ctxChip,
-			            interruptBtn,
-			            harnessBtn,
-			          ]),
-			        ]);
+        const topbar = el("div", { class: "topbar" }, [
+          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
+          el("div", { class: "actions" }, [
+            statusChip,
+            ctxChip,
+            renameBtn,
+            fileBtn,
+            interruptBtn,
+            harnessBtn,
+          ]),
+        ]);
 
 	        const form = el("form", {}, [
 	          el("button", {
@@ -580,7 +651,7 @@
 	          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
 	          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
 	        ]);
-	        composer.appendChild(form);
+        composer.appendChild(form);
 
         sidebar.appendChild(
           el("header", {}, [
@@ -593,14 +664,39 @@
         );
         sidebar.appendChild(sessionsWrap);
         sidebar.appendChild(sidebarFooter);
-	        main.appendChild(topbar);
-	        main.appendChild(chatWrap);
-	        main.appendChild(composer);
-		        app.appendChild(sidebar);
-		        app.appendChild(main);
-		        app.appendChild(backdrop);
-		        root.appendChild(app);
-		        root.appendChild(harnessMenu);
+        main.appendChild(topbar);
+        main.appendChild(chatWrap);
+        main.appendChild(composer);
+        app.appendChild(sidebar);
+        app.appendChild(main);
+        app.appendChild(backdrop);
+        root.appendChild(app);
+        root.appendChild(harnessMenu);
+
+        const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
+        const fileCloseBtn = el("button", {
+          id: "fileCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "/path/to/file" });
+        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
+        const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
+        const fileContent = el("pre", { class: "fileContent", id: "fileContent" });
+        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
+          el("div", { class: "fileViewerHeader" }, [
+            el("div", { class: "title", text: "View file" }),
+            el("div", { class: "actions" }, [fileCloseBtn]),
+          ]),
+          el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
+          fileStatus,
+          fileContent,
+        ]);
+        root.appendChild(fileBackdrop);
+        root.appendChild(fileViewer);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -918,19 +1014,32 @@
 		            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
-		            const title = baseName(s.cwd) || s.session_id.slice(0, 12);
+            const title = sessionDisplayName(s);
+            const files = listFromFilesField(s.files);
 		            const badges = [];
 		            if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
 		            badges.push(badge);
 		            if (q) badges.push(q);
-		            let delBtn = null;
-	            if (s.owned) {
-	              delBtn = el("button", {
-	                class: "icon-btn danger sessionDel",
-	                title: "Delete session",
-	                "aria-label": "Delete session",
-	                type: "button",
-	                html: iconSvg("trash"),
+            let delBtn = null;
+            const renameCardBtn = el("button", {
+              class: "icon-btn",
+              title: "Rename session",
+              "aria-label": "Rename session",
+              type: "button",
+              html: iconSvg("edit"),
+            });
+            renameCardBtn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void renameSessionId(s.session_id);
+            };
+            if (s.owned) {
+              delBtn = el("button", {
+                class: "icon-btn danger sessionDel",
+                title: "Delete session",
+                "aria-label": "Delete session",
+                type: "button",
+                html: iconSvg("trash"),
 	              });
               delBtn.onclick = async (e) => {
                 e.preventDefault();
@@ -967,12 +1076,37 @@
 	            const pid = s.pid ? String(s.pid) : "?";
               const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
 	            const meta = el("div", { class: "muted subLine", text: `id ${shortSessionId(s.session_id)}  pid ${pid}  last ${fmtTs(updatedTs)}` });
-              const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
-	            card.appendChild(mainCol);
-              if (delBtn) card.appendChild(el("div", { class: "sessionAction" }, [delBtn]));
-	            card.onclick = () => {
-	              if (isMobile()) setSidebarOpen(false);
-	              selectSession(s.session_id);
+            const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
+            if (selected === s.session_id && files.length) {
+              const maxShow = 5;
+              const show = files.slice(0, maxShow);
+              const fileRows = show.map((p) =>
+                el("button", { class: "sessionFile", title: p, "aria-label": `Open ${p}`, text: baseName(p) || p })
+              );
+              for (const row of fileRows) {
+                row.onclick = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  showFileViewer();
+                  filePathInput.value = row.title || row.textContent || "";
+                  openFilePath();
+                };
+              }
+              const more = files.length > maxShow ? el("div", { class: "sessionFilesMore muted", text: `+${files.length - maxShow} more` }) : null;
+              const filesWrap = el("div", { class: "sessionFiles" }, [
+                el("div", { class: "sessionFilesLabel", text: "Files" }),
+                ...fileRows,
+                ...(more ? [more] : []),
+              ]);
+              mainCol.appendChild(filesWrap);
+            }
+            card.appendChild(mainCol);
+            const actionButtons = [renameCardBtn];
+            if (delBtn) actionButtons.push(delBtn);
+            card.appendChild(el("div", { class: "sessionAction" }, actionButtons));
+            card.onclick = () => {
+              if (isMobile()) setSidebarOpen(false);
+              selectSession(s.session_id);
 	            };
 	            sessionsWrap.appendChild(card);
 	          }
@@ -995,7 +1129,7 @@
 	            updateHarnessBtnState();
 	          } else if (selected) {
 	            const s = sessionIndex.get(selected);
-	            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${String(s.session_id).slice(0, 8)})`;
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
 	          }
 	          updateHarnessBtnState();
 	          return sessions;
@@ -1195,7 +1329,7 @@
 				            setContext(data.token);
 				            setTyping(Boolean(turnOpen || nowBusy));
 	            const s = sessionIndex.get(sid);
-	            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${s.session_id.slice(0, 8)})`;
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 404) {
@@ -1286,8 +1420,8 @@
 		          turnOpen = false;
 		          {
 		            const s = sessionIndex.get(sid);
-		            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${String(s.session_id).slice(0, 8)})`;
-		            else titleLabel.textContent = sid ? String(sid) : "No session selected";
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
+            else titleLabel.textContent = sid ? String(sid) : "No session selected";
 		          }
                 clickLoadT0 = performance.now();
                 clickMetricPending = true;
@@ -1324,12 +1458,13 @@
          }
 
 			        $("#refreshBtn").onclick = refreshSessions;
-			        function updateHarnessBtnState() {
-			          const s = selected ? sessionIndex.get(selected) : null;
-			          const on = Boolean(s && s.harness_enabled);
-			          harnessBtn.disabled = !selected;
-			          harnessBtn.classList.toggle("active", Boolean(selected && on));
-			        }
+        function updateHarnessBtnState() {
+          const s = selected ? sessionIndex.get(selected) : null;
+          const on = Boolean(s && s.harness_enabled);
+          harnessBtn.disabled = !selected;
+          harnessBtn.classList.toggle("active", Boolean(selected && on));
+          renameBtn.disabled = !selected;
+        }
            async function loadHarnessCfgForSelected() {
              if (!selected) return;
              const sid = selected;
@@ -1420,16 +1555,100 @@
 			            updateHarnessBtnState();
 			            scheduleHarnessSave();
 			          };
-			        if (harnessRequestEl)
-			          harnessRequestEl.oninput = (e) => {
-			            if (!selected) return;
-			            harnessCfg.request = String(e.target.value ?? "");
-			            scheduleHarnessSave();
-			          };
-	        $("#newBtn").onclick = async () => {
-	          const cur = selected ? sessionIndex.get(selected) : null;
-	          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
-	          const cwd = prompt("New session cwd:", def);
+        if (harnessRequestEl)
+          harnessRequestEl.oninput = (e) => {
+            if (!selected) return;
+            harnessCfg.request = String(e.target.value ?? "");
+            scheduleHarnessSave();
+          };
+        async function renameSessionId(sid) {
+          if (!sid) return;
+          const s = sessionIndex.get(sid);
+          const currentAlias = s && typeof s.alias === "string" ? s.alias : "";
+          const fallback = sessionDisplayName(s);
+          const def = currentAlias || fallback || "";
+          const next = prompt("Rename session (blank to clear):", def);
+          if (next === null) return;
+          try {
+            const res = await api(`/api/sessions/${sid}/rename`, { method: "POST", body: { name: String(next) } });
+            const alias = res && typeof res.alias === "string" ? res.alias : "";
+            if (s) s.alias = alias;
+            await refreshSessions();
+            if (selected === sid) {
+              const s2 = sessionIndex.get(sid);
+              if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+            }
+            setToast(alias ? "renamed" : "alias cleared");
+          } catch (e) {
+            setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+        }
+        renameBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void renameSessionId(selected);
+        };
+        function showFileViewer() {
+          fileBackdrop.style.display = "block";
+          fileViewer.style.display = "flex";
+          const s = selected ? sessionIndex.get(selected) : null;
+          const last = localStorage.getItem("codexweb.filePath") || "";
+          const def = last || (s && s.cwd ? String(s.cwd) : "");
+          if (!filePathInput.value.trim()) filePathInput.value = def;
+          filePathInput.focus();
+          filePathInput.select();
+        }
+        function hideFileViewer() {
+          fileBackdrop.style.display = "none";
+          fileViewer.style.display = "none";
+        }
+        async function openFilePath() {
+          const path = String(filePathInput.value || "").trim();
+          if (!path) {
+            fileStatus.textContent = "Enter a file path.";
+            return;
+          }
+          fileStatus.textContent = "Loading...";
+          fileContent.textContent = "";
+          try {
+            const body = { path };
+            if (selected) body.session_id = selected;
+            const res = await api("/api/files/read", { method: "POST", body });
+            if (!res || typeof res.text !== "string") throw new Error("invalid response");
+            fileContent.textContent = res.text;
+            const size = typeof res.size === "number" ? res.size : res.text.length;
+            const label = res.path ? String(res.path) : path;
+            fileStatus.textContent = `${label} (${fmtBytes(size)})`;
+            localStorage.setItem("codexweb.filePath", path);
+            if (selected) refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+          } catch (e) {
+            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+          }
+        }
+        fileBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showFileViewer();
+        };
+        fileCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideFileViewer();
+        };
+        fileBackdrop.onclick = () => hideFileViewer();
+        fileOpenBtn.onclick = () => openFilePath();
+        filePathInput.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          openFilePath();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && fileViewer.style.display === "flex") hideFileViewer();
+        });
+        $("#newBtn").onclick = async () => {
+          const cur = selected ? sessionIndex.get(selected) : null;
+          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const cwd = prompt("New session cwd:", def);
           if (!cwd) return;
           try {
             setToast("starting...");
