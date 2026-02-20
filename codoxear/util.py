@@ -186,10 +186,22 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
         with path.open("rb") as f:
             f.seek(offset)
             data = f.read(int(max_bytes))
-            new_off = f.tell()
     except Exception as e:
         _log_exception(f"read jsonl {path} from offset {offset}", e)
         raise
+
+    if not data:
+        return [], int(offset)
+
+    # When tailing a live JSONL file, we can read a chunk that ends in the middle
+    # of the last record, including the middle of a multibyte UTF-8 sequence.
+    # Only parse newline-terminated records, and do not advance the offset past
+    # the last newline we observed.
+    last_nl = data.rfind(b"\n")
+    if last_nl < 0:
+        return [], int(offset)
+    data = data[: last_nl + 1]
+    new_off = int(offset) + int(last_nl) + 1
 
     lines = data.splitlines()
     out: list[dict[str, Any]] = []
