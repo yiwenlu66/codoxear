@@ -632,11 +632,12 @@
 			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
 
+        const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
+        const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
+        const titleWrap = el("div", { class: "titleWrap" }, [titleRow, toast]);
         const topbar = el("div", { class: "topbar" }, [
-          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
-          el("div", { class: "actions" }, [
-            statusChip,
-            ctxChip,
+          el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
+          el("div", { class: "actions topActions" }, [
             renameBtn,
             fileBtn,
             interruptBtn,

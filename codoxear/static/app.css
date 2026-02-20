@@ -263,12 +263,37 @@
         min-width: 0;
         flex: 1 1 auto;
       }
+      .titleWrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .titleRow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
       #threadTitle {
         font-weight: 650;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         max-width: 56vw;
+      }
+      .titleRow #threadTitle {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: none;
+      }
+      .topMeta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        flex-wrap: wrap;
       }
       .toast {
         margin-top: 4px;
@@ -280,6 +305,9 @@
         flex: 0 0 auto;
         flex-wrap: wrap;
         justify-content: flex-end;
+      }
+      .topActions {
+        align-items: center;
       }
       button {
         border: 1px solid var(--border);
@@ -968,6 +996,17 @@ input[type="text"] {
         #threadTitle {
           max-width: 100%;
         }
+        .pill {
+          align-items: flex-start;
+          gap: 8px;
+        }
+        .titleRow {
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .topMeta {
+          width: 100%;
+        }
         .status-chip {
           font-size: 11px;
           padding: 3px 8px;
@@ -992,7 +1031,7 @@ input[type="text"] {
         .msg {
           max-width: 88%;
         }
-        .actions {
+        .topActions {
           gap: 6px;
           justify-content: flex-start;
           flex-wrap: nowrap;
@@ -1000,7 +1039,7 @@ input[type="text"] {
           -webkit-overflow-scrolling: touch;
           padding-bottom: 2px;
         }
-        .actions::-webkit-scrollbar {
+        .topActions::-webkit-scrollbar {
           display: none;
         }
         .fileViewer {
