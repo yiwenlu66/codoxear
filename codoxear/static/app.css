@@ -252,12 +252,12 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        align-items: center;
+        align-items: stretch;
         gap: 12px;
       }
       .pill {
         display: inline-flex;
-        align-items: center;
+        align-items: stretch;
         gap: 10px;
         min-width: 0;
         flex: 1 1 auto;
@@ -268,6 +268,7 @@
         gap: 4px;
         min-width: 0;
         flex: 1 1 auto;
+        justify-content: center;
       }
       .titleRow {
         display: flex;
@@ -305,6 +306,7 @@
         flex: 0 0 auto;
         flex-wrap: nowrap;
         justify-content: flex-end;
+        align-items: center;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
       }
