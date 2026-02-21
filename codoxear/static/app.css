@@ -275,6 +275,7 @@
         align-items: center;
         gap: 10px;
         min-width: 0;
+        flex-wrap: nowrap;
       }
       #threadTitle {
         font-weight: 650;
@@ -293,7 +294,7 @@
         align-items: center;
         gap: 6px;
         flex: 0 0 auto;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
       .toast {
         margin-top: 4px;
@@ -1003,13 +1004,15 @@ input[type="text"] {
           gap: 8px;
         }
         .titleRow {
-          display: grid;
-          grid-template-columns: 1fr auto;
+          display: flex;
           align-items: center;
           gap: 8px;
+          flex-wrap: nowrap;
         }
         .topMeta {
           justify-content: flex-end;
+          flex-wrap: nowrap;
+          white-space: nowrap;
         }
         .status-chip {
           font-size: 11px;
