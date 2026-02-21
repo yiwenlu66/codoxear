@@ -573,7 +573,6 @@
 			    let lastScrollTop = 0;
 				    let lastToken = null;
 				    let typingRow = null;
-        let lastRenderedTs = 0;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
         const recentEventKeys = [];
@@ -837,7 +836,6 @@
           pendingUser.length = 0;
           sending = false;
           localEchoSeq = 0;
-          lastRenderedTs = 0;
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
           olderBefore = 0;
@@ -929,7 +927,7 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v1.${sid}`;
+          return `codexweb.cache.v2.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
@@ -1513,17 +1511,7 @@
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
 	          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
-	          let anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-          if (ts !== null && typeof ts === "number" && Number.isFinite(ts) && lastRenderedTs > 0 && ts < lastRenderedTs) {
-            const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-            for (const r of rows) {
-              const rts = Number(r.dataset.ts);
-              if (Number.isFinite(rts) && rts > ts) {
-                anchor = r;
-                break;
-              }
-            }
-          }
+	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
           rebuildDecorations({ preserveScroll: false });
@@ -1532,9 +1520,6 @@
               appendCacheEvents(selected, [ev]);
             }
           markEventSeen(ev);
-          if (ts !== null && typeof ts === "number" && Number.isFinite(ts)) {
-            lastRenderedTs = Math.max(lastRenderedTs, ts);
-          }
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1610,12 +1595,8 @@
           if (selected) replaceCacheEvents(selected, msgs);
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
-          lastRenderedTs = 0;
           for (const ev of msgs) {
             markEventSeen(ev);
-            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) {
-              lastRenderedTs = Math.max(lastRenderedTs, ev.ts);
-            }
           }
 	          const frag = document.createDocumentFragment();
           for (const ev of msgs) {
