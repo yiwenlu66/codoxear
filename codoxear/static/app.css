@@ -249,8 +249,9 @@
         border-bottom: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.86);
         backdrop-filter: blur(10px);
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         align-items: center;
         gap: 12px;
       }
