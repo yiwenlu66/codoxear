@@ -463,6 +463,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
         if (name === "queue")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
+        if (name === "duplicate")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         return "";
       }
 
@@ -619,6 +621,15 @@
           html: iconSvg("edit"),
         });
         renameBtn.disabled = true;
+        const duplicateBtn = el("button", {
+          id: "dupBtn",
+          class: "icon-btn",
+          title: "Duplicate session",
+          "aria-label": "Duplicate session",
+          type: "button",
+          html: iconSvg("duplicate"),
+        });
+        duplicateBtn.disabled = true;
         const fileBtn = el("button", {
           id: "fileBtn",
           class: "icon-btn",
@@ -644,6 +655,7 @@
         const topbar = el("div", { class: "topbar" }, [
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
+            duplicateBtn,
             renameBtn,
             fileBtn,
             interruptBtn,
@@ -1409,6 +1421,24 @@
             }
             card.appendChild(mainCol);
             const actionButtons = [renameCardBtn];
+            const dupBtn = el("button", {
+              class: "icon-btn",
+              title: "Duplicate session",
+              "aria-label": "Duplicate session",
+              type: "button",
+              html: iconSvg("duplicate"),
+            });
+            dupBtn.onclick = async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
+              if (!cwd) {
+                setToast("cwd unavailable");
+                return;
+              }
+              await spawnSessionWithCwd(cwd);
+            };
+            actionButtons.unshift(dupBtn);
             if (delBtn) actionButtons.push(delBtn);
             card.appendChild(el("div", { class: "sessionAction" }, actionButtons));
             card.onclick = () => {
@@ -1814,6 +1844,7 @@
           harnessBtn.disabled = !selected;
           harnessBtn.classList.toggle("active", Boolean(selected && on));
           renameBtn.disabled = !selected;
+          duplicateBtn.disabled = !selected;
         }
            async function loadHarnessCfgForSelected() {
              if (!selected) return;
@@ -2112,18 +2143,18 @@
           hideQueueViewer();
         };
         queueBackdrop.onclick = () => hideQueueViewer();
-        $("#newBtn").onclick = async () => {
-          const cur = selected ? sessionIndex.get(selected) : null;
-          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
-          const cwd = prompt("New session cwd:", def);
-          if (!cwd) return;
+        async function spawnSessionWithCwd(cwd) {
+          if (!cwd || !String(cwd).trim()) {
+            setToast("cwd unavailable");
+            return null;
+          }
           try {
             setToast("starting...");
-            const res = await api("/api/sessions", { method: "POST", body: { cwd } });
+            const res = await api("/api/sessions", { method: "POST", body: { cwd: String(cwd) } });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
-              return;
+              return null;
             }
             setToast(`started (broker ${brokerPid})`);
             for (let i = 0; i < 60; i++) {
@@ -2131,14 +2162,23 @@
               const found = (sessions || []).find((x) => Number(x.broker_pid || 0) === brokerPid);
               if (found) {
                 selectSession(found.session_id);
-                return;
+                return brokerPid;
               }
               await new Promise((r) => setTimeout(r, 250));
             }
             setToast("session will appear once Codex creates a rollout log");
+            return brokerPid;
           } catch (e) {
             setToast(`start error: ${e.message}`);
+            return null;
           }
+        }
+        $("#newBtn").onclick = async () => {
+          const cur = selected ? sessionIndex.get(selected) : null;
+          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const cwd = prompt("New session cwd:", def);
+          if (!cwd) return;
+          await spawnSessionWithCwd(cwd);
         };
 	        interruptBtn.onclick = async () => {
 	          if (!selected) return;
@@ -2155,6 +2195,17 @@
         $("#logoutBtnSide").onclick = async () => {
           await api("/api/logout", { method: "POST" });
           renderLogin(renderApp);
+        };
+
+        duplicateBtn.onclick = async () => {
+          if (!selected) return;
+          const s = sessionIndex.get(selected);
+          const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
+          if (!cwd) {
+            setToast("cwd unavailable");
+            return;
+          }
+          await spawnSessionWithCwd(cwd);
         };
 
         toggleSidebarBtn.onclick = () => {
