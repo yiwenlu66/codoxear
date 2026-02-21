@@ -878,6 +878,14 @@ class Broker:
                         if not st:
                             resp = {"error": "no state"}
                         else:
+                            now_ts = _now()
+                            st.pending_calls.clear()
+                            st.busy = True
+                            st.turn_open = True
+                            st.turn_has_completion_candidate = False
+                            st.last_interrupt_hint_ts = 0.0
+                            if now_ts > st.last_turn_activity_ts:
+                                st.last_turn_activity_ts = now_ts
                             fd = st.pty_master_fd
                             resp = {"queued": False, "queue_len": len(st.queue)}
                     if fd is not None:
