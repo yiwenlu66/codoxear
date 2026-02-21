@@ -995,17 +995,21 @@ input[type="text"] {
         }
         #threadTitle {
           max-width: 100%;
+          font-size: 15px;
+          line-height: 1.2;
         }
         .pill {
-          align-items: flex-start;
+          align-items: center;
           gap: 8px;
         }
         .titleRow {
-          flex-wrap: wrap;
-          gap: 6px;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          align-items: center;
+          gap: 8px;
         }
         .topMeta {
-          width: 100%;
+          justify-content: flex-end;
         }
         .status-chip {
           font-size: 11px;
@@ -1032,15 +1036,17 @@ input[type="text"] {
           max-width: 88%;
         }
         .topActions {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
           gap: 6px;
-          justify-content: flex-start;
-          flex-wrap: nowrap;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          padding-bottom: 2px;
+          padding: 6px;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          background: rgba(15, 23, 42, 0.03);
         }
-        .topActions::-webkit-scrollbar {
-          display: none;
+        .topActions .icon-btn {
+          width: 100%;
+          height: 34px;
         }
         .fileViewer {
           width: 100vw;
