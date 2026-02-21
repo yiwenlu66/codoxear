@@ -1251,8 +1251,9 @@
 
         function eventKey(ev) {
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          if (ts === null) return "";
           const text = typeof ev.text === "string" ? ev.text : "";
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : 0;
           return `${ev.role}|${ts}|${text}`;
         }
 
@@ -1308,7 +1309,7 @@
           const { id } = pendingUser[idx];
           pendingUser.splice(idx, 1);
           const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
-          if (!pendingEl) return true;
+          if (!pendingEl) return false;
 
           pendingEl.style.opacity = "1";
           pendingEl.removeAttribute("data-local-id");

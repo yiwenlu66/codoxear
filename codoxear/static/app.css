@@ -249,11 +249,10 @@
         border-bottom: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.86);
         backdrop-filter: blur(10px);
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        justify-content: space-between;
         gap: 12px;
-        flex-wrap: nowrap;
       }
       .pill {
         display: inline-flex;
@@ -305,6 +304,11 @@
         flex: 0 0 auto;
         flex-wrap: nowrap;
         justify-content: flex-end;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .actions::-webkit-scrollbar {
+        display: none;
       }
       .topActions {
         align-items: center;
@@ -991,8 +995,8 @@ input[type="text"] {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
           gap: 10px;
           align-items: stretch;
+          display: flex;
           flex-direction: column;
-          flex-wrap: wrap;
         }
         #threadTitle {
           max-width: 100%;
