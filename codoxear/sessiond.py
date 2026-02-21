@@ -19,10 +19,10 @@ from typing import Any
 
 from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
-from .util import find_new_session_log as _find_new_session_log
-from .util import iter_session_logs as _iter_session_logs
 from .util import now as _now
+from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
+from .util import read_session_meta_payload as _read_session_meta_payload
 
 
 APP_DIR = _default_app_dir()
@@ -30,6 +30,7 @@ SOCK_DIR = APP_DIR / "socks"
 SOCK_META_DIR = SOCK_DIR
 ROOT_REPO_DIR = APP_DIR / "root-repo"
 PENDING_DIR = APP_DIR / "pending"
+PROC_ROOT = Path("/proc")
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
@@ -336,18 +337,22 @@ class Sessiond:
             check=True,
         )
 
-    def _discover_log(self, *, preexisting: set[Path], after_ts: float) -> None:
+    def _discover_log(self) -> None:
         deadline = _now() + 120.0
         while (not self._stop.is_set()) and (_now() < deadline):
-            found = _find_new_session_log(
-                sessions_dir=self.sessions_dir,
-                cwd=self.cwd,
-                after_ts=after_ts,
-                preexisting=preexisting,
-                timeout_s=0.5,
-            )
-            if found:
-                sid, lp = found
+            with self._lock:
+                st0 = self.state
+            pid = int(st0.codex_pid) if st0 else 0
+            if pid > 0:
+                lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=pid, cwd=self.cwd)
+            else:
+                lp = None
+            if lp and lp.exists():
+                payload = _read_session_meta_payload(lp, timeout_s=0.0)
+                sid = payload.get("id") if isinstance(payload, dict) else None
+                if not (isinstance(sid, str) and sid):
+                    time.sleep(0.25)
+                    continue
                 with self._lock:
                     st = self.state
                     if not st:
@@ -364,9 +369,6 @@ class Sessiond:
                 self._write_meta()
                 return
             try:
-                with self._lock:
-                    st = self.state
-                    pid = st.codex_pid if st else 0
                 if pid > 0:
                     wpid, _status = os.waitpid(pid, os.WNOHANG)
                     if wpid == pid:
@@ -375,6 +377,7 @@ class Sessiond:
                 return
             except Exception:
                 traceback.print_exc()
+            time.sleep(0.25)
 
     def _start(self) -> State:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -433,7 +436,6 @@ class Sessiond:
         return st
 
     def run(self) -> None:
-        pre = set(_iter_session_logs(self.sessions_dir))
         st = self._start()
         self._write_meta()
         print(
@@ -454,7 +456,6 @@ class Sessiond:
         threading.Thread(target=self._sock_server, daemon=True).start()
         threading.Thread(
             target=self._discover_log,
-            kwargs={"preexisting": pre, "after_ts": float(st.start_ts)},
             daemon=True,
         ).start()
 

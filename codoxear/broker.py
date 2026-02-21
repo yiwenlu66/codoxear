@@ -25,9 +25,8 @@ from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
-from codoxear.util import find_new_session_log as _find_new_session_log
-from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
+from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
 
@@ -508,13 +507,6 @@ class Broker:
 
     def _discover_log_watcher(self) -> None:
         try:
-            with self._lock:
-                st0 = self.state
-                if not st0:
-                    return
-                after_ts = float(st0.start_ts)
-            preexisting = set(_iter_session_logs(self.sessions_dir))
-
             while not self._stop.is_set():
                 with self._lock:
                     st = self.state
@@ -525,21 +517,13 @@ class Broker:
                 if not need:
                     time.sleep(0.25)
                     continue
-                found = _find_new_session_log(
-                    sessions_dir=self.sessions_dir,
-                    cwd=self.cwd,
-                    after_ts=after_ts,
-                    preexisting=preexisting,
-                    timeout_s=0.5,
-                )
-                if found:
-                    _sid, lp = found
-                    preexisting.add(lp)
-                    self._maybe_register_or_switch_rollout(log_path=lp)
-                    time.sleep(0.25)
-                    continue
-                # Exit early if Codex is gone.
                 if root_pid > 0:
+                    lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=root_pid, cwd=self.cwd)
+                    if lp and lp.exists():
+                        self._maybe_register_or_switch_rollout(log_path=lp)
+                        time.sleep(0.25)
+                        continue
+                    # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
                         if wpid == root_pid:

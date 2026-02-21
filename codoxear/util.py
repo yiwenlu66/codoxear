@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import sys
 import time
 import traceback
@@ -178,6 +179,101 @@ def find_new_session_log(
             if isinstance(sid, str) and sid:
                 return sid, p
         time.sleep(0.2)
+    return None
+
+
+def _proc_pid_uid(proc_root: Path, pid: int) -> int | None:
+    try:
+        return int((proc_root / str(pid)).stat().st_uid)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def _proc_children(proc_root: Path, pid: int) -> list[int]:
+    p = proc_root / str(pid) / "task" / str(pid) / "children"
+    try:
+        raw = p.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+    if not raw:
+        return []
+    out: list[int] = []
+    for s in raw.split():
+        try:
+            out.append(int(s))
+        except ValueError:
+            continue
+    return out
+
+
+def _proc_descendants(proc_root: Path, root_pid: int) -> list[int]:
+    out: list[int] = []
+    seen: set[int] = set()
+    stack: list[int] = [int(root_pid)]
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        out.append(pid)
+        stack.extend(_proc_children(proc_root, pid))
+    return out
+
+
+def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
+    uid = int(os.getuid())
+    out: set[Path] = set()
+    for pid in _proc_descendants(proc_root, root_pid):
+        puid = _proc_pid_uid(proc_root, pid)
+        if (puid is not None) and (puid != uid):
+            continue
+        fd_dir = proc_root / str(pid) / "fd"
+        try:
+            entries = list(fd_dir.iterdir())
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        for ent in entries:
+            try:
+                tgt = os.readlink(ent)
+            except OSError:
+                continue
+            if tgt.endswith(" (deleted)"):
+                continue
+            if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
+                continue
+            if "/rollout-" not in tgt:
+                continue
+            out.add(Path(tgt))
+    return out
+
+
+def proc_find_open_rollout_log(
+    *, proc_root: Path, root_pid: int, cwd: str | None = None
+) -> Path | None:
+    cands = list(proc_open_rollout_logs(proc_root, root_pid))
+    if not cands:
+        return None
+    try:
+        cands.sort(key=lambda p: float(p.stat().st_mtime), reverse=True)
+    except Exception:
+        pass
+    for p in cands:
+        payload = read_session_meta_payload(p, timeout_s=0.0)
+        if not payload:
+            continue
+        if is_subagent_session_meta(payload):
+            continue
+        if cwd is not None:
+            pcwd = payload.get("cwd")
+            if not (isinstance(pcwd, str) and pcwd == cwd):
+                continue
+        return p
     return None
 
 
