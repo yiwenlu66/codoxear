@@ -819,6 +819,7 @@ class SessionManager:
         for sid, arr in obj.items():
             if not isinstance(sid, str) or not sid:
                 continue
+            key = sid if (sid.startswith("cwd:") or sid.startswith("sid:")) else f"sid:{sid}"
             if not isinstance(arr, list):
                 continue
             out: list[str] = []
@@ -832,7 +833,7 @@ class SessionManager:
                 if len(out) >= FILE_HISTORY_MAX:
                     break
             if out:
-                cleaned[sid] = out
+                cleaned[key] = out
         with self._lock:
             self._files = cleaned
 
@@ -844,33 +845,101 @@ class SessionManager:
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, FILE_HISTORY_PATH)
 
+    def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
+        s = self._sessions.get(session_id)
+        if not s:
+            raise KeyError("unknown session")
+        cwd_key: str | None = None
+        cwd_raw = s.cwd if isinstance(s.cwd, str) else ""
+        if cwd_raw and cwd_raw != "?":
+            try:
+                cwd_norm = str(Path(cwd_raw).expanduser().resolve())
+            except Exception:
+                cwd_norm = cwd_raw.strip()
+            if cwd_norm:
+                cwd_key = f"cwd:{cwd_norm}"
+        sid_key = f"sid:{session_id}"
+        if cwd_key:
+            legacy = [sid_key, session_id]
+            return cwd_key, legacy, s
+        return sid_key, [session_id], s
+
     def files_get(self, session_id: str) -> list[str]:
+        dirty = False
+        out: list[str] = []
         with self._lock:
-            arr = self._files.get(session_id, [])
-        return list(arr)
+            key, legacy_keys, _s = self._files_key_for_session(session_id)
+            arr = self._files.get(key)
+            if isinstance(arr, list) and arr:
+                out = list(arr)
+            else:
+                for lk in legacy_keys:
+                    arr2 = self._files.get(lk)
+                    if isinstance(arr2, list) and arr2:
+                        out = list(arr2)
+                        if lk != key:
+                            self._files[key] = list(arr2)
+                            self._files.pop(lk, None)
+                            dirty = True
+                        break
+        if dirty:
+            self._save_files()
+        return list(out)
 
     def files_add(self, session_id: str, path: str) -> list[str]:
         p = str(path).strip()
         if not p:
             return self.files_get(session_id)
+        dirty = False
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            cur = list(self._files.get(session_id, []))
+            key, legacy_keys, _s = self._files_key_for_session(session_id)
+            cur = list(self._files.get(key, []))
+            if not cur:
+                for lk in legacy_keys:
+                    legacy = self._files.get(lk)
+                    if isinstance(legacy, list) and legacy:
+                        cur = list(legacy)
+                        if lk != key:
+                            self._files.pop(lk, None)
+                            dirty = True
+                        break
             cur = [x for x in cur if x != p]
             cur.insert(0, p)
             if len(cur) > FILE_HISTORY_MAX:
                 cur = cur[:FILE_HISTORY_MAX]
-            self._files[session_id] = cur
+            self._files[key] = cur
         self._save_files()
         return list(cur)
 
     def files_clear(self, session_id: str) -> None:
+        dirty = False
         with self._lock:
-            if session_id not in self._files:
-                return
-            self._files.pop(session_id, None)
-        self._save_files()
+            key, legacy_keys, s = self._files_key_for_session(session_id)
+            for lk in legacy_keys:
+                if lk in self._files:
+                    self._files.pop(lk, None)
+                    dirty = True
+            if key.startswith("cwd:"):
+                keep = False
+                for other in self._sessions.values():
+                    if other.session_id == s.session_id:
+                        continue
+                    try:
+                        other_key, _legacy, _s2 = self._files_key_for_session(other.session_id)
+                    except KeyError:
+                        continue
+                    if other_key == key:
+                        keep = True
+                        break
+                if not keep and key in self._files:
+                    self._files.pop(key, None)
+                    dirty = True
+            else:
+                if key in self._files:
+                    self._files.pop(key, None)
+                    dirty = True
+        if dirty:
+            self._save_files()
 
     def harness_get(self, session_id: str) -> dict[str, Any]:
         with self._lock:
@@ -1180,6 +1249,7 @@ class SessionManager:
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         self._update_meta_counters()
+        files_dirty = False
         with self._lock:
             items: list[dict[str, Any]] = []
             for s in self._sessions.values():
@@ -1188,9 +1258,26 @@ class SessionManager:
                 alias = self._aliases.get(s.session_id)
                 if not isinstance(alias, str):
                     alias = ""
-                files = self._files.get(s.session_id)
-                if not isinstance(files, list):
-                    files = []
+                files: list[str] = []
+                try:
+                    key, legacy_keys, _sref = self._files_key_for_session(s.session_id)
+                except KeyError:
+                    key = ""
+                    legacy_keys = []
+                if key:
+                    cur = self._files.get(key)
+                    if isinstance(cur, list) and cur:
+                        files = list(cur)
+                    else:
+                        for lk in legacy_keys:
+                            legacy = self._files.get(lk)
+                            if isinstance(legacy, list) and legacy:
+                                files = list(legacy)
+                                if lk != key:
+                                    self._files[key] = list(legacy)
+                                    self._files.pop(lk, None)
+                                    files_dirty = True
+                                break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 if s.last_chat_ts is None and log_exists and s.log_path is not None:
                     s.last_chat_ts = float(s.log_path.stat().st_mtime)
@@ -1235,6 +1322,8 @@ class SessionManager:
             it2.pop("state_busy", None)
             it2["busy"] = bool(busy_out)
             out.append(it2)
+        if files_dirty:
+            self._save_files()
         return out
 
     def get_session(self, session_id: str) -> Session | None:
