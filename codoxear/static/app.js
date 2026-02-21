@@ -533,7 +533,10 @@
 
 	        let selected = null;
         let offset = 0;
-        const INIT_PAGE_LIMIT = 80;
+        const INIT_PAGE_LIMIT_DESKTOP = 60;
+        const INIT_PAGE_LIMIT_MOBILE = 24;
+        const OLDER_PAGE_LIMIT = 60;
+        const CACHE_LIMIT = 40;
         const CHAT_DOM_WINDOW = 260;
         let activeLogPath = null;
         let activeThreadId = null;
@@ -554,6 +557,9 @@
 	        const deferredBySession = new Map();
 	        const deferredLoaded = new Set();
 	        let queueSaveTimer = null;
+        const cacheBySession = new Map();
+        const cacheLoaded = new Set();
+        const cacheSaveTimers = new Map();
 	        let sessionIndex = new Map(); // session_id -> session info
 	        let sending = false;
 	        let localEchoSeq = 0;
@@ -840,6 +846,14 @@
           olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
         }
 
+        function initPageLimit() {
+          return isMobile() ? INIT_PAGE_LIMIT_MOBILE : INIT_PAGE_LIMIT_DESKTOP;
+        }
+
+        function olderPageLimit() {
+          return OLDER_PAGE_LIMIT;
+        }
+
         function deferredStorageKey(sid) {
           return `codexweb.deferred.${sid}`;
         }
@@ -893,6 +907,135 @@
             deferredBySession.set(sid, q);
           }
           return q;
+        }
+
+        function cacheStorageKey(sid) {
+          return `codexweb.cache.v1.${sid}`;
+        }
+
+        function normalizeCacheEvent(ev) {
+          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
+          if (typeof ev.text !== "string" || !ev.text.trim()) return null;
+          const out = { role: ev.role, text: ev.text };
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+          return out;
+        }
+
+        function loadCacheFromStorage(sid) {
+          if (!sid || cacheLoaded.has(sid)) return;
+          cacheLoaded.add(sid);
+          try {
+            const raw = localStorage.getItem(cacheStorageKey(sid));
+            if (!raw) return;
+            const obj = JSON.parse(raw);
+            if (!obj || typeof obj !== "object") return;
+            const eventsIn = Array.isArray(obj.events) ? obj.events : [];
+            const events = [];
+            for (const ev of eventsIn) {
+              const norm = normalizeCacheEvent(ev);
+              if (norm) events.push(norm);
+            }
+            if (!events.length) return;
+            if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
+            const cache = {
+              log_path: typeof obj.log_path === "string" ? obj.log_path : null,
+              offset: Number(obj.offset) || 0,
+              older_before: Number(obj.older_before) || 0,
+              has_older: Boolean(obj.has_older),
+              events,
+            };
+            cacheBySession.set(sid, cache);
+          } catch {
+            // ignore corrupted cache
+          }
+        }
+
+        function getCache(sid) {
+          if (!sid) return null;
+          loadCacheFromStorage(sid);
+          return cacheBySession.get(sid) || null;
+        }
+
+        function saveCacheNow(sid) {
+          if (!sid) return;
+          const cache = cacheBySession.get(sid);
+          if (!cache) {
+            localStorage.removeItem(cacheStorageKey(sid));
+            return;
+          }
+          const payload = {
+            log_path: cache.log_path || null,
+            offset: Number(cache.offset) || 0,
+            older_before: Number(cache.older_before) || 0,
+            has_older: Boolean(cache.has_older),
+            events: Array.isArray(cache.events) ? cache.events : [],
+          };
+          try {
+            localStorage.setItem(cacheStorageKey(sid), JSON.stringify(payload));
+          } catch {
+            // ignore quota issues
+          }
+        }
+
+        function scheduleCacheSave(sid) {
+          if (!sid) return;
+          const existing = cacheSaveTimers.get(sid);
+          if (existing) clearTimeout(existing);
+          const t = setTimeout(() => {
+            cacheSaveTimers.delete(sid);
+            saveCacheNow(sid);
+          }, 400);
+          cacheSaveTimers.set(sid, t);
+        }
+
+        function setCacheMeta(sid, { logPath, offset: off, olderBefore, hasOlder } = {}) {
+          if (!sid) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          if (logPath !== undefined) cache.log_path = logPath || null;
+          if (typeof off === "number" && Number.isFinite(off)) cache.offset = off;
+          if (typeof olderBefore === "number" && Number.isFinite(olderBefore)) cache.older_before = olderBefore;
+          if (typeof hasOlder === "boolean") cache.has_older = hasOlder;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function replaceCacheEvents(sid, events) {
+          if (!sid) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          const out = [];
+          for (const ev of events || []) {
+            const norm = normalizeCacheEvent(ev);
+            if (norm) out.push(norm);
+          }
+          if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
+          cache.events = out;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function appendCacheEvents(sid, events) {
+          if (!sid || !events || !events.length) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          const list = Array.isArray(cache.events) ? cache.events : [];
+          for (const ev of events) {
+            const norm = normalizeCacheEvent(ev);
+            if (norm) list.push(norm);
+          }
+          if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
+          cache.events = list;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function clearCache(sid) {
+          if (!sid) return;
+          cacheBySession.delete(sid);
+          cacheLoaded.delete(sid);
+          cacheSaveTimers.delete(sid);
+          localStorage.removeItem(cacheStorageKey(sid));
         }
 
         function updateQueueBadge() {
@@ -1210,6 +1353,7 @@
                 if (!confirm("Delete this session?")) return;
                 try {
 	                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
+                  clearCache(s.session_id);
                 if (selected === s.session_id) {
                   selected = null;
                   offset = 0;
@@ -1311,6 +1455,9 @@
             trimRenderedRows({ fromTop: true });
 	          rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
+            if (!ev.pending && selected) {
+              appendCacheEvents(selected, [ev]);
+            }
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1354,12 +1501,13 @@
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
             const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=${reqBefore}`);
+            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`);
             if (selected !== sid || pollGen !== gen) return;
             const evs = Array.isArray(data.events) ? data.events : [];
             if (evs.length) prependOlderEvents(evs);
             olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
             setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+            setCacheMeta(sid, { olderBefore, hasOlder: Boolean(data.has_older) });
           } catch {
             if (selected !== sid || pollGen !== gen) return;
             setOlderState({ hasMore: hasOlder, isLoading: false });
@@ -1382,6 +1530,7 @@
 		            msgs.push(ev);
 		          }
 		          if (!msgs.length) return;
+              if (selected) replaceCacheEvents(selected, msgs);
 			          const frag = document.createDocumentFragment();
 		          for (const ev of msgs) {
 		            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
@@ -1440,7 +1589,7 @@
               turnOpen = false;
               setStatus({ running: false, queueLen: 0 });
               try {
-                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
+                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
                 if (gen !== pollGen || sid !== selected) return;
                 if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
                 if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
@@ -1449,6 +1598,12 @@
                 if (evs2.length) startInitialRender(evs2);
                 olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
+                setCacheMeta(sid, {
+                  logPath: activeLogPath,
+                  offset,
+                  olderBefore,
+                  hasOlder: Boolean(d2.has_older),
+                });
 	                const nowBusy2 = Boolean(d2.busy);
 	                const turnStart2 = Boolean(d2.turn_start);
 	                const turnEnd2 = Boolean(d2.turn_end);
@@ -1466,6 +1621,7 @@
              }
 	
 		            offset = data.offset;
+              setCacheMeta(sid, { logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
@@ -1592,11 +1748,31 @@
 		          }
                 clickLoadT0 = performance.now();
                 clickMetricPending = true;
-		          if (pollGen !== myGen || selected !== sid) return;
+          if (pollGen !== myGen || selected !== sid) return;
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
-					          try {
-						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
+                const cached = getCache(sid);
+                const hasCached = Boolean(
+                  cached &&
+                    Array.isArray(cached.events) &&
+                    cached.events.length &&
+                    Number(cached.offset) > 0
+                );
+                if (hasCached) {
+                  activeLogPath = typeof cached.log_path === "string" ? cached.log_path : null;
+                  offset = Number(cached.offset) || 0;
+                  olderBefore = Number(cached.older_before) || 0;
+                  setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
+                  startInitialRender(cached.events);
+                  try {
+                    await pollMessages(sid, myGen);
+                  } catch {
+                    // ignore and rely on next poll
+                  }
+                  if (pollGen !== myGen || selected !== sid) return;
+                } else {
+				            try {
+						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
 					            if (pollGen !== myGen || selected !== sid) return;
                     if (data && typeof data.log_path === "string") activeLogPath = data.log_path;
                     if (data && typeof data.thread_id === "string") activeThreadId = data.thread_id;
@@ -1605,6 +1781,12 @@
 					            if (evs.length) startInitialRender(evs);
                     olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
                     setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+                    setCacheMeta(sid, {
+                      logPath: activeLogPath,
+                      offset,
+                      olderBefore,
+                      hasOlder: Boolean(data.has_older),
+                    });
 				            const nowBusy = Boolean(data.busy);
 	            const turnStart = Boolean(data.turn_start);
 	            const turnEnd = Boolean(data.turn_end);
@@ -1618,6 +1800,7 @@
 			            await pollMessages(sid, myGen);
 			            if (pollGen !== myGen || selected !== sid) return;
 			          }
+                }
             refreshSessions().catch((e) => console.error("refreshSessions failed", e));
            kickPoll(900);
            if (isMobile()) setSidebarOpen(false);
