@@ -104,17 +104,7 @@
 
       window.codoxearPerf = summarizePerf;
 
-      const appBaseUrl = (() => {
-        const here = new URL(window.location.href);
-        const p0 = String(here.pathname || "/");
-        if (p0.endsWith("/static/index.html")) {
-          return new URL(p0.slice(0, -"/static/index.html".length) + "/", here.origin);
-        }
-        if (p0.endsWith("/static/")) {
-          return new URL(p0.slice(0, -"/static/".length) + "/", here.origin);
-        }
-        return new URL(".", here);
-      })();
+      const appBaseUrl = new URL(".", window.location.href);
       function resolveAppUrl(path) {
         const s = String(path ?? "");
         const rel = s.startsWith("/") ? s.slice(1) : s;
@@ -163,6 +153,33 @@
         }
       }
 
+      function fmtBytes(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return String(n ?? "");
+        if (v < 1024) return `${v} B`;
+        const units = ["KB", "MB", "GB", "TB"];
+        let val = v;
+        let u = 0;
+        while (val >= 1024 && u < units.length - 1) {
+          val /= 1024;
+          u += 1;
+        }
+        const dec = val >= 100 ? 0 : val >= 10 ? 1 : 2;
+        return `${val.toFixed(dec)} ${units[u]}`;
+      }
+
+      function listFromFilesField(val) {
+        if (!Array.isArray(val)) return [];
+        const out = [];
+        for (const v of val) {
+          if (typeof v !== "string") continue;
+          const p = v.trim();
+          if (!p || out.includes(p)) continue;
+          out.push(p);
+        }
+        return out;
+      }
+
       function baseName(p) {
         if (!p) return "";
         const s = String(p);
@@ -175,6 +192,26 @@
         const m = s.match(/^([0-9a-f]{8})[0-9a-f-]{28}-(\d+)$/i);
         if (m) return `${m[1]}-${m[2]}`;
         return s.slice(0, 8);
+      }
+
+      function sessionDisplayName(s) {
+        if (!s || typeof s !== "object") return "";
+        const alias = typeof s.alias === "string" ? s.alias.trim() : "";
+        if (alias) return alias;
+        const cwdName = baseName(s.cwd);
+        if (cwdName) return cwdName;
+        const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
+          ? s.updated_ts
+          : typeof s.start_ts === "number" && Number.isFinite(s.start_ts)
+            ? s.start_ts
+            : 0;
+        return ts ? `Session ${fmtTs(ts)}` : "Session";
+      }
+
+      function sessionTitleWithId(s) {
+        if (!s || typeof s !== "object") return "No session selected";
+        const name = sessionDisplayName(s);
+        return name || "No session selected";
       }
 
       function escapeHtml(s) {
@@ -397,11 +434,11 @@
         return html;
       }
 
-	      function iconSvg(name) {
-	        if (name === "menu")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
-	        if (name === "refresh")
-	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
+      function iconSvg(name) {
+        if (name === "menu")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
+        if (name === "refresh")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
 	        if (name === "harness")
 	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
 	        if (name === "stop")
@@ -418,6 +455,16 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
         if (name === "trash")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+        if (name === "edit")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+        if (name === "file")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>`;
+        if (name === "x")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
+        if (name === "queue")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
+        if (name === "duplicate")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         return "";
       }
 
@@ -488,7 +535,10 @@
 
 	        let selected = null;
         let offset = 0;
-        const INIT_PAGE_LIMIT = 80;
+        const INIT_PAGE_LIMIT_DESKTOP = 60;
+        const INIT_PAGE_LIMIT_MOBILE = 24;
+        const OLDER_PAGE_LIMIT = 60;
+        const CACHE_LIMIT = 40;
         const CHAT_DOM_WINDOW = 260;
         let activeLogPath = null;
         let activeThreadId = null;
@@ -504,18 +554,30 @@
 	        let pollFastUntilMs = 0;
 	        let turnOpen = false;
 	        let sessionsTimer = null;
-		        let sessionIndex = new Map(); // session_id -> session info
-		        let sending = false;
-			        let localEchoSeq = 0;
-			        const pendingUser = [];
-			        let attachedImages = 0;
+	        let currentRunning = false;
+	        let deferInFlight = false;
+	        const deferredBySession = new Map();
+	        const deferredLoaded = new Set();
+	        let queueSaveTimer = null;
+        const cacheBySession = new Map();
+        const cacheLoaded = new Set();
+        const cacheSaveTimers = new Map();
+	        let sessionIndex = new Map(); // session_id -> session info
+	        let sending = false;
+	        let localEchoSeq = 0;
+	        const pendingUser = [];
+	        let attachedImages = 0;
 		        let autoScroll = true;
 			        let backfillToken = 0;
-		        let backfillState = null;
-			        let lastScrollTop = 0;
-				        let lastToken = null;
-				        let typingRow = null;
-				        let attachBadgeEl = null;
+        let backfillState = null;
+			    let lastScrollTop = 0;
+				    let lastToken = null;
+				    let typingRow = null;
+        let attachBadgeEl = null;
+        let queueBadgeEl = null;
+        const recentEventKeys = [];
+        const recentEventKeySet = new Set();
+        const RECENT_EVENT_KEYS_MAX = 320;
                 let clickLoadT0 = 0;
                 let clickMetricPending = false;
 					        let harnessMenuOpen = false;
@@ -526,16 +588,16 @@
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
 				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
-		        const interruptBtn = el("button", {
-		          id: "interruptBtn",
-		          class: "icon-btn",
-		          title: "Interrupt (Esc)",
-		          "aria-label": "Interrupt (Esc)",
-		          type: "button",
-		          html: iconSvg("stop"),
-		        });
-		        interruptBtn.style.display = "none";
-		        const toast = el("div", { class: "muted toast", id: "toast" });
+        const interruptBtn = el("button", {
+          id: "interruptBtn",
+          class: "icon-btn",
+          title: "Interrupt (Esc)",
+          "aria-label": "Interrupt (Esc)",
+          type: "button",
+          html: iconSvg("stop"),
+        });
+        interruptBtn.style.display = "none";
+        const toast = el("div", { class: "muted toast", id: "toast" });
 			        const toggleSidebarBtn = el("button", {
 	          id: "toggleSidebarBtn",
 	          class: "icon-btn",
@@ -543,54 +605,85 @@
 	          "aria-label": "Toggle sidebar",
 	          html: iconSvg("menu"),
 	        });
-			        const harnessBtn = el("button", {
-			          id: "harnessBtn",
-			          class: "icon-btn",
-			          title: "Harness mode",
-			          "aria-label": "Harness mode",
-				          type: "button",
-				          html: iconSvg("harness"),
-				        });
-				        harnessBtn.disabled = true;
-				        harnessBtn.classList.toggle("active", false);
-				        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
-				          el("div", { class: "row" }, [
-				            el("label", {}, [
-				              el("input", { type: "checkbox", id: "harnessEnabled" }),
-			              el("span", { text: "Harness mode" }),
+        const harnessBtn = el("button", {
+          id: "harnessBtn",
+          class: "icon-btn",
+          title: "Harness mode",
+          "aria-label": "Harness mode",
+            type: "button",
+            html: iconSvg("harness"),
+          });
+          harnessBtn.disabled = true;
+          harnessBtn.classList.toggle("active", false);
+        const renameBtn = el("button", {
+          id: "renameBtn",
+          class: "icon-btn",
+          title: "Rename session",
+          "aria-label": "Rename session",
+          type: "button",
+          html: iconSvg("edit"),
+        });
+        renameBtn.disabled = true;
+        const duplicateBtn = el("button", {
+          id: "dupBtn",
+          class: "icon-btn",
+          title: "Duplicate session",
+          "aria-label": "Duplicate session",
+          type: "button",
+          html: iconSvg("duplicate"),
+        });
+        duplicateBtn.disabled = true;
+        const fileBtn = el("button", {
+          id: "fileBtn",
+          class: "icon-btn",
+          title: "View file",
+          "aria-label": "View file",
+          type: "button",
+          html: iconSvg("file"),
+        });
+        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
+          el("div", { class: "row" }, [
+            el("label", {}, [
+              el("input", { type: "checkbox", id: "harnessEnabled" }),
+              el("span", { text: "Harness mode" }),
 			            ]),
 			          ]),
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
 			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
 
-			        const topbar = el("div", { class: "topbar" }, [
-			          el("div", { class: "pill" }, [toggleSidebarBtn, el("div", {}, [titleLabel, toast])]),
-			          el("div", { class: "actions" }, [
-			            statusChip,
-			            ctxChip,
-			            interruptBtn,
-			            harnessBtn,
-			          ]),
-			        ]);
+        const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
+        const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
+        const titleWrap = el("div", { class: "titleWrap" }, [titleRow, toast]);
+        const topbar = el("div", { class: "topbar" }, [
+          el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
+          el("div", { class: "actions topActions" }, [
+            duplicateBtn,
+            renameBtn,
+            fileBtn,
+            interruptBtn,
+            harnessBtn,
+          ]),
+        ]);
 
-	        const form = el("form", {}, [
-	          el("button", {
-	            class: "icon-btn",
-	            id: "attachBtn",
-	            type: "button",
-	            title: "Attach image",
-	            "aria-label": "Attach image",
-	            html: iconSvg("paperclip"),
-	          }),
+        const form = el("form", {}, [
+          el("button", {
+            class: "icon-btn",
+            id: "attachBtn",
+            type: "button",
+            title: "Attach image",
+            "aria-label": "Attach image",
+            html: iconSvg("paperclip"),
+          }),
           el("div", { class: "inputWrap" }, [
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
-	          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
-	          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
-	        ]);
-	        composer.appendChild(form);
+          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
+          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
+          el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
+        ]);
+        composer.appendChild(form);
 
         sidebar.appendChild(
           el("header", {}, [
@@ -603,14 +696,82 @@
         );
         sidebar.appendChild(sessionsWrap);
         sidebar.appendChild(sidebarFooter);
-	        main.appendChild(topbar);
-	        main.appendChild(chatWrap);
-	        main.appendChild(composer);
-		        app.appendChild(sidebar);
-		        app.appendChild(main);
-		        app.appendChild(backdrop);
-		        root.appendChild(app);
-		        root.appendChild(harnessMenu);
+        main.appendChild(topbar);
+        main.appendChild(chatWrap);
+        main.appendChild(composer);
+        app.appendChild(sidebar);
+        app.appendChild(main);
+        app.appendChild(backdrop);
+        root.appendChild(app);
+        root.appendChild(harnessMenu);
+
+        const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
+        const fileCloseBtn = el("button", {
+          id: "fileCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const fileWrapBtn = el("button", {
+          id: "fileWrapBtn",
+          class: "icon-btn text-btn",
+          title: "Toggle line wrap",
+          "aria-label": "Toggle line wrap",
+          type: "button",
+          text: "Wrap",
+        });
+        const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "/path/to/file" });
+        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
+        const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
+        const fileContent = el("pre", { class: "fileContent", id: "fileContent" });
+        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
+          el("div", { class: "fileViewerHeader" }, [
+            el("div", { class: "title", text: "View file" }),
+            el("div", { class: "actions" }, [fileWrapBtn, fileCloseBtn]),
+          ]),
+          el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
+          fileStatus,
+          fileContent,
+        ]);
+        root.appendChild(fileBackdrop);
+        root.appendChild(fileViewer);
+
+        const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
+        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
+          el("div", { class: "title", text: "Current response is running" }),
+          el("div", { class: "muted", text: "Choose how to handle your next message." }),
+          el("div", { class: "sendChoiceActions" }, [
+            el("button", { class: "primary", id: "sendChoiceNow", type: "button", text: "Send now" }),
+            el("button", { id: "sendChoiceLater", type: "button", text: "Send after current" }),
+            el("button", { id: "sendChoiceCancel", type: "button", text: "Cancel" }),
+          ]),
+        ]);
+        root.appendChild(sendChoiceBackdrop);
+        root.appendChild(sendChoice);
+
+        const queueBackdrop = el("div", { class: "modalBackdrop", id: "queueBackdrop" });
+        const queueCloseBtn = el("button", {
+          id: "queueCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const queueList = el("div", { class: "queueList", id: "queueList" });
+        const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
+        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-label": "Queued messages" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Queued messages" }),
+            el("div", { class: "actions" }, [queueCloseBtn]),
+          ]),
+          queueEmpty,
+          queueList,
+        ]);
+        root.appendChild(queueBackdrop);
+        root.appendChild(queueViewer);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -620,20 +781,28 @@
           }, 2200);
         }
 
-			        function setStatus({ running, queueLen }) {
-			          const q = Number(queueLen || 0);
-			          const mobile = isMobile();
-			          if (running) {
-			            statusChip.style.display = "none";
-			            statusChip.classList.remove("running");
-			          } else {
-			            statusChip.style.display = "inline-flex";
+        function setStatus({ running, queueLen }) {
+          const q = Number(queueLen || 0);
+          const mobile = isMobile();
+          const wasRunning = currentRunning;
+          currentRunning = Boolean(running);
+          if (running) {
+            statusChip.style.display = "none";
+            statusChip.classList.remove("running");
+          } else {
+            statusChip.style.display = "inline-flex";
 			            if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
 			            else statusChip.textContent = "Idle";
-			          }
-			          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
-			          interruptBtn.disabled = !(running && selected);
-			        }
+          }
+          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
+          interruptBtn.disabled = !(running && selected);
+          if (wasRunning && !currentRunning) {
+            deferInFlight = false;
+          }
+          if (!currentRunning) {
+            maybeSendDeferred();
+          }
+        }
 
 	        function setContext(tok) {
 	          if (!tok || typeof tok !== "object") {
@@ -662,15 +831,17 @@
 	          setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
 	        };
 
-		        function resetChatRenderState() {
-		          autoScroll = true;
-              pendingUser.length = 0;
-              sending = false;
-              localEchoSeq = 0;
-              olderBefore = 0;
-              hasOlder = false;
-              loadingOlder = false;
-              olderAutoTriggerAt = 0;
+        function resetChatRenderState() {
+          autoScroll = true;
+          pendingUser.length = 0;
+          sending = false;
+          localEchoSeq = 0;
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          olderBefore = 0;
+          hasOlder = false;
+          loadingOlder = false;
+          olderAutoTriggerAt = 0;
               clickMetricPending = false;
 		          chatInner.innerHTML = "";
 	          chatInner.appendChild(olderWrap);
@@ -684,13 +855,251 @@
 	          chat.scrollTop = 0;
 	        }
 
-          function setOlderState({ hasMore, isLoading }) {
-            hasOlder = Boolean(hasMore);
-            loadingOlder = Boolean(isLoading);
-            olderWrap.style.display = hasOlder ? "flex" : "none";
-            olderBtn.disabled = loadingOlder;
-            olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+        function setOlderState({ hasMore, isLoading }) {
+          hasOlder = Boolean(hasMore);
+          loadingOlder = Boolean(isLoading);
+          olderWrap.style.display = hasOlder ? "flex" : "none";
+          olderBtn.disabled = loadingOlder;
+          olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+        }
+
+        function initPageLimit() {
+          return isMobile() ? INIT_PAGE_LIMIT_MOBILE : INIT_PAGE_LIMIT_DESKTOP;
+        }
+
+        function olderPageLimit() {
+          return OLDER_PAGE_LIMIT;
+        }
+
+        function deferredStorageKey(sid) {
+          return `codexweb.deferred.${sid}`;
+        }
+
+        function loadDeferredFromStorage(sid) {
+          if (!sid || deferredLoaded.has(sid)) return;
+          deferredLoaded.add(sid);
+          try {
+            const raw = localStorage.getItem(deferredStorageKey(sid));
+            if (!raw) return;
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) return;
+            const out = [];
+            for (const v of arr) {
+              if (typeof v !== "string") continue;
+              const t = v.trim();
+              if (!t) continue;
+              out.push(t);
+            }
+            if (out.length) deferredBySession.set(sid, out);
+          } catch {
+            // ignore corrupted storage
           }
+        }
+
+        function saveDeferredToStorage(sid) {
+          if (!sid) return;
+          const q = deferredBySession.get(sid) || [];
+          try {
+            localStorage.setItem(deferredStorageKey(sid), JSON.stringify(q));
+          } catch {
+            // ignore quota or serialization issues
+          }
+        }
+
+        function scheduleQueueSave() {
+          if (!selected) return;
+          if (queueSaveTimer) clearTimeout(queueSaveTimer);
+          queueSaveTimer = setTimeout(() => {
+            if (!selected) return;
+            saveDeferredToStorage(selected);
+          }, 350);
+        }
+
+        function getDeferredQueue(sid) {
+          if (!sid) return [];
+          loadDeferredFromStorage(sid);
+          let q = deferredBySession.get(sid);
+          if (!q) {
+            q = [];
+            deferredBySession.set(sid, q);
+          }
+          return q;
+        }
+
+        function cacheStorageKey(sid) {
+          return `codexweb.cache.v2.${sid}`;
+        }
+
+        function normalizeCacheEvent(ev) {
+          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
+          if (typeof ev.text !== "string" || !ev.text.trim()) return null;
+          const out = { role: ev.role, text: ev.text };
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+          return out;
+        }
+
+        function loadCacheFromStorage(sid) {
+          if (!sid || cacheLoaded.has(sid)) return;
+          cacheLoaded.add(sid);
+          try {
+            const raw = localStorage.getItem(cacheStorageKey(sid));
+            if (!raw) return;
+            const obj = JSON.parse(raw);
+            if (!obj || typeof obj !== "object") return;
+            const eventsIn = Array.isArray(obj.events) ? obj.events : [];
+            const events = [];
+            for (const ev of eventsIn) {
+              const norm = normalizeCacheEvent(ev);
+              if (norm) events.push(norm);
+            }
+            if (!events.length) return;
+            if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
+            const cache = {
+              log_path: typeof obj.log_path === "string" ? obj.log_path : null,
+              offset: Number(obj.offset) || 0,
+              older_before: Number(obj.older_before) || 0,
+              has_older: Boolean(obj.has_older),
+              events,
+            };
+            cacheBySession.set(sid, cache);
+          } catch {
+            // ignore corrupted cache
+          }
+        }
+
+        function getCache(sid) {
+          if (!sid) return null;
+          loadCacheFromStorage(sid);
+          return cacheBySession.get(sid) || null;
+        }
+
+        function saveCacheNow(sid) {
+          if (!sid) return;
+          const cache = cacheBySession.get(sid);
+          if (!cache) {
+            localStorage.removeItem(cacheStorageKey(sid));
+            return;
+          }
+          const payload = {
+            log_path: cache.log_path || null,
+            offset: Number(cache.offset) || 0,
+            older_before: Number(cache.older_before) || 0,
+            has_older: Boolean(cache.has_older),
+            events: Array.isArray(cache.events) ? cache.events : [],
+          };
+          try {
+            localStorage.setItem(cacheStorageKey(sid), JSON.stringify(payload));
+          } catch {
+            // ignore quota issues
+          }
+        }
+
+        function scheduleCacheSave(sid) {
+          if (!sid) return;
+          const existing = cacheSaveTimers.get(sid);
+          if (existing) clearTimeout(existing);
+          const t = setTimeout(() => {
+            cacheSaveTimers.delete(sid);
+            saveCacheNow(sid);
+          }, 400);
+          cacheSaveTimers.set(sid, t);
+        }
+
+        function setCacheMeta(sid, { logPath, offset: off, olderBefore, hasOlder } = {}) {
+          if (!sid) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          if (logPath !== undefined) cache.log_path = logPath || null;
+          if (typeof off === "number" && Number.isFinite(off)) cache.offset = off;
+          if (typeof olderBefore === "number" && Number.isFinite(olderBefore)) cache.older_before = olderBefore;
+          if (typeof hasOlder === "boolean") cache.has_older = hasOlder;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function replaceCacheEvents(sid, events) {
+          if (!sid) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          const out = [];
+          for (const ev of events || []) {
+            const norm = normalizeCacheEvent(ev);
+            if (norm) out.push(norm);
+          }
+          if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
+          cache.events = out;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function appendCacheEvents(sid, events) {
+          if (!sid || !events || !events.length) return;
+          const cache =
+            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          const list = Array.isArray(cache.events) ? cache.events : [];
+          for (const ev of events) {
+            const norm = normalizeCacheEvent(ev);
+            if (norm) list.push(norm);
+          }
+          if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
+          cache.events = list;
+          cacheBySession.set(sid, cache);
+          scheduleCacheSave(sid);
+        }
+
+        function clearCache(sid) {
+          if (!sid) return;
+          cacheBySession.delete(sid);
+          cacheLoaded.delete(sid);
+          cacheSaveTimers.delete(sid);
+          localStorage.removeItem(cacheStorageKey(sid));
+        }
+
+        function updateQueueBadge() {
+          if (!queueBadgeEl) return;
+          if (!selected) {
+            queueBadgeEl.textContent = "";
+            queueBadgeEl.style.display = "none";
+            return;
+          }
+          const q = getDeferredQueue(selected);
+          const n = q.length;
+          if (n > 0) {
+            queueBadgeEl.textContent = String(n);
+            queueBadgeEl.style.display = "inline-flex";
+          } else {
+            queueBadgeEl.textContent = "";
+            queueBadgeEl.style.display = "none";
+          }
+          if (queueViewer.style.display === "flex") {
+            renderQueueList();
+          }
+        }
+
+        function queueLocalMessage(raw, { front = false } = {}) {
+          if (!selected) return;
+          const q = getDeferredQueue(selected);
+          if (front) q.unshift(raw);
+          else q.push(raw);
+          saveDeferredToStorage(selected);
+          updateQueueBadge();
+          setToast(`queued locally (${q.length})`);
+        }
+
+        function maybeSendDeferred() {
+          if (!selected) return;
+          if (sending || deferInFlight || currentRunning) return;
+          const q = getDeferredQueue(selected);
+          if (!q.length) {
+            updateQueueBadge();
+            return;
+          }
+          const raw = q.shift();
+          saveDeferredToStorage(selected);
+          deferInFlight = true;
+          updateQueueBadge();
+          void sendText(raw, { deferred: true });
+        }
 
           function markClickFirstPaint() {
             if (!clickMetricPending) return;
@@ -840,6 +1249,31 @@
           return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         }
 
+        function eventKey(ev) {
+          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+          const text = typeof ev.text === "string" ? ev.text : "";
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : 0;
+          return `${ev.role}|${ts}|${text}`;
+        }
+
+        function markEventSeen(ev) {
+          const key = eventKey(ev);
+          if (!key) return;
+          if (recentEventKeySet.has(key)) return;
+          recentEventKeySet.add(key);
+          recentEventKeys.push(key);
+          if (recentEventKeys.length > RECENT_EVENT_KEYS_MAX) {
+            const drop = recentEventKeys.splice(0, recentEventKeys.length - RECENT_EVENT_KEYS_MAX);
+            for (const k of drop) recentEventKeySet.delete(k);
+          }
+        }
+
+        function isDuplicateEvent(ev) {
+          const key = eventKey(ev);
+          if (!key) return false;
+          return recentEventKeySet.has(key);
+        }
+
         function pendingMatchKey(s) {
           // Codex log serialization can trim trailing whitespace/newlines; match on a slightly
           // normalized key to avoid duplicating the optimistic local echo bubble.
@@ -928,19 +1362,32 @@
 		            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
-		            const title = baseName(s.cwd) || s.session_id.slice(0, 12);
+            const title = sessionDisplayName(s);
+            const files = listFromFilesField(s.files);
 		            const badges = [];
 		            if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
 		            badges.push(badge);
 		            if (q) badges.push(q);
-		            let delBtn = null;
-	            if (s.owned) {
-	              delBtn = el("button", {
-	                class: "icon-btn danger sessionDel",
-	                title: "Delete session",
-	                "aria-label": "Delete session",
-	                type: "button",
-	                html: iconSvg("trash"),
+            let delBtn = null;
+            const renameCardBtn = el("button", {
+              class: "icon-btn",
+              title: "Rename session",
+              "aria-label": "Rename session",
+              type: "button",
+              html: iconSvg("edit"),
+            });
+            renameCardBtn.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void renameSessionId(s.session_id);
+            };
+            if (s.owned) {
+              delBtn = el("button", {
+                class: "icon-btn danger sessionDel",
+                title: "Delete session",
+                "aria-label": "Delete session",
+                type: "button",
+                html: iconSvg("trash"),
 	              });
               delBtn.onclick = async (e) => {
                 e.preventDefault();
@@ -948,22 +1395,24 @@
                 if (!confirm("Delete this session?")) return;
                 try {
 	                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-		                  if (selected === s.session_id) {
-		                    selected = null;
-	                      offset = 0;
-	                      activeLogPath = null;
-	                      activeThreadId = null;
-	                      turnOpen = false;
-		                    localStorage.removeItem("codexweb.selected");
-		                    titleLabel.textContent = "No session selected";
-	                      setStatus({ running: false, queueLen: 0 });
-	                      setContext(null);
-	                      setTyping(false);
-	                      setAttachCount(0);
-		                    resetChatRenderState();
-	                      if (harnessMenuOpen) hideHarnessMenu();
-	                      updateHarnessBtnState();
-		                  }
+                  clearCache(s.session_id);
+                if (selected === s.session_id) {
+                  selected = null;
+                  offset = 0;
+                  activeLogPath = null;
+                  activeThreadId = null;
+                  turnOpen = false;
+                  localStorage.removeItem("codexweb.selected");
+                  titleLabel.textContent = "No session selected";
+                  setStatus({ running: false, queueLen: 0 });
+                  setContext(null);
+                  setTyping(false);
+                  setAttachCount(0);
+                  resetChatRenderState();
+                  updateQueueBadge();
+                  if (harnessMenuOpen) hideHarnessMenu();
+                  updateHarnessBtnState();
+                }
 	                  await refreshSessions();
 	                } catch (err) {
                   setToast(`delete error: ${err.message}`);
@@ -974,54 +1423,103 @@
 		              el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
 		              el("div", {}, badges),
 		            ]);
-	            const pid = s.pid ? String(s.pid) : "?";
               const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-	            const meta = el("div", { class: "muted subLine", text: `id ${shortSessionId(s.session_id)}  pid ${pid}  last ${fmtTs(updatedTs)}` });
-              const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
-	            card.appendChild(mainCol);
-              if (delBtn) card.appendChild(el("div", { class: "sessionAction" }, [delBtn]));
-	            card.onclick = () => {
-	              if (isMobile()) setSidebarOpen(false);
-	              selectSession(s.session_id);
+	            const meta = el("div", { class: "muted subLine", text: updatedTs ? `last ${fmtTs(updatedTs)}` : "" });
+            const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
+            if (selected === s.session_id && files.length) {
+              const maxShow = 5;
+              const show = files.slice(0, maxShow);
+              const fileRows = show.map((p) =>
+                el("button", { class: "sessionFile", title: p, "aria-label": `Open ${p}`, text: baseName(p) || p })
+              );
+              for (const row of fileRows) {
+                row.onclick = (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  showFileViewer();
+                  filePathInput.value = row.title || row.textContent || "";
+                  openFilePath();
+                };
+              }
+              const more = files.length > maxShow ? el("div", { class: "sessionFilesMore muted", text: `+${files.length - maxShow} more` }) : null;
+              const filesWrap = el("div", { class: "sessionFiles" }, [
+                el("div", { class: "sessionFilesLabel", text: "Files" }),
+                ...fileRows,
+                ...(more ? [more] : []),
+              ]);
+              mainCol.appendChild(filesWrap);
+            }
+            card.appendChild(mainCol);
+            const actionButtons = [renameCardBtn];
+            const dupBtn = el("button", {
+              class: "icon-btn",
+              title: "Duplicate session",
+              "aria-label": "Duplicate session",
+              type: "button",
+              html: iconSvg("duplicate"),
+            });
+            dupBtn.onclick = async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
+              if (!cwd) {
+                setToast("cwd unavailable");
+                return;
+              }
+              await spawnSessionWithCwd(cwd);
+            };
+            actionButtons.unshift(dupBtn);
+            if (delBtn) actionButtons.push(delBtn);
+            card.appendChild(el("div", { class: "sessionAction" }, actionButtons));
+            card.onclick = () => {
+              if (isMobile()) setSidebarOpen(false);
+              selectSession(s.session_id);
 	            };
 	            sessionsWrap.appendChild(card);
 	          }
-	          if (selected && !sessionIndex.has(selected)) {
-	            selected = null;
-	            offset = 0;
-	            activeLogPath = null;
-	            activeThreadId = null;
+          if (selected && !sessionIndex.has(selected)) {
+            selected = null;
+            offset = 0;
+            activeLogPath = null;
+            activeThreadId = null;
             pollGen += 1;
             if (pollTimer) clearTimeout(pollTimer);
             pollTimer = null;
             pollKickPending = false;
             localStorage.removeItem("codexweb.selected");
-	            titleLabel.textContent = "No session selected";
-	            setStatus({ running: false, queueLen: 0 });
-	            setTyping(false);
-	            resetChatRenderState();
-	            turnOpen = false;
-	            if (harnessMenuOpen) hideHarnessMenu();
-	            updateHarnessBtnState();
-	          } else if (selected) {
-	            const s = sessionIndex.get(selected);
-	            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${String(s.session_id).slice(0, 8)})`;
-	          }
-	          updateHarnessBtnState();
-	          return sessions;
-	        }
+            titleLabel.textContent = "No session selected";
+            setStatus({ running: false, queueLen: 0 });
+            setTyping(false);
+            resetChatRenderState();
+            turnOpen = false;
+            if (harnessMenuOpen) hideHarnessMenu();
+            updateHarnessBtnState();
+            updateQueueBadge();
+          } else if (selected) {
+            const s = sessionIndex.get(selected);
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
+          }
+          updateHarnessBtnState();
+          updateQueueBadge();
+          return sessions;
+        }
 
-	        function appendEvent(ev) {
-	          if (consumePendingUserIfMatches(ev)) return;
+        function appendEvent(ev) {
+          if (consumePendingUserIfMatches(ev)) return;
+          if (isDuplicateEvent(ev)) return;
 
-	          const stick = autoScroll || isNearBottom();
-	          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-			          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
-			          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-			          chatInner.insertBefore(row, anchor);
+          const stick = autoScroll || isNearBottom();
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
+	          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
-	          rebuildDecorations({ preserveScroll: false });
+          rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
+            if (!ev.pending && selected) {
+              appendCacheEvents(selected, [ev]);
+            }
+          markEventSeen(ev);
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1065,12 +1563,13 @@
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
             const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=${reqBefore}`);
+            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`);
             if (selected !== sid || pollGen !== gen) return;
             const evs = Array.isArray(data.events) ? data.events : [];
             if (evs.length) prependOlderEvents(evs);
             olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
             setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+            setCacheMeta(sid, { olderBefore, hasOlder: Boolean(data.has_older) });
           } catch {
             if (selected !== sid || pollGen !== gen) return;
             setOlderState({ hasMore: hasOlder, isLoading: false });
@@ -1082,21 +1581,27 @@
           void loadOlderMessages({ auto: true });
         }
 
-		        function startInitialRender(allEvents) {
-		          backfillToken += 1;
-		          const myToken = backfillToken;
+        function startInitialRender(allEvents) {
+          backfillToken += 1;
+          const myToken = backfillToken;
 
-		          const msgs = [];
-		          for (const ev of allEvents) {
+          const msgs = [];
+          for (const ev of allEvents) {
 		            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
 		            if (consumePendingUserIfMatches(ev)) continue;
 		            msgs.push(ev);
-		          }
-		          if (!msgs.length) return;
-			          const frag = document.createDocumentFragment();
-		          for (const ev of msgs) {
-		            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-		            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+          }
+          if (!msgs.length) return;
+          if (selected) replaceCacheEvents(selected, msgs);
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          for (const ev of msgs) {
+            markEventSeen(ev);
+          }
+	          const frag = document.createDocumentFragment();
+          for (const ev of msgs) {
+            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
 	          }
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(frag, anchor);
@@ -1151,7 +1656,7 @@
               turnOpen = false;
               setStatus({ running: false, queueLen: 0 });
               try {
-                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
+                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
                 if (gen !== pollGen || sid !== selected) return;
                 if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
                 if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
@@ -1160,6 +1665,12 @@
                 if (evs2.length) startInitialRender(evs2);
                 olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
+                setCacheMeta(sid, {
+                  logPath: activeLogPath,
+                  offset,
+                  olderBefore,
+                  hasOlder: Boolean(d2.has_older),
+                });
 	                const nowBusy2 = Boolean(d2.busy);
 	                const turnStart2 = Boolean(d2.turn_start);
 	                const turnEnd2 = Boolean(d2.turn_end);
@@ -1177,6 +1688,7 @@
              }
 	
 		            offset = data.offset;
+              setCacheMeta(sid, { logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
@@ -1205,7 +1717,7 @@
 				            setContext(data.token);
 				            setTyping(Boolean(turnOpen || nowBusy));
 	            const s = sessionIndex.get(sid);
-	            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${s.session_id.slice(0, 8)})`;
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 404) {
@@ -1218,14 +1730,15 @@
               pollTimer = null;
               pollKickPending = false;
               turnOpen = false;
-		              localStorage.removeItem("codexweb.selected");
-		              titleLabel.textContent = "No session selected";
-		              setStatus({ running: false, queueLen: 0 });
-		              setTyping(false);
-		              resetChatRenderState();
-                try {
-                  await refreshSessions();
-                } catch (e2) {
+              localStorage.removeItem("codexweb.selected");
+              titleLabel.textContent = "No session selected";
+              setStatus({ running: false, queueLen: 0 });
+              setTyping(false);
+              resetChatRenderState();
+              updateQueueBadge();
+              try {
+                await refreshSessions();
+              } catch (e2) {
                   console.error("refreshSessions failed after session disappeared", e2);
                   toast.textContent = `refresh error: ${e2 && e2.message ? e2.message : "unknown error"}`;
                 }
@@ -1282,30 +1795,51 @@
 	            pollTimer = null;
 	          }
 		          pollKickPending = false;
-		          const sid = id;
-			          selected = sid;
-			          offset = 0;
-		              activeLogPath = null;
-		              activeThreadId = null;
-				          resetChatRenderState();
-				          setAttachCount(0);
-				          localStorage.setItem("codexweb.selected", sid);
-				          setStatus({ running: false, queueLen: 0 });
-			          setContext(null);
-		          setTyping(false);
-		          turnOpen = false;
+            const sid = id;
+            selected = sid;
+            offset = 0;
+            activeLogPath = null;
+            activeThreadId = null;
+            resetChatRenderState();
+            setAttachCount(0);
+            localStorage.setItem("codexweb.selected", sid);
+            updateQueueBadge();
+            setStatus({ running: false, queueLen: 0 });
+            setContext(null);
+            setTyping(false);
+            turnOpen = false;
 		          {
 		            const s = sessionIndex.get(sid);
-		            if (s) titleLabel.textContent = `${baseName(s.cwd) || s.session_id} (${String(s.session_id).slice(0, 8)})`;
-		            else titleLabel.textContent = sid ? String(sid) : "No session selected";
+            if (s) titleLabel.textContent = sessionTitleWithId(s);
+            else titleLabel.textContent = sid ? String(sid) : "No session selected";
 		          }
                 clickLoadT0 = performance.now();
                 clickMetricPending = true;
-		          if (pollGen !== myGen || selected !== sid) return;
+          if (pollGen !== myGen || selected !== sid) return;
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
-					          try {
-						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${INIT_PAGE_LIMIT}&before=0`);
+                const cached = getCache(sid);
+                const hasCached = Boolean(
+                  cached &&
+                    Array.isArray(cached.events) &&
+                    cached.events.length &&
+                    Number(cached.offset) > 0
+                );
+                if (hasCached) {
+                  activeLogPath = typeof cached.log_path === "string" ? cached.log_path : null;
+                  offset = Number(cached.offset) || 0;
+                  olderBefore = Number(cached.older_before) || 0;
+                  setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
+                  startInitialRender(cached.events);
+                  try {
+                    await pollMessages(sid, myGen);
+                  } catch {
+                    // ignore and rely on next poll
+                  }
+                  if (pollGen !== myGen || selected !== sid) return;
+                } else {
+				            try {
+						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
 					            if (pollGen !== myGen || selected !== sid) return;
                     if (data && typeof data.log_path === "string") activeLogPath = data.log_path;
                     if (data && typeof data.thread_id === "string") activeThreadId = data.thread_id;
@@ -1314,6 +1848,12 @@
 					            if (evs.length) startInitialRender(evs);
                     olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
                     setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
+                    setCacheMeta(sid, {
+                      logPath: activeLogPath,
+                      offset,
+                      olderBefore,
+                      hasOlder: Boolean(data.has_older),
+                    });
 				            const nowBusy = Boolean(data.busy);
 	            const turnStart = Boolean(data.turn_start);
 	            const turnEnd = Boolean(data.turn_end);
@@ -1327,6 +1867,7 @@
 			            await pollMessages(sid, myGen);
 			            if (pollGen !== myGen || selected !== sid) return;
 			          }
+                }
             refreshSessions().catch((e) => console.error("refreshSessions failed", e));
            kickPoll(900);
            if (isMobile()) setSidebarOpen(false);
@@ -1334,12 +1875,14 @@
          }
 
 			        $("#refreshBtn").onclick = refreshSessions;
-			        function updateHarnessBtnState() {
-			          const s = selected ? sessionIndex.get(selected) : null;
-			          const on = Boolean(s && s.harness_enabled);
-			          harnessBtn.disabled = !selected;
-			          harnessBtn.classList.toggle("active", Boolean(selected && on));
-			        }
+        function updateHarnessBtnState() {
+          const s = selected ? sessionIndex.get(selected) : null;
+          const on = Boolean(s && s.harness_enabled);
+          harnessBtn.disabled = !selected;
+          harnessBtn.classList.toggle("active", Boolean(selected && on));
+          renameBtn.disabled = !selected;
+          duplicateBtn.disabled = !selected;
+        }
            async function loadHarnessCfgForSelected() {
              if (!selected) return;
              const sid = selected;
@@ -1430,24 +1973,225 @@
 			            updateHarnessBtnState();
 			            scheduleHarnessSave();
 			          };
-			        if (harnessRequestEl)
-			          harnessRequestEl.oninput = (e) => {
-			            if (!selected) return;
-			            harnessCfg.request = String(e.target.value ?? "");
-			            scheduleHarnessSave();
-			          };
-	        $("#newBtn").onclick = async () => {
-	          const cur = selected ? sessionIndex.get(selected) : null;
-	          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
-	          const cwd = prompt("New session cwd:", def);
-          if (!cwd) return;
+        if (harnessRequestEl)
+          harnessRequestEl.oninput = (e) => {
+            if (!selected) return;
+            harnessCfg.request = String(e.target.value ?? "");
+            scheduleHarnessSave();
+          };
+        async function renameSessionId(sid) {
+          if (!sid) return;
+          const s = sessionIndex.get(sid);
+          const currentAlias = s && typeof s.alias === "string" ? s.alias : "";
+          const fallback = sessionDisplayName(s);
+          const def = currentAlias || fallback || "";
+          const next = prompt("Rename session (blank to clear):", def);
+          if (next === null) return;
+          try {
+            const res = await api(`/api/sessions/${sid}/rename`, { method: "POST", body: { name: String(next) } });
+            const alias = res && typeof res.alias === "string" ? res.alias : "";
+            if (s) s.alias = alias;
+            await refreshSessions();
+            if (selected === sid) {
+              const s2 = sessionIndex.get(sid);
+              if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+            }
+            setToast(alias ? "renamed" : "alias cleared");
+          } catch (e) {
+            setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+        }
+        renameBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void renameSessionId(selected);
+        };
+        let fileWrap = localStorage.getItem("codexweb.fileWrap") === "1";
+        function applyFileWrap() {
+          fileViewer.classList.toggle("wrap", fileWrap);
+          fileWrapBtn.classList.toggle("active", fileWrap);
+        }
+        applyFileWrap();
+
+        function showFileViewer() {
+          fileBackdrop.style.display = "block";
+          fileViewer.style.display = "flex";
+          applyFileWrap();
+          const s = selected ? sessionIndex.get(selected) : null;
+          const last = localStorage.getItem("codexweb.filePath") || "";
+          const def = last || (s && s.cwd ? String(s.cwd) : "");
+          if (!filePathInput.value.trim()) filePathInput.value = def;
+          filePathInput.focus();
+          filePathInput.select();
+        }
+        function hideFileViewer() {
+          fileBackdrop.style.display = "none";
+          fileViewer.style.display = "none";
+        }
+        async function openFilePath() {
+          const path = String(filePathInput.value || "").trim();
+          if (!path) {
+            fileStatus.textContent = "Enter a file path.";
+            return;
+          }
+          fileStatus.textContent = "Loading...";
+          fileContent.textContent = "";
+          try {
+            const body = { path };
+            if (selected) body.session_id = selected;
+            const res = await api("/api/files/read", { method: "POST", body });
+            if (!res || typeof res.text !== "string") throw new Error("invalid response");
+            fileContent.textContent = res.text;
+            const size = typeof res.size === "number" ? res.size : res.text.length;
+            const label = res.path ? String(res.path) : path;
+            fileStatus.textContent = `${label} (${fmtBytes(size)})`;
+            localStorage.setItem("codexweb.filePath", path);
+            if (selected) refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+          } catch (e) {
+            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+          }
+        }
+        fileBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showFileViewer();
+        };
+        fileWrapBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileWrap = !fileWrap;
+          localStorage.setItem("codexweb.fileWrap", fileWrap ? "1" : "0");
+          applyFileWrap();
+        };
+        fileCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideFileViewer();
+        };
+        fileBackdrop.onclick = () => hideFileViewer();
+        fileOpenBtn.onclick = () => openFilePath();
+        filePathInput.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          openFilePath();
+        });
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "Escape") return;
+          if (fileViewer.style.display === "flex") hideFileViewer();
+          if (sendChoice.style.display === "flex") hideSendChoice();
+          if (queueViewer.style.display === "flex") hideQueueViewer();
+        });
+
+        let sendChoicePending = null;
+        function showSendChoice(raw) {
+          sendChoicePending = raw;
+          sendChoiceBackdrop.style.display = "block";
+          sendChoice.style.display = "flex";
+        }
+        function hideSendChoice() {
+          sendChoicePending = null;
+          sendChoiceBackdrop.style.display = "none";
+          sendChoice.style.display = "none";
+        }
+        const sendChoiceNowBtn = $("#sendChoiceNow");
+        const sendChoiceLaterBtn = $("#sendChoiceLater");
+        const sendChoiceCancelBtn = $("#sendChoiceCancel");
+        if (sendChoiceNowBtn)
+          sendChoiceNowBtn.onclick = async () => {
+            const raw = sendChoicePending;
+            hideSendChoice();
+            if (!raw) return;
+            clearComposer();
+            await sendText(raw);
+          };
+        if (sendChoiceLaterBtn)
+          sendChoiceLaterBtn.onclick = () => {
+            const raw = sendChoicePending;
+            hideSendChoice();
+            if (!raw) return;
+            clearComposer();
+            queueLocalMessage(raw);
+          };
+        if (sendChoiceCancelBtn)
+          sendChoiceCancelBtn.onclick = () => {
+            hideSendChoice();
+          };
+        sendChoiceBackdrop.onclick = () => hideSendChoice();
+
+        function renderQueueList() {
+          queueList.innerHTML = "";
+          const sid = selected;
+          if (!sid) {
+            queueEmpty.style.display = "block";
+            return;
+          }
+          const q = getDeferredQueue(sid);
+          queueEmpty.style.display = q.length ? "none" : "block";
+          if (!q.length) return;
+          q.forEach((text, idx) => {
+            const row = el("div", { class: "queueItem" });
+            const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
+            ta.value = text;
+            ta.oninput = () => {
+              const q2 = getDeferredQueue(sid);
+              if (idx >= q2.length) return;
+              q2[idx] = String(ta.value || "");
+              scheduleQueueSave();
+            };
+            const del = el("button", { class: "icon-btn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
+            del.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const q2 = getDeferredQueue(sid);
+              if (idx >= q2.length) return;
+              q2.splice(idx, 1);
+              saveDeferredToStorage(sid);
+              updateQueueBadge();
+              renderQueueList();
+            };
+            row.appendChild(ta);
+            row.appendChild(del);
+            queueList.appendChild(row);
+          });
+        }
+
+        function showQueueViewer() {
+          queueBackdrop.style.display = "block";
+          queueViewer.style.display = "flex";
+          renderQueueList();
+        }
+
+        function hideQueueViewer() {
+          queueBackdrop.style.display = "none";
+          queueViewer.style.display = "none";
+        }
+
+        const queueBtn = $("#queueBtn");
+        if (queueBtn) {
+          queueBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showQueueViewer();
+          };
+        }
+        queueCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideQueueViewer();
+        };
+        queueBackdrop.onclick = () => hideQueueViewer();
+        async function spawnSessionWithCwd(cwd) {
+          if (!cwd || !String(cwd).trim()) {
+            setToast("cwd unavailable");
+            return null;
+          }
           try {
             setToast("starting...");
-            const res = await api("/api/sessions", { method: "POST", body: { cwd } });
+            const res = await api("/api/sessions", { method: "POST", body: { cwd: String(cwd) } });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
-              return;
+              return null;
             }
             setToast(`started (broker ${brokerPid})`);
             for (let i = 0; i < 60; i++) {
@@ -1455,14 +2199,23 @@
               const found = (sessions || []).find((x) => Number(x.broker_pid || 0) === brokerPid);
               if (found) {
                 selectSession(found.session_id);
-                return;
+                return brokerPid;
               }
               await new Promise((r) => setTimeout(r, 250));
             }
             setToast("session will appear once Codex creates a rollout log");
+            return brokerPid;
           } catch (e) {
             setToast(`start error: ${e.message}`);
+            return null;
           }
+        }
+        $("#newBtn").onclick = async () => {
+          const cur = selected ? sessionIndex.get(selected) : null;
+          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const cwd = prompt("New session cwd:", def);
+          if (!cwd) return;
+          await spawnSessionWithCwd(cwd);
         };
 	        interruptBtn.onclick = async () => {
 	          if (!selected) return;
@@ -1479,6 +2232,17 @@
         $("#logoutBtnSide").onclick = async () => {
           await api("/api/logout", { method: "POST" });
           renderLogin(renderApp);
+        };
+
+        duplicateBtn.onclick = async () => {
+          if (!selected) return;
+          const s = sessionIndex.get(selected);
+          const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
+          if (!cwd) {
+            setToast("cwd unavailable");
+            return;
+          }
+          await spawnSessionWithCwd(cwd);
         };
 
         toggleSidebarBtn.onclick = () => {
@@ -1546,24 +2310,29 @@
 	        const textarea = $("#msg");
 	        const msgPh = $("#msgPh");
 	        const imgInput = $("#imgInput");
-	        const attachBtn = $("#attachBtn");
-	        if (!attachBadgeEl) {
-	          attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
-	          attachBtn.appendChild(attachBadgeEl);
-	        }
-	        const setAttachCount = (n) => {
-	          const next = Math.max(0, Number(n) || 0);
-	          attachedImages = next;
-	          if (!attachBadgeEl) return;
-	          if (next > 0) {
-	            attachBadgeEl.textContent = String(next);
-	            attachBadgeEl.style.display = "inline-flex";
-	          } else {
-	            attachBadgeEl.textContent = "";
-	            attachBadgeEl.style.display = "none";
-	          }
-	        };
-	        setAttachCount(0);
+        const attachBtn = $("#attachBtn");
+        if (!attachBadgeEl) {
+          attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
+          attachBtn.appendChild(attachBadgeEl);
+        }
+        if (!queueBadgeEl && queueBtn) {
+          queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
+          queueBtn.appendChild(queueBadgeEl);
+        }
+        const setAttachCount = (n) => {
+          const next = Math.max(0, Number(n) || 0);
+          attachedImages = next;
+          if (!attachBadgeEl) return;
+          if (next > 0) {
+            attachBadgeEl.textContent = String(next);
+            attachBadgeEl.style.display = "inline-flex";
+          } else {
+            attachBadgeEl.textContent = "";
+            attachBadgeEl.style.display = "none";
+          }
+        };
+        setAttachCount(0);
+        updateQueueBadge();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
 	          const maxPx = 180;
@@ -1728,43 +2497,63 @@
 	          }
 	        });
 
-        form.onsubmit = async (e) => {
-          e.preventDefault();
+        function clearComposer() {
+          $("#msg").value = "";
+          autoGrow();
+        }
+
+        async function sendText(raw, { deferred = false } = {}) {
           if (!selected) return;
-          const raw = $("#msg").value;
           if (!raw || !raw.trim()) return;
           if (sending) return;
           sending = true;
           $("#sendBtn").disabled = true;
           setToast("sending...");
-          $("#msg").value = "";
-          autoGrow();
 
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
           pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
           appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
           turnOpen = true;
-	          try {
-	            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
-	            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
-	            else setToast("sent");
-	            setAttachCount(0);
-	            pollFastUntilMs = Date.now() + 5000;
-	            kickPoll(0);
-	            await refreshSessions();
-	          } catch (e2) {
-	            setToast(`send error: ${e2.message}`);
+          currentRunning = true;
+          try {
+            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
+            if (res.queued) setToast(`queued (queue ${res.queue_len})`);
+            else setToast("sent");
+            setAttachCount(0);
+            pollFastUntilMs = Date.now() + 5000;
+            kickPoll(0);
+            await refreshSessions();
+          } catch (e2) {
+            setToast(`send error: ${e2.message}`);
             const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
             if (pendingEl) {
               pendingEl.style.opacity = "1";
               pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
               pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
             }
+            if (deferred && selected) {
+              queueLocalMessage(raw, { front: true });
+            }
           } finally {
             sending = false;
             $("#sendBtn").disabled = false;
+            if (deferred) deferInFlight = false;
           }
+        }
+
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          if (!selected) return;
+          const raw = $("#msg").value;
+          if (!raw || !raw.trim()) return;
+          if (sending) return;
+          if (currentRunning) {
+            showSendChoice(raw);
+            return;
+          }
+          clearComposer();
+          await sendText(raw);
         };
 
 	        (async () => {
