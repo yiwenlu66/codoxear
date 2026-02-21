@@ -1036,16 +1036,16 @@ input[type="text"] {
           max-width: 88%;
         }
         .topActions {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(52px, 1fr));
-          gap: 6px;
-          padding: 6px;
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          background: rgba(15, 23, 42, 0.03);
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-start;
+          padding: 0;
+          border: none;
+          background: transparent;
         }
         .topActions .icon-btn {
-          width: 100%;
+          width: 34px;
           height: 34px;
         }
         .fileViewer {
