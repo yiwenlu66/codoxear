@@ -569,12 +569,16 @@
 	        let attachedImages = 0;
 		        let autoScroll = true;
 			        let backfillToken = 0;
-		        let backfillState = null;
-			        let lastScrollTop = 0;
-				        let lastToken = null;
-				        let typingRow = null;
-	        let attachBadgeEl = null;
-	        let queueBadgeEl = null;
+        let backfillState = null;
+			    let lastScrollTop = 0;
+				    let lastToken = null;
+				    let typingRow = null;
+        let lastRenderedTs = 0;
+        let attachBadgeEl = null;
+        let queueBadgeEl = null;
+        const recentEventKeys = [];
+        const recentEventKeySet = new Set();
+        const RECENT_EVENT_KEYS_MAX = 320;
                 let clickLoadT0 = 0;
                 let clickMetricPending = false;
 					        let harnessMenuOpen = false;
@@ -828,15 +832,18 @@
 	          setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
 	        };
 
-		        function resetChatRenderState() {
-		          autoScroll = true;
-              pendingUser.length = 0;
-              sending = false;
-              localEchoSeq = 0;
-              olderBefore = 0;
-              hasOlder = false;
-              loadingOlder = false;
-              olderAutoTriggerAt = 0;
+        function resetChatRenderState() {
+          autoScroll = true;
+          pendingUser.length = 0;
+          sending = false;
+          localEchoSeq = 0;
+          lastRenderedTs = 0;
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          olderBefore = 0;
+          hasOlder = false;
+          loadingOlder = false;
+          olderAutoTriggerAt = 0;
               clickMetricPending = false;
 		          chatInner.innerHTML = "";
 	          chatInner.appendChild(olderWrap);
@@ -1244,6 +1251,31 @@
           return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
         }
 
+        function eventKey(ev) {
+          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+          const text = typeof ev.text === "string" ? ev.text : "";
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : 0;
+          return `${ev.role}|${ts}|${text}`;
+        }
+
+        function markEventSeen(ev) {
+          const key = eventKey(ev);
+          if (!key) return;
+          if (recentEventKeySet.has(key)) return;
+          recentEventKeySet.add(key);
+          recentEventKeys.push(key);
+          if (recentEventKeys.length > RECENT_EVENT_KEYS_MAX) {
+            const drop = recentEventKeys.splice(0, recentEventKeys.length - RECENT_EVENT_KEYS_MAX);
+            for (const k of drop) recentEventKeySet.delete(k);
+          }
+        }
+
+        function isDuplicateEvent(ev) {
+          const key = eventKey(ev);
+          if (!key) return false;
+          return recentEventKeySet.has(key);
+        }
+
         function pendingMatchKey(s) {
           // Codex log serialization can trim trailing whitespace/newlines; match on a slightly
           // normalized key to avoid duplicating the optimistic local echo bubble.
@@ -1474,20 +1506,35 @@
           return sessions;
         }
 
-	        function appendEvent(ev) {
-	          if (consumePendingUserIfMatches(ev)) return;
+        function appendEvent(ev) {
+          if (consumePendingUserIfMatches(ev)) return;
+          if (isDuplicateEvent(ev)) return;
 
-	          const stick = autoScroll || isNearBottom();
-	          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-			          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
-			          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-			          chatInner.insertBefore(row, anchor);
+          const stick = autoScroll || isNearBottom();
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
+	          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+	          let anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+          if (ts !== null && typeof ts === "number" && Number.isFinite(ts) && lastRenderedTs > 0 && ts < lastRenderedTs) {
+            const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+            for (const r of rows) {
+              const rts = Number(r.dataset.ts);
+              if (Number.isFinite(rts) && rts > ts) {
+                anchor = r;
+                break;
+              }
+            }
+          }
+	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
-	          rebuildDecorations({ preserveScroll: false });
+          rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
             if (!ev.pending && selected) {
               appendCacheEvents(selected, [ev]);
             }
+          markEventSeen(ev);
+          if (ts !== null && typeof ts === "number" && Number.isFinite(ts)) {
+            lastRenderedTs = Math.max(lastRenderedTs, ts);
+          }
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1549,22 +1596,31 @@
           void loadOlderMessages({ auto: true });
         }
 
-		        function startInitialRender(allEvents) {
-		          backfillToken += 1;
-		          const myToken = backfillToken;
+        function startInitialRender(allEvents) {
+          backfillToken += 1;
+          const myToken = backfillToken;
 
-		          const msgs = [];
-		          for (const ev of allEvents) {
+          const msgs = [];
+          for (const ev of allEvents) {
 		            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
 		            if (consumePendingUserIfMatches(ev)) continue;
 		            msgs.push(ev);
-		          }
-		          if (!msgs.length) return;
-              if (selected) replaceCacheEvents(selected, msgs);
-			          const frag = document.createDocumentFragment();
-		          for (const ev of msgs) {
-		            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-		            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+          }
+          if (!msgs.length) return;
+          if (selected) replaceCacheEvents(selected, msgs);
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          lastRenderedTs = 0;
+          for (const ev of msgs) {
+            markEventSeen(ev);
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) {
+              lastRenderedTs = Math.max(lastRenderedTs, ev.ts);
+            }
+          }
+	          const frag = document.createDocumentFragment();
+          for (const ev of msgs) {
+            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
 	          }
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(frag, anchor);
