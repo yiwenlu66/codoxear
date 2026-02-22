@@ -160,6 +160,9 @@ def _extract_chat_events(
                 continue
             if pt == "token_count":
                 continue
+            if pt == "task_complete":
+                turn_end = True
+                continue
 
         if typ == "response_item":
             p = obj.get("payload")

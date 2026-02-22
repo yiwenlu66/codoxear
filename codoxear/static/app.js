@@ -558,6 +558,7 @@
 	        let deferInFlight = false;
 	        const deferredBySession = new Map();
 	        const deferredLoaded = new Set();
+	        const deferGateBySession = new Map();
 	        let queueSaveTimer = null;
         const cacheBySession = new Map();
         const cacheLoaded = new Set();
@@ -786,6 +787,10 @@
           const mobile = isMobile();
           const wasRunning = currentRunning;
           currentRunning = Boolean(running);
+          if (selected && currentRunning) {
+            const dq = getDeferredQueue(selected);
+            if (dq.length) deferGateBySession.set(selected, true);
+          }
           if (running) {
             statusChip.style.display = "none";
             statusChip.classList.remove("running");
@@ -927,7 +932,7 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v2.${sid}`;
+          return `codexweb.cache.v3.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
@@ -1078,6 +1083,7 @@
 
         function queueLocalMessage(raw, { front = false } = {}) {
           if (!selected) return;
+          deferGateBySession.set(selected, true);
           const q = getDeferredQueue(selected);
           if (front) q.unshift(raw);
           else q.push(raw);
@@ -1086,9 +1092,11 @@
           setToast(`queued locally (${q.length})`);
         }
 
-        function maybeSendDeferred() {
+        function maybeSendDeferred({ force = false } = {}) {
           if (!selected) return;
-          if (sending || deferInFlight || currentRunning) return;
+          if (sending || deferInFlight) return;
+          if (!force && currentRunning) return;
+          if (deferGateBySession.get(selected)) return;
           const q = getDeferredQueue(selected);
           if (!q.length) {
             updateQueueBadge();
@@ -1506,7 +1514,7 @@
 
         function appendEvent(ev) {
           if (consumePendingUserIfMatches(ev)) return;
-          if (isDuplicateEvent(ev)) return;
+          if (!ev.pending && isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
@@ -1519,7 +1527,7 @@
             if (!ev.pending && selected) {
               appendCacheEvents(selected, [ev]);
             }
-          markEventSeen(ev);
+          if (!ev.pending) markEventSeen(ev);
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
@@ -1671,15 +1679,21 @@
                   olderBefore,
                   hasOlder: Boolean(d2.has_older),
                 });
-	                const nowBusy2 = Boolean(d2.busy);
-	                const turnStart2 = Boolean(d2.turn_start);
-	                const turnEnd2 = Boolean(d2.turn_end);
-	                const turnAborted2 = Boolean(d2.turn_aborted);
-	                if (turnStart2 || nowBusy2) turnOpen = true;
-	                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
+                const nowBusy2 = Boolean(d2.busy);
+                const turnStart2 = Boolean(d2.turn_start);
+                const turnEnd2 = Boolean(d2.turn_end);
+                const turnAborted2 = Boolean(d2.turn_aborted);
+                if (turnStart2 || nowBusy2) turnOpen = true;
+                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
                 setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
                 setContext(d2.token);
                 setTyping(Boolean(turnOpen || nowBusy2));
+                if ((turnEnd2 || turnAborted2) && selected) {
+                  deferGateBySession.delete(selected);
+                  if (getDeferredQueue(selected).length) {
+                    maybeSendDeferred({ force: true });
+                  }
+                }
                 } catch (e2) {
                   console.error("poll init reload failed", e2);
                   throw e2;
@@ -1716,7 +1730,13 @@
 				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
 				            setContext(data.token);
 				            setTyping(Boolean(turnOpen || nowBusy));
-	            const s = sessionIndex.get(sid);
+            if ((turnEnd || turnAborted) && selected) {
+              deferGateBySession.delete(selected);
+              if (getDeferredQueue(selected).length) {
+                maybeSendDeferred({ force: true });
+              }
+            }
+            const s = sessionIndex.get(sid);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
@@ -1818,7 +1838,15 @@
           if (pollGen !== myGen || selected !== sid) return;
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
-                const cached = getCache(sid);
+                let cached = getCache(sid);
+                if (cached && Array.isArray(cached.events) && cached.events.length) {
+                  const hasUser = cached.events.some((ev) => ev && ev.role === "user");
+                  const hasAssistant = cached.events.some((ev) => ev && ev.role === "assistant");
+                  if (!hasUser && hasAssistant) {
+                    clearCache(sid);
+                    cached = null;
+                  }
+                }
                 const hasCached = Boolean(
                   cached &&
                     Array.isArray(cached.events) &&
@@ -1874,7 +1902,27 @@
            updateHarnessBtnState();
          }
 
-			        $("#refreshBtn").onclick = refreshSessions;
+			        $("#refreshBtn").onclick = async () => {
+                const sid = selected;
+                if (!sid) {
+                  await refreshSessions();
+                  setToast("refreshed");
+                  return;
+                }
+                clearCache(sid);
+                try {
+                  await refreshSessions();
+                } catch (e) {
+                  console.error("refreshSessions failed", e);
+                  setToast(`refresh error: ${e && e.message ? e.message : "unknown error"}`);
+                  return;
+                }
+                if (selected !== sid) return;
+                if (sessionIndex.has(sid)) {
+                  await selectSession(sid);
+                }
+                setToast("refreshed");
+              };
         function updateHarnessBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
           const on = Boolean(s && s.harness_enabled);
@@ -2509,6 +2557,7 @@
           sending = true;
           $("#sendBtn").disabled = true;
           setToast("sending...");
+          if (deferred && selected) deferGateBySession.set(selected, true);
 
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
