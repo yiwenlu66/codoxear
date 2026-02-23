@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="${CODEX_WEB_APP_DIR:-$HOME/.local/share/codoxear}"
+SOCK_DIR="${APP_DIR}/socks"
+
+usage() {
+  cat <<'EOF'
+Usage: codoxear-resume [--list] [--last] [--id <session_id>] [--web | --terminal]
+
+Interactive helper to resume Codex sessions from Codoxear metadata.
+
+Options:
+  --list        List available sessions and exit
+  --last        Resume most recent session via codex
+  --id <id>     Resume specific session id
+  --web         Show only web-owned sessions
+  --terminal    Show only terminal-owned sessions
+EOF
+}
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "error: codex CLI not found in PATH" >&2
+  exit 1
+fi
+
+mode="interactive"
+filter_owner=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --last)
+      exec codex resume --last
+      ;;
+    --id)
+      if [[ -z "${2:-}" ]]; then
+        echo "error: --id requires a session id" >&2
+        exit 1
+      fi
+      exec codex resume "$2"
+      ;;
+    --list)
+      mode="list"
+      shift
+      ;;
+    --web)
+      filter_owner="web"
+      shift
+      ;;
+    --terminal)
+      filter_owner="terminal"
+      shift
+      ;;
+    *)
+      echo "error: unknown argument $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -d "$SOCK_DIR" ]]; then
+  echo "error: no sessions dir at $SOCK_DIR" >&2
+  exit 1
+fi
+
+list_sessions() {
+  SOCK_DIR="$SOCK_DIR" FILTER_OWNER="$filter_owner" python3 - <<'PY'
+import json
+import os
+import time
+from pathlib import Path
+
+sock_dir = Path(os.environ["SOCK_DIR"])
+filter_owner = os.environ.get("FILTER_OWNER", "").strip()
+items = []
+for meta_path in sorted(sock_dir.glob("*.json")):
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        continue
+    sid = meta.get("session_id") or meta_path.stem
+    if not isinstance(sid, str) or not sid.strip():
+        sid = meta_path.stem
+    owner = meta.get("owner") if isinstance(meta.get("owner"), str) else "terminal"
+    if filter_owner and owner != filter_owner:
+        continue
+    cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else "?"
+    start_ts = meta.get("start_ts")
+    ts = float(start_ts) if isinstance(start_ts, (int, float)) else 0.0
+    start = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "?"
+    items.append((sid, owner, cwd, start, ts))
+
+items.sort(key=lambda x: x[4], reverse=True)
+for i, (sid, owner, cwd, start, _ts) in enumerate(items, 1):
+    print(f"{i}\t{sid}\t{owner}\t{cwd}\t{start}")
+PY
+}
+
+lines="$(list_sessions)"
+if [[ -z "$lines" ]]; then
+  echo "no sessions found in $SOCK_DIR" >&2
+  exit 1
+fi
+
+if [[ "$mode" == "list" ]]; then
+  printf "Idx\tSession ID\tOwner\tCWD\tStarted\n"
+  printf "%s\n" "$lines" | sed 's/\t/  /g'
+  exit 0
+fi
+
+printf "Idx  Session ID                           Owner     CWD                           Started\n"
+printf "%s\n" "$lines" | awk -F'\t' '{printf "%-4s %-36s %-9s %-28s %s\n", $1, $2, $3, $4, $5}'
+printf "\nSelect session number (blank to cancel): "
+read -r choice
+if [[ -z "${choice// }" ]]; then
+  exit 0
+fi
+if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
+  echo "error: invalid choice" >&2
+  exit 1
+fi
+
+sid="$(printf "%s\n" "$lines" | awk -F'\t' -v n="$choice" '$1==n {print $2; exit}')"
+if [[ -z "$sid" ]]; then
+  echo "error: no session for selection $choice" >&2
+  exit 1
+fi
+
+exec codex resume "$sid"
