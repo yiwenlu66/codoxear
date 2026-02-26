@@ -1438,7 +1438,7 @@
 			          };
 	        $("#newBtn").onclick = async () => {
 	          const cur = selected ? sessionIndex.get(selected) : null;
-	          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+	          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "/Users/leixiang/Desktop";
 	          const cwd = prompt("New session cwd:", def);
           if (!cwd) return;
           try {
