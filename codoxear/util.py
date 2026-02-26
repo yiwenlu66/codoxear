@@ -182,6 +182,61 @@ def find_new_session_log(
     return None
 
 
+def _macos_children(pid: int) -> list[int]:
+    try:
+        import subprocess
+        result = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True)
+        out: list[int] = []
+        for line in result.stdout.splitlines():
+            try:
+                out.append(int(line.strip()))
+            except ValueError:
+                continue
+        return out
+    except Exception:
+        return []
+
+
+def _macos_descendants(root_pid: int) -> list[int]:
+    out: list[int] = []
+    seen: set[int] = set()
+    stack: list[int] = [root_pid]
+    while stack:
+        pid = stack.pop()
+        if pid in seen:
+            continue
+        seen.add(pid)
+        out.append(pid)
+        stack.extend(_macos_children(pid))
+    return out
+
+
+def _macos_open_rollout_logs(root_pid: int) -> set[Path]:
+    import subprocess
+    pids = _macos_descendants(root_pid)
+    if not pids:
+        return set()
+    pid_arg = ",".join(str(p) for p in pids)
+    try:
+        result = subprocess.run(
+            ["lsof", "-p", pid_arg, "-F", "n"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return set()
+    out: set[Path] = set()
+    for line in result.stdout.splitlines():
+        if not line.startswith("n"):
+            continue
+        tgt = line[1:]
+        if not tgt.startswith("/") or not tgt.endswith(".jsonl"):
+            continue
+        if "/rollout-" not in tgt:
+            continue
+        out.add(Path(tgt))
+    return out
+
+
 def _proc_pid_uid(proc_root: Path, pid: int) -> int | None:
     try:
         return int((proc_root / str(pid)).stat().st_uid)
@@ -225,6 +280,8 @@ def _proc_descendants(proc_root: Path, root_pid: int) -> list[int]:
 
 
 def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
+    if sys.platform == "darwin":
+        return _macos_open_rollout_logs(root_pid)
     uid = int(os.getuid())
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):

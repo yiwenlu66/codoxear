@@ -486,8 +486,8 @@ class Sessiond:
 
 
 def main() -> None:
-    if not sys.platform.startswith("linux"):
-        sys.stderr.write("error: codoxear session helper requires Linux\n")
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        sys.stderr.write(f"error: codoxear session helper requires Linux or macOS (unsupported: {sys.platform})\n")
         raise SystemExit(2)
     ap = argparse.ArgumentParser()
     ap.add_argument("--cwd", default=os.getcwd())

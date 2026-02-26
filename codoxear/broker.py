@@ -99,11 +99,14 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _require_proc() -> None:
-    if not sys.platform.startswith("linux"):
-        sys.stderr.write("error: codoxear-broker requires linux (/proc, pty, termios).\n")
-        raise SystemExit(2)
-    if not (PROC_ROOT / "self" / "fd").is_dir():
-        sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
+    if sys.platform.startswith("linux"):
+        if not (PROC_ROOT / "self" / "fd").is_dir():
+            sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
+            raise SystemExit(2)
+    elif sys.platform == "darwin":
+        pass  # macOS is supported via lsof/pgrep
+    else:
+        sys.stderr.write(f"error: codoxear-broker requires Linux or macOS (unsupported: {sys.platform}).\n")
         raise SystemExit(2)
 
 
