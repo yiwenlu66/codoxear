@@ -22,8 +22,8 @@ Key flow:
 Notes:
 - The list shows busy/idle badges and queue length from broker state.
 - Web-owned sessions display a delete button.
-- New session creation prompts for both `cwd` and `cli` (`codex`/`claude`), and duplicate-session keeps the source session CLI.
-- The last chosen spawn CLI is cached in `localStorage` (`codexweb.spawnCli`) as the next default.
+- New session creation prompts only for `cwd`; CLI comes from the sidebar CLI toggle button (`Codex`/`Claude`), and duplicate-session keeps the source session CLI.
+- The selected spawn CLI is cached in `localStorage` (`codexweb.spawnCli`) as the next default.
 - Sessions are grouped by workspace (cwd) and sorted by display name within each workspace.
 - Files are displayed once per workspace, not within each session row.
 - The refresh button clears the selected session's local cache and re-fetches history.
@@ -56,6 +56,7 @@ Key flow:
 
 Notes:
 - Pending matching uses normalized text to handle trailing whitespace differences.
+- Pending local echoes are tracked per session, so switching sessions no longer drops unsynced user bubbles.
 - Queued messages are shown in the queue viewer (not as chat bubbles) until they are drained and logged.
 - Queued messages are stored server-side via `/api/sessions/<id>/queue`, so they continue even if the browser closes. The broker releases one queued message after each turn end (or idle fallback) to avoid interrupting active replies.
 - The queued-message editor skips list re-renders while a queue textarea is focused to prevent IME interruptions; the list refreshes once focus leaves.

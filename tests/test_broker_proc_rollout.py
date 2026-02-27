@@ -7,6 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from codoxear.broker import _find_recent_claude_project_log
 from codoxear.util import proc_find_open_rollout_log, proc_open_rollout_logs
 
 
@@ -120,6 +121,39 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
                 self.assertIn(want, opened)
                 found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/claude/work")
                 self.assertEqual(found, want)
+
+    def test_broker_fallback_finds_recent_claude_log(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            projects = root / "projects" / "workspace"
+            projects.mkdir(parents=True, exist_ok=True)
+
+            stale = projects / "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            wrong = projects / "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+            want = projects / "cccccccc-cccc-cccc-cccc-cccccccccccc.jsonl"
+            _write_jsonl(stale, [{"type": "system", "cwd": "/want", "subtype": "init"}])
+            _write_jsonl(wrong, [{"type": "system", "cwd": "/other", "subtype": "init"}])
+            _write_jsonl(want, [{"type": "system", "cwd": "/want", "subtype": "init"}])
+
+            os.utime(stale, (1000.0, 1000.0))
+            os.utime(wrong, (1015.0, 1015.0))
+            os.utime(want, (1020.0, 1020.0))
+
+            found = _find_recent_claude_project_log(sessions_dir=root / "projects", cwd="/want", after_ts=1010.0)
+            self.assertEqual(found, want)
+
+    def test_broker_fallback_ignores_prestart_logs(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            projects = root / "projects" / "workspace"
+            projects.mkdir(parents=True, exist_ok=True)
+
+            old = projects / "dddddddd-dddd-dddd-dddd-dddddddddddd.jsonl"
+            _write_jsonl(old, [{"type": "system", "cwd": "/want", "subtype": "init"}])
+            os.utime(old, (1000.0, 1000.0))
+
+            found = _find_recent_claude_project_log(sessions_dir=root / "projects", cwd="/want", after_ts=2000.0)
+            self.assertIsNone(found)
 
 
 if __name__ == "__main__":

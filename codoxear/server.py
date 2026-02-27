@@ -351,6 +351,31 @@ def _tmux_pane_pid(tmux_bin: str, session_name: str, env: dict[str, str]) -> int
     return None
 
 
+def _tmux_global_env_has_nonempty(tmux_bin: str, key: str, env: dict[str, str]) -> bool:
+    if not key:
+        return False
+    try:
+        res = subprocess.run(
+            [tmux_bin, "show-environment", "-g", key],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=1.5,
+            check=False,
+        )
+    except Exception:
+        return False
+    if res.returncode != 0:
+        return False
+    line = (res.stdout or "").strip()
+    if not line or line.startswith("-"):
+        return False
+    prefix = key + "="
+    if line.startswith(prefix):
+        return bool(line[len(prefix) :].strip())
+    return line == key
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -1939,21 +1964,49 @@ class SessionManager:
                 env.setdefault(k, v)
         env["CODEX_WEB_OWNER"] = "web"
         env["CODEX_WEB_CLI"] = cli_name
+        env.pop("CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN", None)
+        use_tmux = _env_flag("CODEX_WEB_TMUX", True)
+        tmux_bin = shutil.which("tmux") if use_tmux else None
+        child_env_unset: list[str] = []
         if cli_name == "claude":
             env.setdefault("CLAUDE_HOME", str(_cli_home("claude")))
             env.setdefault("CLAUDE_BIN", _cli_bin("claude"))
+            prefer_api_key_raw = env.get("CODEX_WEB_CLAUDE_PREFER_API_KEY")
+            prefer_api_key = (
+                True
+                if prefer_api_key_raw is None
+                else str(prefer_api_key_raw).strip().lower() not in ("0", "false", "no", "off")
+            )
+            api_key = env.get("ANTHROPIC_API_KEY")
+            auth_token = env.get("ANTHROPIC_AUTH_TOKEN")
+            has_api_key = isinstance(api_key, str) and bool(api_key.strip())
+            has_auth_token = isinstance(auth_token, str) and bool(auth_token.strip())
+            if use_tmux and tmux_bin:
+                if not has_api_key:
+                    has_api_key = _tmux_global_env_has_nonempty(tmux_bin, "ANTHROPIC_API_KEY", env)
+                if not has_auth_token:
+                    has_auth_token = _tmux_global_env_has_nonempty(tmux_bin, "ANTHROPIC_AUTH_TOKEN", env)
+            # Claude CLI can stall at auth prompts when both auth modes are set.
+            # Default behavior prefers API key for headless web-owned sessions.
+            if prefer_api_key and has_api_key and has_auth_token:
+                env.pop("ANTHROPIC_AUTH_TOKEN", None)
+                if "ANTHROPIC_AUTH_TOKEN" not in child_env_unset:
+                    child_env_unset.append("ANTHROPIC_AUTH_TOKEN")
+                env["CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN"] = "1"
         else:
             env.setdefault("CODEX_HOME", str(_cli_home("codex")))
             env.setdefault("CODEX_BIN", _cli_bin("codex"))
 
-        use_tmux = _env_flag("CODEX_WEB_TMUX", True)
-        tmux_bin = shutil.which("tmux") if use_tmux else None
         if use_tmux and tmux_bin:
             tmux_name = f"codoxear-web-{uuid.uuid4().hex[:8]}"
             env.setdefault("CODEX_WEB_TMUX_INTERACTIVE", "1")
             env["CODEX_WEB_TMUX_NAME"] = tmux_name
             env_args = [f"{k}={v}" for k, v in env.items() if isinstance(k, str) and v is not None]
-            tmux_cmd = [tmux_bin, "new-session", "-d", "-s", tmux_name, "--", "env", *env_args, *argv]
+            env_unset_args: list[str] = []
+            for key in child_env_unset:
+                if isinstance(key, str) and key:
+                    env_unset_args.extend(["-u", key])
+            tmux_cmd = [tmux_bin, "new-session", "-d", "-s", tmux_name, "--", "env", *env_unset_args, *env_args, *argv]
             try:
                 proc = subprocess.run(
                     tmux_cmd,

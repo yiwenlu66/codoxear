@@ -3,6 +3,8 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-02-27-claude-log-bind-and-pending-fix.md`: Fix Claude web-session reply path (auth/env + log binding) and keep pending user echoes when switching sessions.
+- `docs/records/sessions/2026-02-27-queue-turn-end-gating.md`: Gate queue release on turn-end markers and harden idle fallback against commentary-phase false idles.
 - `docs/records/sessions/2026-02-27-claude-code-support.md`: Add first-class Claude Code CLI support alongside Codex (broker/server/ui/log parsing/resume helper).
 - `docs/records/sessions/2026-02-27-supervisord-daemon.md`: Confirm Codoxear daemon management via supervisord on port 13780 and document operations.
 - `docs/records/sessions/2026-02-26-upstream-merge.md`: Merge upstream/main into dev and resolve conflicts.

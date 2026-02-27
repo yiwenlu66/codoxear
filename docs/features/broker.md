@@ -30,6 +30,7 @@ Notes:
 - Linux-only due to `/proc`, `pty`, and `termios`.
 - `CODEX_WEB_EMULATE_TERMINAL=1` forces terminal query emulation when no TTY is attached.
 - `CODEX_WEB_TMUX_INTERACTIVE=1` allows stdin passthrough for web-launched sessions running inside tmux.
+- When `CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN=1`, headless login-shell launches unset `ANTHROPIC_AUTH_TOKEN` right before exec so shell rc exports do not reintroduce auth-token mode.
 
 ## Socket protocol
 How users use it:
@@ -56,7 +57,9 @@ Call stack:
 
 Notes:
 - `send` injects directly; queued messages use the `queue` command instead.
-- The broker drains one queued message after a turn end or idle fallback.
+- Queue items are gate-tagged and released one at a time after their required turn-end marker.
+- Idle fallback can synthesize a turn end when a queued item is pending, the turn has a completion candidate, and output remains quiet.
+- Quiet idle fallback is queue-only; without queued items, busy/idle transitions rely on explicit turn-end markers.
 - Enter sequence is configurable with `CODEX_WEB_ENTER_SEQ`.
 
 ## Rollout log discovery and busy/idle state
@@ -71,22 +74,25 @@ Files:
 - `codoxear/util.py`
 
 Key flow:
-1. Scan the configured log root for open logs after startup:
+1. Discover the active log after startup:
    - Codex: `~/.codex/sessions/**/rollout-*.jsonl`
    - Claude: `~/.claude/projects/**/*.jsonl` (project UUID logs, excluding `subagents`)
-2. Register `session_id` and write metadata JSON beside the socket.
-3. Tail the log and update busy/idle heuristics.
+2. Prefer `/proc` open-fd discovery and fall back to recent Claude project logs by `cwd`/mtime when Claude does not keep the JSONL fd open.
+3. Register `session_id` and write metadata JSON beside the socket.
+4. Tail the log and update busy/idle heuristics.
 
 Call stack:
 1. `_discover_log_watcher`
-2. `_find_new_session_log`
+2. `_proc_find_open_rollout_log` / `_find_recent_claude_project_log`
 3. `_register_from_log`
 4. `_log_watcher`
 5. `_apply_rollout_obj_to_state`
 
 Notes:
 - When a new `/new` thread hint is detected, the broker clears the current log binding and re-discovers.
-- `CODEX_WEB_BUSY_QUIET_SECONDS` and `CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS` tune idle clearing.
+- `CODEX_WEB_BUSY_QUIET_SECONDS` and `CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS` tune busy clearing heuristics.
+- `CODEX_WEB_IDLE_TURN_END_QUIET_SECONDS` controls the quiet window for idle turn-end fallback used by queue release.
+- Assistant phase `commentary` does not count as a completion candidate; `final_answer` (or messages without phase) does.
 - Claude queue drain also triggers on `system.subtype=turn_duration|api_error`.
 
 ## Metadata sidecar

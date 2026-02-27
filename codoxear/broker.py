@@ -32,6 +32,7 @@ from codoxear.cli_support import cli_logs_dir as _cli_logs_dir
 from codoxear.cli_support import is_claude_project_log_path as _is_claude_project_log_path
 from codoxear.cli_support import is_codex_rollout_log_path as _is_codex_rollout_log_path
 from codoxear.cli_support import normalize_cli_name as _normalize_cli_name
+from codoxear.cli_support import read_claude_log_cwd as _read_claude_log_cwd
 from codoxear.cli_support import session_id_from_log_path as _session_id_from_log_path
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
@@ -62,6 +63,10 @@ _BUSY_INTERRUPT_GRACE_RAW = os.environ.get("CODEX_WEB_BUSY_INTERRUPT_GRACE_SECON
 if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
     _BUSY_INTERRUPT_GRACE_RAW = "3.0"
 BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
+_IDLE_TURN_END_QUIET_RAW = os.environ.get("CODEX_WEB_IDLE_TURN_END_QUIET_SECONDS")
+if _IDLE_TURN_END_QUIET_RAW is None or (not _IDLE_TURN_END_QUIET_RAW.strip()):
+    _IDLE_TURN_END_QUIET_RAW = str(max(BUSY_QUIET_SECONDS, 8.0))
+IDLE_TURN_END_QUIET_SECONDS = max(float(_IDLE_TURN_END_QUIET_RAW), 0.0)
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 
@@ -152,6 +157,9 @@ def _exec_codex_via_login_shell(*, cwd: str, codex_args: list[str]) -> None:
     q = shlex.quote
     argv = [CODEX_BIN, *codex_args]
     cmd = "exec " + " ".join(q(x) for x in argv)
+    if _env_flag("CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN", False):
+        # Login shells can re-export vars from rc files; unset right before exec.
+        cmd = "unset ANTHROPIC_AUTH_TOKEN; " + cmd
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
     os.execvpe(shell_argv[0], shell_argv, os.environ)
@@ -226,6 +234,34 @@ def _paths_match(a: Path, b: Path) -> bool:
             return a.absolute() == b.absolute()
         except Exception:
             return str(a) == str(b)
+
+
+def _find_recent_claude_project_log(*, sessions_dir: Path, cwd: str, after_ts: float) -> Path | None:
+    if not isinstance(cwd, str) or (not cwd):
+        return None
+    if not sessions_dir.exists():
+        return None
+    cands: list[tuple[float, Path]] = []
+    for p in sessions_dir.rglob("*.jsonl"):
+        if not _is_claude_project_log_path(p, claude_projects_dir=sessions_dir):
+            continue
+        try:
+            mt = float(p.stat().st_mtime)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if mt < float(after_ts) - 2.0:
+            continue
+        cands.append((mt, p))
+    if not cands:
+        return None
+    cands.sort(key=lambda t: t[0], reverse=True)
+    for _mt, p in cands:
+        pcwd = _read_claude_log_cwd(p)
+        if isinstance(pcwd, str) and pcwd == cwd:
+            return p
+    return None
 
 
 def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -> bool:
@@ -330,7 +366,84 @@ def _response_call_finished(payload: dict[str, Any]) -> str | None:
     return call_id if isinstance(call_id, str) and call_id else None
 
 
-def _should_clear_busy_state(st: "State", now_ts: float, *, ignore_queue: bool = False) -> bool:
+def _assistant_phase_is_completion_candidate(phase_raw: Any) -> bool:
+    if not isinstance(phase_raw, str):
+        return True
+    phase = phase_raw.strip().lower()
+    if phase in ("commentary", "analysis", "thinking", "progress", "status", "intermediate"):
+        return False
+    return True
+
+
+def _assistant_payload_is_completion_candidate(payload: dict[str, Any]) -> bool:
+    return _assistant_phase_is_completion_candidate(payload.get("phase"))
+
+
+def _assistant_obj_is_completion_candidate(obj: dict[str, Any]) -> bool:
+    return _assistant_phase_is_completion_candidate(obj.get("phase"))
+
+
+def _close_turn_state(st: "State", *, mark_end: bool) -> None:
+    had_active_turn = st.turn_open or st.busy or bool(st.pending_calls) or (st.last_turn_activity_ts > 0.0)
+    st.pending_calls.clear()
+    st.busy = False
+    st.turn_open = False
+    st.turn_has_completion_candidate = False
+    st.last_interrupt_hint_ts = 0.0
+    st.last_turn_activity_ts = 0.0
+    if mark_end and had_active_turn:
+        st.turn_end_count += 1
+
+
+def _queue_release_gate_for_now(st: "State") -> int:
+    # While a turn is active, queue items should wait for the *next* turn-end marker.
+    return int(st.turn_end_count) + (1 if (st.busy or st.turn_open) else 0)
+
+
+def _sync_queue_release_gates(st: "State") -> None:
+    if len(st.queue_release_after) > len(st.queue):
+        del st.queue_release_after[len(st.queue) :]
+    if len(st.queue_release_after) < len(st.queue):
+        gate = _queue_release_gate_for_now(st)
+        missing = len(st.queue) - len(st.queue_release_after)
+        st.queue_release_after.extend([gate] * missing)
+
+
+def _queue_item_ready(st: "State", gate: int, now_ts: float) -> bool:
+    if int(st.turn_end_count) >= int(gate):
+        return True
+    # No explicit end marker yet; allow a cautious idle fallback if the turn looks done.
+    if not st.turn_open:
+        return False
+    if st.pending_calls:
+        return False
+    if not st.turn_has_completion_candidate:
+        return False
+    if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < BUSY_INTERRUPT_GRACE_SECONDS:
+        return False
+    if st.last_turn_activity_ts <= 0.0:
+        return False
+    return (now_ts - st.last_turn_activity_ts) >= IDLE_TURN_END_QUIET_SECONDS
+
+
+def _should_idle_fallback_release_queue(st: "State", now_ts: float) -> bool:
+    if not (st.queue or st.key_queue):
+        return False
+    return _should_clear_busy_state(
+        st,
+        now_ts,
+        ignore_queue=True,
+        quiet_seconds=IDLE_TURN_END_QUIET_SECONDS,
+    )
+
+
+def _should_clear_busy_state(
+    st: "State",
+    now_ts: float,
+    *,
+    ignore_queue: bool = False,
+    quiet_seconds: float = BUSY_QUIET_SECONDS,
+) -> bool:
     if not st.busy:
         return False
     if (not ignore_queue) and (st.queue or st.key_queue):
@@ -343,7 +456,7 @@ def _should_clear_busy_state(st: "State", now_ts: float, *, ignore_queue: bool =
         return False
     if st.last_turn_activity_ts <= 0.0:
         return False
-    return (now_ts - st.last_turn_activity_ts) >= BUSY_QUIET_SECONDS
+    return (now_ts - st.last_turn_activity_ts) >= max(float(quiet_seconds), 0.0)
 
 
 def _reopen_turn_on_activity(st: "State") -> None:
@@ -372,7 +485,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         tool_count = _claude_assistant_tool_use_count(obj)
         thinking_count = _claude_assistant_thinking_count(obj)
         if has_text:
-            if st.turn_open:
+            if st.turn_open and _assistant_obj_is_completion_candidate(obj):
                 st.turn_has_completion_candidate = True
             st.busy = True
             st.last_turn_activity_ts = now_ts
@@ -389,20 +502,10 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
     if typ == "system":
         sub = obj.get("subtype")
         if sub == "turn_duration":
-            st.pending_calls.clear()
-            st.busy = False
-            st.turn_open = False
-            st.turn_has_completion_candidate = False
-            st.last_interrupt_hint_ts = 0.0
-            st.last_turn_activity_ts = 0.0
+            _close_turn_state(st, mark_end=True)
             return
         if sub == "api_error":
-            st.pending_calls.clear()
-            st.busy = False
-            st.turn_open = False
-            st.turn_has_completion_candidate = False
-            st.last_interrupt_hint_ts = 0.0
-            st.last_turn_activity_ts = 0.0
+            _close_turn_state(st, mark_end=True)
             return
         return
 
@@ -422,24 +525,19 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
                 st.last_turn_activity_ts = now_ts
             return
         if ev_type in ("turn_aborted", "thread_rolled_back"):
-            st.pending_calls.clear()
-            st.busy = False
-            st.turn_open = False
-            st.turn_has_completion_candidate = False
-            st.last_interrupt_hint_ts = 0.0
-            st.last_turn_activity_ts = 0.0
+            _close_turn_state(st, mark_end=True)
             return
         if ev_type == "task_complete":
-            st.pending_calls.clear()
-            st.busy = False
-            st.turn_open = False
-            st.turn_has_completion_candidate = False
-            st.last_interrupt_hint_ts = 0.0
-            st.last_turn_activity_ts = 0.0
+            _close_turn_state(st, mark_end=True)
             return
         if ev_type == "agent_message":
             msg = payload.get("message")
-            if isinstance(msg, str) and msg.strip() and st.turn_open:
+            if (
+                isinstance(msg, str)
+                and msg.strip()
+                and st.turn_open
+                and _assistant_payload_is_completion_candidate(payload)
+            ):
                 st.turn_has_completion_candidate = True
             st.busy = True
             st.last_turn_activity_ts = now_ts
@@ -510,7 +608,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             and part.get("text")
             for part in content
         )
-        if has_text and st.turn_open:
+        if has_text and st.turn_open and _assistant_payload_is_completion_candidate(payload):
             st.turn_has_completion_candidate = True
         st.busy = True
         st.last_turn_activity_ts = now_ts
@@ -531,6 +629,7 @@ class State:
     busy: bool = False
     stdin_eof: bool = False
     queue: list[str] = field(default_factory=list)
+    queue_release_after: list[int] = field(default_factory=list)
     key_queue: list[bytes] = field(default_factory=list)
     output_tail: str = ""
     output_tail_max: int = 256 * 1024
@@ -541,6 +640,7 @@ class State:
     pending_calls: set[str] = field(default_factory=set)
     turn_open: bool = False
     turn_has_completion_candidate: bool = False
+    turn_end_count: int = 0
     interrupt_hint_tail: str = ""
     interrupt_hint_tail_max: int = INTERRUPT_HINT_TAIL_MAX
     new_session_hint_tail: str = ""
@@ -585,14 +685,19 @@ class Broker:
                 kq = st.key_queue[:]
                 st.key_queue.clear()
             if st.queue:
-                msg = st.queue.pop(0)
-                st.pending_calls.clear()
-                st.busy = True
-                st.turn_open = True
-                st.turn_has_completion_candidate = False
-                st.last_interrupt_hint_ts = 0.0
-                if now_ts > st.last_turn_activity_ts:
-                    st.last_turn_activity_ts = now_ts
+                _sync_queue_release_gates(st)
+                gate = st.queue_release_after[0] if st.queue_release_after else _queue_release_gate_for_now(st)
+                if _queue_item_ready(st, gate, now_ts):
+                    msg = st.queue.pop(0)
+                    if st.queue_release_after:
+                        st.queue_release_after.pop(0)
+                    st.pending_calls.clear()
+                    st.busy = True
+                    st.turn_open = True
+                    st.turn_has_completion_candidate = False
+                    st.last_interrupt_hint_ts = 0.0
+                    if now_ts > st.last_turn_activity_ts:
+                        st.last_turn_activity_ts = now_ts
             fd = st.pty_master_fd
         if fd is None:
             return
@@ -616,6 +721,7 @@ class Broker:
                         return
                     need = (st.log_path is None) or (not st.log_path.exists())
                     root_pid = int(st.codex_pid)
+                    start_ts = float(st.start_ts)
                 if not need:
                     time.sleep(0.25)
                     continue
@@ -625,6 +731,16 @@ class Broker:
                         self._maybe_register_or_switch_rollout(log_path=lp)
                         time.sleep(0.25)
                         continue
+                    if CLI_KIND == "claude":
+                        fallback = _find_recent_claude_project_log(
+                            sessions_dir=self.sessions_dir,
+                            cwd=self.cwd,
+                            after_ts=start_ts,
+                        )
+                        if fallback and fallback.exists():
+                            self._maybe_register_or_switch_rollout(log_path=fallback)
+                            time.sleep(0.25)
+                            continue
                     # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
@@ -793,12 +909,8 @@ class Broker:
                 should_drain = False
                 with self._lock:
                     st3 = self.state
-                    if st3 and _should_clear_busy_state(st3, now_ts, ignore_queue=bool(st3.queue or st3.key_queue)):
-                        st3.busy = False
-                        st3.turn_open = False
-                        st3.turn_has_completion_candidate = False
-                        st3.last_turn_activity_ts = 0.0
-                        st3.last_interrupt_hint_ts = 0.0
+                    if st3 and _should_idle_fallback_release_queue(st3, now_ts):
+                        _close_turn_state(st3, mark_end=True)
                         should_drain = bool(st3.queue or st3.key_queue)
                 if should_drain:
                     self._drain_queue_once()
@@ -967,6 +1079,7 @@ class Broker:
                         if not st:
                             resp = {"error": "no state"}
                         else:
+                            _sync_queue_release_gates(st)
                             resp = {"queue": list(st.queue), "queue_len": len(st.queue)}
                     f.write((json.dumps(resp) + "\n").encode("utf-8"))
                     f.flush()
@@ -990,6 +1103,8 @@ class Broker:
                                 resp = {"error": "no state"}
                             else:
                                 st.queue = list(cleaned)
+                                gate = _queue_release_gate_for_now(st)
+                                st.queue_release_after = [gate] * len(st.queue)
                                 resp = {"queue": list(st.queue), "queue_len": len(st.queue)}
                                 should_drain = bool(st.queue) and (not st.busy)
                         if should_drain:
@@ -1009,10 +1124,14 @@ class Broker:
                             if not st:
                                 resp = {"error": "no state"}
                             else:
+                                _sync_queue_release_gates(st)
+                                gate = _queue_release_gate_for_now(st)
                                 if front:
                                     st.queue.insert(0, text)
+                                    st.queue_release_after.insert(0, gate)
                                 else:
                                     st.queue.append(text)
+                                    st.queue_release_after.append(gate)
                                 resp = {"queue": list(st.queue), "queue_len": len(st.queue)}
                                 should_drain = bool(st.queue) and (not st.busy)
                         if should_drain:
@@ -1171,6 +1290,8 @@ class Broker:
                     os.environ["CLAUDE_HOME"] = str(self.codex_home)
                 else:
                     os.environ["CODEX_HOME"] = str(self.codex_home)
+                if _env_flag("CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN", False):
+                    os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
                 if sys.stdin.isatty():
                     try:
                         fd = sys.stdin.fileno()

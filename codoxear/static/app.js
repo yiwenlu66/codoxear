@@ -359,6 +359,10 @@
         return `codex resume ${sid}`;
       }
 
+      function cliDisplayName(cli) {
+        return normalizeCliName(cli, "codex") === "claude" ? "Claude" : "Codex";
+      }
+
       function sessionDisplayName(s) {
         if (!s || typeof s !== "object") return "";
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
@@ -989,7 +993,7 @@
         }
 	        let sending = false;
 	        let localEchoSeq = 0;
-	        const pendingUser = [];
+        const pendingUserBySession = new Map();
 	        let attachedImages = 0;
 		        let autoScroll = true;
 	        let backfillToken = 0;
@@ -1005,9 +1009,10 @@
         const recentEventSigOrder = [];
         const RECENT_EVENT_KEYS_MAX = 320;
         const RECENT_EVENT_SIG_MAX = 360;
-        const RECENT_EVENT_SIG_WINDOW_MS = 1600;
-                let clickLoadT0 = 0;
-                let clickMetricPending = false;
+	        const RECENT_EVENT_SIG_WINDOW_MS = 1600;
+	                let clickLoadT0 = 0;
+	                let clickMetricPending = false;
+        let preferredSpawnCli = normalizeCliName(localStorage.getItem("codexweb.spawnCli"), "codex");
 
 				        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
@@ -1065,6 +1070,16 @@
           html: iconSvg("terminal"),
         });
         sessionToolsBtn.disabled = true;
+        const spawnCliBtn = el("button", {
+          id: "spawnCliBtn",
+          class: "icon-btn text-btn",
+          title: "New session CLI",
+          "aria-label": "New session CLI",
+          type: "button",
+          text: cliDisplayName(preferredSpawnCli),
+        });
+        const newBtn = el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") });
+        const refreshBtn = el("button", { id: "refreshBtn", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") });
         const relayDot = el("span", { class: "dot", "aria-hidden": "true" });
         const relayLabel = el("span", { class: "label", text: "Relay" });
         const relayStatus = el("div", { class: "relayStatus off", id: "relayStatus", title: "Relay: Manual" }, [
@@ -1123,8 +1138,9 @@
               relayStatus,
             ]),
             el("div", { class: "actions" }, [
-              el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
-              el("button", { id: "refreshBtn", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") }),
+              spawnCliBtn,
+              newBtn,
+              refreshBtn,
             ]),
           ])
         );
@@ -1372,6 +1388,16 @@
           }, 2200);
         }
 
+        function setPreferredSpawnCli(cli, { persist = true } = {}) {
+          preferredSpawnCli = normalizeCliName(cli, "codex");
+          if (persist) localStorage.setItem("codexweb.spawnCli", preferredSpawnCli);
+          const label = cliDisplayName(preferredSpawnCli);
+          spawnCliBtn.textContent = label;
+          spawnCliBtn.title = `New session CLI: ${label} (click to switch)`;
+          spawnCliBtn.setAttribute("aria-label", `New session CLI: ${label}`);
+        }
+        setPreferredSpawnCli(preferredSpawnCli, { persist: false });
+
         let sessionToolsOpen = false;
         let sessionTailTimer = null;
         let sessionTailInFlight = false;
@@ -1529,7 +1555,6 @@
 
         function resetChatRenderState() {
           autoScroll = true;
-          pendingUser.length = 0;
           sending = false;
           localEchoSeq = 0;
           recentEventKeys.length = 0;
@@ -2043,6 +2068,46 @@
           localStorage.removeItem(cacheStorageKey(sid));
         }
 
+        function pendingForSession(sid, { create } = { create: false }) {
+          if (!sid) return [];
+          const key = String(sid);
+          const existing = pendingUserBySession.get(key);
+          if (Array.isArray(existing)) return existing;
+          if (!create) return [];
+          const out = [];
+          pendingUserBySession.set(key, out);
+          return out;
+        }
+
+        function clearPendingForSession(sid) {
+          if (!sid) return;
+          pendingUserBySession.delete(String(sid));
+        }
+
+        function renderPendingForSelectedSession() {
+          const sid = selected;
+          if (!sid) return;
+          const pending = pendingForSession(sid);
+          if (!pending.length) return;
+          const pendingSorted = pending.slice().sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0));
+          let appended = false;
+          for (const item of pendingSorted) {
+            if (!item || !Number.isFinite(Number(item.id))) continue;
+            const localId = Number(item.id);
+            if (chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`)) continue;
+            const text = typeof item.text === "string" ? item.text : "";
+            if (!text.trim()) continue;
+            const ts = Number.isFinite(Number(item.t0)) ? Number(item.t0) : Date.now() / 1000;
+            const { row } = makeRow({ role: "user", text, localId }, { ts, pending: true });
+            const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+            chatInner.insertBefore(row, anchor);
+            appended = true;
+          }
+          if (!appended) return;
+          trimRenderedRows({ fromTop: true });
+          rebuildDecorations({ preserveScroll: false });
+        }
+
         function queueEditorActive() {
           if (queueViewer.style.display !== "flex") return false;
           const active = document.activeElement;
@@ -2319,14 +2384,17 @@
           return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
         }
 
-        function consumePendingUserIfMatches(ev) {
+        function consumePendingUserIfMatches(ev, sid = selected) {
           if (ev.role !== "user" || ev.pending) return false;
+          if (!sid) return false;
+          const pending = pendingForSession(sid);
+          if (!pending.length) return false;
           const key = pendingMatchKey(ev.text);
           const loose = normalizeTextForPendingMatch(ev.text);
           const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
           const candidates = [];
-          for (let i = 0; i < pendingUser.length; i++) {
-            const x = pendingUser[i];
+          for (let i = 0; i < pending.length; i++) {
+            const x = pending[i];
             if (x.key === key || x.loose === loose) candidates.push({ i, x });
           }
           if (!candidates.length) return false;
@@ -2343,8 +2411,9 @@
           }
           const idx = best.i;
           if (idx < 0) return false;
-          const { id } = pendingUser[idx];
-          pendingUser.splice(idx, 1);
+          const { id } = pending[idx];
+          pending.splice(idx, 1);
+          if (!pending.length) clearPendingForSession(sid);
           const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
           if (!pendingEl) return true;
 
@@ -2624,6 +2693,7 @@
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 clearCache(s.session_id);
                 clearQueueForSession(s.session_id);
+                clearPendingForSession(s.session_id);
                 clearDraftForSession(s.session_id);
                 clearSeenAssistantForSession(s.session_id);
                 clearUserSummaryForSession(s.session_id);
@@ -2726,6 +2796,7 @@
             }
           if (selected && !sessionIndex.has(selected)) {
             clearQueueForSession(selected);
+            clearPendingForSession(selected);
             selected = null;
             offset = 0;
             activeLogPath = null;
@@ -2932,6 +3003,7 @@
                 offset = d2.offset;
                 const evs2 = Array.isArray(d2.events) ? d2.events : [];
                 if (evs2.length) startInitialRender(evs2);
+                renderPendingForSelectedSession();
                 olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
                 setCacheMeta(sid, {
@@ -2961,6 +3033,7 @@
 	            const evs = Array.isArray(data.events) ? data.events : [];
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
+                renderPendingForSelectedSession();
             } else {
               for (const ev of evs) appendEvent(ev);
             }
@@ -2990,6 +3063,7 @@
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 404) {
+              clearPendingForSession(sid);
               selected = null;
               offset = 0;
               activeLogPath = null;
@@ -3127,6 +3201,7 @@
 			            offset = data.offset;
 			            const evs = Array.isArray(data.events) ? data.events : [];
 			            if (evs.length) startInitialRender(evs);
+                  renderPendingForSelectedSession();
                   olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
                   setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
                   setCacheMeta(sid, {
@@ -3151,6 +3226,7 @@
                   olderBefore = Number(cached.older_before) || 0;
                   setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
                   startInitialRender(cached.events);
+                  renderPendingForSelectedSession();
                   try {
                     await pollMessages(sid, myGen);
                   } catch {
@@ -3788,6 +3864,13 @@
           const ok = await copyToClipboard(sessionTmuxCmd.textContent || "");
           setToast(ok ? "tmux command copied" : "copy failed");
         };
+        spawnCliBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = preferredSpawnCli === "claude" ? "codex" : "claude";
+          setPreferredSpawnCli(next);
+          setToast(`new session CLI: ${cliDisplayName(next)}`);
+        };
         queueCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -3840,7 +3923,7 @@
               setToast("start failed");
               return null;
             }
-            localStorage.setItem("codexweb.spawnCli", cliName);
+            setPreferredSpawnCli(cliName);
             setToast(`started (broker ${brokerPid})`);
             return await waitForSessionByBrokerPid(brokerPid, { alias });
           } catch (e) {
@@ -3853,15 +3936,7 @@
           const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const cwd = prompt("New session cwd:", def);
           if (!cwd) return;
-          const defaultCli = cur ? sessionCliName(cur) : normalizeCliName(localStorage.getItem("codexweb.spawnCli"), "codex");
-          const cliRaw = prompt("New session CLI (codex/claude):", defaultCli);
-          if (cliRaw === null) return;
-          const cliName = normalizeCliName(cliRaw, "");
-          if (!cliName) {
-            setToast("invalid cli (use codex or claude)");
-            return;
-          }
-          await spawnSessionWithCwd(cwd, { cli: cliName });
+          await spawnSessionWithCwd(cwd, { cli: preferredSpawnCli });
         };
 	        interruptBtn.onclick = async () => {
 	          if (!selected) return;
@@ -4193,6 +4268,7 @@
 
         async function sendText(raw) {
           if (!selected) return;
+          const sid = selected;
           if (!raw || !raw.trim()) return;
           if (sending) return;
           sending = true;
@@ -4201,20 +4277,26 @@
 
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
-          pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
+          pendingForSession(sid, { create: true }).push({
+            id: localId,
+            key: pendingMatchKey(raw),
+            loose: normalizeTextForPendingMatch(raw),
+            t0,
+            text: raw,
+          });
           appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
           turnOpen = true;
           currentRunning = true;
-          updateUserSummaryFromText(selected, raw);
+          updateUserSummaryFromText(sid, raw);
           try {
-            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
+            const res = await api(`/api/sessions/${sid}/send`, { method: "POST", body: { text: raw } });
             if (res.queued) {
               setToast(`queued (queue ${res.queue_len})`);
               if (Array.isArray(res.queue)) {
-                applyQueueResponse(selected, res);
+                applyQueueResponse(sid, res);
                 updateQueueBadge();
               } else {
-                void fetchQueue(selected).then(() => updateQueueBadge());
+                void fetchQueue(sid).then(() => updateQueueBadge());
               }
             } else {
               setToast("sent");

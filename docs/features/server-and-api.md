@@ -58,6 +58,7 @@ Call stack:
 Notes:
 - Web-owned sessions are spawned with `CODEX_WEB_OWNER=web`; `POST /api/sessions` accepts optional `cli` (`codex` or `claude`).
 - Spawned brokers receive `CODEX_WEB_CLI=<cli>` and matching home/bin env (`CODEX_HOME/CODEX_BIN` or `CLAUDE_HOME/CLAUDE_BIN`).
+- Claude web sessions default to API-key auth mode when both `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are visible (including tmux global env), and explicitly unset `ANTHROPIC_AUTH_TOKEN` for the child unless `CODEX_WEB_CLAUDE_PREFER_API_KEY=0`.
 - Web-owned sessions can be started under tmux when `CODEX_WEB_TMUX=1`; session listings include `tmux_name` when available.
 - When tmux is enabled, `CODEX_WEB_TMUX_INTERACTIVE=1` allows attaching to the tmux session and sending input.
 - Terminal-owned sessions are attach-only; the UI hides delete for them.
@@ -111,9 +112,10 @@ Files:
 Key flow:
 1. UI calls `/api/sessions/<id>/queue` to append or replace the queue.
 2. Server forwards the request to the broker socket.
-3. Broker drains one queued message on turn-end markers or after the busy heuristic clears:
+3. Broker releases one queued message at a time when the queue item's turn gate is satisfied:
    - Codex: `task_complete` / `turn_aborted`
    - Claude: `system.subtype=turn_duration|api_error`
+   - Fallback: for pending queue items only, infer a turn end after a completion candidate plus a quiet window (`CODEX_WEB_IDLE_TURN_END_QUIET_SECONDS`).
 
 Call stack:
 1. `ServerHandler.do_GET`/`do_POST` for `/queue`
