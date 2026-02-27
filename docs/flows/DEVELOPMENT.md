@@ -11,6 +11,10 @@ Install in editable mode:
 Start server (fixed working directory, standard):
 `scripts/codoxear-server-dev`
 
+Daemonized server control (this host runtime):
+`supervisorctl status codoxear`
+`supervisorctl restart codoxear`
+
 Start broker from a terminal:
 `codoxear-broker -- <codex args>`
 
@@ -21,7 +25,7 @@ Default bind:
 `CODEX_WEB_HOST=::`
 
 Default port:
-`CODEX_WEB_PORT=8743`
+`CODEX_WEB_PORT=8743` (the daemon on this host is currently configured to `13780`)
 
 Required env:
 `CODEX_WEB_PASSWORD` must be set (via `.env` or environment).

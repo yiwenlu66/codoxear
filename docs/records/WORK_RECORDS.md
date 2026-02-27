@@ -3,6 +3,7 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-02-27-supervisord-daemon.md`: Confirm Codoxear daemon management via supervisord on port 13780 and document operations.
 - `docs/records/sessions/2026-02-26-upstream-merge.md`: Merge upstream/main into dev and resolve conflicts.
 - `docs/records/sessions/2026-02-26-live-tail-line-breaks-rollback.md`: Roll back forced line breaks in live tail sanitization.
 - `docs/records/sessions/2026-02-26-web-tmux-input-fix.md`: Fix allow_input NameError so web sessions start.
