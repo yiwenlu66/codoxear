@@ -5,46 +5,45 @@ APP_DIR="${CODEX_WEB_APP_DIR:-$HOME/.local/share/codoxear}"
 SOCK_DIR="${APP_DIR}/socks"
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage: codoxear-resume [--list] [--last] [--id <session_id>] [--web | --terminal]
 
-Interactive helper to resume Codex sessions from Codoxear metadata.
+Interactive helper to resume Codex/Claude sessions from Codoxear metadata.
 
 Options:
   --list        List available sessions and exit
-  --last        Resume most recent session via codex
-  --id <id>     Resume specific session id
+  --last        Resume most recent session
+  --id <id>     Resume specific session id (prefix match allowed)
   --web         Show only web-owned sessions
   --terminal    Show only terminal-owned sessions
-EOF
+USAGE
 }
-
-if ! command -v codex >/dev/null 2>&1; then
-  echo "error: codex CLI not found in PATH" >&2
-  exit 1
-fi
 
 mode="interactive"
 filter_owner=""
+target_id=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
       usage
       exit 0
       ;;
+    --list)
+      mode="list"
+      shift
+      ;;
     --last)
-      exec codex resume --last
+      mode="last"
+      shift
       ;;
     --id)
       if [[ -z "${2:-}" ]]; then
         echo "error: --id requires a session id" >&2
         exit 1
       fi
-      exec codex resume "$2"
-      ;;
-    --list)
-      mode="list"
-      shift
+      mode="id"
+      target_id="$2"
+      shift 2
       ;;
     --web)
       filter_owner="web"
@@ -88,16 +87,39 @@ for meta_path in sorted(sock_dir.glob("*.json")):
     owner = meta.get("owner") if isinstance(meta.get("owner"), str) else "terminal"
     if filter_owner and owner != filter_owner:
         continue
+    cli_raw = meta.get("cli") if isinstance(meta.get("cli"), str) else "codex"
+    cli = str(cli_raw).strip().lower()
+    if cli in ("claude-code", "claude_code"):
+        cli = "claude"
+    if cli not in ("codex", "claude"):
+        cli = "codex"
     cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else "?"
     start_ts = meta.get("start_ts")
     ts = float(start_ts) if isinstance(start_ts, (int, float)) else 0.0
     start = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)) if ts > 0 else "?"
-    items.append((sid, owner, cwd, start, ts))
+    items.append((sid, owner, cli, cwd, start, ts))
 
-items.sort(key=lambda x: x[4], reverse=True)
-for i, (sid, owner, cwd, start, _ts) in enumerate(items, 1):
-    print(f"{i}\t{sid}\t{owner}\t{cwd}\t{start}")
+items.sort(key=lambda x: x[5], reverse=True)
+for i, (sid, owner, cli, cwd, start, ts) in enumerate(items, 1):
+    print(f"{i}\t{sid}\t{owner}\t{cli}\t{cwd}\t{start}\t{ts}")
 PY
+}
+
+resume_session() {
+  local cli="$1"
+  local sid="$2"
+  if [[ "$cli" == "claude" ]]; then
+    if ! command -v claude >/dev/null 2>&1; then
+      echo "error: claude CLI not found in PATH" >&2
+      exit 1
+    fi
+    exec claude --resume "$sid"
+  fi
+  if ! command -v codex >/dev/null 2>&1; then
+    echo "error: codex CLI not found in PATH" >&2
+    exit 1
+  fi
+  exec codex resume "$sid"
 }
 
 lines="$(list_sessions)"
@@ -107,13 +129,48 @@ if [[ -z "$lines" ]]; then
 fi
 
 if [[ "$mode" == "list" ]]; then
-  printf "Idx\tSession ID\tOwner\tCWD\tStarted\n"
+  printf "Idx\tSession ID\tOwner\tCLI\tCWD\tStarted\n"
   printf "%s\n" "$lines" | sed 's/\t/  /g'
   exit 0
 fi
 
-printf "Idx  Session ID                           Owner     CWD                           Started\n"
-printf "%s\n" "$lines" | awk -F'\t' '{printf "%-4s %-36s %-9s %-28s %s\n", $1, $2, $3, $4, $5}'
+if [[ "$mode" == "last" ]]; then
+  first="$(printf "%s\n" "$lines" | head -n 1)"
+  sid="$(printf "%s\n" "$first" | awk -F'\t' '{print $2}')"
+  cli="$(printf "%s\n" "$first" | awk -F'\t' '{print $4}')"
+  if [[ -z "$sid" ]]; then
+    echo "error: unable to determine latest session" >&2
+    exit 1
+  fi
+  resume_session "$cli" "$sid"
+fi
+
+if [[ "$mode" == "id" ]]; then
+  row="$(printf "%s\n" "$lines" | awk -F'\t' -v sid="$target_id" '$2==sid {print; exit}')"
+  if [[ -z "$row" ]]; then
+    pref_count="$(printf "%s\n" "$lines" | awk -F'\t' -v sid="$target_id" '$2 ~ ("^" sid) {c+=1} END {print c+0}')"
+    if [[ "$pref_count" -eq 0 ]]; then
+      echo "error: no session matching $target_id" >&2
+      exit 1
+    fi
+    if [[ "$pref_count" -gt 1 ]]; then
+      ids="$(printf "%s\n" "$lines" | awk -F'\t' -v sid="$target_id" '$2 ~ ("^" sid) {print $2}' | paste -sd ', ' -)"
+      echo "error: multiple sessions match $target_id: $ids" >&2
+      exit 1
+    fi
+    row="$(printf "%s\n" "$lines" | awk -F'\t' -v sid="$target_id" '$2 ~ ("^" sid) {print; exit}')"
+  fi
+  sid="$(printf "%s\n" "$row" | awk -F'\t' '{print $2}')"
+  cli="$(printf "%s\n" "$row" | awk -F'\t' '{print $4}')"
+  if [[ -z "$sid" ]]; then
+    echo "error: no session matching $target_id" >&2
+    exit 1
+  fi
+  resume_session "$cli" "$sid"
+fi
+
+printf "Idx  Session ID                           Owner     CLI      CWD                           Started\n"
+printf "%s\n" "$lines" | awk -F'\t' '{printf "%-4s %-36s %-9s %-8s %-28s %s\n", $1, $2, $3, $4, $5, $6}'
 printf "\nSelect session number (blank to cancel): "
 read -r choice
 if [[ -z "${choice// }" ]]; then
@@ -125,9 +182,10 @@ if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
 fi
 
 sid="$(printf "%s\n" "$lines" | awk -F'\t' -v n="$choice" '$1==n {print $2; exit}')"
+cli="$(printf "%s\n" "$lines" | awk -F'\t' -v n="$choice" '$1==n {print $4; exit}')"
 if [[ -z "$sid" ]]; then
   echo "error: no session for selection $choice" >&2
   exit 1
 fi
 
-exec codex resume "$sid"
+resume_session "$cli" "$sid"

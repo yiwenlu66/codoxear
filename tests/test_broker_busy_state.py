@@ -330,6 +330,47 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertEqual(st.last_turn_activity_ts, 10.0)
         self.assertEqual(st.last_interrupt_hint_ts, 10.0)
 
+    def test_claude_user_message_starts_busy_turn(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+            now_ts=40.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertEqual(st.last_turn_activity_ts, 40.0)
+
+    def test_claude_assistant_text_marks_completion_candidate(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+            now_ts=50.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
+            now_ts=51.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertTrue(st.turn_has_completion_candidate)
+        self.assertEqual(st.last_turn_activity_ts, 51.0)
+
+    def test_claude_turn_duration_clears_busy_state(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = True
+        st.last_turn_activity_ts = 60.0
+        _apply_rollout_obj_to_state(st, {"type": "system", "subtype": "turn_duration"}, now_ts=61.0)
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertEqual(st.last_turn_activity_ts, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

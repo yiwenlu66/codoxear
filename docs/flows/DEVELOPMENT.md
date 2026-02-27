@@ -16,10 +16,12 @@ Daemonized server control (this host runtime):
 `supervisorctl restart codoxear`
 
 Start broker from a terminal:
-`codoxear-broker -- <codex args>`
+`CODEX_WEB_CLI=codex codoxear-broker -- <codex args>`
+`CODEX_WEB_CLI=claude codoxear-broker -- <claude args>`
 
 Optional shell wrapper:
-`codex() { codoxear-broker -- "$@"; }`
+`codex() { CODEX_WEB_CLI=codex codoxear-broker -- "$@"; }`
+`claude() { CODEX_WEB_CLI=claude codoxear-broker -- "$@"; }`
 
 Default bind:
 `CODEX_WEB_HOST=::`

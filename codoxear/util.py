@@ -9,6 +9,11 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from .cli_support import cli_logs_dir as _cli_logs_dir
+from .cli_support import is_claude_project_log_path as _is_claude_project_log_path
+from .cli_support import is_codex_rollout_log_path as _is_codex_rollout_log_path
+from .cli_support import read_claude_log_cwd as _read_claude_log_cwd
+
 
 _LEGACY_WARNED = False
 
@@ -226,6 +231,7 @@ def _proc_descendants(proc_root: Path, root_pid: int) -> list[int]:
 
 def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
     uid = int(os.getuid())
+    claude_projects_dir = _cli_logs_dir("claude")
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):
         puid = _proc_pid_uid(proc_root, pid)
@@ -247,9 +253,13 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
                 continue
             if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
                 continue
-            if "/rollout-" not in tgt:
+            p = Path(tgt)
+            if _is_codex_rollout_log_path(p):
+                out.add(p)
                 continue
-            out.add(Path(tgt))
+            if _is_claude_project_log_path(p, claude_projects_dir=claude_projects_dir):
+                out.add(p)
+                continue
     return out
 
 
@@ -265,15 +275,22 @@ def proc_find_open_rollout_log(
         pass
     for p in cands:
         payload = read_session_meta_payload(p, timeout_s=0.0)
-        if not payload:
-            continue
-        if is_subagent_session_meta(payload):
-            continue
-        if cwd is not None:
-            pcwd = payload.get("cwd")
-            if not (isinstance(pcwd, str) and pcwd == cwd):
+        if payload:
+            if is_subagent_session_meta(payload):
                 continue
-        return p
+            if cwd is not None:
+                pcwd = payload.get("cwd")
+                if not (isinstance(pcwd, str) and pcwd == cwd):
+                    continue
+            return p
+        # Claude project logs do not have a session_meta preamble; detect by path
+        # and fall back to top-level "cwd" fields.
+        if _is_claude_project_log_path(p, claude_projects_dir=_cli_logs_dir("claude")):
+            if cwd is not None:
+                pcwd = _read_claude_log_cwd(p)
+                if not (isinstance(pcwd, str) and pcwd == cwd):
+                    continue
+            return p
     return None
 
 

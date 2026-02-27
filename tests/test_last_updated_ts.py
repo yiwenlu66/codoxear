@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import time
 import unittest
@@ -78,7 +80,22 @@ class TestLastConversationTimestamp(unittest.TestCase):
             )
             self.assertIsNone(_last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024))
 
+    def test_claude_assistant_text_counts_as_conversation(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "11111111-1111-1111-1111-111111111111.jsonl"
+            t0 = time.time()
+            assistant_ts = t0 - 3
+            _write_jsonl(
+                p,
+                [
+                    {"type": "user", "message": {"content": [{"type": "text", "text": "hi"}]}, "ts": t0 - 10},
+                    {"type": "assistant", "message": {"content": [{"type": "text", "text": "ok"}]}, "ts": assistant_ts},
+                    {"type": "assistant", "message": {"content": [{"type": "thinking", "text": "..." }]}, "ts": t0 - 1},
+                ],
+            )
+            ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
+            self.assertAlmostEqual(ts or 0.0, assistant_ts, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()
-

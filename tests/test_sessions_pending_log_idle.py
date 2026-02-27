@@ -27,6 +27,7 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
             thread_id="broker-1",
             broker_pid=1,
             codex_pid=2,
+            cli="codex",
             owned=False,
             start_ts=123.0,
             cwd="/tmp",

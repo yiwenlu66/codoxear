@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import unittest
 from pathlib import Path
@@ -116,6 +118,44 @@ class TestIdleHeuristics(unittest.TestCase):
                     {"type": "response_item", "payload": {"type": "function_call", "call_id": "c1"}},
                     {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "c1"}},
                     {"type": "event_msg", "payload": {"type": "task_complete"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_claude_turn_duration_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "claude.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "user", "message": {"content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
+                    {"type": "system", "subtype": "turn_duration"},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_claude_tool_use_after_text_is_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "claude.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "user", "message": {"content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "assistant", "message": {"content": [{"type": "text", "text": "starting"}]}},
+                    {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read"}]}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
+    def test_claude_api_error_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "claude.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "user", "message": {"content": [{"type": "text", "text": "hi"}]}},
+                    {"type": "system", "subtype": "api_error"},
                 ],
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)

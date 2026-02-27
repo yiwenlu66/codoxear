@@ -27,6 +27,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .cli_support import cli_bin as _cli_bin
+from .cli_support import cli_home as _cli_home
+from .cli_support import infer_cli_from_log_path as _infer_cli_from_log_path
+from .cli_support import normalize_cli_name as _normalize_cli_name
+from .cli_support import parse_cli_name as _parse_cli_name
 from . import rollout_log as _rollout_log
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
@@ -117,6 +122,7 @@ if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
 else:
     CODEX_HOME = Path(_CODEX_HOME_ENV)
 CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
+DEFAULT_SPAWN_CLI = _normalize_cli_name(os.environ.get("CODEX_WEB_DEFAULT_CLI"), default="codex")
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -670,7 +676,12 @@ def _read_session_meta(log_path: Path) -> dict[str, Any]:
 
 
 def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
-    sm = _read_session_meta(log_path)
+    try:
+        sm = _read_session_meta(log_path)
+    except Exception:
+        # Non-Codex logs (for example Claude project logs) do not start with
+        # session_meta; keep the original path untouched.
+        return thread_id, log_path
     if not sm:
         return thread_id, log_path
     if not _is_subagent_session_meta(sm):
@@ -765,6 +776,7 @@ class Session:
     thread_id: str
     broker_pid: int
     codex_pid: int
+    cli: str
     owned: bool
     start_ts: float
     cwd: str
@@ -1326,6 +1338,8 @@ class SessionManager:
             codex_pid = int(codex_pid_raw)
             broker_pid = int(broker_pid_raw)
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
+            cli_raw = meta.get("cli") if isinstance(meta.get("cli"), str) else ""
+            cli = _normalize_cli_name(cli_raw, default=DEFAULT_SPAWN_CLI)
             tmux_raw = meta.get("tmux_name")
             tmux_name = tmux_raw.strip() if isinstance(tmux_raw, str) and tmux_raw.strip() else None
 
@@ -1339,8 +1353,13 @@ class SessionManager:
                 if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
                     raise ValueError(f"invalid log_path in metadata for socket {sock}")
                 log_path = Path(log_path_raw)
+            if log_path is not None and not cli_raw:
+                inferred = _infer_cli_from_log_path(log_path)
+                if isinstance(inferred, str):
+                    cli = _normalize_cli_name(inferred, default=cli)
             if log_path is not None and log_path.exists():
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                if cli == "codex":
+                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
             else:
                 log_path = None
 
@@ -1392,6 +1411,7 @@ class SessionManager:
                 thread_id=thread_id,
                 broker_pid=broker_pid,
                 codex_pid=codex_pid,
+                cli=cli,
                 owned=owned,
                 start_ts=float(start_ts),
                 cwd=str(cwd),
@@ -1417,6 +1437,7 @@ class SessionManager:
                     prev.thread_id = s.thread_id
                     prev.broker_pid = s.broker_pid
                     prev.codex_pid = s.codex_pid
+                    prev.cli = s.cli
                     prev.owned = s.owned
                     prev.start_ts = s.start_ts
                     prev.cwd = s.cwd
@@ -1580,6 +1601,7 @@ class SessionManager:
                         "thread_id": s.thread_id,
                         "pid": s.codex_pid,
                         "broker_pid": s.broker_pid,
+                        "cli": s.cli,
                         "owned": s.owned,
                         "cwd": s.cwd,
                         "start_ts": s.start_ts,
@@ -1641,6 +1663,8 @@ class SessionManager:
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
+        cli_raw = meta.get("cli") if isinstance(meta.get("cli"), str) else ""
+        cli = _normalize_cli_name(cli_raw, default=s.cli)
         if "log_path" not in meta:
             raise ValueError(f"missing log_path in metadata for socket {sock}")
         log_path: Path | None
@@ -1651,8 +1675,13 @@ class SessionManager:
             if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
                 raise ValueError(f"invalid log_path in metadata for socket {sock}")
             log_path = Path(log_path_raw)
+        if log_path is not None and not cli_raw:
+            inferred = _infer_cli_from_log_path(log_path)
+            if isinstance(inferred, str):
+                cli = _normalize_cli_name(inferred, default=cli)
         if log_path is not None and log_path.exists():
-            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+            if cli == "codex":
+                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
         cwd_raw = meta.get("cwd")
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
@@ -1664,6 +1693,7 @@ class SessionManager:
             if not s2:
                 return
             s2.thread_id = thread_id
+            s2.cli = cli
             s2.cwd = str(cwd)
             s2.owned = bool(owned)
             if s2.log_path != log_path:
@@ -1896,7 +1926,9 @@ class SessionManager:
         *,
         cwd: str,
         args: list[str] | None = None,
+        cli: str | None = None,
     ) -> dict[str, Any]:
+        cli_name = _parse_cli_name(cli, default=DEFAULT_SPAWN_CLI)
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd, "--"]
         if args:
             argv.extend(args)
@@ -1906,7 +1938,13 @@ class SessionManager:
             for k, v in _load_env_file(_DOTENV).items():
                 env.setdefault(k, v)
         env["CODEX_WEB_OWNER"] = "web"
-        env.setdefault("CODEX_HOME", str(CODEX_HOME))
+        env["CODEX_WEB_CLI"] = cli_name
+        if cli_name == "claude":
+            env.setdefault("CLAUDE_HOME", str(_cli_home("claude")))
+            env.setdefault("CLAUDE_BIN", _cli_bin("claude"))
+        else:
+            env.setdefault("CODEX_HOME", str(_cli_home("codex")))
+            env.setdefault("CODEX_BIN", _cli_bin("codex"))
 
         use_tmux = _env_flag("CODEX_WEB_TMUX", True)
         tmux_bin = shutil.which("tmux") if use_tmux else None
@@ -1933,7 +1971,7 @@ class SessionManager:
                 msg = msg[-4000:] if msg else ""
                 raise RuntimeError(f"tmux spawn failed (rc={proc.returncode}): {msg}")
             broker_pid = _tmux_pane_pid(tmux_bin, tmux_name, env) or 0
-            return {"broker_pid": int(broker_pid), "tmux_name": tmux_name}
+            return {"broker_pid": int(broker_pid), "tmux_name": tmux_name, "cli": cli_name}
         if use_tmux and not tmux_bin:
             sys.stderr.write("warning: CODEX_WEB_TMUX enabled but tmux not found; falling back to direct broker spawn.\n")
             sys.stderr.flush()
@@ -1956,7 +1994,7 @@ class SessionManager:
 
         # Prevent zombies when the broker exits.
         threading.Thread(target=proc.wait, daemon=True).start()
-        return {"broker_pid": int(proc.pid)}
+        return {"broker_pid": int(proc.pid), "cli": cli_name}
 
     def delete_web_session(self, session_id: str) -> bool:
         with self._lock:
@@ -2501,7 +2539,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
-                res = MANAGER.spawn_web_session(cwd=cwd, args=args_list)
+                cli_raw = obj.get("cli")
+                if cli_raw is None:
+                    cli = DEFAULT_SPAWN_CLI
+                elif isinstance(cli_raw, str):
+                    try:
+                        cli = _parse_cli_name(cli_raw, default=DEFAULT_SPAWN_CLI)
+                    except ValueError:
+                        _json_response(self, 400, {"error": "unsupported cli (use codex or claude)"})
+                        return
+                else:
+                    _json_response(self, 400, {"error": "cli must be a string"})
+                    return
+                res = MANAGER.spawn_web_session(cwd=cwd, args=args_list, cli=cli)
                 _json_response(self, 200, {"ok": True, **res})
                 return
 

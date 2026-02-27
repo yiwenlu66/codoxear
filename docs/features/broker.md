@@ -1,20 +1,20 @@
 # Broker
 
-The broker wraps the Codex CLI in a PTY, exposes a Unix socket for control, and watches rollout logs to track busy/idle state.
+The broker wraps the target CLI (`codex` or `claude`) in a PTY, exposes a Unix socket for control, and watches session logs to track busy/idle state.
 
 ## Launch and PTY lifecycle
 How users use it:
-Run `codoxear-broker -- <codex args>` or wrap `codex()` in the shell to call the broker.
+Run `codoxear-broker -- <cli args>` (set `CODEX_WEB_CLI=codex|claude`) or wrap your shell CLI functions to call the broker.
 
 Effect:
-Spawns Codex in a PTY, keeps terminal UX intact, and starts a control socket under `~/.local/share/codoxear/socks/`. The initial socket name is `broker-<pid>.sock`, and for terminal-owned sessions the broker may also create `<session_id>-<pid>.sock` after log discovery.
+Spawns the selected CLI in a PTY, keeps terminal UX intact, and starts a control socket under `~/.local/share/codoxear/socks/`. The initial socket name is `broker-<pid>.sock`, and for terminal-owned sessions the broker may also create `<session_id>-<pid>.sock` after log discovery.
 
 Files:
 - `codoxear/broker.py`
 - `codoxear/pty_util.py`
 
 Key flow:
-1. Fork a PTY and exec `codex` (or a login shell for web-owned sessions).
+1. Fork a PTY and exec the selected CLI binary (or a login shell for web-owned sessions).
 2. Set terminal size, raw mode, and handle terminal query replies.
 3. Start socket server, PTY reader, log watcher, and log discovery threads.
 
@@ -48,7 +48,7 @@ Commands:
 - `queue`: get or update the server-side queue (`op=get|set|push`).
 - `keys`: injects raw key sequences.
 - `tail`: returns the PTY output tail.
-- `shutdown`: terminates the Codex process group.
+- `shutdown`: terminates the CLI process group.
 
 Call stack:
 1. `ServerManager._sock_call`
@@ -61,7 +61,7 @@ Notes:
 
 ## Rollout log discovery and busy/idle state
 How users use it:
-The broker finds the active `rollout-*.jsonl` file to align the UI with the Codex thread.
+The broker finds the active log file to align the UI with the underlying CLI thread/session.
 
 Effect:
 Updates `log_path` in metadata and uses rollout events to track busy state and turn boundaries.
@@ -71,7 +71,9 @@ Files:
 - `codoxear/util.py`
 
 Key flow:
-1. Scan `~/.codex/sessions/**/rollout-*.jsonl` for a new log after startup.
+1. Scan the configured log root for open logs after startup:
+   - Codex: `~/.codex/sessions/**/rollout-*.jsonl`
+   - Claude: `~/.claude/projects/**/*.jsonl` (project UUID logs, excluding `subagents`)
 2. Register `session_id` and write metadata JSON beside the socket.
 3. Tail the log and update busy/idle heuristics.
 
@@ -85,13 +87,14 @@ Call stack:
 Notes:
 - When a new `/new` thread hint is detected, the broker clears the current log binding and re-discovers.
 - `CODEX_WEB_BUSY_QUIET_SECONDS` and `CODEX_WEB_BUSY_INTERRUPT_GRACE_SECONDS` tune idle clearing.
+- Claude queue drain also triggers on `system.subtype=turn_duration|api_error`.
 
 ## Metadata sidecar
 How users use it:
 The server reads `*.json` files next to each socket.
 
 Effect:
-Provides `session_id`, `pid`s, `cwd`, `log_path`, `sock_path`, and `owner` tag.
+Provides `session_id`, `pid`s, `cwd`, `log_path`, `sock_path`, `owner`, and `cli`.
 
 Files:
 - `codoxear/broker.py`
@@ -99,4 +102,4 @@ Files:
 Key data:
 - Path: `~/.local/share/codoxear/socks/<socket>.json` (sidecar matches the socket filename).
 - Socket names: `broker-<pid>.sock` on startup and optionally `<session_id>-<pid>.sock` after log discovery.
-- Fields: `session_id`, `owner`, `broker_pid`, `codex_pid`, `cwd`, `start_ts`, `log_path`, `sock_path`, `tmux_name` (when launched under tmux)
+- Fields: `session_id`, `owner`, `cli`, `broker_pid`, `codex_pid`, `cwd`, `start_ts`, `log_path`, `sock_path`, `tmux_name` (when launched under tmux)

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import json
 import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from codoxear.util import proc_find_open_rollout_log, proc_open_rollout_logs
 
@@ -86,6 +89,37 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
             found_b = proc_find_open_rollout_log(proc_root=proc_root, root_pid=200, cwd="/x")
             self.assertEqual(found_a, a)
             self.assertEqual(found_b, b)
+
+    def test_proc_finds_claude_project_log_by_cwd(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            claude_home = root / ".claude-home"
+            projects = claude_home / "projects" / "workspace"
+            projects.mkdir(parents=True, exist_ok=True)
+
+            want = projects / "11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(
+                want,
+                [
+                    {"type": "system", "cwd": "/claude/work", "subtype": "init"},
+                    {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+                ],
+            )
+
+            (proc_root / "100" / "task" / "100").mkdir(parents=True, exist_ok=True)
+            (proc_root / "101" / "task" / "101").mkdir(parents=True, exist_ok=True)
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            (proc_root / "101" / "task" / "101" / "children").write_text("\n", encoding="utf-8")
+            for pid in ("100", "101"):
+                (proc_root / pid / "fd").mkdir(parents=True, exist_ok=True)
+            os.symlink(str(want), proc_root / "101" / "fd" / "3")
+
+            with patch.dict(os.environ, {"CLAUDE_HOME": str(claude_home)}, clear=False):
+                opened = proc_open_rollout_logs(proc_root, 100)
+                self.assertIn(want, opened)
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/claude/work")
+                self.assertEqual(found, want)
 
 
 if __name__ == "__main__":

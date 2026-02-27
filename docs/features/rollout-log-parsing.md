@@ -1,6 +1,6 @@
 # Rollout Log Parsing
 
-Codoxear reads Codex rollout JSONL files to render chat history, compute idle state, and surface token usage.
+Codoxear reads Codex rollout JSONL and Claude project JSONL files to render chat history, compute idle state, and surface token usage.
 
 ## Chat event extraction
 How users use it:
@@ -15,8 +15,12 @@ Files:
 
 Key flow:
 1. Read JSONL tail chunks.
-2. Extract `event_msg` user messages and `response_item` assistant text.
-3. Track tool usage and turn boundaries for UI indicators (`task_complete` marks turn end).
+2. Extract chat events from both formats:
+   - Codex: `event_msg` user + `response_item` assistant text
+   - Claude: top-level `user`/`assistant` messages with text parts
+3. Track tool usage and turn boundaries for UI indicators:
+   - Codex: `task_complete` / `turn_aborted`
+   - Claude: `system.subtype=turn_duration` / `api_error`
 
 Call stack:
 1. `SessionManager._ensure_chat_index`
@@ -35,9 +39,11 @@ Files:
 - `codoxear/server.py`
 
 Key flow:
-1. Scan recent log tail for user or assistant events.
+1. Scan recent log tail for user/assistant terminal events.
 2. Track whether a turn is open and if a completion candidate exists.
-3. Close turns on `task_complete`, `turn_aborted`, or `thread_rolled_back`.
+3. Close turns on terminal markers:
+   - Codex: `task_complete`, `turn_aborted`, `thread_rolled_back`
+   - Claude: `system.subtype=turn_duration|api_error`
 4. Return idle when the turn is closed and the last terminal event is assistant/aborted, or when an open turn has an assistant completion candidate.
 
 Notes:
@@ -49,7 +55,7 @@ How users use it:
 Context usage appears in the UI header.
 
 Effect:
-Token usage and context window are parsed from `token_count` events.
+Token usage and context window are parsed from Codex `token_count` events.
 
 Files:
 - `codoxear/rollout_log.py`

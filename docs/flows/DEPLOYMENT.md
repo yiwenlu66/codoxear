@@ -1,14 +1,16 @@
 # Deployment
 
-Codoxear is a single-process server intended to run on the same machine as Codex CLI. In this deployment, the server is exposed to the public internet (direct port forward or reverse proxy). It does not provide TLS.
+Codoxear is a single-process server intended to run on the same machine as Codex/Claude CLI. In this deployment, the server is exposed to the public internet (direct port forward or reverse proxy). It does not provide TLS.
 
 ## Production environment (this host)
-In this project, "production" refers to the service running on this host (the same machine that runs Codex CLI), not a separate environment.
+In this project, "production" refers to the service running on this host (the same machine that runs Codex/Claude CLI), not a separate environment.
 
 ## Minimal deployment (public access)
 1. Set `CODEX_WEB_PASSWORD` in `.env` (loaded from the server working directory) or the environment.
 2. On this host, manage the server as a daemon with `supervisorctl` (`codoxear` program).
-3. Start Codex sessions with `codoxear-broker -- <codex args>`.
+3. Start sessions with `codoxear-broker` and select CLI via `CODEX_WEB_CLI`:
+   - `CODEX_WEB_CLI=codex codoxear-broker -- <codex args>`
+   - `CODEX_WEB_CLI=claude codoxear-broker -- <claude args>`
 4. Expose the configured port (this host currently uses `13780`) to the internet (or proxy it) and visit `http://<public-host>:<port>/` (or your HTTPS proxy URL).
 
 ## Network security

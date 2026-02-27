@@ -4,13 +4,13 @@
   <img src="codoxear/static/codoxear-icon.png" alt="Codoxear icon" width="140" />
 </p>
 
-Unofficial mobile handoff for Codex TUI sessions.
+Unofficial mobile handoff for Codex and Claude Code TUI sessions.
 
 Codoxear runs a small web server on your computer and exposes a phone-friendly UI for continuing the same live Codex TUI session from mobile. Your environment stays local (filesystem, tools, credentials). The phone is a view/controller.
 
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
-Not affiliated with OpenAI. "Codex" is referenced only for compatibility with the Codex CLI TUI.
+Not affiliated with OpenAI or Anthropic. "Codex" and "Claude" are referenced only for CLI compatibility.
 
 ## Platform support
 
@@ -43,19 +43,23 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
     - Default bind: `::` (IPv6, usually reachable on LAN)
     - Default port: `8743`
 
-3. Wrap your local `codex` with the broker (zsh/bash function, not an alias):
+3. Wrap your local CLI(s) with the broker (zsh/bash function, not an alias):
 
    Add to `~/.zshrc` or `~/.bashrc`:
 
    ```sh
    codex() {
-     codoxear-broker -- "$@"
+     CODEX_WEB_CLI=codex codoxear-broker -- "$@"
+   }
+
+   claude() {
+     CODEX_WEB_CLI=claude codoxear-broker -- "$@"
    }
    ```
 
-   Restart your shell or `source` your rc file.
+   If you only use one CLI, keep just that function.
 
-4. Start Codex in your terminal as usual (via the wrapper). Codoxear will discover the session.
+4. Start the CLI in your terminal as usual (via the wrapper). Codoxear will discover the session.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
@@ -64,6 +68,8 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    - When a response is running, choose "Send after current" to queue the next message.
    - Queued messages live on the server (broker) and continue even if you close the web page.
    - Use the queue button to review or edit queued messages.
+
+Restart your shell or `source` your rc file after adding the wrapper function(s).
 
 ## Quick status checks (SSH-friendly)
 
@@ -76,18 +82,21 @@ The status helper reads the broker socket sidecars and reports `running/idle`, q
 
 ## User stories
 
-- Desktop Linux: start Codex in your GUI terminal emulator, then continue the same live TUI session on your phone or a laptop browser.
-- Headless Linux: start Codex inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
-- Web-owned sessions: start a new Codex session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
+- Desktop Linux: start Codex or Claude in your GUI terminal emulator, then continue the same live session on your phone or a laptop browser.
+- Headless Linux: start Codex or Claude inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
+- Web-owned sessions: start a new Codex/Claude session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
 
 ## Session ownership
 
-Codoxear shows two kinds of sessions:
+Codoxear shows two kinds of sessions (for either CLI):
 
-- Terminal-owned: sessions started from your local terminal (via the `codex` wrapper). Codoxear can attach, but it does not offer a kill button.
+- Terminal-owned: sessions started from your local terminal (via the wrapper). Codoxear can attach, but it does not offer a kill button.
 - Web-owned: sessions started from the Codoxear UI ("New session"). These are owned by the web server and show a delete button in the session list.
 
-If you start a web-owned session and later want to continue it in your terminal, use `codex resume`.
+If you start a web-owned session and later want to continue it in your terminal, use:
+- Codex: `codex resume <session_id>`
+- Claude: `claude --resume <session_id>`
+- Or use `scripts/codoxear-resume` to pick the right command automatically from metadata.
 
 ## Known limitations
 
@@ -120,8 +129,11 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_HOST` (default `::`)
 - `CODEX_WEB_PORT` (default `8743`)
 - `CODEX_WEB_URL_PREFIX` (default empty). Example: `/codoxear` serves the UI at `/codoxear/` and the API under `/codoxear/api/*`.
+- `CODEX_WEB_DEFAULT_CLI` (default `codex`) - default CLI used for new web sessions when `cli` is omitted.
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
+- `CLAUDE_HOME` (default `~/.claude`)
+- `CLAUDE_BIN` (default `claude`)
 - `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 

@@ -22,6 +22,17 @@ from pathlib import Path
 from typing import Any
 
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from codoxear.cli_support import claude_assistant_text as _claude_assistant_text
+from codoxear.cli_support import claude_assistant_thinking_count as _claude_assistant_thinking_count
+from codoxear.cli_support import claude_assistant_tool_use_count as _claude_assistant_tool_use_count
+from codoxear.cli_support import claude_user_text as _claude_user_text
+from codoxear.cli_support import cli_bin as _cli_bin
+from codoxear.cli_support import cli_home as _cli_home
+from codoxear.cli_support import cli_logs_dir as _cli_logs_dir
+from codoxear.cli_support import is_claude_project_log_path as _is_claude_project_log_path
+from codoxear.cli_support import is_codex_rollout_log_path as _is_codex_rollout_log_path
+from codoxear.cli_support import normalize_cli_name as _normalize_cli_name
+from codoxear.cli_support import session_id_from_log_path as _session_id_from_log_path
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
@@ -35,14 +46,12 @@ APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 PROC_ROOT = Path("/proc")
 
-CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
+CLI_KIND = _normalize_cli_name(os.environ.get("CODEX_WEB_CLI"), default="codex")
+CODEX_BIN = _cli_bin(CLI_KIND)
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 TMUX_NAME = os.environ.get("CODEX_WEB_TMUX_NAME", "")
-_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
-if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
-    DEFAULT_CODEX_HOME = Path.home() / ".codex"
-else:
-    DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
+DEFAULT_CODEX_HOME = _cli_home(CLI_KIND)
+DEFAULT_LOGS_DIR = _cli_logs_dir(CLI_KIND)
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
 _BUSY_QUIET_RAW = os.environ.get("CODEX_WEB_BUSY_QUIET_SECONDS")
 if _BUSY_QUIET_RAW is None or (not _BUSY_QUIET_RAW.strip()):
@@ -56,7 +65,6 @@ BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
 _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
 
@@ -348,6 +356,56 @@ def _reopen_turn_on_activity(st: "State") -> None:
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
     typ = obj.get("type")
 
+    if typ == "user":
+        msg = _claude_user_text(obj)
+        if isinstance(msg, str) and msg.strip():
+            st.pending_calls.clear()
+            st.busy = True
+            st.turn_open = True
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = now_ts
+        return
+
+    if typ == "assistant":
+        has_text = bool(_claude_assistant_text(obj))
+        tool_count = _claude_assistant_tool_use_count(obj)
+        thinking_count = _claude_assistant_thinking_count(obj)
+        if has_text:
+            if st.turn_open:
+                st.turn_has_completion_candidate = True
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        if tool_count > 0 or thinking_count > 0:
+            _reopen_turn_on_activity(st)
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        return
+
+    if typ == "system":
+        sub = obj.get("subtype")
+        if sub == "turn_duration":
+            st.pending_calls.clear()
+            st.busy = False
+            st.turn_open = False
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = 0.0
+            return
+        if sub == "api_error":
+            st.pending_calls.clear()
+            st.busy = False
+            st.turn_open = False
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = 0.0
+            return
+        return
+
     if typ == "event_msg":
         payload = obj.get("payload")
         if not isinstance(payload, dict):
@@ -498,7 +556,7 @@ class Broker:
         self.cwd = cwd
         # Headless web sessions need different defaults for robust injection and log discovery.
         # These flags are forwarded to the interactive Codex CLI.
-        if OWNER_TAG == "web":
+        if OWNER_TAG == "web" and CLI_KIND == "codex":
             forced = ["-c", "disable_response_storage=false", "-c", "disable_paste_burst=true"]
             self.codex_args = forced + codex_args
         else:
@@ -512,7 +570,7 @@ class Broker:
         self._pty_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
         self.codex_home = DEFAULT_CODEX_HOME
-        self.sessions_dir = self.codex_home / "sessions"
+        self.sessions_dir = DEFAULT_LOGS_DIR
 
     def _drain_queue_once(self) -> None:
         fd: int | None = None
@@ -784,6 +842,10 @@ class Broker:
                                     with self._lock:
                                         if self.state:
                                             self.state.token = token_update
+                elif obj.get("type") == "system":
+                    subtype = obj.get("subtype")
+                    if subtype in ("turn_duration", "api_error"):
+                        should_drain = True
                 with self._lock:
                     st3 = self.state
                     if st3:
@@ -800,6 +862,7 @@ class Broker:
         meta = {
             "session_id": st.session_id,
             "owner": OWNER_TAG if OWNER_TAG else None,
+            "cli": CLI_KIND,
             "broker_pid": os.getpid(),
             "sessiond_pid": os.getpid(),
             "codex_pid": st.codex_pid,
@@ -1012,11 +1075,7 @@ class Broker:
                 traceback.print_exc()
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
-        # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),
-        # so path components are not a stable session id. Extract the id from the filename.
-        name = log_path.name
-        m = _SESSION_ID_RE.findall(name)
-        return m[-1] if m else None
+        return _session_id_from_log_path(log_path, cli=CLI_KIND)
 
     def _maybe_register_or_switch_rollout(self, *, log_path: Path) -> None:
         try:
@@ -1027,34 +1086,38 @@ class Broker:
             lp.resolve().relative_to(self.sessions_dir.resolve())
         except Exception:
             return
-        if lp.name.startswith("rollout-") and lp.name.endswith(".jsonl"):
-            pass
+        sid: str | None = None
+        if CLI_KIND == "codex":
+            if not _is_codex_rollout_log_path(lp):
+                return
+            payload = _read_session_meta_payload(lp, timeout_s=1.5)
+            if not payload:
+                return
+            if _is_subagent_session_meta(payload):
+                parent = _subagent_parent_thread_id(payload)
+                if not parent:
+                    return
+                parent_log = _find_session_log_for_session_id(self.sessions_dir, parent)
+                if not parent_log:
+                    return
+                parent_payload = _read_session_meta_payload(parent_log, timeout_s=0.2)
+                if not parent_payload:
+                    return
+                if _is_subagent_session_meta(parent_payload):
+                    return
+                lp = parent_log
+                payload = parent_payload
+            sid_raw = payload.get("id")
+            if isinstance(sid_raw, str) and sid_raw:
+                sid = sid_raw
+            else:
+                sid = self._session_id_from_rollout_path(lp)
+                if sid is None:
+                    raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
         else:
-            return
-
-        payload = _read_session_meta_payload(lp, timeout_s=1.5)
-        if not payload:
-            return
-        if _is_subagent_session_meta(payload):
-            parent = _subagent_parent_thread_id(payload)
-            if not parent:
+            if not _is_claude_project_log_path(lp, claude_projects_dir=self.sessions_dir):
                 return
-            parent_log = _find_session_log_for_session_id(self.sessions_dir, parent)
-            if not parent_log:
-                return
-            parent_payload = _read_session_meta_payload(parent_log, timeout_s=0.2)
-            if not parent_payload:
-                return
-            if _is_subagent_session_meta(parent_payload):
-                return
-            lp = parent_log
-            payload = parent_payload
-
-        sid = payload.get("id")
-        if not isinstance(sid, str) or not sid:
             sid = self._session_id_from_rollout_path(lp)
-            if sid is None:
-                raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
         if not sid:
             return
 
@@ -1104,7 +1167,10 @@ class Broker:
                 os.environ.setdefault("TERM", term)
                 os.environ["COLUMNS"] = str(cols)
                 os.environ["LINES"] = str(rows)
-                os.environ["CODEX_HOME"] = str(self.codex_home)
+                if CLI_KIND == "claude":
+                    os.environ["CLAUDE_HOME"] = str(self.codex_home)
+                else:
+                    os.environ["CODEX_HOME"] = str(self.codex_home)
                 if sys.stdin.isatty():
                     try:
                         fd = sys.stdin.fileno()
@@ -1209,10 +1275,10 @@ class Broker:
 def main() -> None:
     _require_proc()
     ap = argparse.ArgumentParser(
-        description="Foreground PTY broker for codex: preserves terminal UX and registers a control socket for Codoxear."
+        description="Foreground PTY broker for codex/claude: preserves terminal UX and registers a control socket for Codoxear."
     )
-    ap.add_argument("--cwd", default=os.getcwd(), help="Directory to run codex in (default: current directory)")
-    ap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to codex")
+    ap.add_argument("--cwd", default=os.getcwd(), help="Directory to run the target CLI in (default: current directory)")
+    ap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to the target CLI")
     ns = ap.parse_args()
 
     args = list(ns.args)

@@ -342,6 +342,23 @@
         return s.slice(0, 8);
       }
 
+      function normalizeCliName(raw, fallback = "codex") {
+        const v = String(raw || "").trim().toLowerCase();
+        if (v === "claude" || v === "claude-code" || v === "claude_code") return "claude";
+        if (v === "codex" || v === "openai-codex" || v === "codex-cli") return "codex";
+        return fallback;
+      }
+
+      function sessionCliName(session) {
+        return normalizeCliName(session && session.cli, "codex");
+      }
+
+      function resumeCommandForSession(sid, session) {
+        const cli = sessionCliName(session);
+        if (cli === "claude") return `claude --resume ${sid}`;
+        return `codex resume ${sid}`;
+      }
+
       function sessionDisplayName(s) {
         if (!s || typeof s !== "object") return "";
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
@@ -1401,7 +1418,7 @@
           const name = s ? sessionTitleWithId(s) : sid;
           sessionToolsMeta.textContent = `${name} (${sid})`;
           sessionStatusCmd.textContent = `scripts/codoxear-status --id ${sid}`;
-          sessionResumeCmd.textContent = `codex resume ${sid}`;
+          sessionResumeCmd.textContent = resumeCommandForSession(sid, s);
           statusCopyBtn.disabled = false;
           resumeCopyBtn.disabled = false;
           const tmuxName = s && typeof s.tmux_name === "string" ? s.tmux_name.trim() : "";
@@ -2661,7 +2678,7 @@
             }
             const base = sessionDisplayName(s) || baseName(cwd) || "Session";
             const alias = buildDuplicateAlias(base);
-            await spawnSessionWithCwd(cwd, { alias });
+            await spawnSessionWithCwd(cwd, { alias, cli: sessionCliName(s) });
           };
           actionButtons.unshift(dupBtn);
           if (delBtn) actionButtons.push(delBtn);
@@ -3801,23 +3818,29 @@
             }
             await new Promise((r) => setTimeout(r, 250));
           }
-          setToast("session will appear once Codex creates a rollout log");
+          setToast("session will appear once the CLI creates a session log");
           return brokerPid;
         }
 
-        async function spawnSessionWithCwd(cwd, { alias } = {}) {
+        async function spawnSessionWithCwd(cwd, { alias, cli } = {}) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
           }
+          const cliName = normalizeCliName(cli, "");
+          if (!cliName) {
+            setToast("invalid cli (use codex or claude)");
+            return null;
+          }
           try {
             setToast("starting...");
-            const res = await api("/api/sessions", { method: "POST", body: { cwd: String(cwd) } });
+            const res = await api("/api/sessions", { method: "POST", body: { cwd: String(cwd), cli: cliName } });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
               return null;
             }
+            localStorage.setItem("codexweb.spawnCli", cliName);
             setToast(`started (broker ${brokerPid})`);
             return await waitForSessionByBrokerPid(brokerPid, { alias });
           } catch (e) {
@@ -3830,7 +3853,15 @@
           const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const cwd = prompt("New session cwd:", def);
           if (!cwd) return;
-          await spawnSessionWithCwd(cwd);
+          const defaultCli = cur ? sessionCliName(cur) : normalizeCliName(localStorage.getItem("codexweb.spawnCli"), "codex");
+          const cliRaw = prompt("New session CLI (codex/claude):", defaultCli);
+          if (cliRaw === null) return;
+          const cliName = normalizeCliName(cliRaw, "");
+          if (!cliName) {
+            setToast("invalid cli (use codex or claude)");
+            return;
+          }
+          await spawnSessionWithCwd(cwd, { cli: cliName });
         };
 	        interruptBtn.onclick = async () => {
 	          if (!selected) return;
@@ -3859,7 +3890,7 @@
           }
           const base = sessionDisplayName(s) || baseName(cwd) || "Session";
           const alias = buildDuplicateAlias(base);
-          await spawnSessionWithCwd(cwd, { alias });
+          await spawnSessionWithCwd(cwd, { alias, cli: sessionCliName(s) });
         };
 
         toggleSidebarBtn.onclick = () => {

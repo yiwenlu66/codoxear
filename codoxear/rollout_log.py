@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .cli_support import claude_assistant_content_parts as _claude_assistant_content_parts
+from .cli_support import claude_assistant_text as _claude_assistant_text
+from .cli_support import claude_assistant_thinking_count as _claude_assistant_thinking_count
+from .cli_support import claude_assistant_tool_use_count as _claude_assistant_tool_use_count
+from .cli_support import claude_user_text as _claude_user_text
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
@@ -108,6 +113,29 @@ def _find_latest_token_update(log_path: Path, max_scan_bytes: int = 32 * 1024 * 
     return None
 
 
+def _codex_assistant_output_text(obj: dict[str, Any]) -> str | None:
+    p = obj.get("payload")
+    if not isinstance(p, dict):
+        raise ValueError("invalid response_item payload")
+    if p.get("type") != "message" or p.get("role") != "assistant":
+        return None
+    content = p.get("content")
+    if not isinstance(content, list):
+        raise ValueError("invalid assistant message content")
+    out: list[str] = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") != "output_text":
+            continue
+        text = part.get("text")
+        if isinstance(text, str) and text:
+            out.append(text)
+    if out:
+        return "".join(out)
+    return None
+
+
 def _extract_chat_events(
     objs: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
@@ -120,7 +148,6 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
-    skip_next_assistant = 0
 
     def event_ts(o: dict[str, Any]) -> float | None:
         ts = o.get("ts")
@@ -137,6 +164,49 @@ def _extract_chat_events(
 
     for obj in objs:
         typ = obj.get("type")
+        if typ == "user":
+            msg = _claude_user_text(obj)
+            if isinstance(msg, str) and msg.strip():
+                turn_start = True
+                ets = event_ts(obj)
+                ev: dict[str, Any] = {"role": "user", "text": msg}
+                if ets is not None:
+                    ev["ts"] = ets
+                events.append(ev)
+            continue
+
+        if typ == "assistant":
+            text = _claude_assistant_text(obj)
+            if isinstance(text, str) and text:
+                ets = event_ts(obj)
+                ev2: dict[str, Any] = {"role": "assistant", "text": text}
+                if ets is not None:
+                    ev2["ts"] = ets
+                events.append(ev2)
+            thinking_count = _claude_assistant_thinking_count(obj)
+            if thinking_count > 0:
+                total_thinking += thinking_count
+            tool_count = _claude_assistant_tool_use_count(obj)
+            if tool_count > 0:
+                total_tools += tool_count
+                for part in _claude_assistant_content_parts(obj):
+                    if part.get("type") != "tool_use":
+                        continue
+                    name = part.get("name")
+                    if isinstance(name, str) and name:
+                        tool_names.add(name)
+                        last_tool = name
+            continue
+
+        if typ == "system":
+            total_system += 1
+            sub = obj.get("subtype")
+            if sub == "turn_duration":
+                turn_end = True
+            elif sub == "api_error":
+                turn_aborted = True
+            continue
+
         if typ == "event_msg":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -175,20 +245,8 @@ def _extract_chat_events(
                     total_system += 1
                     continue
                 if role == "assistant":
-                    content = p.get("content")
-                    if not isinstance(content, list):
-                        raise ValueError("invalid assistant message content")
-                    out_text_parts: list[str] = []
-                    for part in content:
-                        if not isinstance(part, dict):
-                            continue
-                        if part.get("type") == "output_text" and isinstance(part.get("text"), str):
-                            out_text_parts.append(part["text"])
-                    if out_text_parts:
-                        text = "".join(out_text_parts)
-                        if skip_next_assistant > 0:
-                            skip_next_assistant -= 1
-                            continue
+                    text = _codex_assistant_output_text(obj)
+                    if isinstance(text, str) and text:
                         ets = event_ts(obj)
                         ev2: dict[str, Any] = {"role": "assistant", "text": text}
                         if ets is not None:
@@ -271,18 +329,12 @@ def _read_chat_events_from_tail(
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
-    p = obj.get("payload")
-    if not isinstance(p, dict):
-        raise ValueError("invalid response_item payload")
-    if p.get("type") != "message" or p.get("role") != "assistant":
+    typ = obj.get("type")
+    if typ == "assistant":
+        return bool(_claude_assistant_text(obj))
+    if typ != "response_item":
         return False
-    content = p.get("content")
-    if not isinstance(content, list):
-        raise ValueError("invalid assistant message content")
-    for part in content:
-        if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-            return True
-    return False
+    return bool(_codex_assistant_output_text(obj))
 
 
 def _analyze_log_chunk(
@@ -298,6 +350,24 @@ def _analyze_log_chunk(
 
     for obj in objs:
         typ = obj.get("type")
+        if typ == "user":
+            if _claude_user_text(obj):
+                d_th = 0
+                d_tools = 0
+                d_sys = 0
+                last_chat_ts = _event_ts(obj)
+            continue
+        if typ == "assistant":
+            d_th += _claude_assistant_thinking_count(obj)
+            d_tools += _claude_assistant_tool_use_count(obj)
+            if _has_assistant_output_text(obj):
+                last_chat_ts = _event_ts(obj)
+                last_assistant_ts = _event_ts(obj)
+            continue
+        if typ == "system":
+            d_sys += 1
+            continue
+
         if typ == "event_msg":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -359,20 +429,6 @@ def _last_conversation_ts_from_tail(
                 return float(v)
         return None
 
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     scan = 256 * 1024
     while True:
         objs = _read_jsonl_tail(log_path, scan)
@@ -380,6 +436,14 @@ def _last_conversation_ts_from_tail(
         last_ts: float | None = None
         for i, obj in enumerate(objs):
             typ = obj.get("type")
+            if typ == "user" and _claude_user_text(obj):
+                last_idx = i
+                last_ts = event_ts(obj)
+                continue
+            if typ == "assistant" and _has_assistant_output_text(obj):
+                last_idx = i
+                last_ts = event_ts(obj)
+                continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -395,7 +459,7 @@ def _last_conversation_ts_from_tail(
                         last_idx = i
                         last_ts = event_ts(obj)
                         continue
-            if typ == "response_item" and has_assistant_text(obj):
+            if typ == "response_item" and _has_assistant_output_text(obj):
                 last_idx = i
                 last_ts = event_ts(obj)
                 continue
@@ -418,6 +482,11 @@ def _last_assistant_ts_from_tail(
         last_assistant: float | None = None
         for obj in objs:
             typ = obj.get("type")
+            if typ == "assistant" and _has_assistant_output_text(obj):
+                ts = _event_ts(obj)
+                if ts is not None:
+                    last_assistant = float(ts)
+                continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -454,24 +523,41 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     turn_has_completion_candidate = False
     last_terminal_event: str | None = None
 
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     while True:
         objs = _read_jsonl_tail(path, scan)
         for obj in objs:
             typ = obj.get("type")
+            if typ == "user":
+                if _claude_user_text(obj):
+                    saw_user = True
+                    turn_open = True
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "user"
+                continue
+            if typ == "assistant":
+                if _has_assistant_output_text(obj):
+                    if turn_open:
+                        turn_has_completion_candidate = True
+                    last_terminal_event = "assistant"
+                if turn_open and (
+                    _claude_assistant_thinking_count(obj) > 0 or _claude_assistant_tool_use_count(obj) > 0
+                ):
+                    turn_has_completion_candidate = False
+                continue
+            if typ == "system":
+                sub = obj.get("subtype")
+                if sub == "turn_duration":
+                    turn_open = False
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "assistant"
+                    continue
+                if sub == "api_error":
+                    turn_open = False
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "aborted"
+                    continue
+                continue
+
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -506,7 +592,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if not isinstance(p, dict):
                     raise ValueError("invalid response_item payload")
                 pt = p.get("type")
-                if has_assistant_text(obj):
+                if _has_assistant_output_text(obj):
                     if turn_open:
                         turn_has_completion_candidate = True
                     last_terminal_event = "assistant"
@@ -561,20 +647,6 @@ def _last_chat_role_ts_from_tail(
                 return float(v)
         return None
 
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     scan = 256 * 1024
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(path, scan)
@@ -582,6 +654,14 @@ def _last_chat_role_ts_from_tail(
         last_assistant: tuple[int, float | None] | None = None
         for i, obj in enumerate(objs):
             typ = obj.get("type")
+            if typ == "user":
+                if _claude_user_text(obj):
+                    last_user = (i, event_ts(obj))
+                continue
+            if typ == "assistant":
+                if _has_assistant_output_text(obj):
+                    last_assistant = (i, event_ts(obj))
+                continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -595,7 +675,7 @@ def _last_chat_role_ts_from_tail(
                     if isinstance(msg, str) and msg.strip():
                         last_assistant = (i, event_ts(obj))
                         continue
-            if typ == "response_item" and has_assistant_text(obj):
+            if typ == "response_item" and _has_assistant_output_text(obj):
                 last_assistant = (i, event_ts(obj))
 
         best: tuple[str, tuple[int, float | None]] | None = None

@@ -46,6 +46,39 @@ class TestServerChatFlags(unittest.TestCase):
         )
         self.assertEqual(meta["tool"], 2)
 
+    def test_claude_turn_duration_sets_turn_end(self) -> None:
+        _events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+                {"type": "assistant", "message": {"content": [{"type": "text", "text": "done"}]}},
+                {"type": "system", "subtype": "turn_duration"},
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
+
+    def test_claude_tool_use_and_thinking_increment_meta(self) -> None:
+        _events, meta, flags, diag = _extract_chat_events(
+            [
+                {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+                {
+                    "type": "assistant",
+                    "message": {
+                        "content": [
+                            {"type": "thinking", "text": "hmm"},
+                            {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file": "a"}},
+                        ]
+                    },
+                },
+                {"type": "system", "subtype": "api_error"},
+            ]
+        )
+        self.assertEqual(meta["thinking"], 1)
+        self.assertEqual(meta["tool"], 1)
+        self.assertTrue(flags["turn_aborted"])
+        self.assertIn("Read", diag["tool_names"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,6 +22,7 @@ def _make_session(*, sid: str, cwd: str) -> Session:
         thread_id="thread-1",
         broker_pid=1,
         codex_pid=1,
+        cli="codex",
         owned=False,
         start_ts=0.0,
         cwd=cwd,

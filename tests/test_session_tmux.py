@@ -31,6 +31,7 @@ class TestSessionTmux(unittest.TestCase):
             thread_id="thread-1",
             broker_pid=123,
             codex_pid=456,
+            cli="codex",
             owned=True,
             start_ts=0.0,
             cwd="/tmp/workspace",
@@ -42,6 +43,7 @@ class TestSessionTmux(unittest.TestCase):
 
         items = mgr.list_sessions()
         self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].get("cli"), "codex")
         self.assertEqual(items[0].get("tmux_name"), "codoxear-web-abc123")
 
 

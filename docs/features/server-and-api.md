@@ -34,10 +34,10 @@ Notes:
 
 ## Session discovery and lifecycle
 How users use it:
-Start Codex via `codoxear-broker` (terminal-owned) or create a web-owned session via `POST /api/sessions`.
+Start Codex/Claude via `codoxear-broker` (terminal-owned) or create a web-owned session via `POST /api/sessions`.
 
 Effect:
-The server discovers `*.sock` control sockets under `~/.local/share/codoxear/socks/`, reads their metadata, and exposes them in `/api/sessions`.
+The server discovers `*.sock` control sockets under `~/.local/share/codoxear/socks/`, reads their metadata (including `cli`), and exposes them in `/api/sessions`.
 
 Files:
 - `codoxear/server.py`
@@ -56,18 +56,19 @@ Call stack:
 3. `SessionManager.list_sessions`
 
 Notes:
-- Web-owned sessions are spawned with `CODEX_WEB_OWNER=web` and can be killed by the server.
+- Web-owned sessions are spawned with `CODEX_WEB_OWNER=web`; `POST /api/sessions` accepts optional `cli` (`codex` or `claude`).
+- Spawned brokers receive `CODEX_WEB_CLI=<cli>` and matching home/bin env (`CODEX_HOME/CODEX_BIN` or `CLAUDE_HOME/CLAUDE_BIN`).
 - Web-owned sessions can be started under tmux when `CODEX_WEB_TMUX=1`; session listings include `tmux_name` when available.
 - When tmux is enabled, `CODEX_WEB_TMUX_INTERACTIVE=1` allows attaching to the tmux session and sending input.
 - Terminal-owned sessions are attach-only; the UI hides delete for them.
-- Session listings include `last_assistant_ts` to help the UI render unread response indicators.
+- Session listings include `cli` and `last_assistant_ts` to help the UI render resume commands and unread response indicators.
 
 ## Messaging API
 How users use it:
 The UI polls `/api/sessions/<id>/messages` and submits prompts with `/api/sessions/<id>/send`.
 
 Effect:
-The server tails the rollout JSONL file, extracts chat events, and sends input to the broker socket.
+The server tails Codex rollout logs or Claude project logs, extracts chat events, and sends input to the broker socket.
 
 Files:
 - `codoxear/server.py`
@@ -110,7 +111,9 @@ Files:
 Key flow:
 1. UI calls `/api/sessions/<id>/queue` to append or replace the queue.
 2. Server forwards the request to the broker socket.
-3. Broker drains one queued message on `task_complete`/`turn_aborted` or after the busy heuristic clears.
+3. Broker drains one queued message on turn-end markers or after the busy heuristic clears:
+   - Codex: `task_complete` / `turn_aborted`
+   - Claude: `system.subtype=turn_duration|api_error`
 
 Call stack:
 1. `ServerHandler.do_GET`/`do_POST` for `/queue`

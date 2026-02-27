@@ -18,8 +18,9 @@ Files:
 
 Key flow:
 1. Open modal for the selected session; render command strings.
-2. If `tmux_name` is present, show `tmux attach -t <name>`; otherwise show "Not available".
-3. Start tail polling every 1.5s; stop polling when the modal closes.
+2. Resume command is selected by session CLI metadata (`codex resume <id>` or `claude --resume <id>`).
+3. If `tmux_name` is present, show `tmux attach -t <name>`; otherwise show "Not available".
+4. Start tail polling every 1.5s; stop polling when the modal closes.
 
 Call stack:
 1. `showSessionTools` → `refreshSessionTail` in `codoxear/static/app.js`

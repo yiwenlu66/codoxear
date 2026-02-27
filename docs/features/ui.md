@@ -22,6 +22,8 @@ Key flow:
 Notes:
 - The list shows busy/idle badges and queue length from broker state.
 - Web-owned sessions display a delete button.
+- New session creation prompts for both `cwd` and `cli` (`codex`/`claude`), and duplicate-session keeps the source session CLI.
+- The last chosen spawn CLI is cached in `localStorage` (`codexweb.spawnCli`) as the next default.
 - Sessions are grouped by workspace (cwd) and sorted by display name within each workspace.
 - Files are displayed once per workspace, not within each session row.
 - The refresh button clears the selected session's local cache and re-fetches history.
@@ -35,7 +37,7 @@ Notes:
 - The topbar toast does not reserve space when empty to avoid vertical misalignment.
 - Duplicated sessions are auto-renamed with a `duplicate` suffix to make them easier to distinguish.
 - The sidebar header includes a relay health indicator next to the Codoxear logo (breathing green when API calls succeed, yellow/red on errors or offline).
-- The topbar session tools button copies SSH-friendly status/resume commands, shows a tmux attach command when available, and provides a live tail view for the selected session (ANSI/control sequences stripped for readability). See `docs/features/session-tools.md` for details.
+- The topbar session tools button copies SSH-friendly status/resume commands, shows a tmux attach command when available, and provides a live tail view for the selected session (ANSI/control sequences stripped for readability). Resume command switches by session CLI (`codex resume` vs `claude --resume`). See `docs/features/session-tools.md` for details.
 
 ## Sending messages and local echo
 How users use it:
