@@ -1352,7 +1352,17 @@ class SessionManager:
         return True
 
     def spawn_web_session(self, *, cwd: str, args: list[str] | None = None) -> dict[str, Any]:
-        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd, "--"]
+        if not isinstance(cwd, str) or not cwd.strip():
+            raise ValueError("cwd required")
+
+        home = str(Path.home())
+        cwd2 = cwd.strip().replace("${HOME}", home)
+        cwd2 = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd2)
+        cwd2 = os.path.expanduser(os.path.expandvars(cwd2))
+        if not Path(cwd2).is_dir():
+            raise ValueError(f"cwd is not a directory: {cwd2}")
+
+        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd2, "--"]
         if args:
             argv.extend(args)
 
@@ -1870,7 +1880,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
-                res = MANAGER.spawn_web_session(cwd=cwd, args=args_list)
+                try:
+                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 _json_response(self, 200, {"ok": True, **res})
                 return
 

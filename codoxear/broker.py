@@ -110,6 +110,15 @@ def _require_proc() -> None:
         raise SystemExit(2)
 
 
+def _expand_cwd(cwd: str) -> str:
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise ValueError("cwd must be a non-empty string")
+    home = str(Path.home())
+    s = cwd.strip().replace("${HOME}", home)
+    s = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, s)
+    return os.path.expanduser(os.path.expandvars(s))
+
+
 def _user_shell() -> str:
     sh = os.environ.get("SHELL")
     if isinstance(sh, str) and sh.strip():
@@ -1135,7 +1144,7 @@ def main() -> None:
     if not args:
         args = []
 
-    b = Broker(cwd=str(ns.cwd), codex_args=args)
+    b = Broker(cwd=_expand_cwd(str(ns.cwd)), codex_args=args)
     raise SystemExit(b.run())
 
 

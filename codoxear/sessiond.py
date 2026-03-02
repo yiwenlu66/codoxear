@@ -13,6 +13,7 @@ import time
 import traceback
 import select
 import sys
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -498,7 +499,11 @@ def main() -> None:
     if args and args[0] == "--":
         args = args[1:]
 
-    sd = Sessiond(cwd=str(ns.cwd), codex_args=args)
+    home = str(Path.home())
+    cwd = str(ns.cwd).strip().replace("${HOME}", home)
+    cwd = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd)
+    cwd = os.path.expanduser(os.path.expandvars(cwd))
+    sd = Sessiond(cwd=cwd, codex_args=args)
     sd.run()
 
 
