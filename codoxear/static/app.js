@@ -370,6 +370,13 @@
         return "Codex";
       }
 
+      function cliLogoPath(cli) {
+        const v = normalizeCliName(cli, "codex");
+        if (v === "gemini") return resolveAppUrl("/static/logos/gemini.svg");
+        if (v === "claude") return resolveAppUrl("/static/logos/claude.svg");
+        return resolveAppUrl("/static/logos/codex.svg");
+      }
+
       function sessionDisplayName(s) {
         if (!s || typeof s !== "object") return "";
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
@@ -2853,6 +2860,8 @@
           }
 
           const title = sessionDisplayName(s);
+          const cliName = sessionCliName(s);
+          const cliLabel = cliDisplayName(cliName);
           const badges = [];
           badges.push(badge);
           if (q) badges.push(q);
@@ -2913,7 +2922,22 @@
             };
           }
           const top = el("div", { class: "row" }, [
-            el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
+            el("div", { class: "sessionTitleWrap" }, [
+              el("span", {
+                class: `sessionCliBadge ${cliName}`,
+                title: `CLI: ${cliLabel}`,
+                "aria-label": `CLI: ${cliLabel}`,
+              }, [
+                el("img", {
+                  class: "sessionCliIcon",
+                  src: cliLogoPath(cliName),
+                  alt: `${cliLabel} logo`,
+                  loading: "lazy",
+                  decoding: "async",
+                }),
+              ]),
+              el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
+            ]),
             el("div", { class: "sessionBadges" }, badges),
           ]);
           const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;

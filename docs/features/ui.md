@@ -25,6 +25,7 @@ Notes:
 - New session creation prompts only for `cwd`; CLI comes from the sidebar CLI toggle button (`Codex`/`Claude`/`Gemini`), and duplicate-session keeps the source session CLI.
 - The selected spawn CLI is cached in `localStorage` (`codexweb.spawnCli`) as the next default.
 - Sessions are grouped by workspace (cwd) and sorted by display name within each workspace.
+- Each session card shows a compact CLI logo chip (Codex/Claude/Gemini) before the title.
 - Files are displayed once per workspace, not within each session row.
 - The refresh button clears the selected session's local cache and re-fetches history.
 - Refresh shows a brief toast confirmation on success.
