@@ -3,6 +3,7 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-github-update-notice.md`: Add automatic GitHub update checks and UI prompts when a newer version is available.
 - `docs/records/sessions/2026-03-02-workspace-close-action.md`: Add a workspace-level close action that batch-deletes web-owned sessions from the sidebar workspace card.
 - `docs/records/sessions/2026-03-02-workspace-file-remove-uniform-size.md`: Normalize workspace file-history remove button sizing so all `x` controls render at a consistent size.
 - `docs/records/sessions/2026-02-27-session-tools-copy-feedback.md`: Show visible in-modal confirmation after Session Tools copy actions.

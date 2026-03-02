@@ -64,6 +64,33 @@ Notes:
 - Terminal-owned sessions are attach-only; the UI hides delete for them.
 - Session listings include `cli` and `last_assistant_ts` to help the UI render resume commands and unread response indicators.
 
+## GitHub update check
+How users use it:
+The UI polls `GET /api/update` and shows an update prompt when the tracked GitHub branch has newer commits than local.
+
+Effect:
+The server runs short-timeout git commands (`ls-remote` + `rev-list`) and caches the result so frequent UI polling does not hit GitHub each time.
+
+Files:
+- `codoxear/server.py`
+- `codoxear/static/app.js`
+
+Key flow:
+1. Resolve tracking target from `CODEX_WEB_UPDATE_REMOTE` / `CODEX_WEB_UPDATE_BRANCH`, else infer from git upstream.
+2. Read local `HEAD` and remote branch head.
+3. Compare divergence counts and mark `update_available` when remote-only commits are present.
+4. Return compare URL for GitHub remotes.
+
+Call stack:
+1. `Handler.do_GET` for `/api/update`
+2. `_update_status`
+3. `_check_update_status_now`
+4. `_git_run`
+
+Notes:
+- Cache TTL: `CODEX_WEB_UPDATE_CHECK_TTL_SECONDS` (default `600`).
+- Per-git-command timeout: `CODEX_WEB_UPDATE_CHECK_TIMEOUT_SECONDS` (default `2.0`).
+
 ## Messaging API
 How users use it:
 The UI polls `/api/sessions/<id>/messages` and submits prompts with `/api/sessions/<id>/send`.

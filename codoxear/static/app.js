@@ -300,6 +300,8 @@
       }
 
       const FILE_AUTO_REFRESH_MS = 4000;
+      const UPDATE_CHECK_INTERVAL_MS = 120000;
+      const UPDATE_CHECK_START_DELAY_MS = 7000;
 
       function fmtBytes(n) {
         const v = Number(n);
@@ -948,6 +950,9 @@
 	        let pollFastUntilMs = 0;
 	        let turnOpen = false;
 	        let sessionsTimer = null;
+        let updateCheckTimer = null;
+        let updateCheckStartTimer = null;
+        let updateCheckInFlight = false;
 	        let currentRunning = false;
         let queueSaveTimer = null;
         const queueCacheBySession = new Map();
@@ -962,6 +967,9 @@
         const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
+        let updateAvailableUrl = "";
+        let updateAvailableCommit = "";
+        let updateNotifiedCommit = String(localStorage.getItem("codexweb.updateNotifiedCommit") || "");
         let sessionIndex = new Map(); // session_id -> session info
         let sessionCardIndex = new Map(); // session_id -> session card element
         function normalizeSessionName(name) {
@@ -1080,6 +1088,15 @@
         });
         const newBtn = el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") });
         const refreshBtn = el("button", { id: "refreshBtn", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") });
+        const updateBtn = el("button", {
+          id: "updateBtn",
+          class: "icon-btn text-btn",
+          title: "Update available",
+          "aria-label": "Update available",
+          type: "button",
+          text: "Update",
+        });
+        updateBtn.style.display = "none";
         const relayDot = el("span", { class: "dot", "aria-hidden": "true" });
         const relayLabel = el("span", { class: "label", text: "Relay" });
         const relayStatus = el("div", { class: "relayStatus off", id: "relayStatus", title: "Relay: Manual" }, [
@@ -1141,6 +1158,7 @@
               spawnCliBtn,
               newBtn,
               refreshBtn,
+              updateBtn,
             ]),
           ])
         );
@@ -1388,6 +1406,66 @@
           setTimeout(() => {
             if (toast.textContent === text) toast.textContent = "";
           }, 2200);
+        }
+
+        function shortCommit(raw) {
+          const s = String(raw || "").trim();
+          if (!/^[0-9a-f]{7,40}$/i.test(s)) return "";
+          return s.slice(0, 8).toLowerCase();
+        }
+
+        function setUpdateButtonVisible(visible) {
+          updateBtn.style.display = visible ? "inline-flex" : "none";
+        }
+
+        function renderUpdateButton({ available, remoteCommit, compareUrl }) {
+          if (!available) {
+            updateAvailableUrl = "";
+            updateAvailableCommit = "";
+            setUpdateButtonVisible(false);
+            return;
+          }
+          const short = shortCommit(remoteCommit);
+          updateAvailableCommit = typeof remoteCommit === "string" ? remoteCommit : "";
+          updateAvailableUrl = typeof compareUrl === "string" ? compareUrl : "";
+          updateBtn.textContent = short ? `Update ${short}` : "Update";
+          updateBtn.title = short ? `Update available (${short})` : "Update available";
+          updateBtn.setAttribute("aria-label", updateBtn.title);
+          setUpdateButtonVisible(true);
+        }
+
+        function clearUpdateTimers() {
+          if (updateCheckStartTimer) {
+            clearTimeout(updateCheckStartTimer);
+            updateCheckStartTimer = null;
+          }
+          if (updateCheckTimer) {
+            clearInterval(updateCheckTimer);
+            updateCheckTimer = null;
+          }
+        }
+
+        async function refreshUpdateStatus() {
+          if (updateCheckInFlight) return;
+          updateCheckInFlight = true;
+          try {
+            const data = await api("/api/update");
+            if (!data || data.ok !== true) return;
+            const available = Boolean(data.update_available);
+            const remoteCommit = typeof data.remote_commit === "string" ? data.remote_commit : "";
+            const compareUrl = typeof data.compare_url === "string" ? data.compare_url : "";
+            renderUpdateButton({ available, remoteCommit, compareUrl });
+            if (!available || !remoteCommit) return;
+            if (updateNotifiedCommit === remoteCommit) return;
+            updateNotifiedCommit = remoteCommit;
+            localStorage.setItem("codexweb.updateNotifiedCommit", remoteCommit);
+            const short = shortCommit(remoteCommit);
+            setToast(short ? `update available (${short})` : "update available");
+          } catch (e) {
+            console.error("update check failed", e);
+          } finally {
+            updateCheckInFlight = false;
+          }
         }
 
         function setPreferredSpawnCli(cli, { persist = true } = {}) {
@@ -4082,8 +4160,22 @@
         };
 
         $("#logoutBtnSide").onclick = async () => {
+          clearUpdateTimers();
           await api("/api/logout", { method: "POST" });
           renderLogin(renderApp);
+        };
+
+        updateBtn.onclick = () => {
+          if (updateAvailableUrl) {
+            window.open(updateAvailableUrl, "_blank", "noopener,noreferrer");
+            return;
+          }
+          if (updateAvailableCommit) {
+            const short = shortCommit(updateAvailableCommit);
+            setToast(short ? `update available (${short})` : "update available");
+            return;
+          }
+          setToast("already up to date");
         };
 
         duplicateBtn.onclick = async () => {
@@ -4496,12 +4588,22 @@
 	                if (e2 && e2.status === 401) {
 	                  if (sessionsTimer) clearInterval(sessionsTimer);
 	                  sessionsTimer = null;
+                    clearUpdateTimers();
 	                  renderLogin(renderApp);
 	                  return;
 	                }
 	                console.error("refreshSessions timer failed", e2);
 	              }
 	            }, 2500);
+
+              clearUpdateTimers();
+              updateCheckStartTimer = setTimeout(() => {
+                void refreshUpdateStatus();
+                updateCheckStartTimer = null;
+              }, UPDATE_CHECK_START_DELAY_MS);
+              updateCheckTimer = setInterval(() => {
+                void refreshUpdateStatus();
+              }, UPDATE_CHECK_INTERVAL_MS);
 	          }
 	        })();
       }

@@ -18,6 +18,7 @@ Pytest can still run the unittest suite if you install it, but it's optional:
 `python3 -m unittest tests.test_broker_spawn_env`
 `python3 -m unittest tests.test_idle_heuristics`
 `python3 -m unittest tests.test_server_spawn_cli`
+`python3 -m unittest tests.test_update_check`
 
 ## Notes
 - Tests rely on static fixtures and do not require a running broker.

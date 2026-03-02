@@ -31,6 +31,7 @@ All API routes require the `codoxear_auth` cookie unless noted.
 
 ## Metrics and hooks
 - `GET /api/metrics`  Returns timing metrics for API endpoints.
+- `GET /api/update`  Returns cached GitHub update status (`update_available`, commits, remote/branch, optional compare URL).
 - `POST /api/hooks/notify`  Minimal webhook endpoint for future extensions.
 
 ## Notes

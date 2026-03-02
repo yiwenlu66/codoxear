@@ -139,6 +139,10 @@ METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_WRITE_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_WRITE_MAX_BYTES", str(FILE_READ_MAX_BYTES)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
+UPDATE_CHECK_TTL_SECONDS = float(os.environ.get("CODEX_WEB_UPDATE_CHECK_TTL_SECONDS", "600"))
+UPDATE_CHECK_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_UPDATE_CHECK_TIMEOUT_SECONDS", "2.0"))
+UPDATE_CHECK_REMOTE = str(os.environ.get("CODEX_WEB_UPDATE_REMOTE", "")).strip()
+UPDATE_CHECK_BRANCH = str(os.environ.get("CODEX_WEB_UPDATE_BRANCH", "")).strip()
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain three live lists: Deliverables, Next actions, Parked questions.
@@ -194,8 +198,11 @@ def _normalize_queue_list(raw: list[Any]) -> list[str]:
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
+_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.I)
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
+_UPDATE_CHECK_LOCK = threading.Lock()
+_UPDATE_CHECK_CACHE: dict[str, Any] | None = None
 
 def _strip_ansi_sequences(text: str) -> str:
     out: list[str] = []
@@ -299,6 +306,195 @@ def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
             "max_ms": float(srt[-1]),
         }
     return out
+
+
+def _git_run(args: list[str], *, required: bool = True, timeout_s: float | None = None) -> str:
+    timeout = UPDATE_CHECK_TIMEOUT_SECONDS if timeout_s is None else float(timeout_s)
+    timeout = max(0.2, timeout)
+    repo_dir = Path(__file__).resolve().parent.parent
+    cmd = ["git", *args]
+    try:
+        res = subprocess.run(
+            cmd,
+            cwd=str(repo_dir),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError as e:
+        if required:
+            raise RuntimeError("git is not installed") from e
+        return ""
+    except subprocess.TimeoutExpired as e:
+        if required:
+            raise RuntimeError(f"git {' '.join(args)} timed out after {timeout:.1f}s") from e
+        return ""
+    if res.returncode != 0:
+        if required:
+            detail = (res.stderr or res.stdout or "").strip()
+            if detail:
+                raise RuntimeError(f"git {' '.join(args)} failed: {detail}")
+            raise RuntimeError(f"git {' '.join(args)} failed (rc={res.returncode})")
+        return ""
+    return (res.stdout or "").strip()
+
+
+def _parse_upstream_ref(raw: str) -> tuple[str, str] | None:
+    text = str(raw or "").strip()
+    if not text or text == "HEAD" or "/" not in text:
+        return None
+    remote, branch = text.split("/", 1)
+    remote = remote.strip()
+    branch = branch.strip()
+    if not remote or not branch:
+        return None
+    return remote, branch
+
+
+def _select_update_remote_branch(local_branch: str) -> tuple[str, str]:
+    remote = UPDATE_CHECK_REMOTE
+    branch = UPDATE_CHECK_BRANCH
+    if not (remote and branch):
+        upstream_raw = _git_run(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], required=False)
+        upstream = _parse_upstream_ref(upstream_raw)
+        if upstream is not None:
+            up_remote, up_branch = upstream
+            if not remote:
+                remote = up_remote
+            if not branch:
+                branch = up_branch
+    if not remote:
+        remote = "origin"
+    if not branch:
+        branch = local_branch
+    if not branch or branch == "HEAD":
+        branch = "main"
+    return remote, branch
+
+
+def _parse_ls_remote_head(raw: str, *, branch: str, remote: str) -> str:
+    target_ref = f"refs/heads/{branch}"
+    for line in str(raw or "").splitlines():
+        parts = line.strip().split()
+        if len(parts) < 2:
+            continue
+        sha, ref = parts[0], parts[1]
+        if ref != target_ref:
+            continue
+        if _GIT_SHA_RE.fullmatch(sha):
+            return sha.lower()
+    raise RuntimeError(f"remote branch not found: {remote}/{branch}")
+
+
+def _git_divergence(local_commit: str, remote_commit: str) -> tuple[int, int]:
+    raw = _git_run(["rev-list", "--left-right", "--count", f"{local_commit}...{remote_commit}"])
+    parts = raw.split()
+    if len(parts) < 2:
+        raise RuntimeError(f"unexpected rev-list output: {raw!r}")
+    try:
+        local_only = int(parts[0])
+        remote_only = int(parts[1])
+    except ValueError as e:
+        raise RuntimeError(f"unexpected rev-list output: {raw!r}") from e
+    return local_only, remote_only
+
+
+def _github_repo_base(remote_url: str) -> str | None:
+    raw = str(remote_url or "").strip()
+    if not raw:
+        return None
+    path = ""
+    if raw.startswith("git@github.com:"):
+        path = raw[len("git@github.com:") :]
+    elif raw.startswith("ssh://git@github.com/"):
+        path = raw[len("ssh://git@github.com/") :]
+    elif raw.startswith("https://github.com/"):
+        path = raw[len("https://github.com/") :]
+    elif raw.startswith("http://github.com/"):
+        path = raw[len("http://github.com/") :]
+    elif raw.startswith("git://github.com/"):
+        path = raw[len("git://github.com/") :]
+    else:
+        return None
+    path = path.strip().lstrip("/").rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    if "/" not in path:
+        return None
+    return f"https://github.com/{path}"
+
+
+def _github_compare_url(remote_url: str, local_commit: str, remote_commit: str) -> str | None:
+    base = _github_repo_base(remote_url)
+    if not base:
+        return None
+    return f"{base}/compare/{local_commit}...{remote_commit}"
+
+
+def _check_update_status_now() -> dict[str, Any]:
+    checked_at = int(time.time())
+    try:
+        _git_run(["rev-parse", "--is-inside-work-tree"])
+        local_commit = _git_run(["rev-parse", "HEAD"]).strip().lower()
+        if not _GIT_SHA_RE.fullmatch(local_commit):
+            raise RuntimeError(f"invalid local commit: {local_commit!r}")
+        local_branch = _git_run(["rev-parse", "--abbrev-ref", "HEAD"], required=False).strip() or "HEAD"
+        remote, branch = _select_update_remote_branch(local_branch)
+        remote_head_raw = _git_run(["ls-remote", "--heads", remote, branch])
+        remote_commit = _parse_ls_remote_head(remote_head_raw, branch=branch, remote=remote)
+        if remote_commit == local_commit:
+            local_only, remote_only = 0, 0
+        else:
+            try:
+                local_only, remote_only = _git_divergence(local_commit, remote_commit)
+            except Exception:
+                # The remote head object may not exist in the local object database
+                # yet (no fetch). A commit mismatch still means a newer remote state
+                # is visible from ls-remote, so surface it as update-available.
+                local_only, remote_only = 0, 1
+        remote_url = _git_run(["remote", "get-url", remote], required=False)
+        out: dict[str, Any] = {
+            "ok": True,
+            "checked_at": checked_at,
+            "update_available": bool(remote_only > 0),
+            "remote": remote,
+            "branch": branch,
+            "local_commit": local_commit,
+            "remote_commit": remote_commit,
+            "local_only_commits": int(local_only),
+            "remote_only_commits": int(remote_only),
+        }
+        compare_url = _github_compare_url(remote_url, local_commit, remote_commit)
+        if compare_url:
+            out["compare_url"] = compare_url
+        return out
+    except Exception as e:
+        return {
+            "ok": False,
+            "checked_at": checked_at,
+            "update_available": False,
+            "error": str(e),
+        }
+
+
+def _update_status(force: bool = False) -> dict[str, Any]:
+    global _UPDATE_CHECK_CACHE
+    now = float(time.time())
+    ttl = max(5.0, float(UPDATE_CHECK_TTL_SECONDS))
+    if not force:
+        with _UPDATE_CHECK_LOCK:
+            cached = _UPDATE_CHECK_CACHE
+            if isinstance(cached, dict):
+                ts = float(cached.get("ts", 0.0))
+                if ts > 0 and (now - ts) < ttl:
+                    data = cached.get("data")
+                    if isinstance(data, dict):
+                        return dict(data)
+    data = _check_update_status_now()
+    with _UPDATE_CHECK_LOCK:
+        _UPDATE_CHECK_CACHE = {"ts": now, "data": dict(data)}
+    return data
 
 
 def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: float = 1.5) -> None:
@@ -2307,6 +2503,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._unauthorized()
                     return
                 _json_response(self, 200, {"metrics": _metrics_snapshot()})
+                return
+
+            if path == "/api/update":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                force_raw = qs.get("force")
+                force = bool(force_raw and force_raw[0] == "1")
+                _json_response(self, 200, _update_status(force=force))
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/messages"):
