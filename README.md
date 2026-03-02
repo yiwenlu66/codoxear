@@ -139,6 +139,12 @@ Set these in `.env` (or in the process environment):
 
 Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 
+## Contributor branch flow
+
+Branch and sync policy for this fork is documented in:
+
+- `docs/flows/DEVELOPMENT.md`
+
 ## License
 
 MIT, see `LICENSE`.

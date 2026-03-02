@@ -61,3 +61,28 @@ This repository is actively edited by multiple people/agents at the same time. T
 - Keep edits minimal and scoped to the request so merges are easier.
 - If a new change appears in files you are also editing, pause and coordinate before proceeding.
 - Document assumptions and handoff notes clearly so parallel work can continue safely.
+
+## Branch policy (this fork)
+- `upstream/main` is the mainline baseline.
+- `origin/main` must stay aligned with `upstream/main`.
+- Day-to-day development goes to `dev` (`origin/dev`) or feature branches based on `dev`.
+- Do not merge feature branches directly into `main`.
+
+## Branch recovery flow
+If `main` accidentally receives development commits:
+
+1. Move dev forward to keep the work:
+   - `git checkout dev`
+   - `git merge --ff-only <bad-main-or-feature-tip>`
+   - `git push origin dev`
+2. Realign main to upstream:
+   - `git checkout main`
+   - `git fetch upstream --prune`
+   - `git reset --hard upstream/main`
+   - `git push --force-with-lease origin main`
+3. Verify alignment:
+   - `git rev-list --left-right --count upstream/main...main` must be `0 0`
+4. Optional cleanup:
+   - Delete merged feature branches locally and on `origin`.
+
+See `docs/flows/DEVELOPMENT.md` for the complete branch-sync checklist.

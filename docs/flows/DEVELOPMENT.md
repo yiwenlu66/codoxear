@@ -41,6 +41,39 @@ Runtime state directory:
 Status helper (SSH-friendly):
 `scripts/codoxear-status --web --last`
 
+## Branch model (this fork)
+- `upstream/main`: source-of-truth mainline.
+- `origin/main`: mirror of `upstream/main`; keep aligned.
+- `dev` / `origin/dev`: integration branch for ongoing work.
+- `feature/*`: short-lived branches based on `dev`.
+
+## Normal branch workflow
+1. Sync remotes first:
+   - `git fetch origin --prune`
+   - `git fetch upstream --prune`
+2. Start from `dev`:
+   - `git checkout dev`
+   - `git pull --ff-only origin dev`
+   - `git checkout -b feature/<topic>`
+3. Merge finished work back into `dev` and push:
+   - Prefer fast-forward when possible.
+   - `git push origin dev`
+4. Keep `main` aligned with `upstream/main` (do not merge feature/dev directly into `main`).
+
+## Recovery when `main` is accidentally advanced
+1. Preserve work on `dev`:
+   - `git checkout dev`
+   - `git merge --ff-only <main-or-feature-tip>`
+   - `git push origin dev`
+2. Realign `main` to upstream:
+   - `git checkout main`
+   - `git fetch upstream --prune`
+   - `git reset --hard upstream/main`
+   - `git push --force-with-lease origin main`
+3. Verify:
+   - `git rev-list --left-right --count upstream/main...main`
+   - Expected output: `0 0`
+
 ## Documentation sync rules
 - When changing or adding a feature, update the corresponding feature doc.
 - When changing API or auth rules, update `docs/features/ROUTES.md`.
