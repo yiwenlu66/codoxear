@@ -3,6 +3,7 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-session-cli-logo-color-fix.md`: Fix Codex sidebar logo color by replacing monochrome `currentColor` asset with a colored transparent variant.
 - `docs/records/sessions/2026-03-02-session-cli-logo-transparent.md`: Make sidebar session CLI logos transparent by removing chip white background/border and replacing the Codex logo asset with a transparent variant.
 - `docs/records/sessions/2026-03-02-session-cli-logos.md`: Add visible CLI logos in the sidebar session list so users can distinguish Codex/Claude/Gemini sessions at a glance.
 - `docs/records/sessions/2026-03-02-gemini-branch-merge-cleanup.md`: Merge `feature/gemini-support` into `dev`, switch supervisord runtime to `/root/code/codoxear`, restart service, and remove the temporary feature worktree/branch.
