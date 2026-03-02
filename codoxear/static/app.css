@@ -143,6 +143,12 @@
         gap: 10px;
         min-width: 0;
       }
+      .workspaceTitleActions {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
       .workspaceTitle {
         font-weight: 650;
         font-size: 13px;
@@ -160,6 +166,13 @@
       .workspaceMeta {
         font-size: 11px;
         flex: 0 0 auto;
+      }
+      .workspaceClose {
+        height: 24px;
+        padding: 0 8px;
+        font-size: 11px;
+        line-height: 1;
+        border-radius: 8px;
       }
       .workspaceFiles {
         display: flex;
@@ -191,12 +204,16 @@
       }
       .workspaceFileRow {
         display: flex;
-        align-items: stretch;
+        align-items: center;
         gap: 6px;
+        min-height: 30px;
       }
       .workspaceFile {
+        display: inline-flex;
+        align-items: center;
         text-align: left;
-        padding: 6px 8px;
+        min-height: 30px;
+        padding: 0 8px;
         border-radius: 8px;
         font-size: 12px;
         line-height: 1.2;
@@ -213,12 +230,14 @@
         background: rgba(15, 23, 42, 0.04);
       }
       .workspaceFileRemove {
+        flex: 0 0 24px;
         width: 24px;
-        height: auto;
-        min-height: 0;
+        height: 30px;
+        min-height: 30px;
+        max-height: 30px;
         padding: 0;
         border-radius: 8px;
-        align-self: stretch;
+        align-self: center;
       }
       .workspaceFileRemove .icon {
         width: 12px;
@@ -1213,6 +1232,19 @@ input[type="text"] {
         align-items: center;
         justify-content: space-between;
         gap: 10px;
+      }
+      .sessionToolsNotice {
+        min-height: 18px;
+        font-size: 12px;
+      }
+      .sessionToolsNotice:empty {
+        display: none;
+      }
+      .sessionToolsNotice[data-kind="success"] {
+        color: #15803d;
+      }
+      .sessionToolsNotice[data-kind="error"] {
+        color: #b91c1c;
       }
       .sessionToolRow {
         display: flex;

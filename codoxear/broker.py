@@ -437,6 +437,21 @@ def _should_idle_fallback_release_queue(st: "State", now_ts: float) -> bool:
     )
 
 
+def _should_idle_fallback_clear_busy_without_queue(st: "State", now_ts: float) -> bool:
+    # Claude may not always emit explicit turn-end markers; allow a conservative
+    # quiet-window close for non-queued turns so "running" can return to idle.
+    if CLI_KIND != "claude":
+        return False
+    if st.queue or st.key_queue:
+        return False
+    return _should_clear_busy_state(
+        st,
+        now_ts,
+        ignore_queue=True,
+        quiet_seconds=IDLE_TURN_END_QUIET_SECONDS,
+    )
+
+
 def _should_clear_busy_state(
     st: "State",
     now_ts: float,
@@ -909,9 +924,12 @@ class Broker:
                 should_drain = False
                 with self._lock:
                     st3 = self.state
-                    if st3 and _should_idle_fallback_release_queue(st3, now_ts):
-                        _close_turn_state(st3, mark_end=True)
-                        should_drain = bool(st3.queue or st3.key_queue)
+                    if st3:
+                        if _should_idle_fallback_release_queue(st3, now_ts):
+                            _close_turn_state(st3, mark_end=True)
+                            should_drain = bool(st3.queue or st3.key_queue)
+                        elif _should_idle_fallback_clear_busy_without_queue(st3, now_ts):
+                            _close_turn_state(st3, mark_end=True)
                 if should_drain:
                     self._drain_queue_once()
 

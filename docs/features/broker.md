@@ -59,7 +59,8 @@ Notes:
 - `send` injects directly; queued messages use the `queue` command instead.
 - Queue items are gate-tagged and released one at a time after their required turn-end marker.
 - Idle fallback can synthesize a turn end when a queued item is pending, the turn has a completion candidate, and output remains quiet.
-- Quiet idle fallback is queue-only; without queued items, busy/idle transitions rely on explicit turn-end markers.
+- For Codex, quiet idle fallback is queue-only; without queued items, busy/idle transitions rely on explicit turn-end markers.
+- For Claude, if no explicit turn-end marker arrives, the broker also allows a conservative quiet-window fallback to clear `busy` for non-queued turns after a completion candidate.
 - Enter sequence is configurable with `CODEX_WEB_ENTER_SEQ`.
 
 ## Rollout log discovery and busy/idle state

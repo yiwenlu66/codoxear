@@ -3,6 +3,11 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-workspace-close-action.md`: Add a workspace-level close action that batch-deletes web-owned sessions from the sidebar workspace card.
+- `docs/records/sessions/2026-03-02-workspace-file-remove-uniform-size.md`: Normalize workspace file-history remove button sizing so all `x` controls render at a consistent size.
+- `docs/records/sessions/2026-02-27-session-tools-copy-feedback.md`: Show visible in-modal confirmation after Session Tools copy actions.
+- `docs/records/sessions/2026-02-27-send-after-preserve-input.md`: Keep composer text when `Send after current` queueing fails and bind queue action to the intended session.
+- `docs/records/sessions/2026-02-27-claude-busy-stop-detection.md`: Fix Claude busy/idle stop detection so running state can clear without explicit turn-end markers.
 - `docs/records/sessions/2026-02-27-claude-log-bind-and-pending-fix.md`: Fix Claude web-session reply path (auth/env + log binding) and keep pending user echoes when switching sessions.
 - `docs/records/sessions/2026-02-27-queue-turn-end-gating.md`: Gate queue release on turn-end markers and harden idle fallback against commentary-phase false idles.
 - `docs/records/sessions/2026-02-27-claude-code-support.md`: Add first-class Claude Code CLI support alongside Codex (broker/server/ui/log parsing/resume helper).

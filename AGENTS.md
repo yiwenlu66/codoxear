@@ -52,3 +52,12 @@ At the end of each conversation, if this round is debug or development, provide 
 - Self-review and risks noted
 - Tests run or an explicit reason for skipping
 - Relevant comments or docs updated
+
+## Concurrent collaboration
+This repository is actively edited by multiple people/agents at the same time. Treat concurrent changes as normal and collaborate accordingly.
+
+- Check `git status` before and after edits to understand what changed during your task.
+- Do not revert or overwrite unrelated in-flight changes from other contributors.
+- Keep edits minimal and scoped to the request so merges are easier.
+- If a new change appears in files you are also editing, pause and coordinate before proceeding.
+- Document assumptions and handoff notes clearly so parallel work can continue safely.

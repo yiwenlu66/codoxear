@@ -1324,6 +1324,7 @@
           html: iconSvg("x"),
         });
         const sessionToolsMeta = el("div", { class: "muted", id: "sessionToolsMeta", text: "No session selected." });
+        const sessionToolsNotice = el("div", { class: "muted sessionToolsNotice", id: "sessionToolsNotice", text: "" });
         const sessionStatusCmd = el("code", { class: "sessionToolCmd", id: "sessionStatusCmd", text: "" });
         const sessionResumeCmd = el("code", { class: "sessionToolCmd", id: "sessionResumeCmd", text: "" });
         const sessionTmuxCmd = el("code", { class: "sessionToolCmd", id: "sessionTmuxCmd", text: "" });
@@ -1359,6 +1360,7 @@
             el("div", { class: "actions" }, [sessionToolsCloseBtn]),
           ]),
           sessionToolsMeta,
+          sessionToolsNotice,
           el("div", { class: "sessionToolRow" }, [
             el("div", { class: "sessionToolLabel muted", text: "Status (SSH)" }),
             el("div", { class: "sessionToolCmdRow" }, [sessionStatusCmd, statusCopyBtn]),
@@ -1401,6 +1403,23 @@
         let sessionToolsOpen = false;
         let sessionTailTimer = null;
         let sessionTailInFlight = false;
+        let sessionToolsNoticeTimer = null;
+        function setSessionToolsNotice(text, { kind = "", ttlMs = 2200 } = {}) {
+          if (sessionToolsNoticeTimer) {
+            clearTimeout(sessionToolsNoticeTimer);
+            sessionToolsNoticeTimer = null;
+          }
+          const msg = String(text || "");
+          sessionToolsNotice.textContent = msg;
+          if (kind) sessionToolsNotice.setAttribute("data-kind", kind);
+          else sessionToolsNotice.removeAttribute("data-kind");
+          if (!msg) return;
+          sessionToolsNoticeTimer = setTimeout(() => {
+            if (sessionToolsNotice.textContent !== msg) return;
+            sessionToolsNotice.textContent = "";
+            sessionToolsNotice.removeAttribute("data-kind");
+          }, Math.max(0, Number(ttlMs) || 0));
+        }
         function copyToClipboard(raw) {
           const text = String(raw || "");
           if (!text) return Promise.resolve(false);
@@ -1430,6 +1449,7 @@
           const sid = selected;
           if (!sid) {
             sessionToolsMeta.textContent = "No session selected.";
+            setSessionToolsNotice("");
             sessionStatusCmd.textContent = "";
             sessionResumeCmd.textContent = "";
             sessionTmuxCmd.textContent = "";
@@ -1443,6 +1463,7 @@
           const s = sessionIndex.get(sid);
           const name = s ? sessionTitleWithId(s) : sid;
           sessionToolsMeta.textContent = `${name} (${sid})`;
+          setSessionToolsNotice("");
           sessionStatusCmd.textContent = `scripts/codoxear-status --id ${sid}`;
           sessionResumeCmd.textContent = resumeCommandForSession(sid, s);
           statusCopyBtn.disabled = false;
@@ -1496,6 +1517,7 @@
           }
           sessionToolsOpen = true;
           updateSessionToolsContent();
+          setSessionToolsNotice("");
           sessionTailStatus.textContent = "Loading...";
           sessionToolsBackdrop.style.display = "block";
           sessionTools.style.display = "flex";
@@ -1504,6 +1526,7 @@
         function hideSessionTools() {
           sessionToolsOpen = false;
           stopSessionTail();
+          setSessionToolsNotice("");
           sessionToolsBackdrop.style.display = "none";
           sessionTools.style.display = "none";
         }
@@ -2148,13 +2171,13 @@
           maybeRefreshQueueList();
         }
 
-        async function queueServerMessage(raw, { front = false } = {}) {
-          const sid = selected;
+        async function queueServerMessage(raw, { front = false, sid: sidOverride = null } = {}) {
+          const sid = sidOverride || selected;
           if (!sid) {
             setToast("select a session first");
-            return;
+            return false;
           }
-          if (!raw || !raw.trim()) return;
+          if (!raw || !raw.trim()) return false;
           try {
             setToast("queueing...");
             const res = await api(`/api/sessions/${sid}/queue`, { method: "POST", body: { text: raw, front: Boolean(front) } });
@@ -2166,8 +2189,10 @@
               if (queueViewer.style.display === "flex" && !queueEditorActive()) renderQueueList();
             }
             setToast(count ? `queued (queue ${count})` : "queued");
+            return true;
           } catch (e) {
             setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
+            return false;
           }
         }
 
@@ -2497,6 +2522,20 @@
           return out;
         }
 
+        function workspaceOwnedSessionIds(ws) {
+          const out = [];
+          const seen = new Set();
+          const sessions = ws && Array.isArray(ws.sessions) ? ws.sessions : [];
+          for (const s of sessions) {
+            if (!s || !s.owned) continue;
+            const sid = s.session_id ? String(s.session_id) : "";
+            if (!sid || seen.has(sid)) continue;
+            seen.add(sid);
+            out.push(sid);
+          }
+          return out;
+        }
+
         function collectWorkspaceFiles(ws) {
           const out = [];
           const seen = new Set();
@@ -2593,6 +2632,77 @@
             setToast("cleared");
           } catch (e) {
             setToast(`clear error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+        }
+
+        async function closeWorkspace(ws) {
+          const allSids = workspaceSessionIds(ws);
+          if (!allSids.length) {
+            setToast("session unavailable");
+            return;
+          }
+          const ownedSids = workspaceOwnedSessionIds(ws);
+          if (!ownedSids.length) {
+            setToast("no web-owned sessions to close");
+            return;
+          }
+          const skippedCount = Math.max(0, allSids.length - ownedSids.length);
+          const ownedLabel = ownedSids.length === 1 ? "session" : "sessions";
+          const skippedLabel = skippedCount === 1 ? "session" : "sessions";
+          let confirmText = `Close workspace and delete ${ownedSids.length} web-owned ${ownedLabel}?`;
+          if (skippedCount > 0) confirmText += ` ${skippedCount} non-web ${skippedLabel} will remain.`;
+          if (!confirm(confirmText)) return;
+          try {
+            const requests = ownedSids.map((sid) => api(`/api/sessions/${sid}/delete`, { method: "POST", body: {} }));
+            const results = await Promise.allSettled(requests);
+            const deletedSids = [];
+            let firstErr = null;
+            for (let i = 0; i < results.length; i++) {
+              const res = results[i];
+              const sid = ownedSids[i];
+              if (res.status === "fulfilled") {
+                deletedSids.push(sid);
+              } else if (!firstErr) {
+                firstErr = res.reason;
+              }
+            }
+            for (const sid of deletedSids) {
+              clearCache(sid);
+              clearQueueForSession(sid);
+              clearPendingForSession(sid);
+              clearDraftForSession(sid);
+              clearSeenAssistantForSession(sid);
+              clearUserSummaryForSession(sid);
+            }
+            if (selected && deletedSids.includes(selected)) {
+              selected = null;
+              offset = 0;
+              activeLogPath = null;
+              activeThreadId = null;
+              turnOpen = false;
+              localStorage.removeItem("codexweb.selected");
+              titleLabel.textContent = "No session selected";
+              setStatus({ running: false, queueLen: 0 });
+              setContext(null);
+              setTyping(false);
+              setAttachCount(0);
+              resetChatRenderState();
+              updateQueueBadge();
+              updateActionBtnState();
+            }
+            await refreshSessions();
+            if (!deletedSids.length) throw firstErr || new Error("failed to close workspace");
+            const failedCount = ownedSids.length - deletedSids.length;
+            if (!failedCount && !skippedCount) {
+              setToast("workspace closed");
+              return;
+            }
+            const details = [`closed ${deletedSids.length}`];
+            if (failedCount) details.push(`${failedCount} failed`);
+            if (skippedCount) details.push(`${skippedCount} non-web`);
+            setToast(details.join(", "));
+          } catch (e) {
+            setToast(`close error: ${e && e.message ? e.message : "unknown error"}`);
           }
         }
 
@@ -2775,10 +2885,24 @@
             for (const ws of workspaces) {
               const title = workspaceTitleParts(ws.cwd);
               const countLabel = `${ws.sessions.length} session${ws.sessions.length === 1 ? "" : "s"}`;
+              const closeBtn = el("button", {
+                class: "workspaceClose danger",
+                type: "button",
+                text: "Close",
+                title: "Close workspace (delete web-owned sessions)",
+                "aria-label": "Close workspace",
+              });
+              closeBtn.disabled = workspaceOwnedSessionIds(ws).length < 1;
+              bindTap(closeBtn, () => {
+                void closeWorkspace(ws);
+              });
               const header = el("div", { class: "workspaceHeader" }, [
                 el("div", { class: "workspaceTitleRow" }, [
                   el("div", { class: "workspaceTitle", text: title.title, title: ws.cwd || "Unknown cwd" }),
-                  el("div", { class: "workspaceMeta muted", text: countLabel }),
+                  el("div", { class: "workspaceTitleActions" }, [
+                    el("div", { class: "workspaceMeta muted", text: countLabel }),
+                    closeBtn,
+                  ]),
                 ]),
                 title.subtitle ? el("div", { class: "workspacePath muted", text: title.subtitle, title: title.subtitle }) : null,
               ].filter(Boolean));
@@ -3755,12 +3879,13 @@
             await sendText(raw);
           };
         if (sendChoiceLaterBtn)
-          sendChoiceLaterBtn.onclick = () => {
+          sendChoiceLaterBtn.onclick = async () => {
             const raw = sendChoicePending;
+            const sid = selected;
             hideSendChoice();
-            if (!raw) return;
-            clearComposer();
-            void queueServerMessage(raw);
+            if (!raw || !sid) return;
+            const ok = await queueServerMessage(raw, { sid });
+            if (ok) clearComposer(sid);
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
@@ -3850,19 +3975,25 @@
           e.preventDefault();
           e.stopPropagation();
           const ok = await copyToClipboard(sessionStatusCmd.textContent || "");
-          setToast(ok ? "status command copied" : "copy failed");
+          const msg = ok ? "status command copied" : "copy failed";
+          setToast(msg);
+          setSessionToolsNotice(msg, { kind: ok ? "success" : "error" });
         };
         resumeCopyBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
           const ok = await copyToClipboard(sessionResumeCmd.textContent || "");
-          setToast(ok ? "resume command copied" : "copy failed");
+          const msg = ok ? "resume command copied" : "copy failed";
+          setToast(msg);
+          setSessionToolsNotice(msg, { kind: ok ? "success" : "error" });
         };
         tmuxCopyBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
           const ok = await copyToClipboard(sessionTmuxCmd.textContent || "");
-          setToast(ok ? "tmux command copied" : "copy failed");
+          const msg = ok ? "tmux command copied" : "copy failed";
+          setToast(msg);
+          setSessionToolsNotice(msg, { kind: ok ? "success" : "error" });
         };
         spawnCliBtn.onclick = (e) => {
           e.preventDefault();
@@ -4258,12 +4389,13 @@
 		          imgInput.value = "";
 		        });
 
-        function clearComposer() {
+        function clearComposer(sid = selected) {
           const ta = $("#msg");
-          if (!ta) return;
-          ta.value = "";
-          autoGrow();
-          if (selected) saveDraftToStorage(selected, "");
+          if (ta && sid && sid === selected) {
+            ta.value = "";
+            autoGrow();
+          }
+          if (sid) saveDraftToStorage(sid, "");
         }
 
         async function sendText(raw) {

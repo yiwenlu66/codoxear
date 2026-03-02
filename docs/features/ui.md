@@ -30,6 +30,8 @@ Notes:
 - Refresh shows a brief toast confirmation on success.
 - Sessions are grouped into workspaces by `cwd`, with each workspace showing the sessions and the files opened under that working directory.
 - Workspace file history rows include per-file remove buttons and a clear action; both clear entries across all sessions in the workspace so the list stays in sync.
+- Workspace file history rows use a consistent 30px row/button height so the remove `x` control stays visually uniform.
+- Workspace headers include a `Close` action that batch-deletes web-owned sessions in that workspace; non-web sessions are kept and reported as skipped.
 - Session badges (busy/queue/unread) are rendered in a dedicated inline-flex container to avoid Safari layout quirks with the unread dot.
 - Sessions with saved drafts show a yellow `draft` indicator in place of the last user summary line.
 - Each session row shows a one-line summary of the most recent user message, cached in `localStorage`.
@@ -59,6 +61,7 @@ Notes:
 - Pending local echoes are tracked per session, so switching sessions no longer drops unsynced user bubbles.
 - Queued messages are shown in the queue viewer (not as chat bubbles) until they are drained and logged.
 - Queued messages are stored server-side via `/api/sessions/<id>/queue`, so they continue even if the browser closes. The broker releases one queued message after each turn end (or idle fallback) to avoid interrupting active replies.
+- In the send-choice dialog, `Send after current` clears the composer only after queue push succeeds; if queue push fails, the text stays in the composer.
 - The queued-message editor skips list re-renders while a queue textarea is focused to prevent IME interruptions; the list refreshes once focus leaves.
 - Composer drafts are stored per session in `localStorage` and restored when switching sessions.
 

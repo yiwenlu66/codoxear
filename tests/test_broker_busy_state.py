@@ -1,12 +1,18 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from codoxear.broker import (
     BUSY_INTERRUPT_GRACE_SECONDS,
     BUSY_QUIET_SECONDS,
+    IDLE_TURN_END_QUIET_SECONDS,
     State,
     _apply_rollout_obj_to_state,
     _maybe_detach_on_new_session_hint,
+    _queue_item_ready,
+    _queue_release_gate_for_now,
+    _should_idle_fallback_clear_busy_without_queue,
+    _should_idle_fallback_release_queue,
     _should_clear_busy_state,
     _update_busy_from_pty_text,
 )
@@ -212,6 +218,122 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertFalse(st.turn_has_completion_candidate)
         self.assertEqual(st.pending_calls, set())
         self.assertEqual(st.last_turn_activity_ts, 0.0)
+        self.assertEqual(st.turn_end_count, 1)
+
+    def test_duplicate_turn_end_marker_does_not_double_count(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.last_turn_activity_ts = 10.0
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+            now_ts=11.0,
+        )
+        self.assertEqual(st.turn_end_count, 1)
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+            now_ts=12.0,
+        )
+        self.assertEqual(st.turn_end_count, 1)
+
+    def test_commentary_phase_is_not_completion_candidate(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "working", "phase": "commentary"}},
+            now_ts=11.0,
+        )
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertFalse(
+            _should_clear_busy_state(
+                st,
+                now_ts=11.0 + IDLE_TURN_END_QUIET_SECONDS + 0.2,
+                quiet_seconds=IDLE_TURN_END_QUIET_SECONDS,
+            )
+        )
+
+    def test_final_phase_marks_completion_candidate(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "done", "phase": "final_answer"}},
+            now_ts=11.0,
+        )
+        self.assertTrue(st.turn_has_completion_candidate)
+
+    def test_queue_gate_waits_for_turn_end_or_idle_fallback(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+            now_ts=10.0,
+        )
+        gate = _queue_release_gate_for_now(st)
+        self.assertEqual(gate, 1)
+        self.assertFalse(_queue_item_ready(st, gate, now_ts=10.0 + IDLE_TURN_END_QUIET_SECONDS + 0.5))
+
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "agent_message", "message": "done", "phase": "final_answer"}},
+            now_ts=11.0,
+        )
+        self.assertFalse(_queue_item_ready(st, gate, now_ts=11.0 + max(IDLE_TURN_END_QUIET_SECONDS - 0.1, 0.0)))
+        self.assertTrue(_queue_item_ready(st, gate, now_ts=11.0 + IDLE_TURN_END_QUIET_SECONDS + 0.1))
+
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "event_msg", "payload": {"type": "task_complete"}},
+            now_ts=12.0,
+        )
+        self.assertTrue(_queue_item_ready(st, gate, now_ts=12.0))
+
+    def test_idle_fallback_release_requires_non_empty_queue(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = True
+        st.last_turn_activity_ts = 10.0
+        self.assertFalse(_should_idle_fallback_release_queue(st, now_ts=10.0 + IDLE_TURN_END_QUIET_SECONDS + 1.0))
+        st.queue.append("next")
+        self.assertTrue(_should_idle_fallback_release_queue(st, now_ts=10.0 + IDLE_TURN_END_QUIET_SECONDS + 1.0))
+
+    def test_claude_non_queue_idle_fallback_can_clear_busy(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = True
+        st.last_turn_activity_ts = 10.0
+        with patch("codoxear.broker.CLI_KIND", "claude"):
+            self.assertTrue(
+                _should_idle_fallback_clear_busy_without_queue(
+                    st, now_ts=10.0 + IDLE_TURN_END_QUIET_SECONDS + 0.2
+                )
+            )
+
+    def test_non_claude_non_queue_idle_fallback_does_not_clear_busy(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = True
+        st.turn_has_completion_candidate = True
+        st.last_turn_activity_ts = 10.0
+        with patch("codoxear.broker.CLI_KIND", "codex"):
+            self.assertFalse(
+                _should_idle_fallback_clear_busy_without_queue(
+                    st, now_ts=10.0 + IDLE_TURN_END_QUIET_SECONDS + 0.2
+                )
+            )
 
     def test_reasoning_item_can_mark_busy_without_user_message(self) -> None:
         st = _state()
