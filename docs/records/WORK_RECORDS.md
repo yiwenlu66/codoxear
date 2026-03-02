@@ -3,6 +3,7 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-gemini-branch-merge-cleanup.md`: Merge `feature/gemini-support` into `dev`, switch supervisord runtime to `/root/code/codoxear`, restart service, and remove the temporary feature worktree/branch.
 - `docs/records/sessions/2026-03-02-gemini-thinking-idle-false-positive.md`: Prevent Gemini long-thinking phases from being misclassified as idle by avoiding turn-end on thinking-only rows.
 - `docs/records/sessions/2026-03-02-gemini-all-approve-mode.md`: Configure Codoxear web-owned Gemini sessions to run with all-approve mode via `GEMINI_BIN` wrapper under supervisord.
 - `docs/records/sessions/2026-03-02-gemini-busy-stop-detection.md`: Fix Gemini sessions stuck in busy state after replies by correcting log offsets and turn-end handling.
