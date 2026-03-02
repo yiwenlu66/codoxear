@@ -9,7 +9,7 @@ All API routes require the `codoxear_auth` cookie unless noted.
 
 ## Sessions
 - `GET /api/sessions`  Lists session metadata and status (includes `cli`).
-- `POST /api/sessions`  Body: `{ "cwd": "...", "args": ["..."], "cli": "codex|claude" }`  Spawns a web-owned session.
+- `POST /api/sessions`  Body: `{ "cwd": "...", "args": ["..."], "cli": "codex|claude|gemini" }`  Spawns a web-owned session.
 - `POST /api/sessions/<id>/delete`  Deletes a web-owned session.
 
 ## Messaging

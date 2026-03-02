@@ -128,6 +128,20 @@ class TestServerSpawnCli(unittest.TestCase):
         self.assertTrue(bool(env.get("CODEX_HOME")))
         self.assertTrue(bool(env.get("CODEX_BIN")))
 
+    def test_spawn_web_session_sets_gemini_env(self) -> None:
+        mgr = self._mgr()
+        with patch("codoxear.server._env_flag", return_value=False), patch(
+            "codoxear.server._wait_or_raise", return_value=None
+        ), patch("codoxear.server.subprocess.Popen", return_value=_DummyProc(6543)) as popen:
+            res = mgr.spawn_web_session(cwd="/tmp", cli="gemini")
+
+        self.assertEqual(res.get("broker_pid"), 6543)
+        self.assertEqual(res.get("cli"), "gemini")
+        env = popen.call_args.kwargs["env"]
+        self.assertEqual(env.get("CODEX_WEB_CLI"), "gemini")
+        self.assertTrue(bool(env.get("GEMINI_HOME")))
+        self.assertTrue(bool(env.get("GEMINI_BIN")))
+
     def test_spawn_web_session_rejects_unknown_cli(self) -> None:
         mgr = self._mgr()
         with self.assertRaises(ValueError):

@@ -1,9 +1,9 @@
 # Deployment
 
-Codoxear is a single-process server intended to run on the same machine as Codex/Claude CLI. In this deployment, the server is exposed to the public internet (direct port forward or reverse proxy). It does not provide TLS.
+Codoxear is a single-process server intended to run on the same machine as Codex/Claude/Gemini CLI. In this deployment, the server is exposed to the public internet (direct port forward or reverse proxy). It does not provide TLS.
 
 ## Production environment (this host)
-In this project, "production" refers to the service running on this host (the same machine that runs Codex/Claude CLI), not a separate environment.
+In this project, "production" refers to the service running on this host (the same machine that runs Codex/Claude/Gemini CLI), not a separate environment.
 
 ## Minimal deployment (public access)
 1. Set `CODEX_WEB_PASSWORD` in `.env` (loaded from the server working directory) or the environment.
@@ -11,6 +11,7 @@ In this project, "production" refers to the service running on this host (the sa
 3. Start sessions with `codoxear-broker` and select CLI via `CODEX_WEB_CLI`:
    - `CODEX_WEB_CLI=codex codoxear-broker -- <codex args>`
    - `CODEX_WEB_CLI=claude codoxear-broker -- <claude args>`
+   - `CODEX_WEB_CLI=gemini codoxear-broker -- <gemini args>`
 4. Expose the configured port (this host currently uses `13780`) to the internet (or proxy it) and visit `http://<public-host>:<port>/` (or your HTTPS proxy URL).
 
 ## Network security
@@ -45,16 +46,32 @@ Common commands:
 - `supervisorctl start codoxear`
 - `supervisorctl stop codoxear`
 
+## Gemini all-approve mode (this host)
+To run web-owned Gemini sessions in "all approve" mode without changing app code:
+
+1. Create wrapper script:
+   - `/usr/local/bin/gemini-web`:
+   - `#!/usr/bin/env bash`
+   - `exec gemini --approval-mode yolo "$@"`
+2. `chmod +x /usr/local/bin/gemini-web`
+3. Add `GEMINI_BIN="/usr/local/bin/gemini-web"` to the `codoxear` `environment=` line in `/mlplatform/supervisord/supervisord.conf`.
+4. Apply and restart:
+   - `supervisorctl reread`
+   - `supervisorctl update`
+   - `supervisorctl restart codoxear`
+
+As of 2026-03-02, this host uses exactly this wrapper + env pattern.
+
 As of 2026-02-27, `systemctl` on this host reports the system is not booted with `systemd` as PID 1, so `systemd` units are not the active service manager here.
 
 ## Fixed startup (manual fallback)
 Use `scripts/codoxear-server-dev` when you need a foreground/manual run from the repo root.
 
 ## This host (observed)
-As of 2026-02-27, the running server process is managed by `supervisord` and started from `/root/code/codoxear`, so `.env` is read from `/root/code/codoxear/.env`.
+As of 2026-03-02, the running server process is managed by `supervisord` and started from `/root/code/codoxear-gemini`, so `.env` is read from `/root/code/codoxear-gemini/.env`.
 
 ## Env file location (this host)
-- `/root/code/codoxear/.env` (because the server is running from `/root/code/codoxear`).
+- `/root/code/codoxear-gemini/.env` (because the server is running from `/root/code/codoxear-gemini`).
 
 ## Operational notes
 - Terminal-owned sessions are attach-only and cannot be killed via the UI.

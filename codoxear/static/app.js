@@ -346,6 +346,7 @@
 
       function normalizeCliName(raw, fallback = "codex") {
         const v = String(raw || "").trim().toLowerCase();
+        if (v === "gemini" || v === "google-gemini" || v === "gemini-cli" || v === "gemini_cli") return "gemini";
         if (v === "claude" || v === "claude-code" || v === "claude_code") return "claude";
         if (v === "codex" || v === "openai-codex" || v === "codex-cli") return "codex";
         return fallback;
@@ -357,12 +358,16 @@
 
       function resumeCommandForSession(sid, session) {
         const cli = sessionCliName(session);
+        if (cli === "gemini") return `gemini --resume ${sid}`;
         if (cli === "claude") return `claude --resume ${sid}`;
         return `codex resume ${sid}`;
       }
 
       function cliDisplayName(cli) {
-        return normalizeCliName(cli, "codex") === "claude" ? "Claude" : "Codex";
+        const v = normalizeCliName(cli, "codex");
+        if (v === "gemini") return "Gemini";
+        if (v === "claude") return "Claude";
+        return "Codex";
       }
 
       function sessionDisplayName(s) {
@@ -4076,7 +4081,9 @@
         spawnCliBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const next = preferredSpawnCli === "claude" ? "codex" : "claude";
+          const options = ["codex", "claude", "gemini"];
+          const curIdx = Math.max(0, options.indexOf(preferredSpawnCli));
+          const next = options[(curIdx + 1) % options.length];
           setPreferredSpawnCli(next);
           setToast(`new session CLI: ${cliDisplayName(next)}`);
         };
@@ -4121,7 +4128,7 @@
           }
           const cliName = normalizeCliName(cli, "");
           if (!cliName) {
-            setToast("invalid cli (use codex or claude)");
+            setToast("invalid cli (use codex, claude, or gemini)");
             return null;
           }
           try {

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from codoxear.server import _compute_idle_from_log
 
@@ -159,6 +161,48 @@ class TestIdleHeuristics(unittest.TestCase):
                 ],
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_gemini_chat_json_with_assistant_reply_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            gem_home = Path(td) / ".gemini"
+            chats = gem_home / "tmp" / "proj" / "chats"
+            chats.mkdir(parents=True, exist_ok=True)
+            p = chats / "session-2026-03-02T00-00-abcd1234.json"
+            p.write_text(
+                json.dumps(
+                    {
+                        "sessionId": "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb",
+                        "messages": [
+                            {"type": "user", "timestamp": "2026-03-02T00:00:00.000Z", "content": [{"text": "hi"}]},
+                            {"type": "gemini", "timestamp": "2026-03-02T00:00:01.000Z", "content": "done"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"GEMINI_HOME": str(gem_home)}, clear=False):
+                self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_gemini_chat_json_thinking_only_stays_busy(self) -> None:
+        with TemporaryDirectory() as td:
+            gem_home = Path(td) / ".gemini"
+            chats = gem_home / "tmp" / "proj" / "chats"
+            chats.mkdir(parents=True, exist_ok=True)
+            p = chats / "session-2026-03-02T00-00-abcd1234.json"
+            p.write_text(
+                json.dumps(
+                    {
+                        "sessionId": "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb",
+                        "messages": [
+                            {"type": "user", "timestamp": "2026-03-02T00:00:00.000Z", "content": [{"text": "hi"}]},
+                            {"type": "gemini", "timestamp": "2026-03-02T00:00:01.000Z", "thoughts": [{"text": "thinking"}]},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {"GEMINI_HOME": str(gem_home)}, clear=False):
+                self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
 
 if __name__ == "__main__":

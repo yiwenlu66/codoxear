@@ -18,7 +18,7 @@ Files:
 
 Key flow:
 1. Open modal for the selected session; render command strings.
-2. Resume command is selected by session CLI metadata (`codex resume <id>` or `claude --resume <id>`).
+2. Resume command is selected by session CLI metadata (`codex resume <id>`, `claude --resume <id>`, or `gemini --resume <id>`).
 3. If `tmux_name` is present, show `tmux attach -t <name>`; otherwise show "Not available".
 4. Start tail polling every 1.5s; stop polling when the modal closes.
 

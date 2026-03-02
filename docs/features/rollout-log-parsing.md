@@ -1,6 +1,6 @@
 # Rollout Log Parsing
 
-Codoxear reads Codex rollout JSONL and Claude project JSONL files to render chat history, compute idle state, and surface token usage.
+Codoxear reads Codex rollout JSONL, Claude project JSONL, and Gemini chat session JSON files to render chat history, compute idle state, and surface token usage.
 
 ## Chat event extraction
 How users use it:
@@ -18,9 +18,11 @@ Key flow:
 2. Extract chat events from both formats:
    - Codex: `event_msg` user + `response_item` assistant text
    - Claude: top-level `user`/`assistant` messages with text parts
+   - Gemini: `messages[]` records mapped to synthesized `user`/`assistant` events
 3. Track tool usage and turn boundaries for UI indicators:
    - Codex: `task_complete` / `turn_aborted`
    - Claude: `system.subtype=turn_duration` / `api_error`
+   - Gemini: assistant rows with synthesized turn-end markers (completion rows only)
 
 Call stack:
 1. `SessionManager._ensure_chat_index`
@@ -44,11 +46,13 @@ Key flow:
 3. Close turns on terminal markers:
    - Codex: `task_complete`, `turn_aborted`, `thread_rolled_back`
    - Claude: `system.subtype=turn_duration|api_error`
+   - Gemini: synthesized assistant turn-end markers from completion rows in session-file updates
 4. Return idle when the turn is closed and the last terminal event is assistant/aborted, or when an open turn has an assistant completion candidate.
 
 Notes:
 - The server combines broker `busy` state with log-derived idle state.
 - Large logs cap their scan size with `CODEX_WEB_CHAT_INIT_MAX_SCAN_BYTES` and related settings.
+- Gemini thinking/tool-only rows do not close turns; they keep the turn open so long-running reasoning is not misclassified as idle.
 
 ## Token statistics
 How users use it:

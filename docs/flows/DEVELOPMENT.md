@@ -18,10 +18,12 @@ Daemonized server control (this host runtime):
 Start broker from a terminal:
 `CODEX_WEB_CLI=codex codoxear-broker -- <codex args>`
 `CODEX_WEB_CLI=claude codoxear-broker -- <claude args>`
+`CODEX_WEB_CLI=gemini codoxear-broker -- <gemini args>`
 
 Optional shell wrapper:
 `codex() { CODEX_WEB_CLI=codex codoxear-broker -- "$@"; }`
 `claude() { CODEX_WEB_CLI=claude codoxear-broker -- "$@"; }`
+`gemini() { CODEX_WEB_CLI=gemini codoxear-broker -- "$@"; }`
 
 Default bind:
 `CODEX_WEB_HOST=::`

@@ -22,6 +22,7 @@ Docs are split into Feature, Flow, and Work Records. Feature docs describe purpo
 
 ## Documentation index
 `docs/features/server-and-api.md`: Server architecture, auth, discovery, and API behavior.
+`docs/features/multi-cli-support.md`: Cross-CLI architecture and Gemini-first-class support details.
 `docs/features/broker.md`: Broker PTY lifecycle, socket protocol, and busy/idle state.
 `docs/features/sessiond.md`: Headless session runner and metadata behavior.
 `docs/features/ui.md`: Browser UI polling, local echo, queueing, and user actions.

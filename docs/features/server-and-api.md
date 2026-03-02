@@ -34,7 +34,7 @@ Notes:
 
 ## Session discovery and lifecycle
 How users use it:
-Start Codex/Claude via `codoxear-broker` (terminal-owned) or create a web-owned session via `POST /api/sessions`.
+Start Codex/Claude/Gemini via `codoxear-broker` (terminal-owned) or create a web-owned session via `POST /api/sessions`.
 
 Effect:
 The server discovers `*.sock` control sockets under `~/.local/share/codoxear/socks/`, reads their metadata (including `cli`), and exposes them in `/api/sessions`.
@@ -56,8 +56,8 @@ Call stack:
 3. `SessionManager.list_sessions`
 
 Notes:
-- Web-owned sessions are spawned with `CODEX_WEB_OWNER=web`; `POST /api/sessions` accepts optional `cli` (`codex` or `claude`).
-- Spawned brokers receive `CODEX_WEB_CLI=<cli>` and matching home/bin env (`CODEX_HOME/CODEX_BIN` or `CLAUDE_HOME/CLAUDE_BIN`).
+- Web-owned sessions are spawned with `CODEX_WEB_OWNER=web`; `POST /api/sessions` accepts optional `cli` (`codex`, `claude`, or `gemini`).
+- Spawned brokers receive `CODEX_WEB_CLI=<cli>` and matching home/bin env (`CODEX_HOME/CODEX_BIN`, `CLAUDE_HOME/CLAUDE_BIN`, or `GEMINI_HOME/GEMINI_BIN`).
 - Claude web sessions default to API-key auth mode when both `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are visible (including tmux global env), and explicitly unset `ANTHROPIC_AUTH_TOKEN` for the child unless `CODEX_WEB_CLAUDE_PREFER_API_KEY=0`.
 - Web-owned sessions can be started under tmux when `CODEX_WEB_TMUX=1`; session listings include `tmux_name` when available.
 - When tmux is enabled, `CODEX_WEB_TMUX_INTERACTIVE=1` allows attaching to the tmux session and sending input.
@@ -96,7 +96,7 @@ How users use it:
 The UI polls `/api/sessions/<id>/messages` and submits prompts with `/api/sessions/<id>/send`.
 
 Effect:
-The server tails Codex rollout logs or Claude project logs, extracts chat events, and sends input to the broker socket.
+The server tails Codex rollout logs, Claude project logs, or Gemini chat session files, extracts chat events, and sends input to the broker socket.
 
 Files:
 - `codoxear/server.py`
@@ -142,6 +142,7 @@ Key flow:
 3. Broker releases one queued message at a time when the queue item's turn gate is satisfied:
    - Codex: `task_complete` / `turn_aborted`
    - Claude: `system.subtype=turn_duration|api_error`
+   - Gemini: assistant message close markers synthesized from Gemini session files
    - Fallback: for pending queue items only, infer a turn end after a completion candidate plus a quiet window (`CODEX_WEB_IDLE_TURN_END_QUIET_SECONDS`).
 
 Call stack:

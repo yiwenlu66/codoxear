@@ -1,10 +1,10 @@
 # Broker
 
-The broker wraps the target CLI (`codex` or `claude`) in a PTY, exposes a Unix socket for control, and watches session logs to track busy/idle state.
+The broker wraps the target CLI (`codex`, `claude`, or `gemini`) in a PTY, exposes a Unix socket for control, and watches session logs to track busy/idle state.
 
 ## Launch and PTY lifecycle
 How users use it:
-Run `codoxear-broker -- <cli args>` (set `CODEX_WEB_CLI=codex|claude`) or wrap your shell CLI functions to call the broker.
+Run `codoxear-broker -- <cli args>` (set `CODEX_WEB_CLI=codex|claude|gemini`) or wrap your shell CLI functions to call the broker.
 
 Effect:
 Spawns the selected CLI in a PTY, keeps terminal UX intact, and starts a control socket under `~/.local/share/codoxear/socks/`. The initial socket name is `broker-<pid>.sock`, and for terminal-owned sessions the broker may also create `<session_id>-<pid>.sock` after log discovery.
@@ -78,13 +78,14 @@ Key flow:
 1. Discover the active log after startup:
    - Codex: `~/.codex/sessions/**/rollout-*.jsonl`
    - Claude: `~/.claude/projects/**/*.jsonl` (project UUID logs, excluding `subagents`)
-2. Prefer `/proc` open-fd discovery and fall back to recent Claude project logs by `cwd`/mtime when Claude does not keep the JSONL fd open.
+   - Gemini: `~/.gemini/tmp/**/chats/session-*.json`
+2. Prefer `/proc` open-fd discovery and fall back to recent CLI-specific logs by `cwd`/mtime when the CLI does not keep the active file descriptor open.
 3. Register `session_id` and write metadata JSON beside the socket.
 4. Tail the log and update busy/idle heuristics.
 
 Call stack:
 1. `_discover_log_watcher`
-2. `_proc_find_open_rollout_log` / `_find_recent_claude_project_log`
+2. `_proc_find_open_rollout_log` / `_find_recent_claude_project_log` / `_find_recent_gemini_chat_log`
 3. `_register_from_log`
 4. `_log_watcher`
 5. `_apply_rollout_obj_to_state`
@@ -95,6 +96,8 @@ Notes:
 - `CODEX_WEB_IDLE_TURN_END_QUIET_SECONDS` controls the quiet window for idle turn-end fallback used by queue release.
 - Assistant phase `commentary` does not count as a completion candidate; `final_answer` (or messages without phase) does.
 - Claude queue drain also triggers on `system.subtype=turn_duration|api_error`.
+- Gemini queue drain triggers on synthesized assistant turn-end markers from Gemini completion rows; thinking/tool-only rows keep the turn open.
+- Gemini watcher offsets use the synthesized Gemini JSONL tail offset (not raw file `st_size`) so `/messages` polling does not miss new turn-end markers.
 
 ## Metadata sidecar
 How users use it:

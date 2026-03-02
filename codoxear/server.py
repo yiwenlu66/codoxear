@@ -2189,6 +2189,9 @@ class SessionManager:
                 if "ANTHROPIC_AUTH_TOKEN" not in child_env_unset:
                     child_env_unset.append("ANTHROPIC_AUTH_TOKEN")
                 env["CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN"] = "1"
+        elif cli_name == "gemini":
+            env.setdefault("GEMINI_HOME", str(_cli_home("gemini")))
+            env.setdefault("GEMINI_BIN", _cli_bin("gemini"))
         else:
             env.setdefault("CODEX_HOME", str(_cli_home("codex")))
             env.setdefault("CODEX_BIN", _cli_bin("codex"))
@@ -2805,7 +2808,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     try:
                         cli = _parse_cli_name(cli_raw, default=DEFAULT_SPAWN_CLI)
                     except ValueError:
-                        _json_response(self, 400, {"error": "unsupported cli (use codex or claude)"})
+                        _json_response(self, 400, {"error": "unsupported cli (use codex, claude, or gemini)"})
                         return
                 else:
                     _json_response(self, 400, {"error": "cli must be a string"})

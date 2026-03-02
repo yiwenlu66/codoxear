@@ -7,11 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .cli_support import cli_logs_dir as _cli_logs_dir
 from .cli_support import claude_assistant_content_parts as _claude_assistant_content_parts
 from .cli_support import claude_assistant_text as _claude_assistant_text
 from .cli_support import claude_assistant_thinking_count as _claude_assistant_thinking_count
 from .cli_support import claude_assistant_tool_use_count as _claude_assistant_tool_use_count
 from .cli_support import claude_user_text as _claude_user_text
+from .cli_support import is_gemini_chat_log_path as _is_gemini_chat_log_path
+from .cli_support import read_gemini_rollout_objs as _read_gemini_rollout_objs
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
@@ -76,6 +79,26 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
+    if _is_gemini_chat_log_path(path, gemini_tmp_dir=_cli_logs_dir("gemini")):
+        objs = _read_gemini_rollout_objs(path)
+        if not objs:
+            return []
+        used = 0
+        tail_rev: list[dict[str, Any]] = []
+        budget = max(1, int(max_bytes))
+        for obj in reversed(objs):
+            try:
+                line_len = len(json.dumps(obj, ensure_ascii=False).encode("utf-8")) + 1
+            except Exception:
+                continue
+            if tail_rev and (used + line_len) > budget:
+                break
+            tail_rev.append(obj)
+            used += line_len
+            if used >= budget:
+                break
+        tail_rev.reverse()
+        return tail_rev
     with path.open("rb") as f:
         f.seek(0, os.SEEK_END)
         size = f.tell()
@@ -176,6 +199,8 @@ def _extract_chat_events(
             continue
 
         if typ == "assistant":
+            if bool(obj.get("_gemini_turn_end")):
+                turn_end = True
             text = _claude_assistant_text(obj)
             if isinstance(text, str) and text:
                 ets = event_ts(obj)
@@ -543,6 +568,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     _claude_assistant_thinking_count(obj) > 0 or _claude_assistant_tool_use_count(obj) > 0
                 ):
                     turn_has_completion_candidate = False
+                if bool(obj.get("_gemini_turn_end")):
+                    turn_open = False
+                    turn_has_completion_candidate = False
+                    last_terminal_event = "assistant"
                 continue
             if typ == "system":
                 sub = obj.get("subtype")

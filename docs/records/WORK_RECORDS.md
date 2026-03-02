@@ -3,6 +3,10 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-gemini-thinking-idle-false-positive.md`: Prevent Gemini long-thinking phases from being misclassified as idle by avoiding turn-end on thinking-only rows.
+- `docs/records/sessions/2026-03-02-gemini-all-approve-mode.md`: Configure Codoxear web-owned Gemini sessions to run with all-approve mode via `GEMINI_BIN` wrapper under supervisord.
+- `docs/records/sessions/2026-03-02-gemini-busy-stop-detection.md`: Fix Gemini sessions stuck in busy state after replies by correcting log offsets and turn-end handling.
+- `docs/records/sessions/2026-03-02-gemini-cli-support.md`: Add first-class Gemini CLI support across broker/server/log parsing/UI/resume helper.
 - `docs/records/sessions/2026-03-02-branch-sync-policy.md`: Correct branch alignment (`main` mirrors upstream, development on `dev`) and document branch recovery workflow.
 - `docs/records/sessions/2026-03-02-github-update-notice.md`: Add automatic GitHub update checks and UI prompts when a newer version is available.
 - `docs/records/sessions/2026-03-02-workspace-close-action.md`: Add a workspace-level close action that batch-deletes web-owned sessions from the sidebar workspace card.

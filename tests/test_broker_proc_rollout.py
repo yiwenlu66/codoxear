@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.broker import _find_recent_claude_project_log
+from codoxear.broker import _find_recent_gemini_chat_log
 from codoxear.util import proc_find_open_rollout_log, proc_open_rollout_logs
 
 
@@ -16,6 +17,11 @@ def _write_jsonl(path: Path, objs: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for o in objs:
             f.write(json.dumps(o) + "\n")
+
+
+def _write_json(path: Path, obj: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj), encoding="utf-8")
 
 
 class TestBrokerProcRolloutDiscovery(unittest.TestCase):
@@ -122,6 +128,39 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
                 found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/claude/work")
                 self.assertEqual(found, want)
 
+    def test_proc_finds_gemini_chat_log_by_cwd(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            gem_home = root / ".gemini-home"
+            project = gem_home / "tmp" / "workspace"
+            chats = project / "chats"
+            chats.mkdir(parents=True, exist_ok=True)
+            (project / ".project_root").write_text("/gemini/work\n", encoding="utf-8")
+
+            want = chats / "session-2026-03-02T00-00-abcd1234.json"
+            _write_json(
+                want,
+                {
+                    "sessionId": "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb",
+                    "messages": [{"type": "user", "content": [{"text": "hello"}], "timestamp": "2026-03-02T00:00:00.000Z"}],
+                },
+            )
+
+            (proc_root / "100" / "task" / "100").mkdir(parents=True, exist_ok=True)
+            (proc_root / "101" / "task" / "101").mkdir(parents=True, exist_ok=True)
+            (proc_root / "100" / "task" / "100" / "children").write_text("101\n", encoding="utf-8")
+            (proc_root / "101" / "task" / "101" / "children").write_text("\n", encoding="utf-8")
+            for pid in ("100", "101"):
+                (proc_root / pid / "fd").mkdir(parents=True, exist_ok=True)
+            os.symlink(str(want), proc_root / "101" / "fd" / "3")
+
+            with patch.dict(os.environ, {"GEMINI_HOME": str(gem_home)}, clear=False):
+                opened = proc_open_rollout_logs(proc_root, 100)
+                self.assertIn(want, opened)
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, cwd="/gemini/work")
+                self.assertEqual(found, want)
+
     def test_broker_fallback_finds_recent_claude_log(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -154,6 +193,33 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
 
             found = _find_recent_claude_project_log(sessions_dir=root / "projects", cwd="/want", after_ts=2000.0)
             self.assertIsNone(found)
+
+    def test_broker_fallback_finds_recent_gemini_log(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            tmp = root / "tmp"
+            stale_proj = tmp / "stale"
+            wrong_proj = tmp / "wrong"
+            want_proj = tmp / "want"
+            for proj in (stale_proj, wrong_proj, want_proj):
+                (proj / "chats").mkdir(parents=True, exist_ok=True)
+            (stale_proj / ".project_root").write_text("/want\n", encoding="utf-8")
+            (wrong_proj / ".project_root").write_text("/other\n", encoding="utf-8")
+            (want_proj / ".project_root").write_text("/want\n", encoding="utf-8")
+
+            stale = stale_proj / "chats" / "session-2026-03-02T00-00-aaaa1111.json"
+            wrong = wrong_proj / "chats" / "session-2026-03-02T00-00-bbbb2222.json"
+            want = want_proj / "chats" / "session-2026-03-02T00-00-cccc3333.json"
+            _write_json(stale, {"sessionId": "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb", "messages": []})
+            _write_json(wrong, {"sessionId": "aaaaaaaa-1111-2222-3333-cccccccccccc", "messages": []})
+            _write_json(want, {"sessionId": "aaaaaaaa-1111-2222-3333-dddddddddddd", "messages": []})
+
+            os.utime(stale, (1000.0, 1000.0))
+            os.utime(wrong, (1015.0, 1015.0))
+            os.utime(want, (1020.0, 1020.0))
+
+            found = _find_recent_gemini_chat_log(sessions_dir=tmp, cwd="/want", after_ts=1010.0)
+            self.assertEqual(found, want)
 
 
 if __name__ == "__main__":

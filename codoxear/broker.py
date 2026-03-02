@@ -31,14 +31,18 @@ from codoxear.cli_support import cli_home as _cli_home
 from codoxear.cli_support import cli_logs_dir as _cli_logs_dir
 from codoxear.cli_support import is_claude_project_log_path as _is_claude_project_log_path
 from codoxear.cli_support import is_codex_rollout_log_path as _is_codex_rollout_log_path
+from codoxear.cli_support import is_gemini_chat_log_path as _is_gemini_chat_log_path
 from codoxear.cli_support import normalize_cli_name as _normalize_cli_name
 from codoxear.cli_support import read_claude_log_cwd as _read_claude_log_cwd
+from codoxear.cli_support import read_gemini_log_cwd as _read_gemini_log_cwd
 from codoxear.cli_support import session_id_from_log_path as _session_id_from_log_path
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
+from codoxear.util import gemini_virtual_tail_offset as _gemini_virtual_tail_offset
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
+from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
 
@@ -264,6 +268,34 @@ def _find_recent_claude_project_log(*, sessions_dir: Path, cwd: str, after_ts: f
     return None
 
 
+def _find_recent_gemini_chat_log(*, sessions_dir: Path, cwd: str, after_ts: float) -> Path | None:
+    if not isinstance(cwd, str) or (not cwd):
+        return None
+    if not sessions_dir.exists():
+        return None
+    cands: list[tuple[float, Path]] = []
+    for p in sessions_dir.rglob("session-*.json"):
+        if not _is_gemini_chat_log_path(p, gemini_tmp_dir=sessions_dir):
+            continue
+        try:
+            mt = float(p.stat().st_mtime)
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if mt < float(after_ts) - 2.0:
+            continue
+        cands.append((mt, p))
+    if not cands:
+        return None
+    cands.sort(key=lambda t: t[0], reverse=True)
+    for _mt, p in cands:
+        pcwd = _read_gemini_log_cwd(p)
+        if isinstance(pcwd, str) and pcwd == cwd:
+            return p
+    return None
+
+
 def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -> bool:
     # Codex TUI prints this line when closing a thread on /new and similar flows.
     # The line can be split across PTY reads and may include ANSI escape sequences.
@@ -283,22 +315,16 @@ def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
-    try:
-        with path.open("rb") as f:
-            f.seek(offset)
-            data = f.read(max_bytes)
-            new_off = f.tell()
-    except FileNotFoundError:
-        return [], offset
+    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
-    lines = data.splitlines()
-    out: list[dict[str, Any]] = []
-    for line in lines:
-        try:
-            out.append(json.loads(line))
-        except Exception:
-            continue
-    return out, new_off
+
+def _rollout_tail_offset(path: Path) -> int:
+    try:
+        if _is_gemini_chat_log_path(path, gemini_tmp_dir=_cli_logs_dir("gemini")):
+            return int(_gemini_virtual_tail_offset(path))
+        return int(path.stat().st_size)
+    except Exception:
+        return 0
 
 
 def _strip_ansi(text: str) -> str:
@@ -496,6 +522,10 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         return
 
     if typ == "assistant":
+        if bool(obj.get("_gemini_turn_end")):
+            _close_turn_state(st, mark_end=True)
+            st.last_turn_activity_ts = now_ts
+            return
         has_text = bool(_claude_assistant_text(obj))
         tool_count = _claude_assistant_tool_use_count(obj)
         thinking_count = _claude_assistant_thinking_count(obj)
@@ -756,6 +786,16 @@ class Broker:
                             self._maybe_register_or_switch_rollout(log_path=fallback)
                             time.sleep(0.25)
                             continue
+                    if CLI_KIND == "gemini":
+                        fallback = _find_recent_gemini_chat_log(
+                            sessions_dir=self.sessions_dir,
+                            cwd=self.cwd,
+                            after_ts=start_ts,
+                        )
+                        if fallback and fallback.exists():
+                            self._maybe_register_or_switch_rollout(log_path=fallback)
+                            time.sleep(0.25)
+                            continue
                     # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
@@ -779,7 +819,7 @@ class Broker:
             return False
 
         try:
-            off = log_path.stat().st_size
+            off = _rollout_tail_offset(log_path)
         except Exception:
             off = 0
 
@@ -972,6 +1012,9 @@ class Broker:
                                     with self._lock:
                                         if self.state:
                                             self.state.token = token_update
+                elif obj.get("type") == "assistant":
+                    if bool(obj.get("_gemini_turn_end")):
+                        should_drain = True
                 elif obj.get("type") == "system":
                     subtype = obj.get("subtype")
                     if subtype in ("turn_duration", "api_error"):
@@ -1251,10 +1294,16 @@ class Broker:
                 sid = self._session_id_from_rollout_path(lp)
                 if sid is None:
                     raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
-        else:
+        elif CLI_KIND == "claude":
             if not _is_claude_project_log_path(lp, claude_projects_dir=self.sessions_dir):
                 return
             sid = self._session_id_from_rollout_path(lp)
+        elif CLI_KIND == "gemini":
+            if not _is_gemini_chat_log_path(lp, gemini_tmp_dir=self.sessions_dir):
+                return
+            sid = self._session_id_from_rollout_path(lp)
+        else:
+            return
         if not sid:
             return
 
@@ -1271,7 +1320,7 @@ class Broker:
             st.session_id = sid
             st.log_path = lp
             try:
-                st.log_off = int(lp.stat().st_size)
+                st.log_off = _rollout_tail_offset(lp)
             except Exception:
                 st.log_off = 0
 
@@ -1306,6 +1355,8 @@ class Broker:
                 os.environ["LINES"] = str(rows)
                 if CLI_KIND == "claude":
                     os.environ["CLAUDE_HOME"] = str(self.codex_home)
+                elif CLI_KIND == "gemini":
+                    os.environ["GEMINI_HOME"] = str(self.codex_home)
                 else:
                     os.environ["CODEX_HOME"] = str(self.codex_home)
                 if _env_flag("CODEX_WEB_UNSET_ANTHROPIC_AUTH_TOKEN", False):
@@ -1414,7 +1465,7 @@ class Broker:
 def main() -> None:
     _require_proc()
     ap = argparse.ArgumentParser(
-        description="Foreground PTY broker for codex/claude: preserves terminal UX and registers a control socket for Codoxear."
+        description="Foreground PTY broker for codex/claude/gemini: preserves terminal UX and registers a control socket for Codoxear."
     )
     ap.add_argument("--cwd", default=os.getcwd(), help="Directory to run the target CLI in (default: current directory)")
     ap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to the target CLI")

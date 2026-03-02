@@ -79,6 +79,35 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertTrue(flags["turn_aborted"])
         self.assertIn("Read", diag["tool_names"])
 
+    def test_gemini_assistant_marks_turn_end(self) -> None:
+        _events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+                {
+                    "type": "assistant",
+                    "_gemini_turn_end": True,
+                    "message": {"content": [{"type": "text", "text": "done"}]},
+                },
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
+
+    def test_gemini_thinking_without_turn_end_does_not_set_turn_end(self) -> None:
+        _events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "user", "message": {"content": [{"type": "text", "text": "hello"}]}},
+                {
+                    "type": "assistant",
+                    "message": {"content": [{"type": "thinking"}]},
+                },
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertFalse(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
+
 
 if __name__ == "__main__":
     unittest.main()

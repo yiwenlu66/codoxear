@@ -12,7 +12,11 @@ from typing import Any
 from .cli_support import cli_logs_dir as _cli_logs_dir
 from .cli_support import is_claude_project_log_path as _is_claude_project_log_path
 from .cli_support import is_codex_rollout_log_path as _is_codex_rollout_log_path
+from .cli_support import is_gemini_chat_log_path as _is_gemini_chat_log_path
 from .cli_support import read_claude_log_cwd as _read_claude_log_cwd
+from .cli_support import read_gemini_log_cwd as _read_gemini_log_cwd
+from .cli_support import read_gemini_rollout_objs as _read_gemini_rollout_objs
+from .cli_support import session_id_from_log_path as _session_id_from_log_path
 
 
 _LEGACY_WARNED = False
@@ -128,7 +132,17 @@ def iter_session_logs(sessions_dir: Path) -> list[Path]:
     if not sessions_dir.exists():
         return []
     out: list[tuple[float, Path]] = []
-    for p in sessions_dir.rglob("rollout-*.jsonl"):
+    claude_projects_dir = _cli_logs_dir("claude")
+    gemini_tmp_dir = _cli_logs_dir("gemini")
+    for p in sessions_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if not (
+            _is_codex_rollout_log_path(p)
+            or _is_claude_project_log_path(p, claude_projects_dir=claude_projects_dir)
+            or _is_gemini_chat_log_path(p, gemini_tmp_dir=gemini_tmp_dir)
+        ):
+            continue
         try:
             mt = float(p.stat().st_mtime)
         except FileNotFoundError:
@@ -145,7 +159,8 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str) -> Path
     if not session_id:
         return None
     for p in iter_session_logs(sessions_dir):
-        if session_id in p.name:
+        sid = _session_id_from_log_path(p)
+        if sid == session_id or session_id in p.name:
             return p
     return None
 
@@ -173,6 +188,22 @@ def find_new_session_log(
                 continue
             payload = read_session_meta_payload(p, timeout_s=0.0)
             if not payload:
+                if _is_claude_project_log_path(p, claude_projects_dir=_cli_logs_dir("claude")):
+                    if cwd is not None:
+                        pcwd2 = _read_claude_log_cwd(p)
+                        if not (isinstance(pcwd2, str) and pcwd2 == cwd):
+                            continue
+                    sid2 = _session_id_from_log_path(p, cli="claude")
+                    if isinstance(sid2, str) and sid2:
+                        return sid2, p
+                if _is_gemini_chat_log_path(p, gemini_tmp_dir=_cli_logs_dir("gemini")):
+                    if cwd is not None:
+                        pcwd3 = _read_gemini_log_cwd(p)
+                        if not (isinstance(pcwd3, str) and pcwd3 == cwd):
+                            continue
+                    sid3 = _session_id_from_log_path(p, cli="gemini")
+                    if isinstance(sid3, str) and sid3:
+                        return sid3, p
                 continue
             if is_subagent_session_meta(payload):
                 continue
@@ -232,6 +263,7 @@ def _proc_descendants(proc_root: Path, root_pid: int) -> list[int]:
 def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
     uid = int(os.getuid())
     claude_projects_dir = _cli_logs_dir("claude")
+    gemini_tmp_dir = _cli_logs_dir("gemini")
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):
         puid = _proc_pid_uid(proc_root, pid)
@@ -251,13 +283,16 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
                 continue
             if tgt.endswith(" (deleted)"):
                 continue
-            if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
+            if not tgt.startswith("/"):
                 continue
             p = Path(tgt)
             if _is_codex_rollout_log_path(p):
                 out.add(p)
                 continue
             if _is_claude_project_log_path(p, claude_projects_dir=claude_projects_dir):
+                out.add(p)
+                continue
+            if _is_gemini_chat_log_path(p, gemini_tmp_dir=gemini_tmp_dir):
                 out.add(p)
                 continue
     return out
@@ -291,10 +326,84 @@ def proc_find_open_rollout_log(
                 if not (isinstance(pcwd, str) and pcwd == cwd):
                     continue
             return p
+        if _is_gemini_chat_log_path(p, gemini_tmp_dir=_cli_logs_dir("gemini")):
+            if cwd is not None:
+                pcwd = _read_gemini_log_cwd(p)
+                if not (isinstance(pcwd, str) and pcwd == cwd):
+                    continue
+            return p
     return None
 
 
+def _gemini_rollout_lines(path: Path) -> list[bytes]:
+    objs = _read_gemini_rollout_objs(path)
+    out: list[bytes] = []
+    for obj in objs:
+        try:
+            out.append(json.dumps(obj, ensure_ascii=False).encode("utf-8") + b"\n")
+        except Exception:
+            continue
+    return out
+
+
+def gemini_virtual_tail_offset(path: Path) -> int:
+    total = 0
+    for obj in _read_gemini_rollout_objs(path):
+        try:
+            total += len(json.dumps(obj, ensure_ascii=False).encode("utf-8")) + 1
+        except Exception:
+            continue
+    return total
+
+
+def _read_gemini_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[list[dict[str, Any]], int]:
+    lines = _gemini_rollout_lines(path)
+    off = max(0, int(offset))
+    limit = max(1, int(max_bytes))
+    if not lines:
+        return [], off
+    total = sum(len(line) for line in lines)
+    if off >= total:
+        # Gemini chat files are transformed into virtual JSONL rows. Callers can
+        # pass physical file offsets; normalize to the virtual tail offset.
+        return [], total
+
+    pos = 0
+    used = 0
+    new_off = off
+    out: list[dict[str, Any]] = []
+    for line in lines:
+        ln = len(line)
+        end = pos + ln
+        if end <= off:
+            pos = end
+            continue
+        if pos < off:
+            pos = end
+            new_off = pos
+            continue
+        if out and (used + ln) > limit:
+            break
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            pos = end
+            new_off = pos
+            continue
+        used += ln
+        pos = end
+        new_off = pos
+        if used >= limit:
+            break
+
+    if not out and new_off <= off:
+        return [], off
+    return out, new_off
+
+
 def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[list[dict[str, Any]], int]:
+    if _is_gemini_chat_log_path(path, gemini_tmp_dir=_cli_logs_dir("gemini")):
+        return _read_gemini_from_offset(path, offset, max_bytes=max_bytes)
     try:
         with path.open("rb") as f:
             f.seek(offset)

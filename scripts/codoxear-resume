@@ -8,7 +8,7 @@ usage() {
   cat <<'USAGE'
 Usage: codoxear-resume [--list] [--last] [--id <session_id>] [--web | --terminal]
 
-Interactive helper to resume Codex/Claude sessions from Codoxear metadata.
+Interactive helper to resume Codex/Claude/Gemini sessions from Codoxear metadata.
 
 Options:
   --list        List available sessions and exit
@@ -89,9 +89,11 @@ for meta_path in sorted(sock_dir.glob("*.json")):
         continue
     cli_raw = meta.get("cli") if isinstance(meta.get("cli"), str) else "codex"
     cli = str(cli_raw).strip().lower()
+    if cli in ("gemini-cli", "gemini_cli", "google-gemini"):
+        cli = "gemini"
     if cli in ("claude-code", "claude_code"):
         cli = "claude"
-    if cli not in ("codex", "claude"):
+    if cli not in ("codex", "claude", "gemini"):
         cli = "codex"
     cwd = meta.get("cwd") if isinstance(meta.get("cwd"), str) else "?"
     start_ts = meta.get("start_ts")
@@ -108,6 +110,13 @@ PY
 resume_session() {
   local cli="$1"
   local sid="$2"
+  if [[ "$cli" == "gemini" ]]; then
+    if ! command -v gemini >/dev/null 2>&1; then
+      echo "error: gemini CLI not found in PATH" >&2
+      exit 1
+    fi
+    exec gemini --resume "$sid"
+  fi
   if [[ "$cli" == "claude" ]]; then
     if ! command -v claude >/dev/null 2>&1; then
       echo "error: claude CLI not found in PATH" >&2
