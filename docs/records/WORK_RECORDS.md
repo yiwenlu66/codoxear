@@ -3,6 +3,7 @@
 This document summarizes the team's current work focus. Each session appears under its own heading, and the detailed record lives under `docs/records/sessions/`.
 
 ## Current Focus by Session
+- `docs/records/sessions/2026-03-02-deployment-session-persistence.md`: Add deployment tutorial guidance to keep sessions across updates/restarts and fix stale runtime-path notes after worktree consolidation.
 - `docs/records/sessions/2026-03-02-session-cli-logo-color-fix.md`: Fix Codex sidebar logo color by replacing monochrome `currentColor` asset with a colored transparent variant.
 - `docs/records/sessions/2026-03-02-session-cli-logo-transparent.md`: Make sidebar session CLI logos transparent by removing chip white background/border and replacing the Codex logo asset with a transparent variant.
 - `docs/records/sessions/2026-03-02-session-cli-logos.md`: Add visible CLI logos in the sidebar session list so users can distinguish Codex/Claude/Gemini sessions at a glance.

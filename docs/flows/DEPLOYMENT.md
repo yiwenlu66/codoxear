@@ -33,6 +33,34 @@ Runtime state is stored under `~/.local/share/codoxear`:
 - `hmac_secret` cookie signing key
 - `uploads/` temporary uploaded images
 
+## Keep sessions across updates/restarts
+Session visibility is based on live broker sockets (`~/.local/share/codoxear/socks/*.sock`), not a durable "session database". If broker/CLI processes are killed during deployment, those sessions disappear from the sidebar after restart.
+
+To avoid losing active sessions on updates:
+
+1. Run web-owned sessions under tmux:
+   - Set `CODEX_WEB_TMUX=1` in the service environment.
+   - Keep `tmux` installed on the host.
+2. Restart only the Codoxear server service during deploy:
+   - Avoid blanket process-kill commands such as `pkill -f codoxear` that can kill broker children too.
+3. Keep service user and `HOME` stable:
+   - Runtime discovery depends on the current user's `~/.local/share/codoxear`.
+4. Keep runtime state on persistent storage:
+   - Do not clean `~/.local/share/codoxear/socks` during deploy/boot scripts.
+5. For systemd deployments:
+   - Prefer `KillMode=process` for the Codoxear unit so service restarts do not kill the whole cgroup session tree.
+
+Recommended deploy sequence (supervisord):
+
+1. Update code in place (`git pull` on the running repo path).
+2. Reinstall deps if needed (for example `python3 -m pip install -e .`).
+3. Restart service:
+   - `supervisorctl restart codoxear`
+4. Verify active brokers still exist:
+   - `supervisorctl status codoxear`
+   - `scripts/codoxear-status --web --list`
+   - `ls ~/.local/share/codoxear/socks/*.sock`
+
 ## Daemon operations (this host)
 This host runs Codoxear under `supervisord` instead of `systemd`.
 
@@ -68,10 +96,10 @@ As of 2026-02-27, `systemctl` on this host reports the system is not booted with
 Use `scripts/codoxear-server-dev` when you need a foreground/manual run from the repo root.
 
 ## This host (observed)
-As of 2026-03-02, the running server process is managed by `supervisord` and started from `/root/code/codoxear-gemini`, so `.env` is read from `/root/code/codoxear-gemini/.env`.
+As of 2026-03-02, the running server process is managed by `supervisord` and started from `/root/code/codoxear`, so `.env` is read from `/root/code/codoxear/.env`.
 
 ## Env file location (this host)
-- `/root/code/codoxear-gemini/.env` (because the server is running from `/root/code/codoxear-gemini`).
+- `/root/code/codoxear/.env` (because the server is running from `/root/code/codoxear`).
 
 ## Operational notes
 - Terminal-owned sessions are attach-only and cannot be killed via the UI.
