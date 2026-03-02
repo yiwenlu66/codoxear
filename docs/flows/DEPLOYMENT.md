@@ -50,6 +50,30 @@ To avoid losing active sessions on updates:
 5. For systemd deployments:
    - Prefer `KillMode=process` for the Codoxear unit so service restarts do not kill the whole cgroup session tree.
 
+Systemd `--user` checklist for "restart clears all sessions":
+
+If your service is managed by `systemd --user`, a common failure mode is `KillMode=control-group` (default). In this mode, `systemctl --user restart codoxear.service` kills every process in the unit cgroup, including broker/CLI children, so sidebar sessions disappear after restart.
+
+1. Verify current kill behavior:
+   - `systemctl --user show codoxear.service --property=KillMode,SendSIGKILL`
+   - `systemctl --user cat codoxear.service`
+2. Confirm broker/CLI are in the same cgroup as the web service:
+   - `systemctl --user status codoxear.service`
+   - Check the `CGroup:` process tree for `codoxear-broker` / `codex` / `claude` / `gemini`.
+3. Apply an override:
+   - `systemctl --user edit codoxear.service`
+   - Add:
+     - `[Service]`
+     - `KillMode=process`
+     - `SendSIGKILL=no` (optional; use only if you explicitly want to avoid hard-killing remaining children at timeout)
+4. Reload and restart:
+   - `systemctl --user daemon-reload`
+   - `systemctl --user restart codoxear.service`
+5. Re-verify:
+   - `systemctl --user show codoxear.service --property=KillMode,SendSIGKILL`
+   - `scripts/codoxear-status --web --list`
+   - `ls ~/.local/share/codoxear/socks/*.sock`
+
 Recommended deploy sequence (supervisord):
 
 1. Update code in place (`git pull` on the running repo path).
