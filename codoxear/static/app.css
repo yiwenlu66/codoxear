@@ -143,7 +143,7 @@
         will-change: transform;
       }
       .session.active .sessionContent {
-        background: var(--accent-weak);
+        background: #dbeafe;
       }
       .sessionActions {
         position: absolute;
@@ -181,7 +181,7 @@
       }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
-        background: var(--accent-weak);
+        background: #dbeafe;
       }
       .sessionMain {
         flex: 1 1 auto;

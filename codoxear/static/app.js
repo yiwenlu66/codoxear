@@ -2565,6 +2565,13 @@
           queueBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            const raw = $("#msg") ? $("#msg").value : "";
+            if (raw && raw.trim()) {
+              queueLocalMessage(raw);
+              clearComposer();
+              if (!currentRunning) maybeSendDeferred();
+              return;
+            }
             showQueueViewer();
           };
         }
