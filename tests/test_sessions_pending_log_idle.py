@@ -11,6 +11,8 @@ def _make_manager() -> SessionManager:
     mgr._lock = threading.Lock()
     mgr._sessions = {}
     mgr._harness = {}
+    mgr._aliases = {}
+    mgr._files = {}
     mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
@@ -42,4 +44,3 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
