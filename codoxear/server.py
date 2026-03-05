@@ -1193,6 +1193,7 @@ class SessionManager:
             for sid in drop:
                 self._queues.pop(sid, None)
             items = [(sid, q[0]) for sid, q in self._queues.items() if isinstance(q, list) and q]
+            log_paths = {sid: (self._sessions.get(sid).log_path if sid in self._sessions else None) for sid, _ in items}
         if drop:
             self._save_queues()
         # At most one injection per sweep.
@@ -1208,6 +1209,16 @@ class SessionManager:
             busy = bool(st.get("busy"))
             ql = int(st.get("queue_len"))
             if busy or ql > 0:
+                continue
+            # Guardrail: only inject server-queued messages when the rollout log indicates the
+            # session is idle. This avoids injecting "next" prompts mid-turn when the broker's
+            # busy bit is momentarily false due to a quiet window.
+            lp = log_paths.get(sid)
+            try:
+                if isinstance(lp, Path) and lp.exists():
+                    if not self.idle_from_log(sid):
+                        continue
+            except Exception:
                 continue
             try:
                 self.send(sid, text)
