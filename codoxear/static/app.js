@@ -1,14 +1,17 @@
-      const $ = (q) => document.querySelector(q);
-      function updateAppHeightVar() {
-        const vv = window.visualViewport;
-        const layoutH = Math.round(window.innerHeight);
-        const visualH = Math.round(vv ? vv.height : window.innerHeight);
-        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH) return;
-        updateAppHeightVar._h = visualH;
-        updateAppHeightVar._l = layoutH;
-        document.documentElement.style.setProperty("--appH", `${visualH}px`);
-        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
-      }
+	      const $ = (q) => document.querySelector(q);
+	      function updateAppHeightVar() {
+	        const vv = window.visualViewport;
+	        const layoutH = Math.round(window.innerHeight);
+	        const visualH = Math.round(vv ? vv.height : window.innerHeight);
+	        const visualTop = Math.max(0, Math.round(vv ? vv.offsetTop : 0));
+	        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH && updateAppHeightVar._t === visualTop) return;
+	        updateAppHeightVar._h = visualH;
+	        updateAppHeightVar._l = layoutH;
+	        updateAppHeightVar._t = visualTop;
+	        document.documentElement.style.setProperty("--appH", `${visualH}px`);
+	        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
+	        document.documentElement.style.setProperty("--vvTop", `${visualTop}px`);
+	      }
       updateAppHeightVar();
       window.addEventListener("resize", updateAppHeightVar);
       if (window.visualViewport) {

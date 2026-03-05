@@ -1960,36 +1960,13 @@ class SessionManager:
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        # The web queue is durability-oriented. Persist to the server-side queue so
+        # queued messages survive broker restarts.
+        resp = self._compat_queue_enqueue(session_id, text)
         with self._lock:
             s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            sock = s.sock_path
-        try:
-            resp = self._sock_call(sock, {"cmd": "enqueue", "text": text}, timeout_s=3.0)
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
-            return self._compat_queue_enqueue(session_id, text)
-        if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
-            raise ValueError(f"broker enqueue error: {resp.get('error')}")
-        if "queued" not in resp or "queue_len" not in resp:
-            raise ValueError("invalid broker enqueue response")
-        resp["backend"] = "broker"
-        try:
-            resp["queue_len_total"] = int(resp.get("queue_len")) + int(self._compat_queue_len(session_id))
-        except Exception:
-            pass
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if s2 and "queue_len" in resp:
-                s2.queue_len = int(resp.get("queue_len"))
+            broker_ql = int(s.queue_len) if s else 0
+        resp["queue_len_total"] = broker_ql + int(resp.get("queue_len") or 0)
         return resp
 
     def queue_list(self, session_id: str) -> list[str]:
