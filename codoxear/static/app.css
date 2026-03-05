@@ -826,7 +826,7 @@ input[type="text"] {
       }
       .loginWrap {
         position: fixed;
-        top: var(--vvTop, 0px);
+        top: 0;
         left: 0;
         right: 0;
         height: var(--appH, 100dvh);
@@ -911,7 +911,7 @@ input[type="text"] {
         display: none;
         position: fixed;
         left: 50%;
-        top: calc(50% + var(--vvTop, 0px));
+        top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
         width: min(92vw, 980px);
@@ -989,16 +989,11 @@ input[type="text"] {
         min-height: 120px;
         -webkit-overflow-scrolling: touch;
       }
-      .fileViewer.wrap .fileContent {
-        white-space: pre-wrap;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-      }
       .queueViewer {
         display: none;
         position: fixed;
         left: 50%;
-        top: calc(50% + var(--vvTop, 0px));
+        top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
         width: min(92vw, 520px);
@@ -1017,7 +1012,7 @@ input[type="text"] {
         display: none;
         position: fixed;
         left: 50%;
-        top: calc(50% + var(--vvTop, 0px));
+        top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
         width: min(92vw, 820px);
@@ -1101,7 +1096,7 @@ input[type="text"] {
         display: none;
         position: fixed;
         left: 50%;
-        top: calc(50% + var(--vvTop, 0px));
+        top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
         width: min(92vw, 420px);

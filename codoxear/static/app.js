@@ -3,14 +3,10 @@
         const vv = window.visualViewport;
         const layoutH = Math.round(window.innerHeight);
         const visualH = Math.round(vv ? vv.height : window.innerHeight);
-        const top = Math.round(vv ? vv.offsetTop : 0);
-        if (updateAppHeightVar._h === visualH && updateAppHeightVar._t === top && updateAppHeightVar._l === layoutH) return;
+        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH) return;
         updateAppHeightVar._h = visualH;
-        updateAppHeightVar._t = top;
         updateAppHeightVar._l = layoutH;
-        // Align the app root to the visual viewport so mobile keyboards do not cause double shifts.
         document.documentElement.style.setProperty("--appH", `${visualH}px`);
-        document.documentElement.style.setProperty("--vvTop", `${top}px`);
         document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
       }
       updateAppHeightVar();
@@ -735,14 +731,6 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const fileWrapBtn = el("button", {
-          id: "fileWrapBtn",
-          class: "icon-btn text-btn",
-          title: "Toggle line wrap",
-          "aria-label": "Toggle line wrap",
-          type: "button",
-          text: "Wrap",
-        });
         const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "path/to/file" });
         const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
@@ -786,7 +774,7 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileStagedBtn, fileWrapBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileStagedBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow" }, [fileCandidateSelect, fileCandidateRefreshBtn]),
           el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
@@ -2185,14 +2173,8 @@
             setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
           }
         }
-        let fileWrap = true;
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
         let fileDiffStaged = localStorage.getItem("codexweb.fileDiffStaged") === "1";
-
-        function applyFileWrap() {
-          fileViewer.classList.toggle("wrap", fileWrap);
-          fileWrapBtn.classList.toggle("active", fileWrap);
-        }
 
         function extToPrismLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
@@ -2220,10 +2202,8 @@
           fileModeFileBtn.classList.toggle("active", !isDiff);
           fileStagedBtn.style.display = isDiff ? "inline-flex" : "none";
           fileStagedBtn.classList.toggle("active", Boolean(fileDiffStaged));
-          fileWrapBtn.style.display = "none";
           fileDiff.style.display = isDiff ? "block" : "none";
           filePre.style.display = isDiff ? "none" : "block";
-          applyFileWrap();
         }
 
         async function refreshFileCandidates() {
@@ -2355,10 +2335,6 @@
           localStorage.setItem("codexweb.fileDiffStaged", fileDiffStaged ? "1" : "0");
           applyFileMode();
           if (fileViewMode === "diff") void openFilePath();
-        };
-        fileWrapBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
         };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
