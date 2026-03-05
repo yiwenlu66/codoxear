@@ -1606,6 +1606,10 @@ class SessionManager:
             ts = ev.get("ts")
             if not isinstance(ts, (int, float)):
                 return None
+            # Some runtimes may emit the same assistant message twice with slightly different timestamps.
+            # Deduplicate assistant outputs by bucketing timestamps to reduce false duplicates in the UI.
+            if role == "assistant":
+                return role, int(float(ts) // 2), text
             return role, int(round(float(ts) * 1000.0)), text
 
         with self._lock:
@@ -1641,6 +1645,8 @@ class SessionManager:
             ts = ev.get("ts")
             if not isinstance(ts, (int, float)):
                 return None
+            if role == "assistant":
+                return role, int(float(ts) // 2), text
             return role, int(round(float(ts) * 1000.0)), text
 
         if not new_events and latest_token is None:
