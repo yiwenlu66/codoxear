@@ -142,15 +142,15 @@
         overflow: hidden;
         border-radius: 12px;
       }
-      .sessionContent {
-        position: relative;
-        z-index: 2;
-        background: #ffffff;
-        transform: translate3d(0px, 0, 0);
-        transition: transform 160ms ease-out;
-        will-change: transform;
-        touch-action: pan-y;
-      }
+	      .sessionContent {
+	        position: relative;
+	        z-index: 2;
+	        background: #ffffff;
+	        transform: translate3d(0px, 0, 0);
+	        transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+	        will-change: transform;
+	        touch-action: pan-y;
+	      }
       .session.active .sessionContent {
         background: #dbeafe;
       }
@@ -1287,20 +1287,20 @@ input[type="text"] {
         .fileContent {
           font-size: 11px;
         }
-        .sidebar .sessions {
-          padding: 8px;
-        }
-        .session {
-          margin-bottom: 8px;
-          border-radius: 12px;
-        }
-        .sessionSwipe {
-          border-radius: 12px;
-        }
-        .sessionInner {
-          padding: 8px;
-          gap: 3px;
-        }
+	        .sidebar .sessions {
+	          padding: 6px;
+	        }
+	        .session {
+	          margin-bottom: 6px;
+	          border-radius: 10px;
+	        }
+	        .sessionSwipe {
+	          border-radius: 10px;
+	        }
+	        .sessionInner {
+	          padding: 6px;
+	          gap: 2px;
+	        }
         .row {
           gap: 8px;
         }
