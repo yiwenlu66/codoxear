@@ -329,8 +329,6 @@ def _response_call_finished(payload: dict[str, Any]) -> str | None:
 def _should_clear_busy_state(st: "State", now_ts: float) -> bool:
     if not st.busy:
         return False
-    if st.queue or st.key_queue:
-        return False
     if st.pending_calls:
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
@@ -697,39 +695,61 @@ class Broker:
                 continue
 
             objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
-            def drain_queues(*, clear_busy: bool) -> None:
-                q: list[str] = []
-                kq: list[bytes] = []
+            def maybe_drain_one_if_idle() -> None:
+                now_ts = _now()
                 fd: int | None = None
+                kq: list[bytes] = []
+                msg: str | None = None
                 with self._lock:
                     st3 = self.state
                     if not st3:
                         return
-                    if clear_busy:
-                        st3.busy = False
+                    if st3.busy or st3.turn_open or st3.pending_calls:
+                        return
                     if not st3.queue and not st3.key_queue:
                         return
-                    kq = st3.key_queue[:]
-                    st3.key_queue.clear()
-                    q = st3.queue[:]
-                    st3.queue.clear()
                     fd = st3.pty_master_fd
-                if fd is None:
-                    return
+                    if fd is None:
+                        return
+                    if st3.key_queue:
+                        kq = st3.key_queue[:]
+                        st3.key_queue.clear()
+                    if st3.queue:
+                        msg = st3.queue[0]
+                        st3.pending_calls.clear()
+                        st3.busy = True
+                        st3.turn_open = True
+                        st3.turn_has_completion_candidate = False
+                        st3.last_interrupt_hint_ts = 0.0
+                        if now_ts > st3.last_turn_activity_ts:
+                            st3.last_turn_activity_ts = now_ts
                 for b in kq:
                     try:
                         os.write(fd, b)
                     except Exception:
                         break
-                for msg in q:
-                    try:
-                        _inject(fd, text=msg, suffix=_encode_enter())
-                    except Exception:
-                        break
+                if msg is None:
+                    return
+                try:
+                    _inject(fd, text=msg, suffix=_encode_enter())
+                except Exception:
+                    traceback.print_exc()
+                    with self._lock:
+                        st4 = self.state
+                        if st4 and st4.queue and st4.queue[0] == msg:
+                            st4.busy = False
+                            st4.turn_open = False
+                            st4.turn_has_completion_candidate = False
+                            st4.last_turn_activity_ts = 0.0
+                            st4.last_interrupt_hint_ts = 0.0
+                    return
+                with self._lock:
+                    st4 = self.state
+                    if st4 and st4.queue and st4.queue[0] == msg:
+                        st4.queue.pop(0)
 
             def maybe_mark_idle() -> None:
                 now_ts = _now()
-                should_clear = False
                 with self._lock:
                     st3 = self.state
                     if st3 and _should_clear_busy_state(st3, now_ts):
@@ -738,12 +758,10 @@ class Broker:
                         st3.turn_has_completion_candidate = False
                         st3.last_turn_activity_ts = 0.0
                         st3.last_interrupt_hint_ts = 0.0
-                        should_clear = bool(st3.queue or st3.key_queue)
-                if should_clear:
-                    drain_queues(clear_busy=False)
 
             if new_off == off:
                 maybe_mark_idle()
+                maybe_drain_one_if_idle()
                 time.sleep(0.25)
                 continue
 
@@ -754,14 +772,11 @@ class Broker:
 
             for obj in objs:
                 now_ts = _now()
-                aborted_or_rolled_back = False
                 if obj.get("type") == "event_msg":
                     p = obj.get("payload")
                     if not isinstance(p, dict):
                         raise ValueError("invalid rollout event_msg payload")
                     pt = p.get("type")
-                    if pt in ("turn_aborted", "thread_rolled_back"):
-                        aborted_or_rolled_back = True
                     if pt == "token_count":
                         info = p.get("info")
                         if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
@@ -785,10 +800,9 @@ class Broker:
                     st3 = self.state
                     if st3:
                         _apply_rollout_obj_to_state(st3, obj, now_ts=now_ts)
-                if aborted_or_rolled_back:
-                    drain_queues(clear_busy=False)
 
             maybe_mark_idle()
+            maybe_drain_one_if_idle()
 
     def _write_meta(self) -> None:
         st = self.state
@@ -895,32 +909,13 @@ class Broker:
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
                 else:
-                    seq_raw = req.get("enter_seq")
-                    seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
-                    should_inject = False
-                    fd: int | None = None
                     with self._lock:
                         st = self.state
                         if not st:
                             resp = {"error": "no state"}
                         else:
-                            if st.busy or st.turn_open:
-                                st.queue.append(text)
-                                resp = {"queued": True, "queue_len": len(st.queue)}
-                            else:
-                                now_ts = _now()
-                                st.pending_calls.clear()
-                                st.busy = True
-                                st.turn_open = True
-                                st.turn_has_completion_candidate = False
-                                st.last_interrupt_hint_ts = 0.0
-                                if now_ts > st.last_turn_activity_ts:
-                                    st.last_turn_activity_ts = now_ts
-                                fd = st.pty_master_fd
-                                should_inject = True
-                                resp = {"queued": False, "queue_len": len(st.queue)}
-                    if should_inject and fd is not None:
-                        _inject(fd, text=text, suffix=seq)
+                            st.queue.append(text)
+                            resp = {"queued": True, "queue_len": len(st.queue)}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 return

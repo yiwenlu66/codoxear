@@ -110,6 +110,16 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertFalse(_should_clear_busy_state(st, now_ts=13.0 + max(BUSY_QUIET_SECONDS - 0.05, 0.0)))
         self.assertTrue(_should_clear_busy_state(st, now_ts=13.0 + BUSY_QUIET_SECONDS + 0.05))
 
+    def test_queue_does_not_block_idle_clearing(self) -> None:
+        st = _state()
+        st.busy = True
+        st.turn_open = False
+        st.turn_has_completion_candidate = True
+        st.last_turn_activity_ts = 10.0
+        st.queue.append("queued")
+        self.assertFalse(_should_clear_busy_state(st, now_ts=10.0 + max(BUSY_QUIET_SECONDS - 0.05, 0.0)))
+        self.assertTrue(_should_clear_busy_state(st, now_ts=10.0 + BUSY_QUIET_SECONDS + 0.05))
+
     def test_long_silent_turn_without_assistant_candidate_stays_busy(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

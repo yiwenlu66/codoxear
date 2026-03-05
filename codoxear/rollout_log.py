@@ -13,7 +13,10 @@ def _parse_iso8601_to_epoch(ts: str) -> float | None:
     t = ts.strip()
     if t.endswith("Z"):
         t = t[:-1] + "+00:00"
-    return datetime.datetime.fromisoformat(t).timestamp()
+    try:
+        return datetime.datetime.fromisoformat(t).timestamp()
+    except ValueError:
+        return None
 
 
 def _event_ts(obj: dict[str, Any]) -> float | None:

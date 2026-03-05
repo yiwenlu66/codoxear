@@ -957,9 +957,6 @@ class SessionManager:
                 self._queues[session_id] = q
             q.append(t)
             ql = len(q)
-            s = self._sessions.get(session_id)
-            if s is not None:
-                s.queue_len = int(ql)
         self._save_queues()
         return {"queued": True, "queue_len": int(ql), "backend": "server_compat"}
 
@@ -975,9 +972,6 @@ class SessionManager:
                 raise ValueError("index out of range")
             q.pop(int(index))
             ql = len(q)
-            s = self._sessions.get(session_id)
-            if s is not None:
-                s.queue_len = int(ql)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql), "backend": "server_compat"}
 
@@ -996,9 +990,6 @@ class SessionManager:
                 raise ValueError("index out of range")
             q[int(index)] = t
             ql = len(q)
-            s = self._sessions.get(session_id)
-            if s is not None:
-                s.queue_len = int(ql)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql), "backend": "server_compat"}
 
@@ -1991,6 +1982,10 @@ class SessionManager:
         if "queued" not in resp or "queue_len" not in resp:
             raise ValueError("invalid broker enqueue response")
         resp["backend"] = "broker"
+        try:
+            resp["queue_len_total"] = int(resp.get("queue_len")) + int(self._compat_queue_len(session_id))
+        except Exception:
+            pass
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:
@@ -2011,15 +2006,28 @@ class SessionManager:
         q = resp.get("queue")
         if not isinstance(q, list) or not all(isinstance(x, str) for x in q):
             raise ValueError("invalid broker queue_list response")
-        return list(q)
+        compat = self._compat_queue_list(session_id)
+        return list(compat) + list(q)
 
     def queue_delete(self, session_id: str, index: int) -> dict[str, Any]:
+        compat = self._compat_queue_list(session_id)
+        compat_len = len(compat)
+        if compat_len and int(index) < compat_len:
+            resp = self._compat_queue_delete(session_id, int(index))
+            with self._lock:
+                s2 = self._sessions.get(session_id)
+                broker_ql = int(s2.queue_len) if s2 is not None else 0
+            if isinstance(resp, dict) and "queue_len" in resp:
+                resp["queue_len_total"] = int(resp.get("queue_len")) + int(broker_ql)
+            return resp
+
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
-        resp = self._sock_call(sock, {"cmd": "queue_delete", "index": int(index)}, timeout_s=1.5)
+        broker_index = int(index) - int(compat_len)
+        resp = self._sock_call(sock, {"cmd": "queue_delete", "index": int(broker_index)}, timeout_s=1.5)
         if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
             return self._compat_queue_delete(session_id, int(index))
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
@@ -2027,6 +2035,7 @@ class SessionManager:
         if "queue_len" not in resp:
             raise ValueError("invalid broker queue_delete response")
         resp["backend"] = "broker"
+        resp["queue_len_total"] = int(resp.get("queue_len")) + int(compat_len)
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:
@@ -2034,12 +2043,24 @@ class SessionManager:
         return resp
 
     def queue_update(self, session_id: str, index: int, text: str) -> dict[str, Any]:
+        compat = self._compat_queue_list(session_id)
+        compat_len = len(compat)
+        if compat_len and int(index) < compat_len:
+            resp = self._compat_queue_update(session_id, int(index), text)
+            with self._lock:
+                s2 = self._sessions.get(session_id)
+                broker_ql = int(s2.queue_len) if s2 is not None else 0
+            if isinstance(resp, dict) and "queue_len" in resp:
+                resp["queue_len_total"] = int(resp.get("queue_len")) + int(broker_ql)
+            return resp
+
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
-        resp = self._sock_call(sock, {"cmd": "queue_update", "index": int(index), "text": text}, timeout_s=1.5)
+        broker_index = int(index) - int(compat_len)
+        resp = self._sock_call(sock, {"cmd": "queue_update", "index": int(broker_index), "text": text}, timeout_s=1.5)
         if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
             return self._compat_queue_update(session_id, int(index), text)
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
@@ -2047,6 +2068,7 @@ class SessionManager:
         if "queue_len" not in resp:
             raise ValueError("invalid broker queue_update response")
         resp["backend"] = "broker"
+        resp["queue_len_total"] = int(resp.get("queue_len")) + int(compat_len)
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:

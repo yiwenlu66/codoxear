@@ -1562,19 +1562,21 @@
                let startY = 0;
                let startSwipe = 0;
                let dragging = false;
-               content.addEventListener("pointerdown", (e) => {
-                 if (e.pointerType === "mouse" && e.button !== 0) return;
-                 startX = e.clientX;
-                 startY = e.clientY;
-                 startSwipe = Number(content.dataset.swipeX || 0);
-                 dragging = false;
-                 if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
-                 content.setPointerCapture(e.pointerId);
-               });
-                content.addEventListener("pointermove", (e) => {
-                  if (startX === null) return;
-                  const dx = e.clientX - startX;
-                  const dy = e.clientY - startY;
+                content.addEventListener("pointerdown", (e) => {
+                  if (e.pointerType === "mouse" && e.button !== 0) return;
+                  startX = e.clientX;
+                  startY = e.clientY;
+                  startSwipe = Number(content.dataset.swipeX || 0);
+                  dragging = false;
+                  if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
+                  try {
+                    content.setPointerCapture(e.pointerId);
+                  } catch (_) {}
+                });
+                 content.addEventListener("pointermove", (e) => {
+                   if (startX === null) return;
+                   const dx = e.clientX - startX;
+                   const dy = e.clientY - startY;
                   if (!dragging) {
                     if (Math.abs(dx) < 6) return;
                     if (Math.abs(dx) < Math.abs(dy) + 6) return;
@@ -1584,16 +1586,19 @@
                   if (dragging) e.preventDefault();
                   let x = startSwipe + dx;
                   x = Math.min(leftMax, Math.max(-rightMax, x));
-                  content.style.transform = `translate3d(${x}px, 0, 0)`;
-                  content.dataset.swipeX = String(x);
-                });
-               function finishSwipe() {
-                 if (startX === null) return;
-                 startX = null;
-                 if (!dragging) return;
-                 dragging = false;
-                 content.style.transition = "";
-                 const x = Number(content.dataset.swipeX || 0);
+                   content.style.transform = `translate3d(${x}px, 0, 0)`;
+                   content.dataset.swipeX = String(x);
+                 });
+                function finishSwipe(e) {
+                  if (startX === null) return;
+                  try {
+                    if (e && e.pointerId != null) content.releasePointerCapture(e.pointerId);
+                  } catch (_) {}
+                  startX = null;
+                  if (!dragging) return;
+                  dragging = false;
+                  content.style.transition = "";
+                  const x = Number(content.dataset.swipeX || 0);
                  let target = 0;
                   if (x > 0 && leftMax > 0 && x > leftMax / 2) target = leftMax;
                   else if (x < 0 && rightMax > 0 && -x > rightMax / 2) target = -rightMax;
@@ -2405,15 +2410,15 @@
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
             if (!raw || !sid) return;
-            clearComposer();
-            try {
-              const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-              const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
-              if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
-              else setToast("sent");
-              pollFastUntilMs = Date.now() + 5000;
-              kickPoll(0);
-              await refreshSessions();
+              clearComposer();
+              try {
+                const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
+              const qn = res && typeof res.queue_len_total === "number" ? res.queue_len_total : res && typeof res.queue_len === "number" ? res.queue_len : null;
+                if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
+                else setToast("sent");
+                pollFastUntilMs = Date.now() + 5000;
+                kickPoll(0);
+                await refreshSessions();
               updateQueueBadge();
             } catch (e) {
               setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
@@ -2457,7 +2462,7 @@
 
         function renderQueueList() {
           queueList.innerHTML = "";
-          const sid = selected;
+          const sid = queueViewerSid || selected;
           if (!sid) {
             queueEmpty.style.display = "block";
             return;
@@ -2493,20 +2498,20 @@
         }
 
         async function refreshQueueViewer() {
-          if (!selected) return;
-          const sid = selected;
+          const sid = queueViewerSid || selected;
+          if (!sid) return;
           if (queueViewer.style.display === "flex" && Date.now() - queueLastEditMs < 900) return;
           queueEmpty.textContent = "Loading...";
           try {
             const data = await api(`/api/sessions/${sid}/queue`);
-            if (selected !== sid) return;
+            if (queueViewerSid && queueViewerSid !== sid) return;
             const q = data && Array.isArray(data.queue) ? data.queue.filter((x) => typeof x === "string") : [];
             queueViewerSid = sid;
             queueViewerItems = q;
             queueEmpty.textContent = "No queued messages.";
             renderQueueList();
           } catch (e) {
-            if (selected !== sid) return;
+            if (queueViewerSid && queueViewerSid !== sid) return;
             queueViewerSid = sid;
             queueViewerItems = [];
             queueEmpty.textContent = `Queue unavailable: ${e && e.message ? e.message : "unknown error"}`;
@@ -2516,6 +2521,8 @@
         }
 
         function showQueueViewer() {
+          if (!selected) return;
+          queueViewerSid = selected;
           queueBackdrop.style.display = "block";
           queueViewer.style.display = "flex";
           void refreshQueueViewer();
@@ -2524,6 +2531,8 @@
         function hideQueueViewer() {
           queueBackdrop.style.display = "none";
           queueViewer.style.display = "none";
+          queueViewerSid = null;
+          queueViewerItems = [];
         }
 
         function showHelpViewer() {
@@ -2609,7 +2618,12 @@
               void (async () => {
                 try {
                   const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-                  const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
+                  const qn =
+                    res && typeof res.queue_len_total === "number"
+                      ? res.queue_len_total
+                      : res && typeof res.queue_len === "number"
+                        ? res.queue_len
+                        : null;
                   if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
                   else setToast("sent");
                   pollFastUntilMs = Date.now() + 5000;
