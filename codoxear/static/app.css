@@ -13,6 +13,12 @@
         --bubble-assistant: #ffffff;
       }
 
+      @media (min-width: 881px) {
+        :root {
+          --sidebar-w: 380px;
+        }
+      }
+
       *,
       *::before,
       *::after {
@@ -100,14 +106,14 @@
         object-fit: contain;
       }
       .sidebar .sessions {
-        padding: 10px;
+        padding: 8px;
         overflow: auto;
         flex: 1;
         min-height: 0;
         -webkit-overflow-scrolling: touch;
       }
       .sidebar footer {
-        padding: 10px;
+        padding: 8px;
         border-top: 1px solid var(--border);
         display: flex;
         gap: 10px;
@@ -116,16 +122,18 @@
         flex: 1 1 auto;
         justify-content: center;
         gap: 8px;
+        height: 40px;
+        border-radius: 12px;
       }
       .session {
         padding: 0;
         border: 1px solid var(--border);
         border-radius: 12px;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
         cursor: pointer;
         background: #ffffff;
         display: block;
-        touch-action: manipulation;
+        touch-action: pan-y;
       }
       .sessionSwipe {
         position: relative;
@@ -138,9 +146,10 @@
         position: relative;
         z-index: 2;
         background: #ffffff;
-        transform: translateX(0px);
+        transform: translate3d(0px, 0, 0);
         transition: transform 160ms ease-out;
         will-change: transform;
+        touch-action: pan-y;
       }
       .session.active .sessionContent {
         background: #dbeafe;
@@ -179,6 +188,16 @@
       .ownDot.owned {
         background: rgba(29, 78, 216, 0.95);
       }
+      .stateDot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        flex: 0 0 auto;
+        background: rgba(107, 114, 128, 0.85);
+      }
+      .stateDot.busy {
+        background: rgba(29, 78, 216, 0.95);
+      }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
         background: #dbeafe;
@@ -190,7 +209,7 @@
         flex-direction: column;
       }
       .sessionInner {
-        padding: 10px;
+        padding: 8px;
         display: flex;
         flex-direction: column;
         gap: 4px;
@@ -201,6 +220,25 @@
         align-items: center;
         gap: 8px;
         min-width: 0;
+      }
+      .sessionBadges {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+        min-width: 0;
+      }
+      .rowRight {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .sessionActionsInline {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
       }
       .sessionAction {
         flex: 0 0 auto;
@@ -273,7 +311,7 @@
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        max-width: 280px;
+        max-width: 100%;
       }
       .muted {
         color: var(--muted);
@@ -316,7 +354,7 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        align-items: stretch;
+        align-items: center;
         gap: 12px;
       }
       .pill {
@@ -939,10 +977,12 @@ input[type="text"] {
         padding: 12px;
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
-        background: #0b1220;
-        color: #e5e7eb;
+        background: #ffffff;
+        color: var(--text);
         overflow: auto;
-        white-space: pre;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: anywhere;
         font-size: 12px;
         line-height: 1.4;
         flex: 1 1 auto;
@@ -994,6 +1034,43 @@ input[type="text"] {
       .helpBody {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
+      }
+      .detailsGrid {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.96);
+      }
+      .detailsRow {
+        display: flex;
+        gap: 12px;
+        padding: 10px 10px;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+        align-items: flex-start;
+      }
+      .detailsRow:last-child {
+        border-bottom: 0;
+      }
+      .detailsLabel {
+        flex: 0 0 110px;
+        color: rgba(17, 24, 39, 0.62);
+        font-size: 12px;
+        line-height: 1.2;
+        padding-top: 2px;
+      }
+      .detailsValue {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .detailsValue.mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
       }
       .queueHeader {
         display: flex;
@@ -1111,9 +1188,9 @@ input[type="text"] {
         .topbar {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
           gap: 10px;
-          align-items: stretch;
+          align-items: center;
           display: flex;
-          flex-direction: column;
+          flex-direction: row;
         }
         #threadTitle {
           max-width: 100%;
@@ -1162,8 +1239,8 @@ input[type="text"] {
         .topActions {
           display: flex;
           gap: 8px;
-          flex-wrap: wrap;
-          justify-content: flex-start;
+          flex-wrap: nowrap;
+          justify-content: flex-end;
           padding: 0;
           border: none;
           background: transparent;
@@ -1215,6 +1292,23 @@ input[type="text"] {
         .fileContent {
           font-size: 11px;
         }
+        .sidebar .sessions {
+          padding: 8px;
+        }
+        .session {
+          margin-bottom: 8px;
+          border-radius: 12px;
+        }
+        .sessionSwipe {
+          border-radius: 12px;
+        }
+        .sessionInner {
+          padding: 8px;
+          gap: 3px;
+        }
+        .row {
+          gap: 8px;
+        }
       }
 
       @media (hover: none) and (pointer: coarse) {
@@ -1237,7 +1331,7 @@ input[type="text"] {
           font-size: 16px;
         }
         .session {
-          padding: 12px;
+          padding: 0;
         }
       }
 
