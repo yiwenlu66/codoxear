@@ -53,7 +53,7 @@
         grid-template-columns: var(--sidebar-w) 1fr;
         grid-template-rows: 1fr;
         position: fixed;
-        top: 0;
+        top: var(--vvTop, 0px);
         left: 0;
         right: 0;
         width: 100vw;
@@ -668,7 +668,7 @@
       .composer {
         --composerCtl: 38px;
         border-top: 1px solid var(--border);
-        padding: 10px 12px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px));
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
         background: var(--panel);
       }
       .composer form {
@@ -1147,7 +1147,7 @@ input[type="text"] {
         }
         .composer {
           --composerCtl: 34px;
-          padding: 8px 10px calc(8px + env(safe-area-inset-bottom) + var(--kbH, 0px));
+          padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
         }
         .composer form {
           padding: 5px 6px;
@@ -1181,7 +1181,7 @@ input[type="text"] {
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
         }
         .queueViewer {
           width: 100vw;
@@ -1192,7 +1192,7 @@ input[type="text"] {
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
         }
         .helpViewer,
         .diagViewer {
@@ -1204,7 +1204,7 @@ input[type="text"] {
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
         }
         .sessionFilesLabel {
           font-size: 10px;

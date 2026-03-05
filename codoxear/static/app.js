@@ -4,14 +4,14 @@
         const layoutH = Math.round(window.innerHeight);
         const visualH = Math.round(vv ? vv.height : window.innerHeight);
         const top = Math.round(vv ? vv.offsetTop : 0);
-        const kb = Math.max(0, layoutH - visualH - top);
-        if (updateAppHeightVar._h === layoutH && updateAppHeightVar._t === top && updateAppHeightVar._k === kb) return;
-        updateAppHeightVar._h = layoutH;
+        if (updateAppHeightVar._h === visualH && updateAppHeightVar._t === top && updateAppHeightVar._l === layoutH) return;
+        updateAppHeightVar._h = visualH;
         updateAppHeightVar._t = top;
-        updateAppHeightVar._k = kb;
-        document.documentElement.style.setProperty("--appH", `${layoutH}px`);
+        updateAppHeightVar._l = layoutH;
+        // Align the app root to the visual viewport so mobile keyboards do not cause double shifts.
+        document.documentElement.style.setProperty("--appH", `${visualH}px`);
         document.documentElement.style.setProperty("--vvTop", `${top}px`);
-        document.documentElement.style.setProperty("--kbH", `${kb}px`);
+        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
       }
       updateAppHeightVar();
       window.addEventListener("resize", updateAppHeightVar);
@@ -578,14 +578,10 @@
         let pollLoopBusy = false;
         let pollKickPending = false;
 	        let pollFastUntilMs = 0;
-	        let turnOpen = false;
+         let turnOpen = false;
          let sessionsTimer = null;
          let currentRunning = false;
-         let deferInFlight = false;
          let openSwipeContent = null;
-         const deferredBySession = new Map();
-         const deferredLoaded = new Set();
-           const queueSaveTimers = new Map();
         const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
@@ -860,8 +856,8 @@
 </ul>
 <div class="muted">Queue</div>
 <ul class="md">
-  <li>When a response is running, choose <b>Send after current</b> to queue locally for that session.</li>
-  <li>Queued messages are saved locally and sent when the session becomes idle.</li>
+  <li>When a response is running, choose <b>Send after current</b> to enqueue the message for that session.</li>
+  <li>Queued messages are stored with the session and sent when it becomes idle.</li>
 </ul>`,
           }),
         ]);
@@ -898,27 +894,27 @@
           }, 2200);
         }
 
+        let currentQueueLen = 0;
         function setStatus({ running, queueLen }) {
           const q = Math.max(0, Number(queueLen) || 0);
           const mobile = isMobile();
           const wasRunning = currentRunning;
           currentRunning = Boolean(running);
+          currentQueueLen = q;
           if (running) {
             statusChip.style.display = "none";
             statusChip.classList.remove("running");
           } else {
             statusChip.style.display = "inline-flex";
-			            if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
-			            else statusChip.textContent = "Idle";
+               if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
+               else statusChip.textContent = "Idle";
           }
           interruptBtn.style.display = running && selected ? "inline-flex" : "none";
           interruptBtn.disabled = !(running && selected);
           if (wasRunning && !currentRunning) {
-            deferInFlight = false;
+            // no-op placeholder; keep transition boundary for future UI behavior
           }
-          if (!currentRunning && q === 0) {
-            maybeSendDeferred();
-          }
+          updateQueueBadge();
         }
 
 	        function setContext(tok) {
@@ -989,65 +985,8 @@
           return OLDER_PAGE_LIMIT;
         }
 
-        function deferredStorageKey(sid) {
-          return `codexweb.deferred.${sid}`;
-        }
-
-        function loadDeferredFromStorage(sid) {
-          if (!sid || deferredLoaded.has(sid)) return;
-          deferredLoaded.add(sid);
-          try {
-            const raw = localStorage.getItem(deferredStorageKey(sid));
-            if (!raw) return;
-            const arr = JSON.parse(raw);
-            if (!Array.isArray(arr)) return;
-            const out = [];
-            for (const v of arr) {
-              if (typeof v !== "string") continue;
-              const t = v.trim();
-              if (!t) continue;
-              out.push(t);
-            }
-            if (out.length) deferredBySession.set(sid, out);
-          } catch {
-            // ignore corrupted storage
-          }
-        }
-
-        function saveDeferredToStorage(sid) {
-          if (!sid) return;
-          const q = deferredBySession.get(sid) || [];
-          try {
-            localStorage.setItem(deferredStorageKey(sid), JSON.stringify(q));
-          } catch {
-            // ignore quota or serialization issues
-          }
-        }
-
-        function scheduleQueueSave(sid) {
-          if (!sid) return;
-          const existing = queueSaveTimers.get(sid);
-          if (existing) clearTimeout(existing);
-          const t = setTimeout(() => {
-            queueSaveTimers.delete(sid);
-            saveDeferredToStorage(sid);
-          }, 350);
-          queueSaveTimers.set(sid, t);
-        }
-
-        function getDeferredQueue(sid) {
-          if (!sid) return [];
-          loadDeferredFromStorage(sid);
-          let q = deferredBySession.get(sid);
-          if (!q) {
-            q = [];
-            deferredBySession.set(sid, q);
-          }
-          return q;
-        }
-
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v3.${sid}`;
+          return `codexweb.cache.v4.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
@@ -1220,8 +1159,7 @@
             queueBadgeEl.style.display = "none";
             return;
           }
-          const q = getDeferredQueue(selected);
-          const n = q.length;
+          const n = Math.max(0, Number(currentQueueLen) || 0);
           if (n > 0) {
             queueBadgeEl.textContent = String(n);
             queueBadgeEl.style.display = "inline-flex";
@@ -1230,38 +1168,8 @@
             queueBadgeEl.style.display = "none";
           }
           if (queueViewer.style.display === "flex") {
-            renderQueueList();
+            void refreshQueueViewer();
           }
-        }
-
-        function queueLocalMessageFor(sid, raw, { front = false } = {}) {
-          if (!sid) return;
-          const q = getDeferredQueue(sid);
-          if (front) q.unshift(raw);
-          else q.push(raw);
-          saveDeferredToStorage(sid);
-          if (sid === selected) updateQueueBadge();
-          setToast(`queued locally (${q.length})`);
-        }
-
-        function queueLocalMessage(raw, opts) {
-          if (!selected) return;
-          queueLocalMessageFor(selected, raw, opts);
-        }
-
-        function maybeSendDeferred() {
-          if (!selected) return;
-          if (sending || deferInFlight || currentRunning) return;
-          const q = getDeferredQueue(selected);
-          if (!q.length) {
-            updateQueueBadge();
-            return;
-          }
-          const raw = q.shift();
-          saveDeferredToStorage(selected);
-          deferInFlight = true;
-          updateQueueBadge();
-          void sendText(raw, { deferred: true });
         }
 
           function markClickFirstPaint() {
@@ -1814,6 +1722,14 @@
        function startInitialRender(allEvents) {
          backfillToken += 1;
          const myToken = backfillToken;
+
+         // Guardrail: startInitialRender is intended to backfill an empty chat view.
+         // If it is invoked again (e.g., due to a race), clear existing rendered rows
+         // to avoid duplicating the last assistant message.
+         if (chatInner.querySelector(".msg-row:not(.typing-row)")) {
+           for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
+           for (const n of Array.from(chatInner.querySelectorAll(".msg-row:not(.typing-row)"))) n.remove();
+         }
 
          const msgs = [];
          const initDedup = new Set();
@@ -2470,19 +2386,60 @@
             await sendText(raw, { sid });
           };
         if (sendChoiceLaterBtn)
-          sendChoiceLaterBtn.onclick = () => {
+          sendChoiceLaterBtn.onclick = async () => {
             const raw = sendChoicePending && sendChoicePending.text;
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
             if (!raw || !sid) return;
             clearComposer();
-            queueLocalMessageFor(sid, raw);
+            try {
+              const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
+              const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
+              if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
+              else setToast("sent");
+              pollFastUntilMs = Date.now() + 5000;
+              kickPoll(0);
+              await refreshSessions();
+              updateQueueBadge();
+            } catch (e) {
+              setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
+            }
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
             hideSendChoice();
           };
         sendChoiceBackdrop.onclick = () => hideSendChoice();
+
+        const queueUpdateTimers = new Map();
+        let queueLastEditMs = 0;
+        let queueViewerSid = null;
+        let queueViewerItems = [];
+
+        function scheduleQueueUpdate(sid, idx, text) {
+          if (!sid) return;
+          if (!String(text || "").trim()) {
+            const key0 = `${sid}:${idx}`;
+            const existing0 = queueUpdateTimers.get(key0);
+            if (existing0) clearTimeout(existing0);
+            queueUpdateTimers.delete(key0);
+            return;
+          }
+          const key = `${sid}:${idx}`;
+          const existing = queueUpdateTimers.get(key);
+          if (existing) clearTimeout(existing);
+          const t = setTimeout(async () => {
+            queueUpdateTimers.delete(key);
+            try {
+              await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { index: idx, text } });
+              await refreshSessions();
+              updateQueueBadge();
+            } catch (e) {
+              setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
+            }
+          }, 350);
+          queueUpdateTimers.set(key, t);
+        }
 
         function renderQueueList() {
           queueList.innerHTML = "";
@@ -2491,7 +2448,7 @@
             queueEmpty.style.display = "block";
             return;
           }
-          const q = getDeferredQueue(sid);
+          const q = Array.isArray(queueViewerItems) ? queueViewerItems : [];
           queueEmpty.style.display = q.length ? "none" : "block";
           if (!q.length) return;
           q.forEach((text, idx) => {
@@ -2499,21 +2456,21 @@
             const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
             ta.value = text;
             ta.oninput = () => {
-              const q2 = getDeferredQueue(sid);
-              if (idx >= q2.length) return;
-              q2[idx] = String(ta.value || "");
-              scheduleQueueSave(sid);
+              queueLastEditMs = Date.now();
+              scheduleQueueUpdate(sid, idx, String(ta.value || ""));
             };
             const del = el("button", { class: "icon-btn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
-            del.onclick = (e) => {
+            del.onclick = async (e) => {
               e.preventDefault();
               e.stopPropagation();
-              const q2 = getDeferredQueue(sid);
-              if (idx >= q2.length) return;
-              q2.splice(idx, 1);
-              saveDeferredToStorage(sid);
-              updateQueueBadge();
-              renderQueueList();
+              try {
+                await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { index: idx } });
+                await refreshQueueViewer();
+                await refreshSessions();
+                updateQueueBadge();
+              } catch (e2) {
+                setToast(`queue delete error: ${e2 && e2.message ? e2.message : "unknown error"}`);
+              }
             };
             row.appendChild(ta);
             row.appendChild(del);
@@ -2521,10 +2478,33 @@
           });
         }
 
+        async function refreshQueueViewer() {
+          if (!selected) return;
+          const sid = selected;
+          if (queueViewer.style.display === "flex" && Date.now() - queueLastEditMs < 900) return;
+          queueEmpty.textContent = "Loading...";
+          try {
+            const data = await api(`/api/sessions/${sid}/queue`);
+            if (selected !== sid) return;
+            const q = data && Array.isArray(data.queue) ? data.queue.filter((x) => typeof x === "string") : [];
+            queueViewerSid = sid;
+            queueViewerItems = q;
+            queueEmpty.textContent = "No queued messages.";
+            renderQueueList();
+          } catch (e) {
+            if (selected !== sid) return;
+            queueViewerSid = sid;
+            queueViewerItems = [];
+            queueEmpty.textContent = `Queue unavailable: ${e && e.message ? e.message : "unknown error"}`;
+            setToast(`queue load error: ${e && e.message ? e.message : "unknown error"}`);
+            renderQueueList();
+          }
+        }
+
         function showQueueViewer() {
           queueBackdrop.style.display = "block";
           queueViewer.style.display = "flex";
-          renderQueueList();
+          void refreshQueueViewer();
         }
 
         function hideQueueViewer() {
@@ -2567,9 +2547,23 @@
             e.stopPropagation();
             const raw = $("#msg") ? $("#msg").value : "";
             if (raw && raw.trim()) {
-              queueLocalMessage(raw);
+              if (!selected) return;
+              const sid = selected;
               clearComposer();
-              if (!currentRunning) maybeSendDeferred();
+              void (async () => {
+                try {
+                  const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
+                  const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
+                  if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
+                  else setToast("sent");
+                  pollFastUntilMs = Date.now() + 5000;
+                  kickPoll(0);
+                  await refreshSessions();
+                  updateQueueBadge();
+                } catch (e2) {
+                  setToast(`queue error: ${e2 && e2.message ? e2.message : "unknown error"}`);
+                }
+              })();
               return;
             }
             showQueueViewer();
@@ -2916,7 +2910,7 @@
           autoGrow();
         }
 
-        async function sendText(raw, { deferred = false, sid = null } = {}) {
+        async function sendText(raw, { sid = null } = {}) {
           const sessionId = sid || selected;
           if (!sessionId) return;
           if (!raw || !raw.trim()) return;
@@ -2952,13 +2946,9 @@
                 pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
               }
             }
-            if (deferred && selected) {
-              queueLocalMessage(raw, { front: true });
-            }
           } finally {
             sending = false;
             $("#sendBtn").disabled = false;
-            if (deferred) deferInFlight = false;
           }
         }
 

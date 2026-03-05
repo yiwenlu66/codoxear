@@ -890,6 +890,88 @@ class Broker:
                 f.flush()
                 return
 
+            if cmd == "enqueue":
+                text = req.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    resp = {"error": "text required"}
+                else:
+                    seq_raw = req.get("enter_seq")
+                    seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+                    should_inject = False
+                    fd: int | None = None
+                    with self._lock:
+                        st = self.state
+                        if not st:
+                            resp = {"error": "no state"}
+                        else:
+                            if st.busy or st.turn_open:
+                                st.queue.append(text)
+                                resp = {"queued": True, "queue_len": len(st.queue)}
+                            else:
+                                now_ts = _now()
+                                st.pending_calls.clear()
+                                st.busy = True
+                                st.turn_open = True
+                                st.turn_has_completion_candidate = False
+                                st.last_interrupt_hint_ts = 0.0
+                                if now_ts > st.last_turn_activity_ts:
+                                    st.last_turn_activity_ts = now_ts
+                                fd = st.pty_master_fd
+                                should_inject = True
+                                resp = {"queued": False, "queue_len": len(st.queue)}
+                    if should_inject and fd is not None:
+                        _inject(fd, text=text, suffix=seq)
+                f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                f.flush()
+                return
+
+            if cmd == "queue_list":
+                with self._lock:
+                    st = self.state
+                    resp = {"queue": list(st.queue) if st else []}
+                f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                f.flush()
+                return
+
+            if cmd == "queue_delete":
+                idx = req.get("index")
+                if not isinstance(idx, int):
+                    resp = {"error": "index required"}
+                else:
+                    with self._lock:
+                        st = self.state
+                        if not st:
+                            resp = {"error": "no state"}
+                        elif idx < 0 or idx >= len(st.queue):
+                            resp = {"error": "index out of range", "queue_len": len(st.queue)}
+                        else:
+                            st.queue.pop(idx)
+                            resp = {"ok": True, "queue_len": len(st.queue)}
+                f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                f.flush()
+                return
+
+            if cmd == "queue_update":
+                idx = req.get("index")
+                text = req.get("text")
+                if not isinstance(idx, int):
+                    resp = {"error": "index required"}
+                elif not isinstance(text, str) or not text.strip():
+                    resp = {"error": "text required"}
+                else:
+                    with self._lock:
+                        st = self.state
+                        if not st:
+                            resp = {"error": "no state"}
+                        elif idx < 0 or idx >= len(st.queue):
+                            resp = {"error": "index out of range", "queue_len": len(st.queue)}
+                        else:
+                            st.queue[idx] = text
+                            resp = {"ok": True, "queue_len": len(st.queue)}
+                f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                f.flush()
+                return
+
             if cmd == "keys":
                 seq_raw = req.get("seq")
                 if not isinstance(seq_raw, str) or not seq_raw:

@@ -1768,6 +1768,80 @@ class SessionManager:
                 s2.queue_len = int(resp.get("queue_len"))
         return resp
 
+    def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            sock = s.sock_path
+        try:
+            resp = self._sock_call(sock, {"cmd": "enqueue", "text": text}, timeout_s=3.0)
+        except Exception:
+            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                with self._lock:
+                    self._sessions.pop(session_id, None)
+                _unlink_quiet(sock)
+                _unlink_quiet(sock.with_suffix(".json"))
+                raise KeyError("unknown session")
+            raise
+        if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
+            raise ValueError(f"broker enqueue error: {resp.get('error')}")
+        if "queued" not in resp or "queue_len" not in resp:
+            raise ValueError("invalid broker enqueue response")
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            if s2 and "queue_len" in resp:
+                s2.queue_len = int(resp.get("queue_len"))
+        return resp
+
+    def queue_list(self, session_id: str) -> list[str]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            sock = s.sock_path
+        resp = self._sock_call(sock, {"cmd": "queue_list"}, timeout_s=1.5)
+        if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
+            raise ValueError(f"broker queue_list error: {resp.get('error')}")
+        q = resp.get("queue")
+        if not isinstance(q, list) or not all(isinstance(x, str) for x in q):
+            raise ValueError("invalid broker queue_list response")
+        return list(q)
+
+    def queue_delete(self, session_id: str, index: int) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            sock = s.sock_path
+        resp = self._sock_call(sock, {"cmd": "queue_delete", "index": int(index)}, timeout_s=1.5)
+        if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
+            raise ValueError(f"broker queue_delete error: {resp.get('error')}")
+        if "queue_len" not in resp:
+            raise ValueError("invalid broker queue_delete response")
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            if s2 and "queue_len" in resp:
+                s2.queue_len = int(resp.get("queue_len"))
+        return resp
+
+    def queue_update(self, session_id: str, index: int, text: str) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            sock = s.sock_path
+        resp = self._sock_call(sock, {"cmd": "queue_update", "index": int(index), "text": text}, timeout_s=1.5)
+        if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
+            raise ValueError(f"broker queue_update error: {resp.get('error')}")
+        if "queue_len" not in resp:
+            raise ValueError("invalid broker queue_update response")
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            if s2 and "queue_len" in resp:
+                s2.queue_len = int(resp.get("queue_len"))
+        return resp
+
     def get_state(self, session_id: str) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
@@ -2013,6 +2087,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "reasoning_effort": reasoning_effort,
                     },
                 )
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/queue"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                try:
+                    q = MANAGER.queue_list(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, "queue": q})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/read"):
@@ -2542,6 +2636,94 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "text required"})
                     return
                 res = MANAGER.send(session_id, text)
+                _json_response(self, 200, res)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/enqueue"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                text = obj.get("text")
+                if not isinstance(text, str) or not text.strip():
+                    _json_response(self, 400, {"error": "text required"})
+                    return
+                try:
+                    res = MANAGER.enqueue(session_id, text)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
+                _json_response(self, 200, res)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/queue/delete"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                idx = obj.get("index")
+                if not isinstance(idx, int):
+                    _json_response(self, 400, {"error": "index required"})
+                    return
+                try:
+                    res = MANAGER.queue_delete(session_id, idx)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
+                _json_response(self, 200, res)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/queue/update"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                idx = obj.get("index")
+                text = obj.get("text")
+                if not isinstance(idx, int):
+                    _json_response(self, 400, {"error": "index required"})
+                    return
+                if not isinstance(text, str) or not text.strip():
+                    _json_response(self, 400, {"error": "text required"})
+                    return
+                try:
+                    res = MANAGER.queue_update(session_id, idx, text)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
                 _json_response(self, 200, res)
                 return
 
