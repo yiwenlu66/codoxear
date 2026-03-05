@@ -1606,10 +1606,6 @@ class SessionManager:
             ts = ev.get("ts")
             if not isinstance(ts, (int, float)):
                 return None
-            # Some runtimes may emit the same assistant message twice with slightly different timestamps.
-            # Deduplicate assistant outputs by bucketing timestamps to reduce false duplicates in the UI.
-            if role == "assistant":
-                return role, int(float(ts) // 2), text
             return role, int(round(float(ts) * 1000.0)), text
 
         with self._lock:
@@ -1617,15 +1613,28 @@ class SessionManager:
             if not s:
                 return
             # Deduplicate to avoid re-appending overlapping tail events across incremental scans.
+            # Also guard against runtimes emitting the same assistant message twice with slightly
+            # different timestamps by deduping assistant text within the current assistant stretch
+            # (resetting when we see a user message).
             tail = list(events[-CHAT_INDEX_MAX_EVENTS:])
             uniq_rev: list[dict[str, Any]] = []
-            seen: set[tuple[str, int, str]] = set()
+            seen_exact: set[tuple[str, int, str]] = set()
+            seen_assistant_stretch: set[str] = set()
             for ev in reversed(tail):
                 k = event_key(ev)
-                if k is not None and k in seen:
+                if k is not None and k in seen_exact:
                     continue
                 if k is not None:
-                    seen.add(k)
+                    seen_exact.add(k)
+                role = ev.get("role")
+                if role == "user":
+                    seen_assistant_stretch.clear()
+                elif role == "assistant":
+                    text = ev.get("text")
+                    if isinstance(text, str):
+                        if text in seen_assistant_stretch:
+                            continue
+                        seen_assistant_stretch.add(text)
                 uniq_rev.append(ev)
             s.chat_index_events = list(reversed(uniq_rev))
             s.chat_index_scan_bytes = int(scan_bytes)
@@ -1645,8 +1654,6 @@ class SessionManager:
             ts = ev.get("ts")
             if not isinstance(ts, (int, float)):
                 return None
-            if role == "assistant":
-                return role, int(float(ts) // 2), text
             return role, int(round(float(ts) * 1000.0)), text
 
         if not new_events and latest_token is None:
@@ -1662,18 +1669,39 @@ class SessionManager:
             if new_events:
                 merged = list(s.chat_index_events)
                 recent = merged[-256:] if len(merged) > 256 else merged
-                seen: set[tuple[str, int, str]] = set()
+                seen_exact: set[tuple[str, int, str]] = set()
                 for ev in recent:
                     k = event_key(ev)
                     if k is not None:
-                        seen.add(k)
+                        seen_exact.add(k)
+                # Build assistant stretch state from the end of the merged list.
+                # If the current tail already has assistant messages (after the last user),
+                # avoid appending the same assistant text again.
+                assistant_stretch: set[str] = set()
+                for ev in reversed(merged):
+                    role = ev.get("role")
+                    if role == "user":
+                        break
+                    if role == "assistant":
+                        text = ev.get("text")
+                        if isinstance(text, str):
+                            assistant_stretch.add(text)
                 appended: list[dict[str, Any]] = []
                 for ev in new_events:
                     k = event_key(ev)
-                    if k is not None and k in seen:
+                    if k is not None and k in seen_exact:
                         continue
                     if k is not None:
-                        seen.add(k)
+                        seen_exact.add(k)
+                    role = ev.get("role")
+                    if role == "user":
+                        assistant_stretch.clear()
+                    elif role == "assistant":
+                        text = ev.get("text")
+                        if isinstance(text, str):
+                            if text in assistant_stretch:
+                                continue
+                            assistant_stretch.add(text)
                     merged.append(ev)
                     appended.append(ev)
                 if len(merged) > CHAT_INDEX_MAX_EVENTS:
