@@ -648,8 +648,8 @@
         const diagBtn = el("button", {
           id: "diagBtn",
           class: "icon-btn",
-          title: "Diagnostics",
-          "aria-label": "Diagnostics",
+          title: "Details",
+          "aria-label": "Details",
           type: "button",
           html: iconSvg("info"),
         });
@@ -674,7 +674,7 @@
 			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
 
-        const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
+        const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
         const titleWrap = el("div", { class: "titleWrap" }, [titleRow, toast]);
         const topbar = el("div", { class: "topbar" }, [
@@ -850,9 +850,11 @@
             class: "helpBody",
             html: `<div class="muted">Sessions list</div>
 <ul class="md">
-  <li>Swipe left on a session to reveal <b>Rename</b> and <b>Duplicate</b>.</li>
-  <li>Swipe right on a web-owned session to reveal <b>Delete</b>.</li>
-  <li>A colored dot indicates ownership: <b>blue</b> = web-owned, <b>gray</b> = terminal-owned.</li>
+  <li>On mobile: swipe left on a session to reveal <b>Rename</b> and <b>Duplicate</b>.</li>
+  <li>On mobile: swipe right on a web-owned session to reveal <b>Delete</b>.</li>
+  <li>On desktop: session actions are shown on the right.</li>
+  <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle.</li>
+  <li>The status line starts with <b>[W]</b> (web-owned) or <b>[T]</b> (terminal-owned).</li>
 </ul>
 <div class="muted">Queue</div>
 <ul class="md">
@@ -874,10 +876,10 @@
           html: iconSvg("x"),
         });
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
-        const diagContent = el("pre", { class: "fileContent", id: "diagContent" });
-        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-label": "Diagnostics" }, [
+        const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
+        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "Diagnostics" }),
+            el("div", { class: "title", text: "Details" }),
             el("div", { class: "actions" }, [diagCloseBtn]),
           ]),
           diagStatus,
@@ -1215,7 +1217,9 @@
         }
 
         function scrollToBottom() {
-          bottomSentinel.scrollIntoView({ block: "end" });
+          // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
+          // on-screen keyboard opens/closes.
+          chat.scrollTop = chat.scrollHeight;
           lastScrollTop = chat.scrollTop;
         }
 
@@ -1431,79 +1435,75 @@
            sessionsWrap.innerHTML = "";
            openSwipeContent = null;
            sessionIndex = new Map();
+           const mobile = isMobile();
             const sessions = (data.sessions || [])
                .slice()
                .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
 		          for (const s of sessions) {
 		            sessionIndex.set(s.session_id, s);
-		            const badge = el("span", { class: "badge" + (s.busy ? " busy" : ""), text: s.busy ? "busy" : "idle" });
-		            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
              const title = sessionDisplayName(s);
              const badges = [];
              if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
-             badges.push(badge);
-             if (q) badges.push(q);
+             if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
 
-             function closeOpenSwipe() {
-               if (!openSwipeContent) return;
-               openSwipeContent.style.transform = "translateX(0px)";
-               openSwipeContent.dataset.swipeX = "0";
-               openSwipeContent = null;
-             }
+             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
+             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
+             const ownerTxt = s.owned ? "[W]" : "[T]";
+             const stateWord = s.busy ? "busy" : "idle";
+             const stateTxt = `${stateWord} ${fmtIdleAge(ageS)}`;
+             const cwdBase = baseName(s.cwd);
+             const metaText = `${ownerTxt} ${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}`;
 
-             let delBtn = null;
-             const leftActions = el("div", { class: "sessionActions left" });
-             if (s.owned) {
-               delBtn = el("button", {
-                 class: "icon-btn danger sessionDel",
-                 title: "Delete session",
-                 "aria-label": "Delete session",
-                 type: "button",
-                 html: iconSvg("trash"),
-               });
-               delBtn.onclick = async (e) => {
+            function closeOpenSwipe() {
+              if (!openSwipeContent) return;
+              openSwipeContent.style.transform = "translate3d(0px, 0, 0)";
+              openSwipeContent.dataset.swipeX = "0";
+              openSwipeContent = null;
+            }
+
+             async function doDelete(e) {
+               if (e) {
                  e.preventDefault();
                  e.stopPropagation();
-                 closeOpenSwipe();
-                 if (!confirm("Delete this session?")) return;
-                 try {
-                   await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                   clearCache(s.session_id);
-                   if (selected === s.session_id) {
-                     selected = null;
-                     offset = 0;
-                     activeLogPath = null;
-                     activeThreadId = null;
-                     turnOpen = false;
-                     localStorage.removeItem("codexweb.selected");
-                     titleLabel.textContent = "No session selected";
-                     setStatus({ running: false, queueLen: 0 });
-                     setContext(null);
-                     setTyping(false);
-                     setAttachCount(0);
-                     resetChatRenderState();
-                     updateQueueBadge();
-                     if (harnessMenuOpen) hideHarnessMenu();
-                     updateHarnessBtnState();
-                   }
-                   await refreshSessions();
-                 } catch (err) {
-                   setToast(`delete error: ${err.message}`);
+               }
+               closeOpenSwipe();
+               if (!confirm("Delete this session?")) return;
+               try {
+                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
+                 clearCache(s.session_id);
+                 if (selected === s.session_id) {
+                   selected = null;
+                   offset = 0;
+                   activeLogPath = null;
+                   activeThreadId = null;
+                   turnOpen = false;
+                   localStorage.removeItem("codexweb.selected");
+                   titleLabel.textContent = "No session selected";
+                   setStatus({ running: false, queueLen: 0 });
+                   setContext(null);
+                   setTyping(false);
+                   setAttachCount(0);
+                   resetChatRenderState();
+                   updateQueueBadge();
+                   if (harnessMenuOpen) hideHarnessMenu();
+                   updateHarnessBtnState();
                  }
-               };
-               leftActions.appendChild(delBtn);
+                 await refreshSessions();
+               } catch (err) {
+                 setToast(`delete error: ${err.message}`);
+               }
              }
 
-             const renameCardBtn = el("button", {
+             const renameBtn = el("button", {
                class: "icon-btn",
                title: "Rename session",
                "aria-label": "Rename session",
                type: "button",
                html: iconSvg("edit"),
              });
-             renameCardBtn.onclick = (e) => {
+             renameBtn.onclick = (e) => {
                e.preventDefault();
                e.stopPropagation();
                closeOpenSwipe();
@@ -1527,85 +1527,102 @@
                }
                await spawnSessionWithCwd(cwd);
              };
+             const delBtn = s.owned
+               ? el("button", {
+                   class: "icon-btn danger sessionDel",
+                   title: "Delete session",
+                   "aria-label": "Delete session",
+                   type: "button",
+                   html: iconSvg("trash"),
+                 })
+               : null;
+             if (delBtn) delBtn.onclick = (e) => void doDelete(e);
 
-             const rightActions = el("div", { class: "sessionActions right" }, [renameCardBtn, dupBtn]);
-
-             const dot = el("span", { class: "ownDot" + (s.owned ? " owned" : "") });
+             const stateDot = el("span", { class: "stateDot" + (s.busy ? " busy" : " idle") });
              const titleRow = el("div", { class: "sessionTitleRow" }, [
-               dot,
+               stateDot,
                el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
              ]);
-             const top = el("div", { class: "row" }, [titleRow, el("div", {}, badges)]);
-             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
-             const idleTxt = s.busy ? "busy" : `idle ${fmtIdleAge(ageS)}`;
-             const cwdBase = baseName(s.cwd);
-             const metaText = `${idleTxt}${cwdBase ? ` | ${cwdBase}` : ""}`;
+             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
              const meta = el("div", { class: "muted subLine", text: metaText });
-             const inner = el("div", { class: "sessionInner" }, [top, meta]);
-             const content = el("div", { class: "sessionContent" }, [inner]);
-             content.dataset.swipeX = "0";
 
-             const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
-             card.appendChild(swipe);
+             if (mobile) {
+               const leftActions = el("div", { class: "sessionActions left" }, delBtn ? [delBtn] : []);
+               const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
+               const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
+               const inner = el("div", { class: "sessionInner" }, [top, meta]);
+               const content = el("div", { class: "sessionContent" }, [inner]);
+               content.dataset.swipeX = "0";
+               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
+               card.appendChild(swipe);
 
-             const leftMax = s.owned ? 72 : 0;
-             const rightMax = 104;
-             let startX = null;
-             let startY = 0;
-             let startSwipe = 0;
-             let dragging = false;
-             content.addEventListener("pointerdown", (e) => {
-               if (e.pointerType === "mouse" && e.button !== 0) return;
-               startX = e.clientX;
-               startY = e.clientY;
-               startSwipe = Number(content.dataset.swipeX || 0);
-               dragging = false;
-               if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
-               content.setPointerCapture(e.pointerId);
-             });
-             content.addEventListener("pointermove", (e) => {
-               if (startX === null) return;
-               const dx = e.clientX - startX;
-               const dy = e.clientY - startY;
-               if (!dragging) {
-                 if (Math.abs(dx) < 9) return;
-                 if (Math.abs(dx) < Math.abs(dy) + 6) return;
-                 dragging = true;
-                 content.style.transition = "none";
-               }
-               let x = startSwipe + dx;
-               x = Math.min(leftMax, Math.max(-rightMax, x));
-               content.style.transform = `translateX(${x}px)`;
-               content.dataset.swipeX = String(x);
-             });
-             function finishSwipe() {
-               if (startX === null) return;
-               startX = null;
-               if (!dragging) return;
-               dragging = false;
-               content.style.transition = "";
-               const x = Number(content.dataset.swipeX || 0);
-               let target = 0;
-               if (x > 0 && leftMax > 0 && x > leftMax / 2) target = leftMax;
-               else if (x < 0 && rightMax > 0 && -x > rightMax / 2) target = -rightMax;
-               content.style.transform = `translateX(${target}px)`;
-               content.dataset.swipeX = String(target);
-               if (target !== 0) openSwipeContent = content;
-               else if (openSwipeContent === content) openSwipeContent = null;
+               const leftMax = s.owned ? 72 : 0;
+               const rightMax = 104;
+               let startX = null;
+               let startY = 0;
+               let startSwipe = 0;
+               let dragging = false;
+               content.addEventListener("pointerdown", (e) => {
+                 if (e.pointerType === "mouse" && e.button !== 0) return;
+                 startX = e.clientX;
+                 startY = e.clientY;
+                 startSwipe = Number(content.dataset.swipeX || 0);
+                 dragging = false;
+                 if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
+                 content.setPointerCapture(e.pointerId);
+               });
+                content.addEventListener("pointermove", (e) => {
+                  if (startX === null) return;
+                  const dx = e.clientX - startX;
+                  const dy = e.clientY - startY;
+                  if (!dragging) {
+                    if (Math.abs(dx) < 6) return;
+                    if (Math.abs(dx) < Math.abs(dy) + 6) return;
+                    dragging = true;
+                    content.style.transition = "none";
+                  }
+                  if (dragging) e.preventDefault();
+                  let x = startSwipe + dx;
+                  x = Math.min(leftMax, Math.max(-rightMax, x));
+                  content.style.transform = `translate3d(${x}px, 0, 0)`;
+                  content.dataset.swipeX = String(x);
+                });
+               function finishSwipe() {
+                 if (startX === null) return;
+                 startX = null;
+                 if (!dragging) return;
+                 dragging = false;
+                 content.style.transition = "";
+                 const x = Number(content.dataset.swipeX || 0);
+                 let target = 0;
+                  if (x > 0 && leftMax > 0 && x > leftMax / 2) target = leftMax;
+                  else if (x < 0 && rightMax > 0 && -x > rightMax / 2) target = -rightMax;
+                  content.style.transform = `translate3d(${target}px, 0, 0)`;
+                  content.dataset.swipeX = String(target);
+                  if (target !== 0) openSwipeContent = content;
+                  else if (openSwipeContent === content) openSwipeContent = null;
+                }
+               content.addEventListener("pointerup", finishSwipe);
+               content.addEventListener("pointercancel", finishSwipe);
+
+               card.onclick = () => {
+                 const x = Number(content.dataset.swipeX || 0);
+                 if (Math.abs(x) > 2) {
+                   closeOpenSwipe();
+                   return;
+                 }
+                 setSidebarOpen(false);
+                 selectSession(s.session_id);
+               };
+             } else {
+               card.classList.add("desktop");
+               const actions = el("div", { class: "sessionActionsInline" }, delBtn ? [renameBtn, dupBtn, delBtn] : [renameBtn, dupBtn]);
+               const top = el("div", { class: "row" }, [titleRow, el("div", { class: "rowRight" }, [badgesWrap, actions])]);
+               const inner = el("div", { class: "sessionInner" }, [top, meta]);
+               card.appendChild(inner);
+               card.onclick = () => selectSession(s.session_id);
              }
-             content.addEventListener("pointerup", finishSwipe);
-             content.addEventListener("pointercancel", finishSwipe);
 
-             card.onclick = () => {
-               const x = Number(content.dataset.swipeX || 0);
-               if (Math.abs(x) > 2) {
-                 closeOpenSwipe();
-                 return;
-               }
-               if (isMobile()) setSidebarOpen(false);
-               selectSession(s.session_id);
-             };
              sessionsWrap.appendChild(card);
             }
           if (selected && !sessionIndex.has(selected)) {
@@ -2163,7 +2180,7 @@
             setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
           }
         }
-        let fileWrap = localStorage.getItem("codexweb.fileWrap") === "1";
+        let fileWrap = true;
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
         let fileDiffStaged = localStorage.getItem("codexweb.fileDiffStaged") === "1";
 
@@ -2198,7 +2215,7 @@
           fileModeFileBtn.classList.toggle("active", !isDiff);
           fileStagedBtn.style.display = isDiff ? "inline-flex" : "none";
           fileStagedBtn.classList.toggle("active", Boolean(fileDiffStaged));
-          fileWrapBtn.style.display = isDiff ? "none" : "inline-flex";
+          fileWrapBtn.style.display = "none";
           fileDiff.style.display = isDiff ? "block" : "none";
           filePre.style.display = isDiff ? "none" : "block";
           applyFileWrap();
@@ -2269,7 +2286,7 @@
               if (window.Diff2Html && typeof window.Diff2Html.html === "function") {
                 fileDiff.innerHTML = window.Diff2Html.html(diff || "", {
                   drawFileList: false,
-                  outputFormat: "side-by-side",
+                  outputFormat: isMobile() ? "line-by-line" : "side-by-side",
                   matching: "lines",
                 });
               } else {
@@ -2337,9 +2354,6 @@
         fileWrapBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          fileWrap = !fileWrap;
-          localStorage.setItem("codexweb.fileWrap", fileWrap ? "1" : "0");
-          applyFileWrap();
         };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -2523,14 +2537,56 @@
 
         async function showDiagViewer() {
           if (!selected) return;
-          diagContent.textContent = "";
+          diagContent.innerHTML = "";
           diagStatus.textContent = "Loading...";
           diagBackdrop.style.display = "block";
           diagViewer.style.display = "flex";
           try {
             const d = await api(`/api/sessions/${selected}/diagnostics`);
             diagStatus.textContent = "";
-            diagContent.textContent = JSON.stringify(d, null, 2);
+            const now = Date.now() / 1000;
+            const addRow = (label, value, { mono = false } = {}) => {
+              const v = value == null || value === "" ? "-" : String(value);
+              const row = el("div", { class: "detailsRow" });
+              row.appendChild(el("div", { class: "detailsLabel", text: String(label || "") }));
+              row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
+              diagContent.appendChild(row);
+            };
+            const age = (ts) => {
+              const t = Number(ts);
+              if (!Number.isFinite(t) || t <= 0) return "";
+              const s = Math.max(0, Math.floor(now - t));
+              const a = fmtIdleAge(s);
+              return a ? `${a} ago` : "";
+            };
+            addRow("Session", d && d.session_id ? d.session_id : "-");
+            addRow("Thread", d && d.thread_id ? d.thread_id : "-");
+            addRow("Owned", d && typeof d.owned === "boolean" ? (d.owned ? "web" : "terminal") : "-");
+            addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
+            addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
+            addRow("CWD", d && d.cwd ? d.cwd : "-", { mono: true });
+            addRow("Started", d && typeof d.start_ts === "number" ? `${fmtTs(d.start_ts)}${age(d.start_ts) ? " (" + age(d.start_ts) + ")" : ""}` : "-");
+            addRow(
+              "Updated",
+              d && typeof d.updated_ts === "number" ? `${fmtTs(d.updated_ts)}${age(d.updated_ts) ? " (" + age(d.updated_ts) + ")" : ""}` : "-"
+            );
+            addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
+            addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
+            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
+            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
+            addRow("Model", d && d.model ? d.model : "-");
+            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
+            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
+            if (tok) {
+              const ctx = Number(tok.context_window);
+              const used = Number(tok.tokens_in_context);
+              const pct = Number(tok.percent_remaining);
+              if (Number.isFinite(ctx) && Number.isFinite(used) && ctx > 0 && used >= 0) {
+                const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
+                const txt = p === null ? `${used}/${ctx}` : `${used}/${ctx} (${p}% left)`;
+                addRow("Context", txt);
+              }
+            }
           } catch (e) {
             diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
@@ -2715,14 +2771,39 @@
           void loadOlderMessages({ auto: false });
         };
 
-	        const textarea = $("#msg");
-	        const msgPh = $("#msgPh");
-	        const imgInput = $("#imgInput");
-        const attachBtn = $("#attachBtn");
-        if (!attachBadgeEl) {
-          attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
-          attachBtn.appendChild(attachBadgeEl);
-        }
+         const textarea = $("#msg");
+         const msgPh = $("#msgPh");
+         const imgInput = $("#imgInput");
+         const isIOS =
+           /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
+           (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+         let bodyScrollLock = null;
+         function lockBodyScroll() {
+           if (bodyScrollLock) return;
+           const y = window.scrollY || document.documentElement.scrollTop || 0;
+           bodyScrollLock = { y };
+           document.body.style.position = "fixed";
+           document.body.style.top = `-${y}px`;
+           document.body.style.left = "0";
+           document.body.style.right = "0";
+           document.body.style.width = "100%";
+         }
+         function unlockBodyScroll() {
+           if (!bodyScrollLock) return;
+           const y = bodyScrollLock.y || 0;
+           bodyScrollLock = null;
+           document.body.style.position = "";
+           document.body.style.top = "";
+           document.body.style.left = "";
+           document.body.style.right = "";
+           document.body.style.width = "";
+           if (y) window.scrollTo(0, y);
+         }
+         const attachBtn = $("#attachBtn");
+         if (!attachBadgeEl) {
+           attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
+           attachBtn.appendChild(attachBadgeEl);
+         }
         if (!queueBadgeEl && queueBtn) {
           queueBadgeEl = el("span", { class: "attachBadge queueBadge", id: "queueBadge" });
           queueBtn.appendChild(queueBadgeEl);
@@ -2758,28 +2839,32 @@
 	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
 	        }
 	        textarea.addEventListener("input", autoGrow);
-	        textarea.addEventListener(
-	          "focus",
-	          () => {
-	            autoScroll = true;
-	            jumpBtn.style.display = "none";
-	            const tick = () => {
-	              updateAppHeightVar();
-	              scrollToBottom();
-	            };
-	            requestAnimationFrame(tick);
-	            setTimeout(tick, 120);
-	            setTimeout(tick, 350);
-	          },
-	          { passive: true }
-	        );
-	        textarea.addEventListener(
-	          "blur",
-	          () => {
-	            setTimeout(updateAppHeightVar, 0);
-	          },
-	          { passive: true }
-	        );
+          textarea.addEventListener(
+            "focus",
+            () => {
+              const wasNear = isNearBottom();
+              if (wasNear) {
+                autoScroll = true;
+                jumpBtn.style.display = "none";
+              }
+              if (isIOS) lockBodyScroll();
+              const tick = () => {
+                updateAppHeightVar();
+                if (wasNear) scrollToBottom();
+              };
+              requestAnimationFrame(tick);
+              setTimeout(tick, 120);
+            },
+            { passive: true }
+          );
+          textarea.addEventListener(
+            "blur",
+            () => {
+              if (isIOS) unlockBodyScroll();
+              setTimeout(updateAppHeightVar, 0);
+            },
+            { passive: true }
+          );
         textarea.addEventListener("keydown", (e) => {
           if (e.key !== "Enter") return;
           if (e.isComposing) return;

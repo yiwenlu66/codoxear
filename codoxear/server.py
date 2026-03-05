@@ -97,6 +97,7 @@ UPLOAD_DIR = APP_DIR / "uploads"
 HARNESS_PATH = APP_DIR / "harness.json"
 ALIAS_PATH = APP_DIR / "session_aliases.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
+QUEUE_PATH = APP_DIR / "session_queues.json"
 
 _DOTENV = (Path.cwd() / ".env").resolve()
 if _DOTENV.exists():
@@ -120,6 +121,7 @@ DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "300"))
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
+QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
 CHAT_INIT_SEED_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_SEED_SCAN_BYTES", str(512 * 1024)))
@@ -725,14 +727,18 @@ class SessionManager:
         self._harness: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
         self._files: dict[str, list[str]] = {}
+        self._queues: dict[str, list[str]] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
         self._discover_existing(force=True)
         self._load_harness()
         self._load_aliases()
         self._load_files()
+        self._load_queues()
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
+        self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
+        self._queue_thr.start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -884,6 +890,117 @@ class SessionManager:
         tmp = FILE_HISTORY_PATH.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, FILE_HISTORY_PATH)
+
+    def _load_queues(self) -> None:
+        try:
+            raw = QUEUE_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid session_queues.json (expected object)")
+        cleaned: dict[str, list[str]] = {}
+        for sid, arr in obj.items():
+            if not isinstance(sid, str) or not sid:
+                continue
+            if not isinstance(arr, list):
+                continue
+            out: list[str] = []
+            for v in arr:
+                if not isinstance(v, str):
+                    continue
+                t = v.strip()
+                if not t:
+                    continue
+                out.append(v)
+            if out:
+                cleaned[sid] = out
+        with self._lock:
+            self._queues = cleaned
+
+    def _save_queues(self) -> None:
+        with self._lock:
+            obj = dict(self._queues)
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = QUEUE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, QUEUE_PATH)
+
+    def _compat_queue_len(self, session_id: str) -> int:
+        with self._lock:
+            qmap = getattr(self, "_queues", None)
+            if not isinstance(qmap, dict):
+                return 0
+            q = qmap.get(session_id)
+            return int(len(q)) if isinstance(q, list) else 0
+
+    def _compat_queue_list(self, session_id: str) -> list[str]:
+        with self._lock:
+            qmap = getattr(self, "_queues", None)
+            if not isinstance(qmap, dict):
+                return []
+            q = qmap.get(session_id)
+            if not isinstance(q, list) or not q:
+                return []
+            return list(q)
+
+    def _compat_queue_enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        t = str(text)
+        if not t.strip():
+            raise ValueError("text required")
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            q = self._queues.get(session_id)
+            if not isinstance(q, list):
+                q = []
+                self._queues[session_id] = q
+            q.append(t)
+            ql = len(q)
+            s = self._sessions.get(session_id)
+            if s is not None:
+                s.queue_len = int(ql)
+        self._save_queues()
+        return {"queued": True, "queue_len": int(ql), "backend": "server_compat"}
+
+    def _compat_queue_delete(self, session_id: str, index: int) -> dict[str, Any]:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            q = self._queues.get(session_id)
+            if not isinstance(q, list):
+                q = []
+                self._queues[session_id] = q
+            if index < 0 or index >= len(q):
+                raise ValueError("index out of range")
+            q.pop(int(index))
+            ql = len(q)
+            s = self._sessions.get(session_id)
+            if s is not None:
+                s.queue_len = int(ql)
+        self._save_queues()
+        return {"ok": True, "queue_len": int(ql), "backend": "server_compat"}
+
+    def _compat_queue_update(self, session_id: str, index: int, text: str) -> dict[str, Any]:
+        t = str(text)
+        if not t.strip():
+            raise ValueError("text required")
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            q = self._queues.get(session_id)
+            if not isinstance(q, list):
+                q = []
+                self._queues[session_id] = q
+            if index < 0 or index >= len(q):
+                raise ValueError("index out of range")
+            q[int(index)] = t
+            ql = len(q)
+            s = self._sessions.get(session_id)
+            if s is not None:
+                s.queue_len = int(ql)
+        self._save_queues()
+        return {"ok": True, "queue_len": int(ql), "backend": "server_compat"}
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
         s = self._sessions.get(session_id)
@@ -1052,7 +1169,7 @@ class SessionManager:
                 raise ValueError("invalid broker state response")
             busy = bool(st.get("busy"))
             ql = int(st.get("queue_len"))
-            if busy or ql > 0:
+            if busy or ql > 0 or self._compat_queue_len(sid) > 0:
                 continue
             last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
             if not last:
@@ -1070,6 +1187,49 @@ class SessionManager:
             with self._lock:
                 self._harness_last_injected[sid] = now
                 self._harness_last_injected_scope[scope_key] = now
+
+    def _queue_loop(self) -> None:
+        while not self._stop.is_set():
+            self._queue_sweep()
+            self._stop.wait(QUEUE_SWEEP_SECONDS)
+
+    def _queue_sweep(self) -> None:
+        self._discover_existing_if_stale()
+        self._prune_dead_sessions()
+        with self._lock:
+            # Drop queues for sessions that no longer exist.
+            drop = [sid for sid in self._queues.keys() if sid not in self._sessions]
+            for sid in drop:
+                self._queues.pop(sid, None)
+            items = [(sid, q[0]) for sid, q in self._queues.items() if isinstance(q, list) and q]
+        if drop:
+            self._save_queues()
+        # At most one injection per sweep.
+        for sid, text in items:
+            try:
+                st = self.get_state(sid)
+            except Exception:
+                continue
+            if not isinstance(st, dict):
+                continue
+            if "busy" not in st or "queue_len" not in st:
+                continue
+            busy = bool(st.get("busy"))
+            ql = int(st.get("queue_len"))
+            if busy or ql > 0:
+                continue
+            try:
+                self.send(sid, text)
+            except Exception:
+                continue
+            with self._lock:
+                q = self._queues.get(sid)
+                if isinstance(q, list) and q and q[0] == text:
+                    q.pop(0)
+                    if not q:
+                        self._queues.pop(sid, None)
+            self._save_queues()
+            break
 
     def _discover_existing(self, *, force: bool = False) -> None:
         if not force:
@@ -1292,6 +1452,7 @@ class SessionManager:
         files_dirty = False
         with self._lock:
             items: list[dict[str, Any]] = []
+            qmap = getattr(self, "_queues", None)
             for s in self._sessions.values():
                 cfg0 = self._harness.get(s.session_id)
                 h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
@@ -1322,6 +1483,11 @@ class SessionManager:
                 if s.last_chat_ts is None and log_exists and s.log_path is not None:
                     s.last_chat_ts = float(s.log_path.stat().st_mtime)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+                compat_ql = 0
+                if isinstance(qmap, dict):
+                    q0 = qmap.get(s.session_id)
+                    if isinstance(q0, list):
+                        compat_ql = len(q0)
                 items.append(
                     {
                         "session_id": s.session_id,
@@ -1335,7 +1501,7 @@ class SessionManager:
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
                         "log_exists": log_exists,
                         "state_busy": bool(s.busy),
-                        "queue_len": int(s.queue_len),
+                        "queue_len": int(s.queue_len) + int(compat_ql),
                         "token": s.token,
                         "thinking": int(s.meta_thinking),
                         "tools": int(s.meta_tools),
@@ -1784,10 +1950,13 @@ class SessionManager:
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
             raise
+        if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
+            return self._compat_queue_enqueue(session_id, text)
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
             raise ValueError(f"broker enqueue error: {resp.get('error')}")
         if "queued" not in resp or "queue_len" not in resp:
             raise ValueError("invalid broker enqueue response")
+        resp["backend"] = "broker"
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:
@@ -1801,6 +1970,8 @@ class SessionManager:
                 raise KeyError("unknown session")
             sock = s.sock_path
         resp = self._sock_call(sock, {"cmd": "queue_list"}, timeout_s=1.5)
+        if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
+            return self._compat_queue_list(session_id)
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
             raise ValueError(f"broker queue_list error: {resp.get('error')}")
         q = resp.get("queue")
@@ -1815,10 +1986,13 @@ class SessionManager:
                 raise KeyError("unknown session")
             sock = s.sock_path
         resp = self._sock_call(sock, {"cmd": "queue_delete", "index": int(index)}, timeout_s=1.5)
+        if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
+            return self._compat_queue_delete(session_id, int(index))
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
             raise ValueError(f"broker queue_delete error: {resp.get('error')}")
         if "queue_len" not in resp:
             raise ValueError("invalid broker queue_delete response")
+        resp["backend"] = "broker"
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:
@@ -1832,10 +2006,13 @@ class SessionManager:
                 raise KeyError("unknown session")
             sock = s.sock_path
         resp = self._sock_call(sock, {"cmd": "queue_update", "index": int(index), "text": text}, timeout_s=1.5)
+        if isinstance(resp, dict) and resp.get("error") == "unknown cmd":
+            return self._compat_queue_update(session_id, int(index), text)
         if isinstance(resp, dict) and isinstance(resp.get("error"), str) and resp.get("error"):
             raise ValueError(f"broker queue_update error: {resp.get('error')}")
         if "queue_len" not in resp:
             raise ValueError("invalid broker queue_update response")
+        resp["backend"] = "broker"
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2 and "queue_len" in resp:
@@ -2059,13 +2236,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 model = meta.get("model") if isinstance(meta, dict) else None
                 if not isinstance(model, str) or not model.strip():
                     model = None
-                if model is None and isinstance(token_val, dict):
-                    baseline = token_val.get("baseline")
-                    if isinstance(baseline, str) and baseline.strip():
-                        model = baseline
                 reasoning_effort = meta.get("reasoning_effort") if isinstance(meta, dict) else None
                 if not isinstance(reasoning_effort, str) or not reasoning_effort.strip():
                     reasoning_effort = None
+                if (model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
+                    tc = _rollout_log._find_latest_turn_context(s.log_path, max_scan_bytes=8 * 1024 * 1024)
+                    if isinstance(tc, dict):
+                        if model is None:
+                            m2 = tc.get("model")
+                            if isinstance(m2, str) and m2.strip():
+                                model = m2.strip()
+                        if reasoning_effort is None:
+                            eff = tc.get("reasoning_effort")
+                            if not (isinstance(eff, str) and eff.strip()):
+                                eff = tc.get("effort")
+                            if isinstance(eff, str) and eff.strip():
+                                reasoning_effort = eff.strip()
                 _json_response(
                     self,
                     200,
@@ -2080,7 +2266,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "broker_pid": int(s.broker_pid),
                         "codex_pid": int(s.codex_pid),
                         "busy": bool(state.get("busy")),
-                        "queue_len": int(state.get("queue_len")),
+                        "queue_len": int(state.get("queue_len")) + MANAGER._compat_queue_len(session_id),
                         "token": token_val,
                         "model_provider": model_provider,
                         "model": model,
@@ -2296,7 +2482,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         raise ValueError("missing busy from broker state response")
                     if "queue_len" not in state:
                         raise ValueError("missing queue_len from broker state response")
-                    queue_val = int(state.get("queue_len"))
+                    queue_val = int(state.get("queue_len")) + MANAGER._compat_queue_len(session_id)
                     state_token = state.get("token")
                     if not (isinstance(state_token, dict) or (state_token is None)):
                         raise ValueError("invalid token from broker state response")
@@ -2373,7 +2559,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 diag["idle_from_log_ms"] = round(dt_idle_ms, 3)
 
                 busy_val = bool(state_busy) or (not bool(idle_val))
-                queue_val = state_queue
+                queue_val = state_queue + MANAGER._compat_queue_len(session_id)
 
                 token_val: dict[str, Any] | None = None
                 if "token" in state:
