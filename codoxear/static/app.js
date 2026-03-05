@@ -939,7 +939,7 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v2.${sid}`;
+          return `codexweb.cache.v3.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
