@@ -1,15 +1,17 @@
       const $ = (q) => document.querySelector(q);
       function updateAppHeightVar() {
         const vv = window.visualViewport;
-        const h = vv ? vv.height : window.innerHeight;
-        const top = vv ? vv.offsetTop : 0;
-        const hh = Math.round(h);
-        const tt = Math.round(top);
-        if (updateAppHeightVar._h === hh && updateAppHeightVar._t === tt) return;
-        updateAppHeightVar._h = hh;
-        updateAppHeightVar._t = tt;
-        document.documentElement.style.setProperty("--appH", `${hh}px`);
-        document.documentElement.style.setProperty("--vvTop", `${tt}px`);
+        const layoutH = Math.round(window.innerHeight);
+        const visualH = Math.round(vv ? vv.height : window.innerHeight);
+        const top = Math.round(vv ? vv.offsetTop : 0);
+        const kb = Math.max(0, layoutH - visualH - top);
+        if (updateAppHeightVar._h === layoutH && updateAppHeightVar._t === top && updateAppHeightVar._k === kb) return;
+        updateAppHeightVar._h = layoutH;
+        updateAppHeightVar._t = top;
+        updateAppHeightVar._k = kb;
+        document.documentElement.style.setProperty("--appH", `${layoutH}px`);
+        document.documentElement.style.setProperty("--vvTop", `${top}px`);
+        document.documentElement.style.setProperty("--kbH", `${kb}px`);
       }
       updateAppHeightVar();
       window.addEventListener("resize", updateAppHeightVar);
@@ -216,6 +218,15 @@
             ? s.start_ts
             : 0;
         return ts ? `Session ${fmtTs(ts)}` : "Session";
+      }
+
+      function fmtIdleAge(seconds) {
+        const s = Number(seconds);
+        if (!(s >= 0)) return "";
+        if (s < 60) return "just now";
+        if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
+        if (s < 86400) return `${Math.max(1, Math.floor(s / 3600))}h`;
+        return `${Math.max(1, Math.floor(s / 86400))}d`;
       }
 
       function sessionTitleWithId(s) {
@@ -475,6 +486,10 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
+        if (name === "help")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>`;
+        if (name === "info")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
         return "";
       }
 
@@ -513,8 +528,9 @@
 	        const app = el("div", { class: "app" });
         const sidebar = el("div", { class: "sidebar" });
         const sessionsWrap = el("div", { class: "sessions" });
-        const sidebarFooter = el("footer", {}, [
-          el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", text: "Log out" }),
+         const sidebarFooter = el("footer", {}, [
+          el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
+          el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", html: iconSvg("logout") + "Log out" }),
         ]);
         const main = el("div", { class: "main" });
         const chatWrap = el("div", { class: "chatWrap", id: "chatWrap" });
@@ -563,12 +579,13 @@
         let pollKickPending = false;
 	        let pollFastUntilMs = 0;
 	        let turnOpen = false;
-	        let sessionsTimer = null;
-	        let currentRunning = false;
-	        let deferInFlight = false;
-	        const deferredBySession = new Map();
-	        const deferredLoaded = new Set();
-		        const queueSaveTimers = new Map();
+         let sessionsTimer = null;
+         let currentRunning = false;
+         let deferInFlight = false;
+         let openSwipeContent = null;
+         const deferredBySession = new Map();
+         const deferredLoaded = new Set();
+           const queueSaveTimers = new Map();
         const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
@@ -595,7 +612,13 @@
               let harnessCfg = { enabled: false, request: "" };
               let harnessSaveTimer = null;
 
-				        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
+            const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
+            titleLabel.style.cursor = "pointer";
+            titleLabel.title = "Click to rename";
+            titleLabel.onclick = () => {
+              if (!selected) return;
+              void renameSessionId(selected);
+            };
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
 				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
@@ -626,24 +649,15 @@
           });
           harnessBtn.disabled = true;
           harnessBtn.classList.toggle("active", false);
-        const renameBtn = el("button", {
-          id: "renameBtn",
+        const diagBtn = el("button", {
+          id: "diagBtn",
           class: "icon-btn",
-          title: "Rename session",
-          "aria-label": "Rename session",
+          title: "Diagnostics",
+          "aria-label": "Diagnostics",
           type: "button",
-          html: iconSvg("edit"),
+          html: iconSvg("info"),
         });
-        renameBtn.disabled = true;
-        const duplicateBtn = el("button", {
-          id: "dupBtn",
-          class: "icon-btn",
-          title: "Duplicate session",
-          "aria-label": "Duplicate session",
-          type: "button",
-          html: iconSvg("duplicate"),
-        });
-        duplicateBtn.disabled = true;
+        diagBtn.disabled = true;
         const fileBtn = el("button", {
           id: "fileBtn",
           class: "icon-btn",
@@ -652,6 +666,7 @@
           type: "button",
           html: iconSvg("file"),
         });
+        fileBtn.disabled = true;
         const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
           el("div", { class: "row" }, [
             el("label", {}, [
@@ -669,9 +684,8 @@
         const topbar = el("div", { class: "topbar" }, [
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
-            duplicateBtn,
-            renameBtn,
             fileBtn,
+            diagBtn,
             interruptBtn,
             harnessBtn,
           ]),
@@ -691,8 +705,8 @@
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
           el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
-          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
+          el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
         ]);
         composer.appendChild(form);
 
@@ -733,18 +747,56 @@
           type: "button",
           text: "Wrap",
         });
-        const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "/path/to/file" });
+        const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "path/to/file" });
         const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
-        const fileContent = el("pre", { class: "fileContent", id: "fileContent" });
+        const fileCandidateSelect = el("select", { id: "fileCandidateSelect", "aria-label": "Changed files" });
+        const fileCandidateRefreshBtn = el("button", {
+          id: "fileCandidateRefreshBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Refresh changed files",
+          "aria-label": "Refresh changed files",
+          text: "Changed",
+        });
+        const fileModeFileBtn = el("button", {
+          id: "fileModeFileBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Full file",
+          "aria-label": "Full file",
+          text: "File",
+        });
+        const fileModeDiffBtn = el("button", {
+          id: "fileModeDiffBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Git diff",
+          "aria-label": "Git diff",
+          text: "Diff",
+        });
+        const fileStagedBtn = el("button", {
+          id: "fileStagedBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Toggle staged diff",
+          "aria-label": "Toggle staged diff",
+          text: "Staged",
+        });
+        const filePre = el("pre", { class: "fileContent line-numbers", id: "filePre" });
+        const fileCode = el("code", { id: "fileCode" });
+        filePre.appendChild(fileCode);
+        const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileWrapBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileStagedBtn, fileWrapBtn, fileCloseBtn]),
           ]),
+          el("div", { class: "fileCandRow" }, [fileCandidateSelect, fileCandidateRefreshBtn]),
           el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
           fileStatus,
-          fileContent,
+          fileDiff,
+          filePre,
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
@@ -783,6 +835,60 @@
         ]);
         root.appendChild(queueBackdrop);
         root.appendChild(queueViewer);
+
+        const helpBackdrop = el("div", { class: "modalBackdrop", id: "helpBackdrop" });
+        const helpCloseBtn = el("button", {
+          id: "helpCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-label": "Help" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Help" }),
+            el("div", { class: "actions" }, [helpCloseBtn]),
+          ]),
+          el("div", {
+            class: "helpBody",
+            html: `<div class="muted">Sessions list</div>
+<ul class="md">
+  <li>Swipe left on a session to reveal <b>Rename</b> and <b>Duplicate</b>.</li>
+  <li>Swipe right on a web-owned session to reveal <b>Delete</b>.</li>
+  <li>A colored dot indicates ownership: <b>blue</b> = web-owned, <b>gray</b> = terminal-owned.</li>
+</ul>
+<div class="muted">Queue</div>
+<ul class="md">
+  <li>When a response is running, choose <b>Send after current</b> to queue locally for that session.</li>
+  <li>Queued messages are saved locally and sent when the session becomes idle.</li>
+</ul>`,
+          }),
+        ]);
+        root.appendChild(helpBackdrop);
+        root.appendChild(helpViewer);
+
+        const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
+        const diagCloseBtn = el("button", {
+          id: "diagCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
+        const diagContent = el("pre", { class: "fileContent", id: "diagContent" });
+        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-label": "Diagnostics" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Diagnostics" }),
+            el("div", { class: "actions" }, [diagCloseBtn]),
+          ]),
+          diagStatus,
+          diagContent,
+        ]);
+        root.appendChild(diagBackdrop);
+        root.appendChild(diagViewer);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -1128,14 +1234,19 @@
           }
         }
 
-        function queueLocalMessage(raw, { front = false } = {}) {
-          if (!selected) return;
-          const q = getDeferredQueue(selected);
+        function queueLocalMessageFor(sid, raw, { front = false } = {}) {
+          if (!sid) return;
+          const q = getDeferredQueue(sid);
           if (front) q.unshift(raw);
           else q.push(raw);
-          saveDeferredToStorage(selected);
-          updateQueueBadge();
+          saveDeferredToStorage(sid);
+          if (sid === selected) updateQueueBadge();
           setToast(`queued locally (${q.length})`);
+        }
+
+        function queueLocalMessage(raw, opts) {
+          if (!selected) return;
+          queueLocalMessageFor(selected, raw, opts);
         }
 
         function maybeSendDeferred() {
@@ -1407,134 +1518,188 @@
           }
         }
 
-	        async function refreshSessions() {
-	          const data = await api("/api/sessions");
-	          sessionsWrap.innerHTML = "";
-	          sessionIndex = new Map();
-	          const sessions = (data.sessions || [])
-              .slice()
-              .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
+         async function refreshSessions() {
+           const data = await api("/api/sessions");
+           sessionsWrap.innerHTML = "";
+           openSwipeContent = null;
+           sessionIndex = new Map();
+            const sessions = (data.sessions || [])
+               .slice()
+               .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
 		          for (const s of sessions) {
 		            sessionIndex.set(s.session_id, s);
 		            const badge = el("span", { class: "badge" + (s.busy ? " busy" : ""), text: s.busy ? "busy" : "idle" });
 		            const q = s.queue_len ? el("span", { class: "badge queue", text: `queue ${s.queue_len}` }) : null;
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
-            const title = sessionDisplayName(s);
-            const files = listFromFilesField(s.files);
-		            const badges = [];
-		            if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
-		            badges.push(badge);
-		            if (q) badges.push(q);
-            let delBtn = null;
-            const renameCardBtn = el("button", {
-              class: "icon-btn",
-              title: "Rename session",
-              "aria-label": "Rename session",
-              type: "button",
-              html: iconSvg("edit"),
-            });
-            renameCardBtn.onclick = (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              void renameSessionId(s.session_id);
-            };
-            if (s.owned) {
-              delBtn = el("button", {
-                class: "icon-btn danger sessionDel",
-                title: "Delete session",
-                "aria-label": "Delete session",
-                type: "button",
-                html: iconSvg("trash"),
-	              });
-              delBtn.onclick = async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (!confirm("Delete this session?")) return;
-                try {
-	                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                  clearCache(s.session_id);
-                if (selected === s.session_id) {
-                  selected = null;
-                  offset = 0;
-                  activeLogPath = null;
-                  activeThreadId = null;
-                  turnOpen = false;
-                  localStorage.removeItem("codexweb.selected");
-                  titleLabel.textContent = "No session selected";
-                  setStatus({ running: false, queueLen: 0 });
-                  setContext(null);
-                  setTyping(false);
-                  setAttachCount(0);
-                  resetChatRenderState();
-                  updateQueueBadge();
-                  if (harnessMenuOpen) hideHarnessMenu();
-                  updateHarnessBtnState();
-                }
-	                  await refreshSessions();
-	                } catch (err) {
-                  setToast(`delete error: ${err.message}`);
-	                }
-	              };
-	            }
-		            const top = el("div", { class: "row" }, [
-		              el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
-		              el("div", {}, badges),
-		            ]);
-              const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-	            const meta = el("div", { class: "muted subLine", text: updatedTs ? `last ${fmtTs(updatedTs)}` : "" });
-            const mainCol = el("div", { class: "sessionMain" }, [top, meta]);
-            if (selected === s.session_id && files.length) {
-              const maxShow = 5;
-              const show = files.slice(0, maxShow);
-              const fileRows = show.map((p) =>
-                el("button", { class: "sessionFile", title: p, "aria-label": `Open ${p}`, text: baseName(p) || p })
-              );
-              for (const row of fileRows) {
-                row.onclick = (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  showFileViewer();
-                  filePathInput.value = row.title || row.textContent || "";
-                  openFilePath();
-                };
-              }
-              const more = files.length > maxShow ? el("div", { class: "sessionFilesMore muted", text: `+${files.length - maxShow} more` }) : null;
-              const filesWrap = el("div", { class: "sessionFiles" }, [
-                el("div", { class: "sessionFilesLabel", text: "Files" }),
-                ...fileRows,
-                ...(more ? [more] : []),
-              ]);
-              mainCol.appendChild(filesWrap);
+             const title = sessionDisplayName(s);
+             const badges = [];
+             if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
+             badges.push(badge);
+             if (q) badges.push(q);
+
+             function closeOpenSwipe() {
+               if (!openSwipeContent) return;
+               openSwipeContent.style.transform = "translateX(0px)";
+               openSwipeContent.dataset.swipeX = "0";
+               openSwipeContent = null;
+             }
+
+             let delBtn = null;
+             const leftActions = el("div", { class: "sessionActions left" });
+             if (s.owned) {
+               delBtn = el("button", {
+                 class: "icon-btn danger sessionDel",
+                 title: "Delete session",
+                 "aria-label": "Delete session",
+                 type: "button",
+                 html: iconSvg("trash"),
+               });
+               delBtn.onclick = async (e) => {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 closeOpenSwipe();
+                 if (!confirm("Delete this session?")) return;
+                 try {
+                   await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
+                   clearCache(s.session_id);
+                   if (selected === s.session_id) {
+                     selected = null;
+                     offset = 0;
+                     activeLogPath = null;
+                     activeThreadId = null;
+                     turnOpen = false;
+                     localStorage.removeItem("codexweb.selected");
+                     titleLabel.textContent = "No session selected";
+                     setStatus({ running: false, queueLen: 0 });
+                     setContext(null);
+                     setTyping(false);
+                     setAttachCount(0);
+                     resetChatRenderState();
+                     updateQueueBadge();
+                     if (harnessMenuOpen) hideHarnessMenu();
+                     updateHarnessBtnState();
+                   }
+                   await refreshSessions();
+                 } catch (err) {
+                   setToast(`delete error: ${err.message}`);
+                 }
+               };
+               leftActions.appendChild(delBtn);
+             }
+
+             const renameCardBtn = el("button", {
+               class: "icon-btn",
+               title: "Rename session",
+               "aria-label": "Rename session",
+               type: "button",
+               html: iconSvg("edit"),
+             });
+             renameCardBtn.onclick = (e) => {
+               e.preventDefault();
+               e.stopPropagation();
+               closeOpenSwipe();
+               void renameSessionId(s.session_id);
+             };
+             const dupBtn = el("button", {
+               class: "icon-btn",
+               title: "Duplicate session",
+               "aria-label": "Duplicate session",
+               type: "button",
+               html: iconSvg("duplicate"),
+             });
+             dupBtn.onclick = async (e) => {
+               e.preventDefault();
+               e.stopPropagation();
+               closeOpenSwipe();
+               const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
+               if (!cwd) {
+                 setToast("cwd unavailable");
+                 return;
+               }
+               await spawnSessionWithCwd(cwd);
+             };
+
+             const rightActions = el("div", { class: "sessionActions right" }, [renameCardBtn, dupBtn]);
+
+             const dot = el("span", { class: "ownDot" + (s.owned ? " owned" : "") });
+             const titleRow = el("div", { class: "sessionTitleRow" }, [
+               dot,
+               el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
+             ]);
+             const top = el("div", { class: "row" }, [titleRow, el("div", {}, badges)]);
+             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
+             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
+             const idleTxt = s.busy ? "busy" : `idle ${fmtIdleAge(ageS)}`;
+             const cwdBase = baseName(s.cwd);
+             const metaText = `${idleTxt}${cwdBase ? ` | ${cwdBase}` : ""}`;
+             const meta = el("div", { class: "muted subLine", text: metaText });
+             const inner = el("div", { class: "sessionInner" }, [top, meta]);
+             const content = el("div", { class: "sessionContent" }, [inner]);
+             content.dataset.swipeX = "0";
+
+             const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
+             card.appendChild(swipe);
+
+             const leftMax = s.owned ? 72 : 0;
+             const rightMax = 104;
+             let startX = null;
+             let startY = 0;
+             let startSwipe = 0;
+             let dragging = false;
+             content.addEventListener("pointerdown", (e) => {
+               if (e.pointerType === "mouse" && e.button !== 0) return;
+               startX = e.clientX;
+               startY = e.clientY;
+               startSwipe = Number(content.dataset.swipeX || 0);
+               dragging = false;
+               if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
+               content.setPointerCapture(e.pointerId);
+             });
+             content.addEventListener("pointermove", (e) => {
+               if (startX === null) return;
+               const dx = e.clientX - startX;
+               const dy = e.clientY - startY;
+               if (!dragging) {
+                 if (Math.abs(dx) < 9) return;
+                 if (Math.abs(dx) < Math.abs(dy) + 6) return;
+                 dragging = true;
+                 content.style.transition = "none";
+               }
+               let x = startSwipe + dx;
+               x = Math.min(leftMax, Math.max(-rightMax, x));
+               content.style.transform = `translateX(${x}px)`;
+               content.dataset.swipeX = String(x);
+             });
+             function finishSwipe() {
+               if (startX === null) return;
+               startX = null;
+               if (!dragging) return;
+               dragging = false;
+               content.style.transition = "";
+               const x = Number(content.dataset.swipeX || 0);
+               let target = 0;
+               if (x > 0 && leftMax > 0 && x > leftMax / 2) target = leftMax;
+               else if (x < 0 && rightMax > 0 && -x > rightMax / 2) target = -rightMax;
+               content.style.transform = `translateX(${target}px)`;
+               content.dataset.swipeX = String(target);
+               if (target !== 0) openSwipeContent = content;
+               else if (openSwipeContent === content) openSwipeContent = null;
+             }
+             content.addEventListener("pointerup", finishSwipe);
+             content.addEventListener("pointercancel", finishSwipe);
+
+             card.onclick = () => {
+               const x = Number(content.dataset.swipeX || 0);
+               if (Math.abs(x) > 2) {
+                 closeOpenSwipe();
+                 return;
+               }
+               if (isMobile()) setSidebarOpen(false);
+               selectSession(s.session_id);
+             };
+             sessionsWrap.appendChild(card);
             }
-            card.appendChild(mainCol);
-            const actionButtons = [renameCardBtn];
-            const dupBtn = el("button", {
-              class: "icon-btn",
-              title: "Duplicate session",
-              "aria-label": "Duplicate session",
-              type: "button",
-              html: iconSvg("duplicate"),
-            });
-            dupBtn.onclick = async (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
-              if (!cwd) {
-                setToast("cwd unavailable");
-                return;
-              }
-              await spawnSessionWithCwd(cwd);
-            };
-            actionButtons.unshift(dupBtn);
-            if (delBtn) actionButtons.push(delBtn);
-            card.appendChild(el("div", { class: "sessionAction" }, actionButtons));
-            card.onclick = () => {
-              if (isMobile()) setSidebarOpen(false);
-              selectSession(s.session_id);
-	            };
-	            sessionsWrap.appendChild(card);
-	          }
           if (selected && !sessionIndex.has(selected)) {
             selected = null;
             offset = 0;
@@ -1961,8 +2126,8 @@
           const on = Boolean(s && s.harness_enabled);
           harnessBtn.disabled = !selected;
           harnessBtn.classList.toggle("active", Boolean(selected && on));
-          renameBtn.disabled = !selected;
-          duplicateBtn.disabled = !selected;
+          fileBtn.disabled = !selected;
+          diagBtn.disabled = !selected;
         }
            async function loadHarnessCfgForSelected() {
              if (!selected) return;
@@ -2082,26 +2247,86 @@
             setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
           }
         }
-        renameBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          void renameSessionId(selected);
-        };
         let fileWrap = localStorage.getItem("codexweb.fileWrap") === "1";
+        let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
+        let fileDiffStaged = localStorage.getItem("codexweb.fileDiffStaged") === "1";
+
         function applyFileWrap() {
           fileViewer.classList.toggle("wrap", fileWrap);
           fileWrapBtn.classList.toggle("active", fileWrap);
         }
-        applyFileWrap();
+
+        function extToPrismLang(p) {
+          const ext = String(p || "").split(".").pop().toLowerCase();
+          if (ext === "js") return "javascript";
+          if (ext === "ts") return "typescript";
+          if (ext === "json") return "json";
+          if (ext === "py") return "python";
+          if (ext === "sh" || ext === "bash" || ext === "zsh") return "bash";
+          if (ext === "md") return "markdown";
+          if (ext === "html" || ext === "htm") return "markup";
+          if (ext === "css") return "css";
+          if (ext === "yml" || ext === "yaml") return "yaml";
+          if (ext === "toml") return "toml";
+          if (ext === "rs") return "rust";
+          if (ext === "go") return "go";
+          if (ext === "java") return "java";
+          if (ext === "c" || ext === "h") return "c";
+          if (ext === "cpp" || ext === "cc" || ext === "hpp") return "cpp";
+          return "";
+        }
+
+        function applyFileMode() {
+          const isDiff = fileViewMode === "diff";
+          fileModeDiffBtn.classList.toggle("active", isDiff);
+          fileModeFileBtn.classList.toggle("active", !isDiff);
+          fileStagedBtn.style.display = isDiff ? "inline-flex" : "none";
+          fileStagedBtn.classList.toggle("active", Boolean(fileDiffStaged));
+          fileWrapBtn.style.display = isDiff ? "none" : "inline-flex";
+          fileDiff.style.display = isDiff ? "block" : "none";
+          filePre.style.display = isDiff ? "none" : "block";
+          applyFileWrap();
+        }
+
+        async function refreshFileCandidates() {
+          fileCandidateSelect.innerHTML = "";
+          if (!selected) return;
+          try {
+            const res = await api(`/api/sessions/${selected}/git/changed_files`);
+            const files = Array.isArray(res.files) ? res.files : [];
+            if (!files.length) {
+              const opt = document.createElement("option");
+              opt.value = "";
+              opt.textContent = "(no changes)";
+              fileCandidateSelect.appendChild(opt);
+              return;
+            }
+            for (const f of files) {
+              const opt = document.createElement("option");
+              opt.value = String(f);
+              opt.textContent = String(f);
+              fileCandidateSelect.appendChild(opt);
+            }
+          } catch (e) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "(git unavailable)";
+            fileCandidateSelect.appendChild(opt);
+          }
+        }
 
         function showFileViewer() {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
-          applyFileWrap();
-          const s = selected ? sessionIndex.get(selected) : null;
+          applyFileMode();
           const last = localStorage.getItem("codexweb.filePath") || "";
-          const def = last || (s && s.cwd ? String(s.cwd) : "");
-          if (!filePathInput.value.trim()) filePathInput.value = def;
+          if (last && !filePathInput.value.trim()) filePathInput.value = last;
+          void refreshFileCandidates().then(() => {
+            if (!selected) return;
+            const cur = String(filePathInput.value || "").trim();
+            const first = fileCandidateSelect && fileCandidateSelect.value ? String(fileCandidateSelect.value) : "";
+            if (!cur && first) filePathInput.value = first;
+          });
           filePathInput.focus();
           filePathInput.select();
         }
@@ -2110,24 +2335,45 @@
           fileViewer.style.display = "none";
         }
         async function openFilePath() {
-          const path = String(filePathInput.value || "").trim();
-          if (!path) {
+          if (!selected) return;
+          const rel = String(filePathInput.value || "").trim();
+          if (!rel) {
             fileStatus.textContent = "Enter a file path.";
             return;
           }
           fileStatus.textContent = "Loading...";
-          fileContent.textContent = "";
+          fileDiff.innerHTML = "";
+          fileCode.textContent = "";
           try {
-            const body = { path };
-            if (selected) body.session_id = selected;
-            const res = await api("/api/files/read", { method: "POST", body });
-            if (!res || typeof res.text !== "string") throw new Error("invalid response");
-            fileContent.textContent = res.text;
-            const size = typeof res.size === "number" ? res.size : res.text.length;
-            const label = res.path ? String(res.path) : path;
-            fileStatus.textContent = `${label} (${fmtBytes(size)})`;
-            localStorage.setItem("codexweb.filePath", path);
-            if (selected) refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+            if (fileViewMode === "diff") {
+              const res = await api(
+                `/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}&staged=${fileDiffStaged ? 1 : 0}`
+              );
+              const diff = res && typeof res.diff === "string" ? res.diff : "";
+              if (window.Diff2Html && typeof window.Diff2Html.html === "function") {
+                fileDiff.innerHTML = window.Diff2Html.html(diff || "", {
+                  drawFileList: false,
+                  outputFormat: "side-by-side",
+                  matching: "lines",
+                });
+              } else {
+                fileDiff.textContent = diff || "";
+              }
+              fileStatus.textContent = diff ? `${rel} (diff)` : `${rel} (no diff)`;
+            } else {
+              const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
+              if (!res || typeof res.text !== "string") throw new Error("invalid response");
+              fileCode.className = "";
+              const lang = extToPrismLang(rel);
+              if (lang) fileCode.classList.add(`language-${lang}`);
+              fileCode.textContent = res.text;
+              if (window.Prism && typeof window.Prism.highlightElement === "function") {
+                window.Prism.highlightElement(fileCode);
+              }
+              const size = typeof res.size === "number" ? res.size : res.text.length;
+              fileStatus.textContent = `${rel} (${fmtBytes(size)})`;
+            }
+            localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
@@ -2136,6 +2382,41 @@
           e.preventDefault();
           e.stopPropagation();
           showFileViewer();
+        };
+        fileCandidateRefreshBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void refreshFileCandidates();
+        };
+        fileCandidateSelect.onchange = () => {
+          const v = String(fileCandidateSelect.value || "").trim();
+          if (!v) return;
+          filePathInput.value = v;
+          void openFilePath();
+        };
+        fileModeDiffBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileViewMode = "diff";
+          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+          applyFileMode();
+          void openFilePath();
+        };
+        fileModeFileBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileViewMode = "file";
+          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+          applyFileMode();
+          void openFilePath();
+        };
+        fileStagedBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileDiffStaged = !fileDiffStaged;
+          localStorage.setItem("codexweb.fileDiffStaged", fileDiffStaged ? "1" : "0");
+          applyFileMode();
+          if (fileViewMode === "diff") void openFilePath();
         };
         fileWrapBtn.onclick = (e) => {
           e.preventDefault();
@@ -2161,11 +2442,13 @@
           if (fileViewer.style.display === "flex") hideFileViewer();
           if (sendChoice.style.display === "flex") hideSendChoice();
           if (queueViewer.style.display === "flex") hideQueueViewer();
+          if (helpViewer.style.display === "flex") hideHelpViewer();
+          if (diagViewer.style.display === "flex") hideDiagViewer();
         });
 
         let sendChoicePending = null;
         function showSendChoice(raw) {
-          sendChoicePending = raw;
+          sendChoicePending = { sid: selected, text: raw };
           sendChoiceBackdrop.style.display = "block";
           sendChoice.style.display = "flex";
         }
@@ -2179,19 +2462,21 @@
         const sendChoiceCancelBtn = $("#sendChoiceCancel");
         if (sendChoiceNowBtn)
           sendChoiceNowBtn.onclick = async () => {
-            const raw = sendChoicePending;
+            const raw = sendChoicePending && sendChoicePending.text;
+            const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
-            if (!raw) return;
+            if (!raw || !sid) return;
             clearComposer();
-            await sendText(raw);
+            await sendText(raw, { sid });
           };
         if (sendChoiceLaterBtn)
           sendChoiceLaterBtn.onclick = () => {
-            const raw = sendChoicePending;
+            const raw = sendChoicePending && sendChoicePending.text;
+            const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
-            if (!raw) return;
+            if (!raw || !sid) return;
             clearComposer();
-            queueLocalMessage(raw);
+            queueLocalMessageFor(sid, raw);
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
@@ -2247,6 +2532,34 @@
           queueViewer.style.display = "none";
         }
 
+        function showHelpViewer() {
+          helpBackdrop.style.display = "block";
+          helpViewer.style.display = "flex";
+        }
+        function hideHelpViewer() {
+          helpBackdrop.style.display = "none";
+          helpViewer.style.display = "none";
+        }
+
+        async function showDiagViewer() {
+          if (!selected) return;
+          diagContent.textContent = "";
+          diagStatus.textContent = "Loading...";
+          diagBackdrop.style.display = "block";
+          diagViewer.style.display = "flex";
+          try {
+            const d = await api(`/api/sessions/${selected}/diagnostics`);
+            diagStatus.textContent = "";
+            diagContent.textContent = JSON.stringify(d, null, 2);
+          } catch (e) {
+            diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+          }
+        }
+        function hideDiagViewer() {
+          diagBackdrop.style.display = "none";
+          diagViewer.style.display = "none";
+        }
+
         const queueBtn = $("#queueBtn");
         if (queueBtn) {
           queueBtn.onclick = (e) => {
@@ -2261,6 +2574,30 @@
           hideQueueViewer();
         };
         queueBackdrop.onclick = () => hideQueueViewer();
+
+        $("#helpBtnSide").onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showHelpViewer();
+        };
+        helpCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideHelpViewer();
+        };
+        helpBackdrop.onclick = () => hideHelpViewer();
+
+        diagBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void showDiagViewer();
+        };
+        diagCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          hideDiagViewer();
+        };
+        diagBackdrop.onclick = () => hideDiagViewer();
         async function spawnSessionWithCwd(cwd) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
@@ -2313,17 +2650,6 @@
         $("#logoutBtnSide").onclick = async () => {
           await api("/api/logout", { method: "POST" });
           renderLogin(renderApp);
-        };
-
-        duplicateBtn.onclick = async () => {
-          if (!selected) return;
-          const s = sessionIndex.get(selected);
-          const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
-          if (!cwd) {
-            setToast("cwd unavailable");
-            return;
-          }
-          await spawnSessionWithCwd(cwd);
         };
 
         toggleSidebarBtn.onclick = () => {
@@ -2583,8 +2909,9 @@
           autoGrow();
         }
 
-        async function sendText(raw, { deferred = false } = {}) {
-          if (!selected) return;
+        async function sendText(raw, { deferred = false, sid = null } = {}) {
+          const sessionId = sid || selected;
+          if (!sessionId) return;
           if (!raw || !raw.trim()) return;
           if (sending) return;
           sending = true;
@@ -2593,12 +2920,15 @@
 
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
-          pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
-          appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
-          turnOpen = true;
-          currentRunning = true;
+          const renderHere = sessionId === selected;
+          if (renderHere) {
+            pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
+            appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
+            turnOpen = true;
+            currentRunning = true;
+          }
           try {
-            const res = await api(`/api/sessions/${selected}/send`, { method: "POST", body: { text: raw } });
+            const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw } });
             if (res.queued) setToast(`queued (queue ${res.queue_len})`);
             else setToast("sent");
             setAttachCount(0);
@@ -2607,11 +2937,13 @@
             await refreshSessions();
           } catch (e2) {
             setToast(`send error: ${e2.message}`);
-            const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-            if (pendingEl) {
-              pendingEl.style.opacity = "1";
-              pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
-              pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
+            if (renderHere) {
+              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
+              if (pendingEl) {
+                pendingEl.style.opacity = "1";
+                pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
+                pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
+              }
             }
             if (deferred && selected) {
               queueLocalMessage(raw, { front: true });

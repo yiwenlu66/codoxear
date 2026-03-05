@@ -130,6 +130,9 @@ CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "1
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
+GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
+GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
+GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain three live lists: Deliverables, Next actions, Parked questions.
@@ -489,6 +492,43 @@ def _read_text_file_strict(path: Path, *, max_bytes: int) -> tuple[str, int]:
         raise ValueError("binary file not supported")
     text = data.decode("utf-8", errors="replace")
     return text, size
+
+
+def _resolve_under(base: Path, rel: str) -> Path:
+    if not isinstance(rel, str) or not rel.strip():
+        raise ValueError("path required")
+    if "\x00" in rel:
+        raise ValueError("invalid path")
+    p = Path(rel)
+    if p.is_absolute():
+        raise ValueError("path must be relative")
+    resolved_base = base.resolve()
+    resolved = (resolved_base / p).resolve()
+    if not str(resolved).startswith(str(resolved_base) + os.sep) and resolved != resolved_base:
+        raise ValueError("path escapes session cwd")
+    return resolved
+
+
+def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
+    cmd = ["git", *args]
+    proc = subprocess.run(
+        cmd,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout_s,
+        check=False,
+    )
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(err or f"git failed with code {proc.returncode}")
+    if len(proc.stdout) > max_bytes:
+        raise ValueError(f"git output too large (max {max_bytes} bytes)")
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+def _require_git_repo(cwd: Path) -> None:
+    _run_git(cwd, ["rev-parse", "--is-inside-work-tree"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=4096)
 
 
 def _safe_filename(name: str) -> str:
@@ -1909,6 +1949,212 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._unauthorized()
                     return
                 _json_response(self, 200, {"metrics": _metrics_snapshot()})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/diagnostics"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                state = MANAGER.get_state(session_id)
+                if not isinstance(state, dict):
+                    raise ValueError("invalid broker state response")
+                if "busy" not in state:
+                    raise ValueError("missing busy from broker state response")
+                if "queue_len" not in state:
+                    raise ValueError("missing queue_len from broker state response")
+                token_val: dict[str, Any] | None = None
+                st_token = state.get("token")
+                if isinstance(st_token, dict) or st_token is None:
+                    token_val = st_token
+                meta = None
+                if s.log_path is not None and s.log_path.exists():
+                    meta = _read_session_meta(s.log_path)
+                model_provider = meta.get("model_provider") if isinstance(meta, dict) else None
+                if not isinstance(model_provider, str) or not model_provider.strip():
+                    model_provider = None
+                model = meta.get("model") if isinstance(meta, dict) else None
+                if not isinstance(model, str) or not model.strip():
+                    model = None
+                if model is None and isinstance(token_val, dict):
+                    baseline = token_val.get("baseline")
+                    if isinstance(baseline, str) and baseline.strip():
+                        model = baseline
+                reasoning_effort = meta.get("reasoning_effort") if isinstance(meta, dict) else None
+                if not isinstance(reasoning_effort, str) or not reasoning_effort.strip():
+                    reasoning_effort = None
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "session_id": s.session_id,
+                        "thread_id": s.thread_id,
+                        "owned": bool(s.owned),
+                        "cwd": s.cwd,
+                        "start_ts": float(s.start_ts),
+                        "updated_ts": float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts),
+                        "log_path": (str(s.log_path) if s.log_path is not None else None),
+                        "broker_pid": int(s.broker_pid),
+                        "codex_pid": int(s.codex_pid),
+                        "busy": bool(state.get("busy")),
+                        "queue_len": int(state.get("queue_len")),
+                        "token": token_val,
+                        "model_provider": model_provider,
+                        "model": model,
+                        "reasoning_effort": reasoning_effort,
+                    },
+                )
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/read"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                p = _resolve_under(base, rel)
+                if not p.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not p.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                text, size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                try:
+                    MANAGER.files_add(session_id, str(p))
+                except KeyError:
+                    pass
+                _json_response(self, 200, {"ok": True, "path": str(p), "rel": rel, "size": int(size), "text": text})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/git/changed_files"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                cwd = Path(s.cwd).expanduser()
+                if not cwd.is_absolute():
+                    cwd = cwd.resolve()
+                try:
+                    _require_git_repo(cwd)
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
+                unstaged = _run_git(
+                    cwd,
+                    ["diff", "--name-only"],
+                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                    max_bytes=64 * 1024,
+                ).splitlines()
+                staged = _run_git(
+                    cwd,
+                    ["diff", "--name-only", "--cached"],
+                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                    max_bytes=64 * 1024,
+                ).splitlines()
+                def _norm_list(xs: list[str]) -> list[str]:
+                    out: list[str] = []
+                    for x in xs:
+                        t = x.strip()
+                        if not t:
+                            continue
+                        out.append(t)
+                        if len(out) >= GIT_CHANGED_FILES_MAX:
+                            break
+                    return out
+                unstaged2 = _norm_list(unstaged)
+                staged2 = _norm_list(staged)
+                seen: set[str] = set()
+                merged: list[str] = []
+                for x in [*unstaged2, *staged2]:
+                    if x in seen:
+                        continue
+                    seen.add(x)
+                    merged.append(x)
+                _json_response(
+                    self,
+                    200,
+                    {"ok": True, "cwd": str(cwd), "files": merged, "unstaged": unstaged2, "staged": staged2},
+                )
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/git/diff"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                staged_q = qs.get("staged")
+                staged = bool(staged_q and staged_q[0] == "1")
+                cwd = Path(s.cwd).expanduser()
+                if not cwd.is_absolute():
+                    cwd = cwd.resolve()
+                try:
+                    _require_git_repo(cwd)
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
+                _resolve_under(cwd, rel)
+                args = ["diff", "-U3"]
+                if staged:
+                    args.append("--cached")
+                args.extend(["--", rel])
+                diff = _run_git(
+                    cwd,
+                    args,
+                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                    max_bytes=GIT_DIFF_MAX_BYTES,
+                )
+                _json_response(self, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/messages"):

@@ -53,7 +53,7 @@
         grid-template-columns: var(--sidebar-w) 1fr;
         grid-template-rows: 1fr;
         position: fixed;
-        top: var(--vvTop, 0px);
+        top: 0;
         left: 0;
         right: 0;
         width: 100vw;
@@ -113,20 +113,71 @@
         gap: 10px;
       }
       .sidebar footer button {
-        width: 100%;
+        flex: 1 1 auto;
         justify-content: center;
+        gap: 8px;
       }
       .session {
-        padding: 10px;
+        padding: 0;
         border: 1px solid var(--border);
         border-radius: 12px;
         margin-bottom: 10px;
         cursor: pointer;
         background: #ffffff;
-        display: flex;
-        gap: 12px;
-        align-items: stretch;
+        display: block;
         touch-action: manipulation;
+      }
+      .sessionSwipe {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        border-radius: 12px;
+      }
+      .sessionContent {
+        position: relative;
+        z-index: 2;
+        background: #ffffff;
+        transform: translateX(0px);
+        transition: transform 160ms ease-out;
+        will-change: transform;
+      }
+      .session.active .sessionContent {
+        background: var(--accent-weak);
+      }
+      .sessionActions {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        z-index: 1;
+        pointer-events: none;
+      }
+      .sessionActions .icon-btn {
+        pointer-events: auto;
+      }
+      .sessionActions.left {
+        left: 0;
+        justify-content: flex-start;
+        background: rgba(185, 28, 28, 0.08);
+      }
+      .sessionActions.right {
+        right: 0;
+        justify-content: flex-end;
+        background: rgba(15, 23, 42, 0.04);
+      }
+      .ownDot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        flex: 0 0 auto;
+        background: rgba(107, 114, 128, 0.85);
+      }
+      .ownDot.owned {
+        background: rgba(29, 78, 216, 0.95);
       }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
@@ -137,6 +188,19 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
+      }
+      .sessionInner {
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .sessionTitleRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
       .sessionAction {
         flex: 0 0 auto;
@@ -604,7 +668,7 @@
       .composer {
         --composerCtl: 38px;
         border-top: 1px solid var(--border);
-        padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+        padding: 10px 12px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px));
         background: var(--panel);
       }
       .composer form {
@@ -839,9 +903,36 @@ input[type="text"] {
         gap: 8px;
         align-items: center;
       }
+      .fileCandRow {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .fileCandRow select {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: #ffffff;
+        color: var(--text);
+        font-size: 13px;
+      }
       .filePathRow input[type="text"] {
         flex: 1 1 auto;
         min-width: 0;
+      }
+      .fileDiff {
+        flex: 1 1 auto;
+        min-height: 120px;
+        border-radius: 12px;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        background: #ffffff;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .fileDiff .d2h-wrapper {
+        padding: 10px;
       }
       .fileContent {
         margin: 0;
@@ -880,6 +971,29 @@ input[type="text"] {
         flex-direction: column;
         gap: 10px;
         box-sizing: border-box;
+      }
+      .helpViewer,
+      .diagViewer {
+        display: none;
+        position: fixed;
+        left: 50%;
+        top: calc(50% + var(--vvTop, 0px));
+        transform: translate(-50%, -50%);
+        z-index: 80;
+        width: min(92vw, 820px);
+        max-height: calc(var(--appH, 100dvh) - 24px);
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+        padding: 12px;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+      }
+      .helpBody {
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
       }
       .queueHeader {
         display: flex;
@@ -1033,7 +1147,7 @@ input[type="text"] {
         }
         .composer {
           --composerCtl: 34px;
-          padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+          padding: 8px 10px calc(8px + env(safe-area-inset-bottom) + var(--kbH, 0px));
         }
         .composer form {
           padding: 5px 6px;
@@ -1063,22 +1177,34 @@ input[type="text"] {
           max-height: none;
           left: 0;
           right: 0;
-          top: var(--vvTop, 0px);
+          top: 0;
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
         }
         .queueViewer {
           width: 100vw;
           max-height: none;
           left: 0;
           right: 0;
-          top: var(--vvTop, 0px);
+          top: 0;
           bottom: 0;
           transform: none;
           border-radius: 0;
-          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
+        }
+        .helpViewer,
+        .diagViewer {
+          width: 100vw;
+          max-height: none;
+          left: 0;
+          right: 0;
+          top: 0;
+          bottom: 0;
+          transform: none;
+          border-radius: 0;
+          padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom) + var(--kbH, 0px)) 10px;
         }
         .sessionFilesLabel {
           font-size: 10px;
