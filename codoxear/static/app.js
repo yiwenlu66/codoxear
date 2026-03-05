@@ -1,4 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
+	      const UI_VERSION = "20260306.3";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -2561,14 +2562,15 @@
             addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
             addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
             addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
-            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
-            addRow("Model", d && d.model ? d.model : "-");
-            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
-            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
-            if (tok) {
-              const ctx = Number(tok.context_window);
-              const used = Number(tok.tokens_in_context);
-              const pct = Number(tok.percent_remaining);
+	            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
+	            addRow("Model", d && d.model ? d.model : "-");
+	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
+	            addRow("UI", UI_VERSION);
+	            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
+	            if (tok) {
+	              const ctx = Number(tok.context_window);
+	              const used = Number(tok.tokens_in_context);
+	              const pct = Number(tok.percent_remaining);
               if (Number.isFinite(ctx) && Number.isFinite(used) && ctx > 0 && used >= 0) {
                 const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
                 const txt = p === null ? `${used}/${ctx}` : `${used}/${ctx} (${p}% left)`;
