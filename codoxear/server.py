@@ -1390,11 +1390,34 @@ class SessionManager:
         scan_complete: bool,
         log_off: int,
     ) -> None:
+        def event_key(ev: dict[str, Any]) -> tuple[str, int, str] | None:
+            role = ev.get("role")
+            if role not in ("user", "assistant"):
+                return None
+            text = ev.get("text")
+            if not isinstance(text, str):
+                return None
+            ts = ev.get("ts")
+            if not isinstance(ts, (int, float)):
+                return None
+            return role, int(round(float(ts) * 1000.0)), text
+
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 return
-            s.chat_index_events = list(events[-CHAT_INDEX_MAX_EVENTS:])
+            # Deduplicate to avoid re-appending overlapping tail events across incremental scans.
+            tail = list(events[-CHAT_INDEX_MAX_EVENTS:])
+            uniq_rev: list[dict[str, Any]] = []
+            seen: set[tuple[str, int, str]] = set()
+            for ev in reversed(tail):
+                k = event_key(ev)
+                if k is not None and k in seen:
+                    continue
+                if k is not None:
+                    seen.add(k)
+                uniq_rev.append(ev)
+            s.chat_index_events = list(reversed(uniq_rev))
             s.chat_index_scan_bytes = int(scan_bytes)
             s.chat_index_scan_complete = bool(scan_complete) and (len(events) <= CHAT_INDEX_MAX_EVENTS)
             s.chat_index_log_off = int(log_off)
@@ -1402,6 +1425,18 @@ class SessionManager:
                 s.token = token_update
 
     def _append_chat_events(self, session_id: str, new_events: list[dict[str, Any]], *, new_off: int, latest_token: dict[str, Any] | None) -> None:
+        def event_key(ev: dict[str, Any]) -> tuple[str, int, str] | None:
+            role = ev.get("role")
+            if role not in ("user", "assistant"):
+                return None
+            text = ev.get("text")
+            if not isinstance(text, str):
+                return None
+            ts = ev.get("ts")
+            if not isinstance(ts, (int, float)):
+                return None
+            return role, int(round(float(ts) * 1000.0)), text
+
         if not new_events and latest_token is None:
             with self._lock:
                 s = self._sessions.get(session_id)
@@ -1413,12 +1448,27 @@ class SessionManager:
             if not s:
                 return
             if new_events:
-                merged = s.chat_index_events + new_events
+                merged = list(s.chat_index_events)
+                recent = merged[-256:] if len(merged) > 256 else merged
+                seen: set[tuple[str, int, str]] = set()
+                for ev in recent:
+                    k = event_key(ev)
+                    if k is not None:
+                        seen.add(k)
+                appended: list[dict[str, Any]] = []
+                for ev in new_events:
+                    k = event_key(ev)
+                    if k is not None and k in seen:
+                        continue
+                    if k is not None:
+                        seen.add(k)
+                    merged.append(ev)
+                    appended.append(ev)
                 if len(merged) > CHAT_INDEX_MAX_EVENTS:
                     merged = merged[-CHAT_INDEX_MAX_EVENTS:]
                     s.chat_index_scan_complete = False
                 s.chat_index_events = merged
-                for ev in new_events:
+                for ev in appended:
                     ts = ev.get("ts")
                     if isinstance(ts, (int, float)):
                         tsf = float(ts)
