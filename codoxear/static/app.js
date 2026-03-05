@@ -1335,6 +1335,10 @@
           const tsEl = pendingEl.querySelector(".ts");
           if (tsEl && typeof ev.ts === "number" && Number.isFinite(ev.ts)) tsEl.textContent = time24(new Date(ev.ts * 1000));
           rebuildDecorations({ preserveScroll: true });
+          if (selected) {
+            appendCacheEvents(selected, [ev]);
+          }
+          markEventSeen(ev);
           return true;
         }
 
