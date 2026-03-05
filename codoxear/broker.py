@@ -124,12 +124,24 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _require_proc() -> None:
-    if not sys.platform.startswith("linux"):
-        sys.stderr.write("error: codoxear-broker requires linux (/proc, pty, termios).\n")
+    if sys.platform.startswith("linux"):
+        if not (PROC_ROOT / "self" / "fd").is_dir():
+            sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
+            raise SystemExit(2)
+    elif sys.platform == "darwin":
+        pass  # macOS is supported via lsof/pgrep
+    else:
+        sys.stderr.write(f"error: codoxear-broker requires Linux or macOS (unsupported: {sys.platform}).\n")
         raise SystemExit(2)
-    if not (PROC_ROOT / "self" / "fd").is_dir():
-        sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
-        raise SystemExit(2)
+
+
+def _expand_cwd(cwd: str) -> str:
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise ValueError("cwd must be a non-empty string")
+    home = str(Path.home())
+    s = cwd.strip().replace("${HOME}", home)
+    s = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, s)
+    return os.path.expanduser(os.path.expandvars(s))
 
 
 def _user_shell() -> str:
@@ -1542,7 +1554,7 @@ def main() -> None:
     if not args:
         args = []
 
-    b = Broker(cwd=str(ns.cwd), codex_args=args)
+    b = Broker(cwd=_expand_cwd(str(ns.cwd)), codex_args=args)
     raise SystemExit(b.run())
 
 

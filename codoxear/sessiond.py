@@ -14,6 +14,7 @@ import time
 import traceback
 import select
 import sys
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -555,8 +556,8 @@ class Sessiond:
 
 
 def main() -> None:
-    if not sys.platform.startswith("linux"):
-        sys.stderr.write("error: codoxear session helper requires Linux\n")
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        sys.stderr.write(f"error: codoxear session helper requires Linux or macOS (unsupported: {sys.platform})\n")
         raise SystemExit(2)
     ap = argparse.ArgumentParser()
     ap.add_argument("--cwd", default=os.getcwd())
@@ -567,7 +568,11 @@ def main() -> None:
     if args and args[0] == "--":
         args = args[1:]
 
-    sd = Sessiond(cwd=str(ns.cwd), codex_args=args)
+    home = str(Path.home())
+    cwd = str(ns.cwd).strip().replace("${HOME}", home)
+    cwd = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd)
+    cwd = os.path.expanduser(os.path.expandvars(cwd))
+    sd = Sessiond(cwd=cwd, codex_args=args)
     sd.run()
 
 

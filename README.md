@@ -44,10 +44,10 @@ Example host setup:
 Supported:
 
 - Linux (uses `/proc`, PTYs)
+- macOS (uses `lsof`/`pgrep`, PTYs)
 
 Not supported:
 
-- macOS (no `/proc`)
 - Windows (no POSIX PTY/termios model; use WSL2 if you want a Linux environment)
 
 ## Quick start
