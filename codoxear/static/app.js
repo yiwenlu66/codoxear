@@ -585,14 +585,15 @@
 				    let typingRow = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
-        const recentEventKeys = [];
-        const recentEventKeySet = new Set();
-        const RECENT_EVENT_KEYS_MAX = 320;
-                let clickLoadT0 = 0;
-                let clickMetricPending = false;
-					        let harnessMenuOpen = false;
-					        let harnessCfg = { enabled: false, request: "" };
-					        let harnessSaveTimer = null;
+         const recentEventKeys = [];
+         const recentEventKeySet = new Set();
+         const RECENT_EVENT_KEYS_MAX = 320;
+         let lastAssistantKey = "";
+                 let clickLoadT0 = 0;
+                 let clickMetricPending = false;
+              let harnessMenuOpen = false;
+              let harnessCfg = { enabled: false, request: "" };
+              let harnessSaveTimer = null;
 
 				        const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
@@ -848,6 +849,7 @@
           localEchoSeq = 0;
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
+          lastAssistantKey = "";
           olderBefore = 0;
           hasOlder = false;
           loadingOlder = false;
@@ -950,6 +952,30 @@
           return out;
         }
 
+        function assistantTextKey(ev) {
+          if (!ev || ev.role !== "assistant") return "";
+          if (typeof ev.text !== "string") return "";
+          return pendingMatchKey(ev.text);
+        }
+
+        function isAdjacentAssistantDuplicate(prev, ev) {
+          if (!prev || !ev) return false;
+          if (prev.role !== "assistant" || ev.role !== "assistant") return false;
+          const a = assistantTextKey(prev);
+          if (!a) return false;
+          return a === assistantTextKey(ev);
+        }
+
+        function dedupeAdjacentAssistantDuplicates(events) {
+          const out = [];
+          for (const ev of events || []) {
+            const prev = out.length ? out[out.length - 1] : null;
+            if (isAdjacentAssistantDuplicate(prev, ev)) continue;
+            out.push(ev);
+          }
+          return out;
+        }
+
         function loadCacheFromStorage(sid) {
           if (!sid || cacheLoaded.has(sid)) return;
           cacheLoaded.add(sid);
@@ -965,6 +991,12 @@
               if (norm) events.push(norm);
             }
             if (!events.length) return;
+            const deduped = dedupeAdjacentAssistantDuplicates(events);
+            const cacheChanged = deduped.length !== events.length;
+            if (cacheChanged) {
+              events.length = 0;
+              events.push(...deduped);
+            }
             if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
             const cache = {
               log_path: typeof obj.log_path === "string" ? obj.log_path : null,
@@ -974,6 +1006,7 @@
               events,
             };
             cacheBySession.set(sid, cache);
+            if (cacheChanged) scheduleCacheSave(sid);
           } catch {
             // ignore corrupted cache
           }
@@ -1036,7 +1069,10 @@
           const out = [];
           for (const ev of events || []) {
             const norm = normalizeCacheEvent(ev);
-            if (norm) out.push(norm);
+            if (!norm) continue;
+            const prev = out.length ? out[out.length - 1] : null;
+            if (isAdjacentAssistantDuplicate(prev, norm)) continue;
+            out.push(norm);
           }
           if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
           cache.events = out;
@@ -1049,9 +1085,13 @@
           const cache =
             getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
           const list = Array.isArray(cache.events) ? cache.events : [];
+          let prev = list.length ? list[list.length - 1] : null;
           for (const ev of events) {
             const norm = normalizeCacheEvent(ev);
-            if (norm) list.push(norm);
+            if (!norm) continue;
+            if (isAdjacentAssistantDuplicate(prev, norm)) continue;
+            list.push(norm);
+            prev = norm;
           }
           if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
           cache.events = list;
@@ -1256,18 +1296,19 @@
           return { row, bubble };
         }
 
-        function normalizeTextForPendingMatch(s) {
-          // Normalize common platform newline differences to improve pending->ack reconciliation.
-          return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-        }
+      function normalizeTextForPendingMatch(s) {
+        // Normalize common platform newline differences to improve pending->ack reconciliation.
+        return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      }
 
-        function eventKey(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-          if (ts === null) return "";
-          const text = typeof ev.text === "string" ? ev.text : "";
-          return `${ev.role}|${ts}|${text}`;
-        }
+      function eventKey(ev) {
+        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+        const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+        if (ts === null) return "";
+        const tsMs = Math.round(ts * 1000);
+        const text = typeof ev.text === "string" ? pendingMatchKey(ev.text) : "";
+        return `${ev.role}|${tsMs}|${text}`;
+      }
 
         function markEventSeen(ev) {
           const key = eventKey(ev);
@@ -1522,12 +1563,17 @@
         }
 
         function appendEvent(ev) {
+          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
           if (consumePendingUserIfMatches(ev)) return;
+          if (!ev.pending && ev.role === "assistant") {
+            const k = assistantTextKey(ev);
+            if (k && k === lastAssistantKey) return;
+          }
           if (isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-	          const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+           const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
@@ -1544,6 +1590,8 @@
           } else {
             jumpBtn.style.display = "inline-flex";
           }
+          if (ev.role === "user") lastAssistantKey = "";
+          else if (!ev.pending && ev.role === "assistant") lastAssistantKey = assistantTextKey(ev) || "";
         }
 
         function prependOlderEvents(allEvents) {
@@ -1598,22 +1646,38 @@
           void loadOlderMessages({ auto: true });
         }
 
-        function startInitialRender(allEvents) {
-          backfillToken += 1;
-          const myToken = backfillToken;
+       function startInitialRender(allEvents) {
+         backfillToken += 1;
+         const myToken = backfillToken;
 
-          const msgs = [];
-          for (const ev of allEvents) {
-		            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-		            if (consumePendingUserIfMatches(ev)) continue;
-		            msgs.push(ev);
-          }
-          if (!msgs.length) return;
-          if (selected) replaceCacheEvents(selected, msgs);
-          recentEventKeys.length = 0;
-          recentEventKeySet.clear();
-          for (const ev of msgs) {
-            markEventSeen(ev);
+         const msgs = [];
+         const initDedup = new Set();
+         for (const ev of allEvents) {
+               if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+               if (consumePendingUserIfMatches(ev)) continue;
+             const k = eventKey(ev);
+             if (k && initDedup.has(k)) continue;
+             if (k) initDedup.add(k);
+             const prev = msgs.length ? msgs[msgs.length - 1] : null;
+             if (isAdjacentAssistantDuplicate(prev, ev)) continue;
+               msgs.push(ev);
+         }
+           if (!msgs.length) return;
+           lastAssistantKey = "";
+           for (let i = msgs.length - 1; i >= 0; i--) {
+             const ev = msgs[i];
+             if (!ev) continue;
+             if (ev.role === "user") break;
+             if (ev.role === "assistant") {
+               lastAssistantKey = assistantTextKey(ev) || "";
+               break;
+             }
+           }
+           if (selected) replaceCacheEvents(selected, msgs);
+           recentEventKeys.length = 0;
+           recentEventKeySet.clear();
+           for (const ev of msgs) {
+             markEventSeen(ev);
           }
 	          const frag = document.createDocumentFragment();
           for (const ev of msgs) {
