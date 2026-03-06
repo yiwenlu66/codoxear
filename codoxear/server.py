@@ -293,6 +293,26 @@ def _sniff_image_ext(raw: bytes) -> str | None:
     return None
 
 
+def _image_content_type(path: Path, raw: bytes) -> str | None:
+    if path.suffix.lower() == ".svg":
+        return "image/svg+xml; charset=utf-8"
+    ext = _sniff_image_ext(raw)
+    if ext == ".png":
+        return "image/png"
+    if ext == ".jpg":
+        return "image/jpeg"
+    if ext == ".webp":
+        return "image/webp"
+    return None
+
+
+def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
+    ctype = _image_content_type(path, raw)
+    if ctype is not None:
+        return "image", ctype
+    return "text", None
+
+
 def _repair_png_crc(raw: bytes) -> bytes:
     if len(raw) < 8 or raw[:8] != b"\x89PNG\r\n\x1a\n":
         return raw
@@ -2442,12 +2462,81 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not p.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
-                text, size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                raw = p.read_bytes()
+                size = len(raw)
+                if size > FILE_READ_MAX_BYTES:
+                    _json_response(self, 400, {"error": f"file too large (max {FILE_READ_MAX_BYTES} bytes)"})
+                    return
+                kind, image_ctype = _file_kind(p, raw)
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
                     pass
-                _json_response(self, 200, {"ok": True, "path": str(p), "rel": rel, "size": int(size), "text": text})
+                if kind == "image":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "image",
+                            "content_type": image_ctype,
+                            "path": str(p),
+                            "rel": rel,
+                            "size": int(size),
+                            "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                        },
+                    )
+                    return
+                if b"\x00" in raw:
+                    _json_response(self, 400, {"error": "binary file not supported"})
+                    return
+                text = raw.decode("utf-8", errors="replace")
+                _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": rel, "size": int(size), "text": text})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/blob"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                p = _resolve_under(base, rel)
+                if not p.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not p.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                raw = p.read_bytes()
+                _kind, ctype = _file_kind(p, raw)
+                if ctype is None:
+                    _json_response(self, 400, {"error": "file is not a supported image"})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(raw)
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/git/changed_files"):

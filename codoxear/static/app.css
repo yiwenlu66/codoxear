@@ -1010,10 +1010,11 @@ input[type="text"] {
         background: #ffffff;
         color: var(--text);
         font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         text-align: left;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
       }
       .filePickerMenu {
         position: absolute;
@@ -1051,6 +1052,7 @@ input[type="text"] {
         background: rgba(37, 99, 235, 0.08);
       }
       .fileMenuPath {
+        flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1082,6 +1084,17 @@ input[type="text"] {
       .fileDiff .monaco-diff-editor,
       .fileDiff .overflow-guard {
         border-radius: 12px;
+      }
+      .fileImage {
+        display: none;
+        max-width: 100%;
+        max-height: min(65vh, 720px);
+        width: auto;
+        margin: 0 auto;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        border-radius: 12px;
+        background: #ffffff;
+        object-fit: contain;
       }
       .fileStatus {
         min-height: 18px;

@@ -790,6 +790,7 @@
           text: "Add",
         });
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
+        const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
@@ -798,6 +799,7 @@
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerBtn, filePickerMenu]),
           fileStatus,
           fileDiff,
+          fileImage,
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
@@ -2606,6 +2608,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
         function hideFileViewer() {
           disposeFileEditor();
+          fileImage.removeAttribute("src");
+          fileImage.style.display = "none";
+          fileDiff.style.display = "block";
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
         }
@@ -2619,6 +2624,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           activeFilePath = rel;
           fileStatus.textContent = "Loading...";
           disposeFileEditor();
+          fileImage.removeAttribute("src");
+          fileImage.style.display = "none";
+          fileDiff.style.display = "block";
           try {
             if (fileViewMode === "diff") {
               const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
@@ -2631,10 +2639,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               else fileStatus.textContent = rel;
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
-              if (!res || typeof res.text !== "string") throw new Error("invalid response");
-              await renderMonacoFile(rel, res.text);
-              const size = typeof res.size === "number" ? res.size : res.text.length;
-              fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+              if (!res || typeof res.kind !== "string") throw new Error("invalid response");
+              if (res.kind === "image") {
+                if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
+                fileDiff.style.display = "none";
+                fileImage.src = res.image_url;
+                fileImage.alt = rel;
+                fileImage.style.display = "block";
+                const size = typeof res.size === "number" ? res.size : 0;
+                fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+              } else {
+                if (typeof res.text !== "string") throw new Error("invalid response");
+                await renderMonacoFile(rel, res.text);
+                const size = typeof res.size === "number" ? res.size : res.text.length;
+                fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+              }
               if (!fileEntryMap.has(rel)) upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
               renderFilePickerMenu();
             }
