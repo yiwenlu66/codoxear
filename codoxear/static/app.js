@@ -603,10 +603,13 @@
         let pollLoopBusy = false;
         let pollKickPending = false;
 	        let pollFastUntilMs = 0;
-         let turnOpen = false;
-         let sessionsTimer = null;
-         let currentRunning = false;
-         let openSwipeContent = null;
+	         let turnOpen = false;
+	         let sessionsTimer = null;
+	         let currentRunning = false;
+	         let openSwipeContent = null;
+	         let openSwipeSessionId = null;
+	         let openSwipeTargetX = 0;
+	         let swipeRefreshDeferred = false;
         const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
@@ -1432,15 +1435,21 @@
           }
         }
 
-         async function refreshSessions() {
-           const data = await api("/api/sessions");
-           sessionsWrap.innerHTML = "";
-           openSwipeContent = null;
-           sessionIndex = new Map();
-           const mobile = isMobile();
+	         async function refreshSessions() {
+	           const data = await api("/api/sessions");
+          const mobile = isMobile();
             const sessions = (data.sessions || [])
                .slice()
                .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
+	           if (mobile && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
+	             sessionIndex = new Map();
+	             for (const s of sessions) sessionIndex.set(s.session_id, s);
+	             swipeRefreshDeferred = true;
+	             return sessions;
+	           }
+	           sessionsWrap.innerHTML = "";
+	           openSwipeContent = null;
+	           sessionIndex = new Map();
 		          for (const s of sessions) {
 		            sessionIndex.set(s.session_id, s);
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
@@ -1456,12 +1465,18 @@
 	             const stateTxt = fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
 
-            function closeOpenSwipe() {
-              if (!openSwipeContent) return;
-              openSwipeContent.style.transform = "translate3d(0px, 0, 0)";
-              openSwipeContent.dataset.swipeX = "0";
-              openSwipeContent = null;
-            }
+	            function closeOpenSwipe() {
+	              if (!openSwipeContent) return;
+	              openSwipeContent.style.transform = "translate3d(0px, 0, 0)";
+	              openSwipeContent.dataset.swipeX = "0";
+	              openSwipeContent = null;
+	              openSwipeSessionId = null;
+	              openSwipeTargetX = 0;
+	              if (swipeRefreshDeferred) {
+	                swipeRefreshDeferred = false;
+	                void refreshSessions().catch((e) => console.error("refreshSessions failed after swipe close", e));
+	              }
+	            }
 
              async function doDelete(e) {
                if (e) {
@@ -1554,12 +1569,17 @@
                const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
                const inner = el("div", { class: "sessionInner" }, [top, meta]);
-               const content = el("div", { class: "sessionContent" }, [inner]);
-               content.dataset.swipeX = "0";
-               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
-               card.appendChild(swipe);
+	               const content = el("div", { class: "sessionContent" }, [inner]);
+	               content.dataset.swipeX = "0";
+	               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
+	               card.appendChild(swipe);
+	               if (openSwipeSessionId === s.session_id && openSwipeTargetX !== 0) {
+	                  content.style.transform = `translate3d(${openSwipeTargetX}px, 0, 0)`;
+	                  content.dataset.swipeX = String(openSwipeTargetX);
+	                  openSwipeContent = content;
+	               }
 
-	               const leftMax = s.owned ? 72 : 0;
+		               const leftMax = s.owned ? 72 : 0;
 	               const rightMax = 104;
 	               let startX = null;
 	               let startY = 0;
@@ -1620,8 +1640,15 @@
 	                  else if (commitRight) target = -rightMax;
 	                  content.style.transform = `translate3d(${target}px, 0, 0)`;
 	                  content.dataset.swipeX = String(target);
-	                  if (target !== 0) openSwipeContent = content;
-	                  else if (openSwipeContent === content) openSwipeContent = null;
+	                  if (target !== 0) {
+	                    openSwipeContent = content;
+	                    openSwipeSessionId = s.session_id;
+	                    openSwipeTargetX = target;
+	                  } else if (openSwipeContent === content) {
+	                    openSwipeContent = null;
+	                    openSwipeSessionId = null;
+	                    openSwipeTargetX = 0;
+	                  }
 	                }
                content.addEventListener("pointerup", finishSwipe);
                content.addEventListener("pointercancel", finishSwipe);
@@ -1645,8 +1672,13 @@
 	               card.onclick = () => selectSession(s.session_id);
 	             }
 
-             sessionsWrap.appendChild(card);
-            }
+	             sessionsWrap.appendChild(card);
+	            }
+	          if (openSwipeSessionId && !sessionIndex.has(openSwipeSessionId)) {
+	            openSwipeSessionId = null;
+	            openSwipeTargetX = 0;
+	            openSwipeContent = null;
+	          }
           if (selected && !sessionIndex.has(selected)) {
             selected = null;
             offset = 0;
