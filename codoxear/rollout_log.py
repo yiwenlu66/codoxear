@@ -179,6 +179,9 @@ def _extract_chat_events(
             if pt == "turn_aborted":
                 turn_aborted = True
                 continue
+            if pt in ("task_complete", "turn_complete"):
+                turn_end = True
+                continue
             if pt == "token_count":
                 continue
 
@@ -430,8 +433,8 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         return None
     objs: list[dict[str, Any]] = []
     saw_user = False
+    saw_explicit_turn_end = False
     turn_open = False
-    turn_has_completion_candidate = False
     last_terminal_event: str | None = None
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
@@ -460,7 +463,6 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if pt == "user_message" and isinstance(p.get("message"), str):
                     saw_user = True
                     turn_open = True
-                    turn_has_completion_candidate = False
                     last_terminal_event = "user"
                     continue
                 if pt == "agent_message":
@@ -470,16 +472,13 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                         continue
                 if pt in ("turn_aborted", "thread_rolled_back"):
                     turn_open = False
-                    turn_has_completion_candidate = False
+                    saw_explicit_turn_end = True
                     last_terminal_event = "aborted"
                     continue
-                if pt == "task_complete":
+                if pt in ("task_complete", "turn_complete"):
                     turn_open = False
-                    turn_has_completion_candidate = False
-                    last_terminal_event = "assistant"
-                    continue
-                if pt == "agent_reasoning" and turn_open:
-                    turn_has_completion_candidate = False
+                    saw_explicit_turn_end = True
+                    last_terminal_event = "complete"
                     continue
             if typ == "response_item":
                 p = obj.get("payload")
@@ -487,38 +486,29 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     raise ValueError("invalid response_item payload")
                 pt = p.get("type")
                 if has_assistant_text(obj):
-                    if turn_open:
-                        turn_has_completion_candidate = True
                     last_terminal_event = "assistant"
                     continue
-                if pt in (
-                    "reasoning",
-                    "function_call",
-                    "function_call_output",
-                    "custom_tool_call",
-                    "custom_tool_call_output",
-                    "web_search_call",
-                    "local_shell_call",
-                ) and turn_open:
-                    turn_has_completion_candidate = False
-                    continue
 
-        if saw_user or (last_terminal_event is not None) or scan >= max_scan_bytes:
+        if saw_user or saw_explicit_turn_end or scan >= max_scan_bytes:
             break
         scan *= 2
 
     if not objs:
         return None
 
+    if saw_explicit_turn_end:
+        return True
+
+    if turn_open:
+        return False
+
     if (not saw_user) and (last_terminal_event is None):
         return True if sz <= 128 * 1024 else False
 
-    if turn_open:
-        return bool(turn_has_completion_candidate)
-
-    if last_terminal_event in ("assistant", "aborted"):
+    if last_terminal_event in ("aborted", "complete"):
         return True
-    if last_terminal_event == "user":
+
+    if last_terminal_event in ("assistant", "user"):
         return False
     return False
 

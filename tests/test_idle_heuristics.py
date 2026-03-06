@@ -30,7 +30,7 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
-    def test_assistant_candidate_after_user_is_idle(self) -> None:
+    def test_assistant_message_after_user_without_turn_complete_stays_busy(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"
             _write_jsonl(
@@ -48,7 +48,7 @@ class TestIdleHeuristics(unittest.TestCase):
                     },
                 ],
             )
-            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
 
     def test_tool_after_assistant_reopens_busy(self) -> None:
         with TemporaryDirectory() as td:
@@ -116,6 +116,27 @@ class TestIdleHeuristics(unittest.TestCase):
                     {"type": "response_item", "payload": {"type": "function_call", "call_id": "c1"}},
                     {"type": "response_item", "payload": {"type": "function_call_output", "call_id": "c1"}},
                     {"type": "event_msg", "payload": {"type": "task_complete"}},
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_turn_complete_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "intermediate"}],
+                        },
+                    },
+                    {"type": "event_msg", "payload": {"type": "turn_complete", "turn_id": "t1"}},
                 ],
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)

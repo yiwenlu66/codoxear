@@ -26,6 +26,28 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertFalse(flags["turn_end"])
         self.assertTrue(flags["turn_aborted"])
 
+    def test_task_complete_sets_turn_end_flag(self) -> None:
+        _events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+                {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1"}},
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
+
+    def test_turn_complete_sets_turn_end_flag(self) -> None:
+        _events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+                {"type": "event_msg", "payload": {"type": "turn_complete", "turn_id": "t1"}},
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_end"])
+        self.assertFalse(flags["turn_aborted"])
+
     def test_local_shell_and_web_search_increment_tool_count(self) -> None:
         _events, meta, _flags, _diag = _extract_chat_events(
             [
