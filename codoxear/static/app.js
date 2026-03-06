@@ -761,10 +761,15 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "path/to/file" });
-        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
-        const fileCandidateSelect = el("select", { id: "fileCandidateSelect", "aria-label": "Changed files" });
+        const filePickerBtn = el("button", {
+          id: "filePickerBtn",
+          class: "filePickerBtn",
+          type: "button",
+          title: "Choose file",
+          "aria-label": "Choose file",
+        });
+        const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu" });
         const fileModeDiffBtn = el("button", {
           id: "fileModeDiffBtn",
           class: "icon-btn text-btn",
@@ -787,8 +792,7 @@
             el("div", { class: "title", text: "View file" }),
             el("div", { class: "actions" }, [fileModeDiffBtn, fileAddBtn, fileCloseBtn]),
           ]),
-          el("div", { class: "fileCandRow", id: "fileCandRow" }, [fileCandidateSelect]),
-          el("div", { class: "filePathRow hidden", id: "filePathRow" }, [filePathInput, fileOpenBtn]),
+          el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerBtn, filePickerMenu]),
           fileStatus,
           fileDiff,
         ]);
@@ -2189,7 +2193,7 @@
         let fileCandidateList = [];
         let fileEntryMap = new Map();
         let activeFilePath = "";
-        let fileManualVisible = false;
+        let fileMenuOpen = false;
 
         function extToPrismLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
@@ -2211,25 +2215,77 @@
           return "";
         }
 
+        function renderCodeHtml(line, lang) {
+          const raw = String(line ?? "");
+          if (raw === "") return "&nbsp;";
+          const grammar = window.Prism && lang ? window.Prism.languages[lang] : null;
+          if (grammar && window.Prism && typeof window.Prism.highlight === "function") {
+            try {
+              return window.Prism.highlight(raw, grammar, lang);
+            } catch (_) {}
+          }
+          return escapeHtml(raw);
+        }
+
+        function renderTableHtml(rows) {
+          const body = rows
+            .map((row) => {
+              if (row.kind === "Hunk") {
+                return `<tr class="fileRow fileRowHunk"><td class="fileLineNo"></td><td class="fileLineNo"></td><td class="fileLineCell"><code class="fileLineCode">${escapeHtml(
+                  row.text
+                )}</code></td></tr>`;
+              }
+              const oldNo = row.oldNo == null ? "" : String(row.oldNo);
+              const newNo = row.newNo == null ? "" : String(row.newNo);
+              return `<tr class="fileRow fileRow${row.kind}"><td class="fileLineNo">${oldNo}</td><td class="fileLineNo">${newNo}</td><td class="fileLineCell"><code class="fileLineCode language-${escapeHtml(
+                row.lang || "plain"
+              )}">${row.html}</code></td></tr>`;
+            })
+            .join("");
+          return `<table class="fileTable"><tbody>${body}</tbody></table>`;
+        }
+
         function renderFullFileHtml(rel, text) {
           const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
           const lines = source.split("\n");
           const lang = extToPrismLang(rel);
-          const grammar = window.Prism && lang ? window.Prism.languages[lang] : null;
           const rows = lines
-            .map((line, idx) => {
-              let html = line === "" ? "&nbsp;" : escapeHtml(line);
-              if (grammar && window.Prism && typeof window.Prism.highlight === "function" && line !== "") {
-                try {
-                  html = window.Prism.highlight(line, grammar, lang);
-                } catch (_) {}
-              }
-              return `<tr><td class="fileLineNo">${idx + 1}</td><td class="fileLineCell"><code class="fileLineCode language-${escapeHtml(
-                lang || "plain"
-              )}">${html}</code></td></tr>`;
-            })
-            .join("");
-          return `<table class="fileTable"><tbody>${rows}</tbody></table>`;
+            .map((line, idx) => ({ kind: "Context", oldNo: idx + 1, newNo: idx + 1, html: renderCodeHtml(line, lang), lang }));
+          return renderTableHtml(rows);
+        }
+
+        function renderDiffHtml(rel, diffText) {
+          const lang = extToPrismLang(rel);
+          const rows = [];
+          let oldLine = 0;
+          let newLine = 0;
+          for (const raw of String(diffText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
+            if (raw.startsWith("@@")) {
+              const m = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+              oldLine = m ? Number(m[1]) : oldLine;
+              newLine = m ? Number(m[2]) : newLine;
+              rows.push({ kind: "Hunk", text: raw });
+              continue;
+            }
+            if (raw.startsWith("diff --git") || raw.startsWith("index ") || raw.startsWith("--- ") || raw.startsWith("+++ ") || raw.startsWith("\\ No newline")) {
+              continue;
+            }
+            if (raw.startsWith("+")) {
+              rows.push({ kind: "Add", oldNo: null, newNo: newLine++, html: renderCodeHtml(raw.slice(1), lang), lang });
+              continue;
+            }
+            if (raw.startsWith("-")) {
+              rows.push({ kind: "Del", oldNo: oldLine++, newNo: null, html: renderCodeHtml(raw.slice(1), lang), lang });
+              continue;
+            }
+            if (raw.startsWith(" ")) {
+              rows.push({ kind: "Context", oldNo: oldLine++, newNo: newLine++, html: renderCodeHtml(raw.slice(1), lang), lang });
+            }
+          }
+          if (!rows.length) {
+            return `<div class="fileEmpty">No diff for ${escapeHtml(rel)}.</div>`;
+          }
+          return renderTableHtml(rows);
         }
 
         function applyFileMode() {
@@ -2238,21 +2294,18 @@
           fileDiff.style.display = "block";
         }
 
-        function applyFilePickerVisibility() {
-          const candRow = $("#fileCandRow");
-          const hasCandidates = Array.isArray(fileCandidateList) && fileCandidateList.length > 0;
-          if (candRow) candRow.classList.toggle("hidden", !hasCandidates);
-          const pathRow = $("#filePathRow");
-          if (pathRow) pathRow.classList.toggle("hidden", hasCandidates || !fileManualVisible);
+        function applyFileMenuState() {
+          filePickerBtn.classList.toggle("active", fileMenuOpen);
+          filePickerMenu.classList.toggle("open", fileMenuOpen);
         }
 
-        function setFilePath(rel, { manual = false } = {}) {
+        function setFilePath(rel) {
           const next = String(rel || "").trim();
           activeFilePath = next;
-          filePathInput.value = next;
-          fileManualVisible = manual || !fileCandidateList.includes(next) || fileCandidateList.length === 0;
-          if (fileCandidateSelect) fileCandidateSelect.value = fileCandidateList.includes(next) ? next : "";
-          applyFilePickerVisibility();
+          const entry = fileEntryMap.get(next);
+          filePickerBtn.textContent = entry ? formatFileChoice(entry) : next || "Choose file";
+          fileMenuOpen = false;
+          applyFileMenuState();
         }
 
         function formatFileChoice(entry) {
@@ -2277,15 +2330,48 @@
           };
           if (!fileEntryMap.has(path)) {
             fileCandidateList.push(path);
-            const opt = document.createElement("option");
-            opt.value = path;
-            opt.textContent = formatFileChoice(merged);
-            fileCandidateSelect.appendChild(opt);
-          } else {
-            const opt = [...fileCandidateSelect.options].find((x) => x.value === path);
-            if (opt) opt.textContent = formatFileChoice(merged);
           }
           fileEntryMap.set(path, merged);
+        }
+
+        function renderFilePickerMenu() {
+          filePickerMenu.innerHTML = "";
+          if (!fileCandidateList.length) return;
+          for (const path of fileCandidateList) {
+            const entry = fileEntryMap.get(path) || { path, changed: false, additions: null, deletions: null };
+            const btn = el("button", {
+              class: "fileMenuItem" + (activeFilePath === path ? " active" : ""),
+              type: "button",
+              title: path,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
+            const statText = entry.changed
+              ? `${entry.additions == null ? "+?" : `+${entry.additions}`} ${entry.deletions == null ? "-?" : `-${entry.deletions}`}`
+              : "manual";
+            const statCls = entry.changed ? "fileMenuStat changed" : "fileMenuStat manual";
+            const stat = el("span", { class: statCls });
+            if (entry.changed) {
+              stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
+              stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
+            } else {
+              stat.textContent = statText;
+            }
+            btn.appendChild(stat);
+            btn.onclick = () => {
+              setFilePath(path);
+              const selectedEntry = fileEntryMap.get(path);
+              if (!selectedEntry || selectedEntry.changed) {
+                fileViewMode = "diff";
+              } else {
+                fileViewMode = "file";
+              }
+              localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+              applyFileMode();
+              renderFilePickerMenu();
+              void openFilePath(path);
+            };
+            filePickerMenu.appendChild(btn);
+          }
         }
 
         function sessionRelativePath(rawPath) {
@@ -2300,7 +2386,6 @@
         }
 
         async function refreshFileCandidates() {
-          fileCandidateSelect.innerHTML = "";
           fileCandidateList = [];
           fileEntryMap = new Map();
           if (!selected) return;
@@ -2332,14 +2417,10 @@
             fileCandidateList = merged.map((entry) => entry.path);
             for (const entry of merged) {
               fileEntryMap.set(entry.path, entry);
-              const opt = document.createElement("option");
-              opt.value = entry.path;
-              opt.textContent = formatFileChoice(entry);
-              fileCandidateSelect.appendChild(opt);
             }
           } catch (e) {}
-          if (!fileCandidateList.length) fileManualVisible = true;
-          applyFilePickerVisibility();
+          renderFilePickerMenu();
+          setFilePath(activeFilePath || fileCandidateList[0] || "");
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false } = {}) {
@@ -2353,7 +2434,7 @@
           await refreshFileCandidates();
           const preferred = String(path || "").trim() || activeFilePath || localStorage.getItem("codexweb.filePath") || "";
           if (preferred) {
-            setFilePath(preferred, { manual });
+            setFilePath(preferred);
             void openFilePath(preferred);
             return;
           }
@@ -2366,11 +2447,8 @@
             void openFilePath(first);
             return;
           }
-          fileManualVisible = true;
-          applyFilePickerVisibility();
-          fileStatus.textContent = "No changed files. Enter a path to inspect a file.";
-          filePathInput.focus();
-          filePathInput.select();
+          filePickerBtn.textContent = "No files";
+          fileStatus.textContent = "No changed files. Use Add to open a file.";
         }
         function hideFileViewer() {
           fileBackdrop.style.display = "none";
@@ -2378,7 +2456,7 @@
         }
         async function openFilePath(nextPath = null) {
           if (!selected) return;
-          const rel = String(nextPath == null ? filePathInput.value : nextPath).trim();
+          const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
             return;
@@ -2390,15 +2468,7 @@
             if (fileViewMode === "diff") {
               const res = await api(`/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}`);
               const diff = res && typeof res.diff === "string" ? res.diff : "";
-              if (window.Diff2Html && typeof window.Diff2Html.html === "function") {
-                fileDiff.innerHTML = window.Diff2Html.html(diff || "", {
-                  drawFileList: false,
-                  outputFormat: "line-by-line",
-                  matching: "lines",
-                });
-              } else {
-                fileDiff.textContent = diff || "";
-              }
+              fileDiff.innerHTML = renderDiffHtml(rel, diff);
               fileStatus.textContent = diff ? rel : `${rel} - no diff`;
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
@@ -2407,6 +2477,7 @@
               const size = typeof res.size === "number" ? res.size : res.text.length;
               fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               if (!fileEntryMap.has(rel)) upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
+              renderFilePickerMenu();
             }
             localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
@@ -2418,23 +2489,12 @@
           e.stopPropagation();
           void showFileViewer();
         };
-        fileCandidateSelect.onchange = () => {
-          const v = String(fileCandidateSelect.value || "").trim();
-          if (!v) return;
-          setFilePath(v);
-          const entry = fileEntryMap.get(v);
-          if (!entry || entry.changed) {
-            if (fileViewMode !== "diff") {
-              fileViewMode = "diff";
-              localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-              applyFileMode();
-            }
-          } else if (fileViewMode !== "file") {
-            fileViewMode = "file";
-            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-            applyFileMode();
-          }
-          void openFilePath(v);
+        filePickerBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          fileMenuOpen = !fileMenuOpen;
+          renderFilePickerMenu();
+          applyFileMenuState();
         };
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
@@ -2442,6 +2502,7 @@
           fileViewMode = fileViewMode === "diff" ? "file" : "diff";
           localStorage.setItem("codexweb.fileViewMode", fileViewMode);
           applyFileMode();
+          renderFilePickerMenu();
           void openFilePath(activeFilePath);
         };
         fileAddBtn.onclick = async (e) => {
@@ -2456,7 +2517,8 @@
             const abs = typeof res.path === "string" ? res.path : path;
             const rel = sessionRelativePath(abs) || path;
             upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
-            setFilePath(rel, { manual: true });
+            renderFilePickerMenu();
+            setFilePath(rel);
             fileViewMode = "file";
             localStorage.setItem("codexweb.fileViewMode", fileViewMode);
             applyFileMode();
@@ -2471,12 +2533,6 @@
           hideFileViewer();
         };
         fileBackdrop.onclick = () => hideFileViewer();
-        fileOpenBtn.onclick = () => openFilePath();
-        filePathInput.addEventListener("keydown", (e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          openFilePath();
-        });
         chatInner.addEventListener("click", async (e) => {
           const target = e.target instanceof Element ? e.target.closest("a[data-local-path]") : null;
           if (!target) return;
@@ -2499,6 +2555,14 @@
           const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
           const rel2 = abs === matchRoot ? "." : abs.slice(matchRoot.length + 1);
           void showFileViewer({ path: rel2, mode: "file", manual: false });
+        });
+        document.addEventListener("click", (e) => {
+          if (fileViewer.style.display !== "flex" || !fileMenuOpen) return;
+          const t = e.target instanceof Element ? e.target : null;
+          if (!t) return;
+          if (t.closest("#fileCandRow")) return;
+          fileMenuOpen = false;
+          applyFileMenuState();
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
