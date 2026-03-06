@@ -25,8 +25,8 @@
         box-sizing: border-box;
       }
 
-      html,
-      body {
+	      html,
+	      body {
         height: 100%;
         width: 100%;
         max-width: 100%;
@@ -39,9 +39,10 @@
         -webkit-tap-highlight-color: transparent;
         background: var(--bg);
         color: var(--text);
-        overflow: hidden;
-        overflow-x: hidden;
-      }
+	        overflow: hidden;
+	        overflow-x: hidden;
+	        overscroll-behavior: none;
+	      }
 
       #root {
         height: 100%;

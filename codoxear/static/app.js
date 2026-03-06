@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260306.3";
+	      const UI_VERSION = "20260306.4";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -13,12 +13,8 @@
 	        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
 	        document.documentElement.style.setProperty("--vvTop", `${visualTop}px`);
 	      }
-      updateAppHeightVar();
-      window.addEventListener("resize", updateAppHeightVar);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener("resize", updateAppHeightVar);
-        window.visualViewport.addEventListener("scroll", updateAppHeightVar);
-      }
+	      updateAppHeightVar();
+	      window.addEventListener("resize", updateAppHeightVar);
       // Best-effort zoom disable (iOS Safari still has edge cases).
       document.addEventListener(
         "gesturestart",
@@ -2772,28 +2768,56 @@
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-         let bodyScrollLock = null;
-         function lockBodyScroll() {
-           if (bodyScrollLock) return;
-           const y = window.scrollY || document.documentElement.scrollTop || 0;
-           bodyScrollLock = { y };
-           document.body.style.position = "fixed";
-           document.body.style.top = `-${y}px`;
-           document.body.style.left = "0";
-           document.body.style.right = "0";
-           document.body.style.width = "100%";
-         }
-         function unlockBodyScroll() {
-           if (!bodyScrollLock) return;
-           const y = bodyScrollLock.y || 0;
-           bodyScrollLock = null;
-           document.body.style.position = "";
-           document.body.style.top = "";
-           document.body.style.left = "";
-           document.body.style.right = "";
-           document.body.style.width = "";
-           if (y) window.scrollTo(0, y);
-         }
+	         let iosFocusNormalizeTimer = null;
+	         function normalizePageScroll() {
+	           if (!isIOS) return;
+	           const y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+	           if (y <= 0) return;
+	           window.scrollTo(0, 0);
+	           document.documentElement.scrollTop = 0;
+	           document.body.scrollTop = 0;
+	         }
+	         function stopIOSFocusNormalization() {
+	           if (iosFocusNormalizeTimer) clearTimeout(iosFocusNormalizeTimer);
+	           iosFocusNormalizeTimer = null;
+	         }
+	         function runIOSFocusNormalization({ preserveChatBottom } = {}) {
+	           if (!isIOS) return;
+	           stopIOSFocusNormalization();
+	           const tick = () => {
+	             updateAppHeightVar();
+	             normalizePageScroll();
+	             if (preserveChatBottom) scrollToBottom();
+	           };
+	           tick();
+	           requestAnimationFrame(tick);
+	           let idx = 0;
+	           const delays = [80, 180, 320, 520];
+	           const arm = () => {
+	             if (idx >= delays.length) {
+	               iosFocusNormalizeTimer = null;
+	               return;
+	             }
+	             iosFocusNormalizeTimer = setTimeout(() => {
+	               tick();
+	               idx += 1;
+	               arm();
+	             }, delays[idx]);
+	           };
+	           arm();
+	         }
+	         if (window.visualViewport) {
+	           const onViewportShift = () => {
+	             updateAppHeightVar();
+	             if (!isIOS) return;
+	             if (document.activeElement === textarea) {
+	               normalizePageScroll();
+	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
+	             }
+	           };
+	           window.visualViewport.addEventListener("resize", onViewportShift);
+	           window.visualViewport.addEventListener("scroll", onViewportShift);
+	         }
          const attachBtn = $("#attachBtn");
          if (!attachBadgeEl) {
            attachBadgeEl = el("span", { class: "attachBadge", id: "attachBadge" });
@@ -2834,32 +2858,35 @@
 	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
 	        }
 	        textarea.addEventListener("input", autoGrow);
-          textarea.addEventListener(
-            "focus",
-            () => {
-              const wasNear = isNearBottom();
+	          textarea.addEventListener(
+	            "focus",
+	            () => {
+	              const wasNear = isNearBottom();
               if (wasNear) {
                 autoScroll = true;
                 jumpBtn.style.display = "none";
               }
-              if (isIOS) lockBodyScroll();
-              const tick = () => {
-                updateAppHeightVar();
-                if (wasNear) scrollToBottom();
-              };
-              requestAnimationFrame(tick);
-              setTimeout(tick, 120);
-            },
-            { passive: true }
-          );
-          textarea.addEventListener(
-            "blur",
-            () => {
-              if (isIOS) unlockBodyScroll();
-              setTimeout(updateAppHeightVar, 0);
-            },
-            { passive: true }
-          );
+	              if (isIOS) runIOSFocusNormalization({ preserveChatBottom: wasNear });
+	              else {
+	                const tick = () => {
+	                  updateAppHeightVar();
+	                  if (wasNear) scrollToBottom();
+	                };
+	                requestAnimationFrame(tick);
+	                setTimeout(tick, 120);
+	              }
+	            },
+	            { passive: true }
+	          );
+	          textarea.addEventListener(
+	            "blur",
+	            () => {
+	              stopIOSFocusNormalization();
+	              normalizePageScroll();
+	              setTimeout(updateAppHeightVar, 0);
+	            },
+	            { passive: true }
+	          );
         textarea.addEventListener("keydown", (e) => {
           if (e.key !== "Enter") return;
           if (e.isComposing) return;
