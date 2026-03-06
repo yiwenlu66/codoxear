@@ -1076,54 +1076,12 @@ input[type="text"] {
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
         background: #ffffff;
-        overflow: auto;
-        -webkit-overflow-scrolling: touch;
+        overflow: hidden;
       }
-      .fileTable {
-        width: 100%;
-        border-collapse: collapse;
-        table-layout: fixed;
-      }
-      .fileRow {
-        border-top: 1px solid rgba(15, 23, 42, 0.05);
-      }
-      .fileRow:first-child {
-        border-top: 0;
-      }
-      .fileRowAdd {
-        background: rgba(34, 197, 94, 0.08);
-      }
-      .fileRowDel {
-        background: rgba(239, 68, 68, 0.08);
-      }
-      .fileRowHunk {
-        background: rgba(59, 130, 246, 0.08);
-      }
-      .fileLineNo {
-        width: 48px;
-        padding: 0 8px 0 0;
-        border-right: 1px solid rgba(15, 23, 42, 0.08);
-        color: var(--muted);
-        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        text-align: right;
-        vertical-align: top;
-        user-select: none;
-      }
-      .fileLineCell {
-        padding-left: 12px;
-        vertical-align: top;
-      }
-      .fileLineCode {
-        display: block;
-        margin: 0;
-        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-      }
-      .fileEmpty {
-        padding: 16px;
-        color: var(--muted);
+      .fileDiff .monaco-editor,
+      .fileDiff .monaco-diff-editor,
+      .fileDiff .overflow-guard {
+        border-radius: 12px;
       }
       .fileStatus {
         min-height: 18px;
