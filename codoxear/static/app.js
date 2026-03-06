@@ -1559,35 +1559,46 @@
                const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
                card.appendChild(swipe);
 
-               const leftMax = s.owned ? 72 : 0;
-               const rightMax = 104;
-               let startX = null;
-               let startY = 0;
-               let startSwipe = 0;
-               let dragging = false;
-                content.addEventListener("pointerdown", (e) => {
-                  if (e.pointerType === "mouse" && e.button !== 0) return;
-                  startX = e.clientX;
-                  startY = e.clientY;
-                  startSwipe = Number(content.dataset.swipeX || 0);
-                  dragging = false;
-                  if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
-                  try {
-                    content.setPointerCapture(e.pointerId);
-                  } catch (_) {}
+	               const leftMax = s.owned ? 72 : 0;
+	               const rightMax = 104;
+	               let startX = null;
+	               let startY = 0;
+	               let startSwipe = 0;
+	               let lastMoveTs = 0;
+	               let lastMoveX = 0;
+	               let swipeVelocity = 0;
+	               let dragging = false;
+	                content.addEventListener("pointerdown", (e) => {
+	                  if (e.pointerType === "mouse" && e.button !== 0) return;
+	                  startX = e.clientX;
+	                  startY = e.clientY;
+	                  startSwipe = Number(content.dataset.swipeX || 0);
+	                  lastMoveTs = performance.now();
+	                  lastMoveX = e.clientX;
+	                  swipeVelocity = 0;
+	                  dragging = false;
+	                  if (openSwipeContent && openSwipeContent !== content) closeOpenSwipe();
+	                  try {
+	                    content.setPointerCapture(e.pointerId);
+	                  } catch (_) {}
                 });
-                 content.addEventListener("pointermove", (e) => {
-                   if (startX === null) return;
-                   const dx = e.clientX - startX;
-                   const dy = e.clientY - startY;
-                  if (!dragging) {
-                    if (Math.abs(dx) < 6) return;
-                    if (Math.abs(dx) < Math.abs(dy) + 6) return;
-                    dragging = true;
-                    content.style.transition = "none";
-                  }
-                  if (dragging) e.preventDefault();
-                  let x = startSwipe + dx;
+	                 content.addEventListener("pointermove", (e) => {
+	                   if (startX === null) return;
+	                   const dx = e.clientX - startX;
+	                   const dy = e.clientY - startY;
+	                  const now = performance.now();
+	                  const dt = Math.max(now - lastMoveTs, 1);
+	                  swipeVelocity = ((e.clientX - lastMoveX) / dt) * 1000;
+	                  lastMoveTs = now;
+	                  lastMoveX = e.clientX;
+	                  if (!dragging) {
+	                    if (Math.abs(dx) < 4) return;
+	                    if (Math.abs(dx) < Math.abs(dy) * 0.7) return;
+	                    dragging = true;
+	                    content.style.transition = "none";
+	                  }
+	                  if (dragging) e.preventDefault();
+	                  let x = startSwipe + dx;
                   x = Math.min(leftMax, Math.max(-rightMax, x));
                    content.style.transform = `translate3d(${x}px, 0, 0)`;
                    content.dataset.swipeX = String(x);
@@ -1599,17 +1610,19 @@
                   } catch (_) {}
                   startX = null;
                   if (!dragging) return;
-                  dragging = false;
-                  content.style.transition = "";
-                  const x = Number(content.dataset.swipeX || 0);
-                 let target = 0;
-                  if (x > 0 && leftMax > 0 && x > leftMax / 2) target = leftMax;
-                  else if (x < 0 && rightMax > 0 && -x > rightMax / 2) target = -rightMax;
-                  content.style.transform = `translate3d(${target}px, 0, 0)`;
-                  content.dataset.swipeX = String(target);
-                  if (target !== 0) openSwipeContent = content;
-                  else if (openSwipeContent === content) openSwipeContent = null;
-                }
+	                  dragging = false;
+	                  content.style.transition = "";
+	                  const x = Number(content.dataset.swipeX || 0);
+	                 let target = 0;
+	                  const commitLeft = leftMax > 0 && (x > leftMax * 0.28 || swipeVelocity > 420);
+	                  const commitRight = rightMax > 0 && (-x > rightMax * 0.28 || swipeVelocity < -420);
+	                  if (commitLeft) target = leftMax;
+	                  else if (commitRight) target = -rightMax;
+	                  content.style.transform = `translate3d(${target}px, 0, 0)`;
+	                  content.dataset.swipeX = String(target);
+	                  if (target !== 0) openSwipeContent = content;
+	                  else if (openSwipeContent === content) openSwipeContent = null;
+	                }
                content.addEventListener("pointerup", finishSwipe);
                content.addEventListener("pointercancel", finishSwipe);
 
