@@ -970,7 +970,8 @@ input[type="text"] {
         top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
-        width: min(92vw, 860px);
+        width: min(92vw, 960px);
+        height: min(84vh, calc(var(--appH, 100dvh) - 24px));
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
@@ -1074,7 +1075,7 @@ input[type="text"] {
       }
       .fileDiff {
         flex: 1 1 auto;
-        min-height: 120px;
+        min-height: 320px;
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
         background: #ffffff;
@@ -1089,6 +1090,7 @@ input[type="text"] {
         display: none;
         max-width: 100%;
         max-height: min(65vh, 720px);
+        min-height: 320px;
         width: auto;
         margin: 0 auto;
         border: 1px solid rgba(15, 23, 42, 0.1);
