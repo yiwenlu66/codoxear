@@ -765,27 +765,27 @@
         const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
         const fileCandidateSelect = el("select", { id: "fileCandidateSelect", "aria-label": "Changed files" });
-        const fileModeFileBtn = el("button", {
-          id: "fileModeFileBtn",
-          class: "icon-btn text-btn",
-          type: "button",
-          title: "Full file",
-          "aria-label": "Full file",
-          text: "File",
-        });
         const fileModeDiffBtn = el("button", {
           id: "fileModeDiffBtn",
           class: "icon-btn text-btn",
           type: "button",
-          title: "Git diff",
-          "aria-label": "Git diff",
+          title: "Toggle diff",
+          "aria-label": "Toggle diff",
           text: "Diff",
+        });
+        const fileAddBtn = el("button", {
+          id: "fileAddBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Add file",
+          "aria-label": "Add file",
+          text: "Add",
         });
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileAddBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [fileCandidateSelect]),
           el("div", { class: "filePathRow hidden", id: "filePathRow" }, [filePathInput, fileOpenBtn]),
@@ -2187,6 +2187,7 @@
         }
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
         let fileCandidateList = [];
+        let fileEntryMap = new Map();
         let activeFilePath = "";
         let fileManualVisible = false;
 
@@ -2234,7 +2235,6 @@
         function applyFileMode() {
           const isDiff = fileViewMode === "diff";
           fileModeDiffBtn.classList.toggle("active", isDiff);
-          fileModeFileBtn.classList.toggle("active", !isDiff);
           fileDiff.style.display = "block";
         }
 
@@ -2255,6 +2255,39 @@
           applyFilePickerVisibility();
         }
 
+        function formatFileChoice(entry) {
+          const rel = String(entry && entry.path ? entry.path : "");
+          const changed = Boolean(entry && entry.changed);
+          const add = entry && Object.prototype.hasOwnProperty.call(entry, "additions") ? entry.additions : null;
+          const del = entry && Object.prototype.hasOwnProperty.call(entry, "deletions") ? entry.deletions : null;
+          const stat = changed
+            ? `  ${add == null ? "+?" : `+${add}`} ${del == null ? "-?" : `-${del}`}`
+            : "  manual";
+          return `${rel}${stat}`;
+        }
+
+        function upsertFileEntry(entry) {
+          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) return;
+          const path = entry.path.trim();
+          const merged = {
+            path,
+            additions: entry.additions ?? null,
+            deletions: entry.deletions ?? null,
+            changed: Boolean(entry.changed),
+          };
+          if (!fileEntryMap.has(path)) {
+            fileCandidateList.push(path);
+            const opt = document.createElement("option");
+            opt.value = path;
+            opt.textContent = formatFileChoice(merged);
+            fileCandidateSelect.appendChild(opt);
+          } else {
+            const opt = [...fileCandidateSelect.options].find((x) => x.value === path);
+            if (opt) opt.textContent = formatFileChoice(merged);
+          }
+          fileEntryMap.set(path, merged);
+        }
+
         function sessionRelativePath(rawPath) {
           const s = selected ? sessionIndex.get(selected) : null;
           if (!s || !s.cwd) return null;
@@ -2269,15 +2302,39 @@
         async function refreshFileCandidates() {
           fileCandidateSelect.innerHTML = "";
           fileCandidateList = [];
+          fileEntryMap = new Map();
           if (!selected) return;
           try {
             const res = await api(`/api/sessions/${selected}/git/changed_files`);
-            const files = Array.isArray(res.files) ? res.files : [];
-            fileCandidateList = files.filter((f) => typeof f === "string" && String(f).trim());
-            for (const f of fileCandidateList) {
+            const entriesIn = Array.isArray(res.entries) ? res.entries : [];
+            const changedEntries = entriesIn
+              .filter((entry) => entry && typeof entry.path === "string" && String(entry.path).trim())
+              .map((entry) => ({
+                path: String(entry.path).trim(),
+                additions:
+                  typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : entry.additions == null ? null : null,
+                deletions:
+                  typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
+                changed: true,
+              }));
+            const s = selected ? sessionIndex.get(selected) : null;
+            const manualEntries = listFromFilesField(s && s.files)
+              .map((abs) => sessionRelativePath(abs))
+              .filter((rel) => typeof rel === "string" && rel && rel !== ".")
+              .map((path) => ({ path, additions: null, deletions: null, changed: false }));
+            const merged = [];
+            const seen = new Set();
+            for (const entry of [...changedEntries, ...manualEntries]) {
+              if (!entry || !entry.path || seen.has(entry.path)) continue;
+              seen.add(entry.path);
+              merged.push(entry);
+            }
+            fileCandidateList = merged.map((entry) => entry.path);
+            for (const entry of merged) {
+              fileEntryMap.set(entry.path, entry);
               const opt = document.createElement("option");
-              opt.value = String(f);
-              opt.textContent = String(f);
+              opt.value = entry.path;
+              opt.textContent = formatFileChoice(entry);
               fileCandidateSelect.appendChild(opt);
             }
           } catch (e) {}
@@ -2349,6 +2406,7 @@
               fileDiff.innerHTML = renderFullFileHtml(rel, res.text);
               const size = typeof res.size === "number" ? res.size : res.text.length;
               fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+              if (!fileEntryMap.has(rel)) upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
             }
             localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
@@ -2364,8 +2422,15 @@
           const v = String(fileCandidateSelect.value || "").trim();
           if (!v) return;
           setFilePath(v);
-          if (fileViewMode !== "diff") {
-            fileViewMode = "diff";
+          const entry = fileEntryMap.get(v);
+          if (!entry || entry.changed) {
+            if (fileViewMode !== "diff") {
+              fileViewMode = "diff";
+              localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+              applyFileMode();
+            }
+          } else if (fileViewMode !== "file") {
+            fileViewMode = "file";
             localStorage.setItem("codexweb.fileViewMode", fileViewMode);
             applyFileMode();
           }
@@ -2374,18 +2439,31 @@
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          fileViewMode = "diff";
+          fileViewMode = fileViewMode === "diff" ? "file" : "diff";
           localStorage.setItem("codexweb.fileViewMode", fileViewMode);
           applyFileMode();
           void openFilePath(activeFilePath);
         };
-        fileModeFileBtn.onclick = (e) => {
+        fileAddBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          fileViewMode = "file";
-          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-          applyFileMode();
-          void openFilePath(activeFilePath);
+          if (!selected) return;
+          const raw = window.prompt("Open file", activeFilePath || "");
+          const path = String(raw || "").trim();
+          if (!path) return;
+          try {
+            const res = await api("/api/files/read", { method: "POST", body: { session_id: selected, path } });
+            const abs = typeof res.path === "string" ? res.path : path;
+            const rel = sessionRelativePath(abs) || path;
+            upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
+            setFilePath(rel, { manual: true });
+            fileViewMode = "file";
+            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+            applyFileMode();
+            void openFilePath(rel);
+          } catch (err) {
+            setToast(`file open error: ${err && err.message ? err.message : "unknown error"}`);
+          }
         };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();

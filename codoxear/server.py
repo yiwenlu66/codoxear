@@ -533,6 +533,36 @@ def _require_git_repo(cwd: Path) -> None:
     _run_git(cwd, ["rev-parse", "--is-inside-work-tree"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=4096)
 
 
+def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
+    out: dict[str, dict[str, int | None]] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        parts = line.split("\t", 2)
+        if len(parts) != 3:
+            continue
+        add_raw, del_raw, path = parts
+        path_s = path.strip()
+        if not path_s:
+            continue
+        add_v = None if add_raw == "-" else int(add_raw)
+        del_v = None if del_raw == "-" else int(del_raw)
+        prev = out.get(path_s)
+        if prev is None:
+            out[path_s] = {"additions": add_v, "deletions": del_v}
+            continue
+        if add_v is None or prev["additions"] is None:
+            prev["additions"] = None
+        else:
+            prev["additions"] = int(prev["additions"]) + add_v
+        if del_v is None or prev["deletions"] is None:
+            prev["deletions"] = None
+        else:
+            prev["deletions"] = int(prev["deletions"]) + del_v
+    return out
+
+
 def _safe_filename(name: str) -> str:
     out = []
     for ch in name:
@@ -2411,6 +2441,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
                     max_bytes=64 * 1024,
                 ).splitlines()
+                unstaged_numstat = _run_git(
+                    cwd,
+                    ["diff", "--numstat"],
+                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                    max_bytes=128 * 1024,
+                )
+                staged_numstat = _run_git(
+                    cwd,
+                    ["diff", "--numstat", "--cached"],
+                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                    max_bytes=128 * 1024,
+                )
                 def _norm_list(xs: list[str]) -> list[str]:
                     out: list[str] = []
                     for x in xs:
@@ -2430,10 +2472,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         continue
                     seen.add(x)
                     merged.append(x)
+                stats = _parse_git_numstat(unstaged_numstat)
+                for path_key, vals in _parse_git_numstat(staged_numstat).items():
+                    prev = stats.get(path_key)
+                    if prev is None:
+                        stats[path_key] = vals
+                        continue
+                    add_prev = prev.get("additions")
+                    del_prev = prev.get("deletions")
+                    add_new = vals.get("additions")
+                    del_new = vals.get("deletions")
+                    prev["additions"] = None if add_prev is None or add_new is None else int(add_prev) + int(add_new)
+                    prev["deletions"] = None if del_prev is None or del_new is None else int(del_prev) + int(del_new)
+                entries: list[dict[str, Any]] = []
+                for path_key in merged:
+                    vals = stats.get(path_key, {})
+                    entries.append(
+                        {
+                            "path": path_key,
+                            "additions": vals.get("additions"),
+                            "deletions": vals.get("deletions"),
+                            "changed": True,
+                        }
+                    )
                 _json_response(
                     self,
                     200,
-                    {"ok": True, "cwd": str(cwd), "files": merged, "unstaged": unstaged2, "staged": staged2},
+                    {"ok": True, "cwd": str(cwd), "files": merged, "entries": entries, "unstaged": unstaged2, "staged": staged2},
                 )
                 return
 
