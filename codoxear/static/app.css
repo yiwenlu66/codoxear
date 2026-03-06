@@ -129,6 +129,10 @@
         height: 38px;
         border-radius: 12px;
         font-weight: 500;
+        line-height: 1;
+      }
+      .sidebar footer .icon {
+        flex: 0 0 auto;
       }
       .session {
         padding: 0;
@@ -988,12 +992,6 @@ input[type="text"] {
         align-items: center;
         gap: 8px;
       }
-      .filePathRow {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-      }
-      .filePathRow.hidden,
       .fileCandRow.hidden {
         display: none;
       }
@@ -1001,8 +999,9 @@ input[type="text"] {
         display: flex;
         gap: 8px;
         align-items: center;
+        position: relative;
       }
-      .fileCandRow select {
+      .filePickerBtn {
         flex: 1 1 auto;
         min-width: 0;
         padding: 10px 12px;
@@ -1011,10 +1010,65 @@ input[type="text"] {
         background: #ffffff;
         color: var(--text);
         font-size: 13px;
+        text-align: left;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .filePathRow input[type="text"] {
-        flex: 1 1 auto;
+      .filePickerMenu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 4;
+        display: none;
+        max-height: min(44vh, 360px);
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+      }
+      .filePickerMenu.open {
+        display: block;
+      }
+      .fileMenuItem {
+        width: 100%;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        padding: 9px 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        justify-content: space-between;
+        text-align: left;
+      }
+      .fileMenuItem + .fileMenuItem {
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+      }
+      .fileMenuItem.active {
+        background: rgba(37, 99, 235, 0.08);
+      }
+      .fileMenuPath {
         min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .fileMenuStat {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        color: var(--muted);
+      }
+      .fileMenuAdd {
+        color: #15803d;
+      }
+      .fileMenuDel {
+        color: #b91c1c;
       }
       .fileDiff {
         flex: 1 1 auto;
@@ -1025,38 +1079,29 @@ input[type="text"] {
         overflow: auto;
         -webkit-overflow-scrolling: touch;
       }
-      .fileDiff .d2h-wrapper {
-        padding: 8px;
-      }
-      .fileDiff .d2h-file-header,
-      .fileDiff .d2h-file-list-wrapper {
-        display: none;
-      }
-      .fileContent {
-        margin: 0;
-        padding: 10px;
-        border-radius: 12px;
-        border: 1px solid rgba(15, 23, 42, 0.1);
-        background: #ffffff;
-        color: var(--text);
-        overflow: auto;
-        white-space: pre-wrap;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-        font-size: 12px;
-        line-height: 1.4;
-        flex: 1 1 auto;
-        min-height: 120px;
-        -webkit-overflow-scrolling: touch;
-      }
       .fileTable {
         width: 100%;
         border-collapse: collapse;
         table-layout: fixed;
       }
+      .fileRow {
+        border-top: 1px solid rgba(15, 23, 42, 0.05);
+      }
+      .fileRow:first-child {
+        border-top: 0;
+      }
+      .fileRowAdd {
+        background: rgba(34, 197, 94, 0.08);
+      }
+      .fileRowDel {
+        background: rgba(239, 68, 68, 0.08);
+      }
+      .fileRowHunk {
+        background: rgba(59, 130, 246, 0.08);
+      }
       .fileLineNo {
-        width: 52px;
-        padding: 0 10px 0 0;
+        width: 48px;
+        padding: 0 8px 0 0;
         border-right: 1px solid rgba(15, 23, 42, 0.08);
         color: var(--muted);
         font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -1075,6 +1120,10 @@ input[type="text"] {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
         word-break: break-word;
+      }
+      .fileEmpty {
+        padding: 16px;
+        color: var(--muted);
       }
       .fileStatus {
         min-height: 18px;
@@ -1383,9 +1432,6 @@ input[type="text"] {
           font-size: 10px;
         }
         .sessionFile {
-          font-size: 11px;
-        }
-        .fileContent {
           font-size: 11px;
         }
 	        .sidebar .sessions {
