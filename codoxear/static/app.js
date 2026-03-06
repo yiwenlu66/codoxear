@@ -2439,7 +2439,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const next = String(rel || "").trim();
           activeFilePath = next;
           const entry = fileEntryMap.get(next);
-          filePickerBtn.textContent = entry ? formatFileChoice(entry) : next || "Choose file";
+          setFilePickerButtonContent(entry || (next ? { path: next, changed: false, additions: null, deletions: null } : null), next || "Choose file");
           fileMenuOpen = false;
           applyFileMenuState();
         }
@@ -2453,6 +2453,24 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             ? `  ${add == null ? "+?" : `+${add}`} ${del == null ? "-?" : `-${del}`}`
             : "  manual";
           return `${rel}${stat}`;
+        }
+
+        function setFilePickerButtonContent(entry, fallbackText = "Choose file") {
+          filePickerBtn.innerHTML = "";
+          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) {
+            filePickerBtn.textContent = fallbackText;
+            return;
+          }
+          filePickerBtn.appendChild(el("span", { class: "fileMenuPath", text: entry.path }));
+          const changed = Boolean(entry.changed);
+          const stat = el("span", { class: changed ? "fileMenuStat changed" : "fileMenuStat manual" });
+          if (changed) {
+            stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
+            stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
+          } else {
+            stat.textContent = "manual";
+          }
+          filePickerBtn.appendChild(stat);
         }
 
         function upsertFileEntry(entry) {
@@ -2583,7 +2601,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void openFilePath(first);
             return;
           }
-          filePickerBtn.textContent = "No files";
+          setFilePickerButtonContent(null, "No files");
           fileStatus.textContent = "No changed files. Use Add to open a file.";
         }
         function hideFileViewer() {
