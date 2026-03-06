@@ -2347,7 +2347,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             monaco.editor.setModelLanguage(model, lang || "plaintext");
             model.setValue(String(text || ""));
           }
+          fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+          fileEditor.setPosition({ lineNumber: 1, column: 1 });
+          fileEditor.revealPositionInCenter({ lineNumber: 1, column: 1 });
           fileEditor.layout();
+          requestAnimationFrame(() => fileEditor && fileEditor.layout());
+          setTimeout(() => fileEditor && fileEditor.layout(), 60);
         }
 
         async function renderMonacoDiff(rel, originalText, modifiedText) {
@@ -2376,7 +2381,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditor.setModel({ original: originalModel, modified: modifiedModel });
           fileEditorKind = "diff";
           fileEditorModels = [originalModel, modifiedModel];
+          const originalEditor = fileEditor.getOriginalEditor();
+          const modifiedEditor = fileEditor.getModifiedEditor();
+          originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+          modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
+          originalEditor.setPosition({ lineNumber: 1, column: 1 });
+          modifiedEditor.setPosition({ lineNumber: 1, column: 1 });
+          modifiedEditor.revealPositionInCenter({ lineNumber: 1, column: 1 });
           fileEditor.layout();
+          requestAnimationFrame(() => fileEditor && fileEditor.layout());
+          setTimeout(() => fileEditor && fileEditor.layout(), 60);
         }
 
         function applyFileMode() {
