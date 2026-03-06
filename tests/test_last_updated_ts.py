@@ -48,7 +48,7 @@ class TestLastConversationTimestamp(unittest.TestCase):
 
             ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
             self.assertIsInstance(ts, float)
-            self.assertAlmostEqual(ts or 0.0, assistant_ts, places=3)
+            self.assertAlmostEqual(ts or 0.0, user_ts, places=3)
 
     def test_counts_agent_message_as_assistant(self) -> None:
         with TemporaryDirectory() as td:
@@ -63,7 +63,46 @@ class TestLastConversationTimestamp(unittest.TestCase):
                 ],
             )
             ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
+            self.assertIsNone(ts)
+
+    def test_counts_final_answer_agent_message(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout-2026-02-05T00-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbc.jsonl"
+            t0 = time.time()
+            msg_ts = t0 - 5
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "main", "source": "cli"}},
+                    {
+                        "type": "event_msg",
+                        "payload": {"type": "agent_message", "message": "hello", "phase": "final_answer"},
+                        "ts": msg_ts,
+                    },
+                ],
+            )
+            ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
             self.assertAlmostEqual(ts or 0.0, msg_ts, places=3)
+
+    def test_counts_turn_complete_with_last_agent_message(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout-2026-02-05T00-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbd.jsonl"
+            t0 = time.time()
+            done_ts = t0 - 4
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "main", "source": "cli"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}, "ts": t0 - 10},
+                    {
+                        "type": "event_msg",
+                        "payload": {"type": "turn_complete", "turn_id": "t1", "last_agent_message": "done"},
+                        "ts": done_ts,
+                    },
+                ],
+            )
+            ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
+            self.assertAlmostEqual(ts or 0.0, done_ts, places=3)
 
     def test_returns_none_when_no_conversation(self) -> None:
         with TemporaryDirectory() as td:
@@ -81,4 +120,3 @@ class TestLastConversationTimestamp(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

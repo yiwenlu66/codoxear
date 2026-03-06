@@ -1785,11 +1785,6 @@ class SessionManager:
                     merged = merged[-CHAT_INDEX_MAX_EVENTS:]
                     s.chat_index_scan_complete = False
                 s.chat_index_events = merged
-                for ev in appended:
-                    ts = ev.get("ts")
-                    if isinstance(ts, (int, float)):
-                        tsf = float(ts)
-                        s.last_chat_ts = tsf if s.last_chat_ts is None else max(s.last_chat_ts, tsf)
             s.chat_index_log_off = int(new_off)
             if latest_token is not None:
                 s.token = latest_token
@@ -1907,11 +1902,14 @@ class SessionManager:
         return page, log_off2, has_older, next_before, token2
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _th, _tools, _sys, _last_ts, token_update, new_events = _analyze_log_chunk(objs)
+        _th, _tools, _sys, last_ts, token_update, new_events = _analyze_log_chunk(objs)
         self._append_chat_events(session_id, new_events, new_off=new_off, latest_token=token_update)
         with self._lock:
             s = self._sessions.get(session_id)
             if s:
+                if isinstance(last_ts, (int, float)):
+                    tsf = float(last_ts)
+                    s.last_chat_ts = tsf if s.last_chat_ts is None else max(s.last_chat_ts, tsf)
                 s.idle_cache_log_off = -1
 
     def idle_from_log(self, session_id: str) -> bool:

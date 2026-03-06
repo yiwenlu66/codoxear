@@ -33,6 +33,47 @@ def _event_ts(obj: dict[str, Any]) -> float | None:
     return None
 
 
+def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
+    typ = obj.get("type")
+    if typ == "event_msg":
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid event_msg payload")
+        pt = p.get("type")
+        if pt == "user_message" and isinstance(p.get("message"), str):
+            return _event_ts(obj)
+        if pt in ("task_complete", "turn_complete"):
+            last_msg = p.get("last_agent_message")
+            if isinstance(last_msg, str) and last_msg.strip():
+                return _event_ts(obj)
+        if pt == "agent_message":
+            msg = p.get("message")
+            phase = p.get("phase")
+            if isinstance(msg, str) and msg.strip() and phase == "final_answer":
+                return _event_ts(obj)
+        return None
+
+    if typ == "response_item":
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid response_item payload")
+        if p.get("type") != "message" or p.get("role") != "assistant":
+            return None
+        phase = p.get("phase")
+        end_turn = p.get("end_turn")
+        if phase != "final_answer" and end_turn is not True:
+            return None
+        content = p.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
+                return _event_ts(obj)
+        return None
+
+    return None
+
+
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
     if context_window <= CONTEXT_WINDOW_BASELINE_TOKENS:
         return 0
@@ -318,6 +359,9 @@ def _analyze_log_chunk(
 
     for obj in objs:
         typ = obj.get("type")
+        sidebar_ts = _sidebar_conversation_ts(obj)
+        if sidebar_ts is not None:
+            last_chat_ts = sidebar_ts
         if typ == "event_msg":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -329,12 +373,6 @@ def _analyze_log_chunk(
                 d_th = 0
                 d_tools = 0
                 d_sys = 0
-                if isinstance(p.get("message"), str):
-                    last_chat_ts = _event_ts(obj)
-            if pt == "agent_message":
-                msg = p.get("message")
-                if isinstance(msg, str) and msg.strip():
-                    last_chat_ts = _event_ts(obj)
         if typ == "response_item":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -353,8 +391,6 @@ def _analyze_log_chunk(
                 d_tools += 1
             if pt == "message" and p.get("role") in ("developer", "system"):
                 d_sys += 1
-            if _has_assistant_output_text(obj):
-                last_chat_ts = _event_ts(obj)
 
     return d_th, d_tools, d_sys, last_chat_ts, token_update, chat_events
 
@@ -364,58 +400,16 @@ def _last_conversation_ts_from_tail(
     *,
     max_scan_bytes: int,
 ) -> float | None:
-    def event_ts(o: dict[str, Any]) -> float | None:
-        ts = o.get("ts")
-        if isinstance(ts, (int, float)):
-            return float(ts)
-        ts2 = o.get("timestamp")
-        if isinstance(ts2, (int, float)):
-            return float(ts2)
-        if isinstance(ts2, str):
-            v = _parse_iso8601_to_epoch(ts2)
-            if v is not None:
-                return float(v)
-        return None
-
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     scan = 256 * 1024
     while True:
         objs = _read_jsonl_tail(log_path, scan)
         last_idx: int | None = None
         last_ts: float | None = None
         for i, obj in enumerate(objs):
-            typ = obj.get("type")
-            if typ == "event_msg":
-                p = obj.get("payload")
-                if not isinstance(p, dict):
-                    raise ValueError("invalid event_msg payload")
-                pt = p.get("type")
-                if pt == "user_message" and isinstance(p.get("message"), str):
-                    last_idx = i
-                    last_ts = event_ts(obj)
-                    continue
-                if pt == "agent_message":
-                    msg = p.get("message")
-                    if isinstance(msg, str) and msg.strip():
-                        last_idx = i
-                        last_ts = event_ts(obj)
-                        continue
-            if typ == "response_item" and has_assistant_text(obj):
+            ts = _sidebar_conversation_ts(obj)
+            if ts is not None:
                 last_idx = i
-                last_ts = event_ts(obj)
+                last_ts = ts
                 continue
 
         if last_idx is not None:
