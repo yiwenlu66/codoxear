@@ -701,7 +701,7 @@
 
         const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
-        const titleWrap = el("div", { class: "titleWrap" }, [titleRow, toast]);
+        const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
         const topbar = el("div", { class: "topbar" }, [
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
@@ -743,6 +743,7 @@
         sidebar.appendChild(sessionsWrap);
         sidebar.appendChild(sidebarFooter);
         main.appendChild(topbar);
+        main.appendChild(toast);
         main.appendChild(chatWrap);
         main.appendChild(composer);
         app.appendChild(sidebar);
@@ -761,17 +762,9 @@
           html: iconSvg("x"),
         });
         const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "path/to/file" });
-        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Go" });
+        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
         const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
         const fileCandidateSelect = el("select", { id: "fileCandidateSelect", "aria-label": "Changed files" });
-        const fileManualBtn = el("button", {
-          id: "fileManualBtn",
-          class: "icon-btn text-btn",
-          type: "button",
-          title: "Open any file",
-          "aria-label": "Open any file",
-          text: "Path",
-        });
         const fileModeFileBtn = el("button", {
           id: "fileModeFileBtn",
           class: "icon-btn text-btn",
@@ -788,20 +781,16 @@
           "aria-label": "Git diff",
           text: "Diff",
         });
-        const filePre = el("pre", { class: "fileContent line-numbers", id: "filePre" });
-        const fileCode = el("code", { id: "fileCode" });
-        filePre.appendChild(fileCode);
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileManualBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [fileCandidateSelect]),
           el("div", { class: "filePathRow hidden", id: "filePathRow" }, [filePathInput, fileOpenBtn]),
           fileStatus,
           fileDiff,
-          filePre,
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
@@ -2221,12 +2210,32 @@
           return "";
         }
 
+        function renderFullFileHtml(rel, text) {
+          const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+          const lines = source.split("\n");
+          const lang = extToPrismLang(rel);
+          const grammar = window.Prism && lang ? window.Prism.languages[lang] : null;
+          const rows = lines
+            .map((line, idx) => {
+              let html = line === "" ? "&nbsp;" : escapeHtml(line);
+              if (grammar && window.Prism && typeof window.Prism.highlight === "function" && line !== "") {
+                try {
+                  html = window.Prism.highlight(line, grammar, lang);
+                } catch (_) {}
+              }
+              return `<tr><td class="fileLineNo">${idx + 1}</td><td class="fileLineCell"><code class="fileLineCode language-${escapeHtml(
+                lang || "plain"
+              )}">${html}</code></td></tr>`;
+            })
+            .join("");
+          return `<table class="fileTable"><tbody>${rows}</tbody></table>`;
+        }
+
         function applyFileMode() {
           const isDiff = fileViewMode === "diff";
           fileModeDiffBtn.classList.toggle("active", isDiff);
           fileModeFileBtn.classList.toggle("active", !isDiff);
-          fileDiff.style.display = isDiff ? "block" : "none";
-          filePre.style.display = isDiff ? "none" : "block";
+          fileDiff.style.display = "block";
         }
 
         function applyFilePickerVisibility() {
@@ -2234,14 +2243,14 @@
           const hasCandidates = Array.isArray(fileCandidateList) && fileCandidateList.length > 0;
           if (candRow) candRow.classList.toggle("hidden", !hasCandidates);
           const pathRow = $("#filePathRow");
-          if (pathRow) pathRow.classList.toggle("hidden", !fileManualVisible);
+          if (pathRow) pathRow.classList.toggle("hidden", hasCandidates || !fileManualVisible);
         }
 
         function setFilePath(rel, { manual = false } = {}) {
           const next = String(rel || "").trim();
           activeFilePath = next;
           filePathInput.value = next;
-          fileManualVisible = manual || !fileCandidateList.includes(next);
+          fileManualVisible = manual || !fileCandidateList.includes(next) || fileCandidateList.length === 0;
           if (fileCandidateSelect) fileCandidateSelect.value = fileCandidateList.includes(next) ? next : "";
           applyFilePickerVisibility();
         }
@@ -2272,6 +2281,7 @@
               fileCandidateSelect.appendChild(opt);
             }
           } catch (e) {}
+          if (!fileCandidateList.length) fileManualVisible = true;
           applyFilePickerVisibility();
         }
 
@@ -2319,7 +2329,6 @@
           activeFilePath = rel;
           fileStatus.textContent = "Loading...";
           fileDiff.innerHTML = "";
-          fileCode.textContent = "";
           try {
             if (fileViewMode === "diff") {
               const res = await api(`/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}`);
@@ -2337,13 +2346,7 @@
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
               if (!res || typeof res.text !== "string") throw new Error("invalid response");
-              fileCode.className = "";
-              const lang = extToPrismLang(rel);
-              if (lang) fileCode.classList.add(`language-${lang}`);
-              fileCode.textContent = res.text;
-              if (window.Prism && typeof window.Prism.highlightElement === "function") {
-                window.Prism.highlightElement(fileCode);
-              }
+              fileDiff.innerHTML = renderFullFileHtml(rel, res.text);
               const size = typeof res.size === "number" ? res.size : res.text.length;
               fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
             }
@@ -2356,16 +2359,6 @@
           e.preventDefault();
           e.stopPropagation();
           void showFileViewer();
-        };
-        fileManualBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          fileManualVisible = !fileManualVisible;
-          applyFilePickerVisibility();
-          if (fileManualVisible) {
-            filePathInput.focus();
-            filePathInput.select();
-          }
         };
         fileCandidateSelect.onchange = () => {
           const v = String(fileCandidateSelect.value || "").trim();
@@ -2406,17 +2399,28 @@
           e.preventDefault();
           openFilePath();
         });
-        chatInner.addEventListener("click", (e) => {
+        chatInner.addEventListener("click", async (e) => {
           const target = e.target instanceof Element ? e.target.closest("a[data-local-path]") : null;
           if (!target) return;
           e.preventDefault();
           const abs = String(target.getAttribute("data-local-path") || "").trim();
           const rel = sessionRelativePath(abs);
-          if (!rel) {
-            setToast("file is outside the current session cwd");
+          if (rel) {
+            void showFileViewer({ path: rel, mode: "file", manual: false });
             return;
           }
-          void showFileViewer({ path: rel, mode: "file", manual: false });
+          const match = [...sessionIndex.values()].find((s) => {
+            const cwd = String(s && s.cwd ? s.cwd : "").replace(/\/+$/, "");
+            return cwd && (abs === cwd || abs.startsWith(cwd + "/"));
+          });
+          if (!match) {
+            setToast("file is outside the known session roots");
+            return;
+          }
+          await selectSession(match.session_id);
+          const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
+          const rel2 = abs === matchRoot ? "." : abs.slice(matchRoot.length + 1);
+          void showFileViewer({ path: rel2, mode: "file", manual: false });
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;

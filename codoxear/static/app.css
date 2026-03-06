@@ -415,8 +415,7 @@
       }
       .titleWrap {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
+        align-items: center;
         min-width: 0;
         flex: 1 1 auto;
         justify-content: center;
@@ -448,8 +447,11 @@
         flex-wrap: nowrap;
       }
       .toast {
-        margin-top: 4px;
-        min-height: 18px;
+        padding: 4px 12px 0 12px;
+        min-height: 0;
+      }
+      .toast:empty {
+        display: none;
       }
       .actions {
         display: flex;
@@ -1046,6 +1048,33 @@ input[type="text"] {
         flex: 1 1 auto;
         min-height: 120px;
         -webkit-overflow-scrolling: touch;
+      }
+      .fileTable {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      .fileLineNo {
+        width: 52px;
+        padding: 0 10px 0 0;
+        border-right: 1px solid rgba(15, 23, 42, 0.08);
+        color: var(--muted);
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        text-align: right;
+        vertical-align: top;
+        user-select: none;
+      }
+      .fileLineCell {
+        padding-left: 12px;
+        vertical-align: top;
+      }
+      .fileLineCode {
+        display: block;
+        margin: 0;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .fileStatus {
         min-height: 18px;
