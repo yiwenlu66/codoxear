@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260306.6";
+	      const UI_VERSION = "20260306.7";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -2207,8 +2207,14 @@
         let fileEntryMap = new Map();
         let activeFilePath = "";
         let fileMenuOpen = false;
+        let monacoReadyPromise = null;
+        let monacoNs = null;
+        let monacoThemeReady = false;
+        let fileEditor = null;
+        let fileEditorKind = "";
+        let fileEditorModels = [];
 
-        function extToPrismLang(p) {
+        function extToEditorLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
           if (ext === "js") return "javascript";
           if (ext === "ts") return "typescript";
@@ -2228,83 +2234,154 @@
           return "";
         }
 
-        function renderCodeHtml(line, lang) {
-          const raw = String(line ?? "");
-          if (raw === "") return "&nbsp;";
-          const grammar = window.Prism && lang ? window.Prism.languages[lang] : null;
-          if (grammar && window.Prism && typeof window.Prism.highlight === "function") {
+        function disposeFileEditor() {
+          for (const model of fileEditorModels) {
             try {
-              return window.Prism.highlight(raw, grammar, lang);
+              model.dispose();
             } catch (_) {}
           }
-          return escapeHtml(raw);
+          fileEditorModels = [];
+          if (fileEditor) {
+            try {
+              fileEditor.dispose();
+            } catch (_) {}
+            fileEditor = null;
+          }
+          fileEditorKind = "";
         }
 
-        function renderTableHtml(rows) {
-          const body = rows
-            .map((row) => {
-              if (row.kind === "Hunk") {
-                return `<tr class="fileRow fileRowHunk"><td class="fileLineNo"></td><td class="fileLineNo"></td><td class="fileLineCell"><code class="fileLineCode">${escapeHtml(
-                  row.text
-                )}</code></td></tr>`;
+        function ensureMonaco() {
+          if (monacoReadyPromise) return monacoReadyPromise;
+          monacoReadyPromise = new Promise((resolve, reject) => {
+            const finish = () => {
+              if (!(window.require && window.require.config)) {
+                reject(new Error("monaco loader unavailable"));
+                return;
               }
-              const oldNo = row.oldNo == null ? "" : String(row.oldNo);
-              const newNo = row.newNo == null ? "" : String(row.newNo);
-              return `<tr class="fileRow fileRow${row.kind}"><td class="fileLineNo">${oldNo}</td><td class="fileLineNo">${newNo}</td><td class="fileLineCell"><code class="fileLineCode language-${escapeHtml(
-                row.lang || "plain"
-              )}">${row.html}</code></td></tr>`;
-            })
-            .join("");
-          return `<table class="fileTable"><tbody>${body}</tbody></table>`;
+              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+              window.MonacoEnvironment = {
+                getWorkerUrl(_moduleId, _label) {
+                  const src = `
+self.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};
+importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
+`;
+                  return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
+                },
+              };
+              window.require.config({ paths: { vs: base } });
+              window.require(["vs/editor/editor.main"], () => {
+                monacoNs = window.monaco;
+                if (!monacoNs) {
+                  reject(new Error("monaco failed to initialize"));
+                  return;
+                }
+                if (!monacoThemeReady) {
+                  monacoNs.editor.defineTheme("codoxear-github-light", {
+                    base: "vs",
+                    inherit: true,
+                    rules: [],
+                    colors: {
+                      "editor.background": "#ffffff",
+                      "editor.lineHighlightBackground": "#f6f8fa",
+                      "editorGutter.background": "#ffffff",
+                      "editorLineNumber.foreground": "#8c959f",
+                      "editorLineNumber.activeForeground": "#57606a",
+                      "diffEditor.insertedTextBackground": "#dafbe1",
+                      "diffEditor.removedTextBackground": "#ffebe9",
+                      "diffEditor.insertedLineBackground": "#f0fff4",
+                      "diffEditor.removedLineBackground": "#fff5f5",
+                    },
+                  });
+                  monacoThemeReady = true;
+                }
+                resolve(monacoNs);
+              }, reject);
+            };
+            if (window.monaco && window.monaco.editor) {
+              monacoNs = window.monaco;
+              finish();
+              return;
+            }
+            if (window.require && window.require.config) {
+              finish();
+              return;
+            }
+            const waitForLoader = () => {
+              if (window.require && window.require.config) {
+                finish();
+                return;
+              }
+              setTimeout(waitForLoader, 25);
+            };
+            waitForLoader();
+          });
+          return monacoReadyPromise;
         }
 
-        function renderFullFileHtml(rel, text) {
-          const source = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-          const lines = source.split("\n");
-          const lang = extToPrismLang(rel);
-          const rows = lines
-            .map((line, idx) => ({ kind: "Context", oldNo: idx + 1, newNo: idx + 1, html: renderCodeHtml(line, lang), lang }));
-          return renderTableHtml(rows);
+        async function renderMonacoFile(rel, text) {
+          const monaco = await ensureMonaco();
+          const host = fileDiff;
+          const lang = extToEditorLang(rel);
+          if (fileEditorKind !== "file") {
+            disposeFileEditor();
+            fileEditor = monaco.editor.create(host, {
+              language: lang || "plaintext",
+              value: String(text || ""),
+              readOnly: true,
+              theme: "codoxear-github-light",
+              lineNumbers: "on",
+              minimap: { enabled: false },
+              scrollBeyondLastLine: false,
+              wordWrap: "on",
+              folding: false,
+              renderLineHighlight: "none",
+              glyphMargin: false,
+              overviewRulerBorder: false,
+              stickyScroll: { enabled: false },
+              automaticLayout: true,
+            });
+            fileEditorKind = "file";
+            fileEditorModels = [fileEditor.getModel()].filter(Boolean);
+          } else {
+            const model = fileEditor.getModel();
+            monaco.editor.setModelLanguage(model, lang || "plaintext");
+            model.setValue(String(text || ""));
+          }
+          fileEditor.layout();
         }
 
-        function renderDiffHtml(rel, diffText) {
-          const lang = extToPrismLang(rel);
-          const rows = [];
-          let oldLine = 0;
-          let newLine = 0;
-          for (const raw of String(diffText || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")) {
-            if (raw.startsWith("@@")) {
-              const m = raw.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-              oldLine = m ? Number(m[1]) : oldLine;
-              newLine = m ? Number(m[2]) : newLine;
-              rows.push({ kind: "Hunk", text: raw });
-              continue;
-            }
-            if (raw.startsWith("diff --git") || raw.startsWith("index ") || raw.startsWith("--- ") || raw.startsWith("+++ ") || raw.startsWith("\\ No newline")) {
-              continue;
-            }
-            if (raw.startsWith("+")) {
-              rows.push({ kind: "Add", oldNo: null, newNo: newLine++, html: renderCodeHtml(raw.slice(1), lang), lang });
-              continue;
-            }
-            if (raw.startsWith("-")) {
-              rows.push({ kind: "Del", oldNo: oldLine++, newNo: null, html: renderCodeHtml(raw.slice(1), lang), lang });
-              continue;
-            }
-            if (raw.startsWith(" ")) {
-              rows.push({ kind: "Context", oldNo: oldLine++, newNo: newLine++, html: renderCodeHtml(raw.slice(1), lang), lang });
-            }
-          }
-          if (!rows.length) {
-            return `<div class="fileEmpty">No diff for ${escapeHtml(rel)}.</div>`;
-          }
-          return renderTableHtml(rows);
+        async function renderMonacoDiff(rel, originalText, modifiedText) {
+          const monaco = await ensureMonaco();
+          const host = fileDiff;
+          const lang = extToEditorLang(rel);
+          disposeFileEditor();
+          const originalModel = monaco.editor.createModel(String(originalText || ""), lang || "plaintext");
+          const modifiedModel = monaco.editor.createModel(String(modifiedText || ""), lang || "plaintext");
+          fileEditor = monaco.editor.createDiffEditor(host, {
+            readOnly: true,
+            theme: "codoxear-github-light",
+            renderSideBySide: false,
+            lineNumbers: "on",
+            minimap: { enabled: false },
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            folding: false,
+            renderLineHighlight: "none",
+            glyphMargin: false,
+            overviewRulerBorder: false,
+            stickyScroll: { enabled: false },
+            automaticLayout: true,
+            hideUnchangedRegions: { enabled: false },
+          });
+          fileEditor.setModel({ original: originalModel, modified: modifiedModel });
+          fileEditorKind = "diff";
+          fileEditorModels = [originalModel, modifiedModel];
+          fileEditor.layout();
         }
 
         function applyFileMode() {
           const isDiff = fileViewMode === "diff";
           fileModeDiffBtn.classList.toggle("active", isDiff);
-          fileDiff.style.display = "block";
         }
 
         function applyFileMenuState() {
@@ -2464,6 +2541,7 @@
           fileStatus.textContent = "No changed files. Use Add to open a file.";
         }
         function hideFileViewer() {
+          disposeFileEditor();
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
         }
@@ -2476,17 +2554,21 @@
           }
           activeFilePath = rel;
           fileStatus.textContent = "Loading...";
-          fileDiff.innerHTML = "";
+          disposeFileEditor();
           try {
             if (fileViewMode === "diff") {
-              const res = await api(`/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}`);
-              const diff = res && typeof res.diff === "string" ? res.diff : "";
-              fileDiff.innerHTML = renderDiffHtml(rel, diff);
-              fileStatus.textContent = diff ? rel : `${rel} - no diff`;
+              const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
+              const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
+              const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
+              await renderMonacoDiff(rel, baseText, currentText);
+              if (!res.base_exists && !res.current_exists) fileStatus.textContent = `${rel} - unavailable`;
+              else if (!res.base_exists) fileStatus.textContent = `${rel} - new file`;
+              else if (!res.current_exists) fileStatus.textContent = `${rel} - deleted`;
+              else fileStatus.textContent = rel;
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
               if (!res || typeof res.text !== "string") throw new Error("invalid response");
-              fileDiff.innerHTML = renderFullFileHtml(rel, res.text);
+              await renderMonacoFile(rel, res.text);
               const size = typeof res.size === "number" ? res.size : res.text.length;
               fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               if (!fileEntryMap.has(rel)) upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });

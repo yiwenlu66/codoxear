@@ -2591,6 +2591,69 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
                 return
 
+            if path.startswith("/api/sessions/") and path.endswith("/git/file_versions"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                cwd = Path(s.cwd).expanduser()
+                if not cwd.is_absolute():
+                    cwd = cwd.resolve()
+                try:
+                    _require_git_repo(cwd)
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
+                p = _resolve_under(cwd, rel)
+                current_text = ""
+                current_size = 0
+                current_exists = bool(p.exists() and p.is_file())
+                if current_exists:
+                    current_text, current_size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                base_exists = False
+                base_text = ""
+                try:
+                    base_text = _run_git(
+                        cwd,
+                        ["show", f"HEAD:{rel}"],
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=FILE_READ_MAX_BYTES,
+                    )
+                    base_exists = True
+                except RuntimeError:
+                    base_exists = False
+                    base_text = ""
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "cwd": str(cwd),
+                        "path": rel,
+                        "current_exists": current_exists,
+                        "current_size": int(current_size),
+                        "current_text": current_text,
+                        "base_exists": base_exists,
+                        "base_text": base_text,
+                    },
+                )
+                return
+
             if path.startswith("/api/sessions/") and path.endswith("/messages"):
                 if not _require_auth(self):
                     self._unauthorized()
