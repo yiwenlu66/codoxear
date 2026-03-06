@@ -532,6 +532,30 @@ def _resolve_under(base: Path, rel: str) -> Path:
     return resolved
 
 
+def _resolve_session_path(base: Path, raw_path: str) -> Path:
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("path required")
+    if "\x00" in raw_path:
+        raise ValueError("invalid path")
+    p = Path(raw_path)
+    if p.is_absolute():
+        return p.expanduser().resolve()
+    resolved_base = base.expanduser()
+    if not resolved_base.is_absolute():
+        resolved_base = resolved_base.resolve()
+    return (resolved_base / p).resolve()
+
+
+def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
+    repo_root = Path(_run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()).resolve()
+    target = _resolve_session_path(cwd, raw_path)
+    try:
+        rel = str(target.relative_to(repo_root))
+    except ValueError as e:
+        raise ValueError("path is outside git repo") from e
+    return target, repo_root, rel
+
+
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
     cmd = ["git", *args]
     proc = subprocess.run(
@@ -2455,7 +2479,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_under(base, rel)
+                p = _resolve_session_path(base, rel)
                 if not p.exists():
                     _json_response(self, 404, {"error": "file not found"})
                     return
@@ -2481,7 +2505,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "kind": "image",
                             "content_type": image_ctype,
                             "path": str(p),
-                            "rel": rel,
+                            "rel": str(rel),
                             "size": int(size),
                             "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
                         },
@@ -2491,7 +2515,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "binary file not supported"})
                     return
                 text = raw.decode("utf-8", errors="replace")
-                _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": rel, "size": int(size), "text": text})
+                _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": str(rel), "size": int(size), "text": text})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/blob"):
@@ -2517,7 +2541,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_under(base, rel)
+                p = _resolve_session_path(base, rel)
                 if not p.exists():
                     _json_response(self, 404, {"error": "file not found"})
                     return
@@ -2664,7 +2688,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
-                _resolve_under(cwd, rel)
+                try:
+                    _target, _repo_root, rel = _resolve_git_path(cwd, rel)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 args = ["diff", "-U3"]
                 if staged:
                     args.append("--cached")
@@ -2706,7 +2734,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
-                p = _resolve_under(cwd, rel)
+                try:
+                    p, _repo_root, rel = _resolve_git_path(cwd, rel)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 current_text = ""
                 current_size = 0
                 current_exists = bool(p.exists() and p.is_file())
