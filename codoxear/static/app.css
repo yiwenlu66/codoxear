@@ -114,17 +114,21 @@
         -webkit-overflow-scrolling: touch;
       }
       .sidebar footer {
-        padding: 8px;
+        padding: 10px 12px;
         border-top: 1px solid var(--border);
         display: flex;
-        gap: 10px;
+        gap: 12px;
       }
       .sidebar footer button {
         flex: 1 1 auto;
+        min-width: 0;
+        display: inline-flex;
+        align-items: center;
         justify-content: center;
         gap: 8px;
-        height: 40px;
+        height: 38px;
         border-radius: 12px;
+        font-weight: 500;
       }
       .session {
         padding: 0;
@@ -203,19 +207,63 @@
         border-color: rgba(37, 99, 235, 0.6);
         background: #dbeafe;
       }
-      .sessionMain {
-        flex: 1 1 auto;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-      }
-      .sessionInner {
-        padding: 8px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-width: 0;
-      }
+	      .sessionMain {
+	        flex: 1 1 auto;
+	        min-width: 0;
+	        display: flex;
+	        flex-direction: column;
+	        gap: 4px;
+	      }
+	      .sessionMetaLine {
+	        display: flex;
+	        align-items: center;
+	        gap: 6px;
+	        min-width: 0;
+	        flex-wrap: nowrap;
+	      }
+	      .ownerBadge {
+	        width: 18px;
+	        height: 18px;
+	        border-radius: 6px;
+	        border: 1px solid var(--border);
+	        display: inline-flex;
+	        align-items: center;
+	        justify-content: center;
+	        font-size: 10px;
+	        font-weight: 700;
+	        line-height: 1;
+	        color: var(--muted);
+	        background: rgba(255, 255, 255, 0.92);
+	        flex: 0 0 auto;
+	      }
+	      .metaText {
+	        min-width: 0;
+	        overflow: hidden;
+	        text-overflow: ellipsis;
+	        white-space: nowrap;
+	      }
+	      .sessionTitleWithBadges {
+	        display: flex;
+	        align-items: flex-start;
+	        gap: 10px;
+	        min-width: 0;
+	      }
+	      .sessionTitleWithBadges .sessionTitleRow {
+	        flex: 1 1 auto;
+	      }
+	      .sessionInner {
+	        padding: 8px;
+	        display: flex;
+	        flex-direction: column;
+	        gap: 4px;
+	        min-width: 0;
+	      }
+	      .sessionInner.sessionDesktopLayout {
+	        flex-direction: row;
+	        align-items: flex-start;
+	        justify-content: space-between;
+	        gap: 12px;
+	      }
       .sessionTitleRow {
         display: flex;
         align-items: center;
@@ -235,12 +283,12 @@
         gap: 8px;
         min-width: 0;
       }
-      .sessionActionsInline {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        flex: 0 0 auto;
-      }
+	      .sessionActionsInline {
+	        display: inline-flex;
+	        align-items: center;
+	        gap: 8px;
+	        flex: 0 0 auto;
+	      }
       .sessionAction {
         flex: 0 0 auto;
         display: flex;
@@ -348,7 +396,7 @@
         min-width: 0;
       }
       .topbar {
-        padding: calc(10px + env(safe-area-inset-top)) 12px 10px 12px;
+        padding: calc(8px + env(safe-area-inset-top)) 12px 8px 12px;
         border-bottom: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.86);
         backdrop-filter: blur(10px);
@@ -356,12 +404,12 @@
         align-items: center;
         justify-content: space-between;
         align-items: center;
-        gap: 12px;
+        gap: 8px;
       }
       .pill {
         display: inline-flex;
         align-items: stretch;
-        gap: 10px;
+        gap: 8px;
         min-width: 0;
         flex: 1 1 auto;
       }
@@ -385,7 +433,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 56vw;
+        max-width: min(34vw, 420px);
       }
       .titleRow #threadTitle {
         flex: 1 1 auto;
@@ -418,6 +466,7 @@
       }
       .topActions {
         align-items: center;
+        gap: 6px;
       }
       button {
         border: 1px solid var(--border);
@@ -915,7 +964,7 @@ input[type="text"] {
         top: 50%;
         transform: translate(-50%, -50%);
         z-index: 80;
-        width: min(92vw, 980px);
+        width: min(92vw, 860px);
         max-height: calc(var(--appH, 100dvh) - 24px);
         background: var(--panel);
         border: 1px solid var(--border);
@@ -923,7 +972,7 @@ input[type="text"] {
         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
         padding: 12px;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         box-sizing: border-box;
       }
       .fileViewerHeader {
@@ -941,6 +990,10 @@ input[type="text"] {
         display: flex;
         gap: 8px;
         align-items: center;
+      }
+      .filePathRow.hidden,
+      .fileCandRow.hidden {
+        display: none;
       }
       .fileCandRow {
         display: flex;
@@ -971,11 +1024,15 @@ input[type="text"] {
         -webkit-overflow-scrolling: touch;
       }
       .fileDiff .d2h-wrapper {
-        padding: 10px;
+        padding: 8px;
+      }
+      .fileDiff .d2h-file-header,
+      .fileDiff .d2h-file-list-wrapper {
+        display: none;
       }
       .fileContent {
         margin: 0;
-        padding: 12px;
+        padding: 10px;
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
         background: #ffffff;
@@ -989,6 +1046,20 @@ input[type="text"] {
         flex: 1 1 auto;
         min-height: 120px;
         -webkit-overflow-scrolling: touch;
+      }
+      .fileStatus {
+        min-height: 18px;
+      }
+      .inlineFileLink {
+        color: var(--accent);
+        text-decoration: underline;
+        cursor: pointer;
+      }
+      @media (min-width: 881px) {
+        .topActions .icon-btn {
+          width: 36px;
+          height: 36px;
+        }
       }
       .queueViewer {
         display: none;

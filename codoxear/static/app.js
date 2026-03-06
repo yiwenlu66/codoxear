@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260306.5";
+	      const UI_VERSION = "20260306.6";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -165,7 +165,7 @@
         const v = Number(n);
         if (!Number.isFinite(v)) return String(n ?? "");
         if (v < 1024) return `${v} B`;
-        const units = ["KB", "MB", "GB", "TB"];
+        const units = ["B", "KB", "MB", "GB", "TB"];
         let val = v;
         let u = 0;
         while (val >= 1024 && u < units.length - 1) {
@@ -216,14 +216,20 @@
         return ts ? `Session ${fmtTs(ts)}` : "Session";
       }
 
-      function fmtIdleAge(seconds) {
-        const s = Number(seconds);
-        if (!(s >= 0)) return "";
-        if (s < 60) return "just now";
-        if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
-        if (s < 86400) return `${Math.max(1, Math.floor(s / 3600))}h`;
-        return `${Math.max(1, Math.floor(s / 86400))}d`;
-      }
+	      function fmtIdleAge(seconds) {
+	        const s = Number(seconds);
+	        if (!(s >= 0)) return "";
+	        if (s < 60) return "just now";
+	        if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
+	        if (s < 86400) return `${Math.max(1, Math.floor(s / 3600))}h`;
+	        return `${Math.max(1, Math.floor(s / 86400))}d`;
+	      }
+
+	      function fmtRelativeAge(seconds) {
+	        const base = fmtIdleAge(seconds);
+	        if (!base || base === "just now") return base;
+	        return `${base} ago`;
+	      }
 
       function sessionTitleWithId(s) {
         if (!s || typeof s !== "object") return "No session selected";
@@ -250,6 +256,24 @@
         return null;
       }
 
+      function stripPathLocationSuffix(rawPath) {
+        const s = String(rawPath || "").trim();
+        return s.replace(/:\d+(?::\d+)?$/, "");
+      }
+
+      function localPathFromRef(u) {
+        const raw = String(u ?? "").trim();
+        if (!raw) return null;
+        if (raw.startsWith("/") && !raw.startsWith("//")) return stripPathLocationSuffix(raw);
+        try {
+          const url = new URL(raw, location.href);
+          if (url.origin !== location.origin) return null;
+          const pathname = stripPathLocationSuffix(decodeURIComponent(url.pathname || ""));
+          if (/^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(pathname)) return pathname;
+        } catch {}
+        return null;
+      }
+
       function renderInlineMd(s) {
         const raw = String(s ?? "");
         const re = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
@@ -262,9 +286,14 @@
           if (m[1] !== undefined) {
             out += `<code>${escapeHtml(m[1])}</code>`;
           } else if (m[2] !== undefined) {
-            const href = safeUrl(m[3]);
-            if (!href) out += `${escapeHtml(m[2])} (${escapeHtml(m[3])})`;
-            else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[2])}</a>`;
+            const localPath = localPathFromRef(m[3]);
+            if (localPath) {
+              out += `<a href="#" class="inlineFileLink" data-local-path="${escapeHtml(localPath)}">${escapeHtml(m[2])}</a>`;
+            } else {
+              const href = safeUrl(m[3]);
+              if (!href) out += `${escapeHtml(m[2])} (${escapeHtml(m[3])})`;
+              else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[2])}</a>`;
+            }
           } else if (m[4] !== undefined) {
             out += `<strong>${escapeHtml(m[4])}</strong>`;
           } else {
@@ -732,16 +761,16 @@
           html: iconSvg("x"),
         });
         const filePathInput = el("input", { id: "filePathInput", type: "text", placeholder: "path/to/file" });
-        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Open" });
-        const fileStatus = el("div", { class: "muted", id: "fileStatus", text: "" });
+        const fileOpenBtn = el("button", { id: "fileOpenBtn", class: "primary", type: "button", text: "Go" });
+        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
         const fileCandidateSelect = el("select", { id: "fileCandidateSelect", "aria-label": "Changed files" });
-        const fileCandidateRefreshBtn = el("button", {
-          id: "fileCandidateRefreshBtn",
+        const fileManualBtn = el("button", {
+          id: "fileManualBtn",
           class: "icon-btn text-btn",
           type: "button",
-          title: "Refresh changed files",
-          "aria-label": "Refresh changed files",
-          text: "Changed",
+          title: "Open any file",
+          "aria-label": "Open any file",
+          text: "Path",
         });
         const fileModeFileBtn = el("button", {
           id: "fileModeFileBtn",
@@ -759,14 +788,6 @@
           "aria-label": "Git diff",
           text: "Diff",
         });
-        const fileStagedBtn = el("button", {
-          id: "fileStagedBtn",
-          class: "icon-btn text-btn",
-          type: "button",
-          title: "Toggle staged diff",
-          "aria-label": "Toggle staged diff",
-          text: "Staged",
-        });
         const filePre = el("pre", { class: "fileContent line-numbers", id: "filePre" });
         const fileCode = el("code", { id: "fileCode" });
         filePre.appendChild(fileCode);
@@ -774,10 +795,10 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileStagedBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModeFileBtn, fileManualBtn, fileCloseBtn]),
           ]),
-          el("div", { class: "fileCandRow" }, [fileCandidateSelect, fileCandidateRefreshBtn]),
-          el("div", { class: "filePathRow" }, [filePathInput, fileOpenBtn]),
+          el("div", { class: "fileCandRow", id: "fileCandRow" }, [fileCandidateSelect]),
+          el("div", { class: "filePathRow hidden", id: "filePathRow" }, [filePathInput, fileOpenBtn]),
           fileStatus,
           fileDiff,
           filePre,
@@ -842,7 +863,7 @@
   <li>On mobile: swipe right on a web-owned session to reveal <b>Delete</b>.</li>
   <li>On desktop: session actions are shown on the right.</li>
   <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle.</li>
-  <li>The status line starts with <b>[W]</b> (web-owned) or <b>[T]</b> (terminal-owned).</li>
+  <li>The status line starts with a boxed <b>W</b> (web-owned) or boxed <b>T</b> (terminal-owned).</li>
 </ul>
 <div class="muted">Queue</div>
 <ul class="md">
@@ -1436,13 +1457,11 @@
              if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
 
-             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
-             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
-             const ownerTxt = s.owned ? "[W]" : "[T]";
-             const stateWord = s.busy ? "busy" : "idle";
-             const stateTxt = `${stateWord} ${fmtIdleAge(ageS)}`;
-             const cwdBase = baseName(s.cwd);
-             const metaText = `${ownerTxt} ${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}`;
+	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
+	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
+	             const ownerTxt = s.owned ? "W" : "T";
+	             const stateTxt = fmtRelativeAge(ageS);
+	             const cwdBase = baseName(s.cwd);
 
             function closeOpenSwipe() {
               if (!openSwipeContent) return;
@@ -1531,8 +1550,11 @@
                stateDot,
                el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
              ]);
-             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
-             const meta = el("div", { class: "muted subLine", text: metaText });
+	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
+	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, [
+	               el("span", { class: "ownerBadge", text: ownerTxt, title: s.owned ? "web-owned session" : "terminal-owned session" }),
+	               el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}` }),
+	             ]);
 
              if (mobile) {
                const leftActions = el("div", { class: "sessionActions left" }, delBtn ? [delBtn] : []);
@@ -1607,14 +1629,15 @@
                  setSidebarOpen(false);
                  selectSession(s.session_id);
                };
-             } else {
-               card.classList.add("desktop");
-               const actions = el("div", { class: "sessionActionsInline" }, delBtn ? [renameBtn, dupBtn, delBtn] : [renameBtn, dupBtn]);
-               const top = el("div", { class: "row" }, [titleRow, el("div", { class: "rowRight" }, [badgesWrap, actions])]);
-               const inner = el("div", { class: "sessionInner" }, [top, meta]);
-               card.appendChild(inner);
-               card.onclick = () => selectSession(s.session_id);
-             }
+	             } else {
+	               card.classList.add("desktop");
+	               const actions = el("div", { class: "sessionActionsInline" }, delBtn ? [renameBtn, dupBtn, delBtn] : [renameBtn, dupBtn]);
+	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
+	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
+	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
+	               card.appendChild(inner);
+	               card.onclick = () => selectSession(s.session_id);
+	             }
 
              sessionsWrap.appendChild(card);
             }
@@ -2174,7 +2197,9 @@
           }
         }
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
-        let fileDiffStaged = localStorage.getItem("codexweb.fileDiffStaged") === "1";
+        let fileCandidateList = [];
+        let activeFilePath = "";
+        let fileManualVisible = false;
 
         function extToPrismLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
@@ -2200,51 +2225,83 @@
           const isDiff = fileViewMode === "diff";
           fileModeDiffBtn.classList.toggle("active", isDiff);
           fileModeFileBtn.classList.toggle("active", !isDiff);
-          fileStagedBtn.style.display = isDiff ? "inline-flex" : "none";
-          fileStagedBtn.classList.toggle("active", Boolean(fileDiffStaged));
           fileDiff.style.display = isDiff ? "block" : "none";
           filePre.style.display = isDiff ? "none" : "block";
         }
 
+        function applyFilePickerVisibility() {
+          const candRow = $("#fileCandRow");
+          const hasCandidates = Array.isArray(fileCandidateList) && fileCandidateList.length > 0;
+          if (candRow) candRow.classList.toggle("hidden", !hasCandidates);
+          const pathRow = $("#filePathRow");
+          if (pathRow) pathRow.classList.toggle("hidden", !fileManualVisible);
+        }
+
+        function setFilePath(rel, { manual = false } = {}) {
+          const next = String(rel || "").trim();
+          activeFilePath = next;
+          filePathInput.value = next;
+          fileManualVisible = manual || !fileCandidateList.includes(next);
+          if (fileCandidateSelect) fileCandidateSelect.value = fileCandidateList.includes(next) ? next : "";
+          applyFilePickerVisibility();
+        }
+
+        function sessionRelativePath(rawPath) {
+          const s = selected ? sessionIndex.get(selected) : null;
+          if (!s || !s.cwd) return null;
+          const abs = stripPathLocationSuffix(rawPath);
+          const cwd = String(s.cwd || "").replace(/\/+$/, "");
+          if (!abs) return null;
+          if (abs === cwd) return ".";
+          if (abs.startsWith(cwd + "/")) return abs.slice(cwd.length + 1);
+          return null;
+        }
+
         async function refreshFileCandidates() {
           fileCandidateSelect.innerHTML = "";
+          fileCandidateList = [];
           if (!selected) return;
           try {
             const res = await api(`/api/sessions/${selected}/git/changed_files`);
             const files = Array.isArray(res.files) ? res.files : [];
-            if (!files.length) {
-              const opt = document.createElement("option");
-              opt.value = "";
-              opt.textContent = "(no changes)";
-              fileCandidateSelect.appendChild(opt);
-              return;
-            }
-            for (const f of files) {
+            fileCandidateList = files.filter((f) => typeof f === "string" && String(f).trim());
+            for (const f of fileCandidateList) {
               const opt = document.createElement("option");
               opt.value = String(f);
               opt.textContent = String(f);
               fileCandidateSelect.appendChild(opt);
             }
-          } catch (e) {
-            const opt = document.createElement("option");
-            opt.value = "";
-            opt.textContent = "(git unavailable)";
-            fileCandidateSelect.appendChild(opt);
-          }
+          } catch (e) {}
+          applyFilePickerVisibility();
         }
 
-        function showFileViewer() {
+        async function showFileViewer({ path = "", mode = "", manual = false } = {}) {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          if (mode === "file" || mode === "diff") {
+            fileViewMode = mode;
+            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+          }
           applyFileMode();
-          const last = localStorage.getItem("codexweb.filePath") || "";
-          if (last && !filePathInput.value.trim()) filePathInput.value = last;
-          void refreshFileCandidates().then(() => {
-            if (!selected) return;
-            const cur = String(filePathInput.value || "").trim();
-            const first = fileCandidateSelect && fileCandidateSelect.value ? String(fileCandidateSelect.value) : "";
-            if (!cur && first) filePathInput.value = first;
-          });
+          await refreshFileCandidates();
+          const preferred = String(path || "").trim() || activeFilePath || localStorage.getItem("codexweb.filePath") || "";
+          if (preferred) {
+            setFilePath(preferred, { manual });
+            void openFilePath(preferred);
+            return;
+          }
+          const first = fileCandidateList.length ? fileCandidateList[0] : "";
+          if (first) {
+            fileViewMode = "diff";
+            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+            applyFileMode();
+            setFilePath(first);
+            void openFilePath(first);
+            return;
+          }
+          fileManualVisible = true;
+          applyFilePickerVisibility();
+          fileStatus.textContent = "No changed files. Enter a path to inspect a file.";
           filePathInput.focus();
           filePathInput.select();
         }
@@ -2252,32 +2309,31 @@
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
         }
-        async function openFilePath() {
+        async function openFilePath(nextPath = null) {
           if (!selected) return;
-          const rel = String(filePathInput.value || "").trim();
+          const rel = String(nextPath == null ? filePathInput.value : nextPath).trim();
           if (!rel) {
-            fileStatus.textContent = "Enter a file path.";
+            fileStatus.textContent = "Choose a file first.";
             return;
           }
+          activeFilePath = rel;
           fileStatus.textContent = "Loading...";
           fileDiff.innerHTML = "";
           fileCode.textContent = "";
           try {
             if (fileViewMode === "diff") {
-              const res = await api(
-                `/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}&staged=${fileDiffStaged ? 1 : 0}`
-              );
+              const res = await api(`/api/sessions/${selected}/git/diff?path=${encodeURIComponent(rel)}`);
               const diff = res && typeof res.diff === "string" ? res.diff : "";
               if (window.Diff2Html && typeof window.Diff2Html.html === "function") {
                 fileDiff.innerHTML = window.Diff2Html.html(diff || "", {
                   drawFileList: false,
-                  outputFormat: isMobile() ? "line-by-line" : "side-by-side",
+                  outputFormat: "line-by-line",
                   matching: "lines",
                 });
               } else {
                 fileDiff.textContent = diff || "";
               }
-              fileStatus.textContent = diff ? `${rel} (diff)` : `${rel} (no diff)`;
+              fileStatus.textContent = diff ? rel : `${rel} - no diff`;
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
               if (!res || typeof res.text !== "string") throw new Error("invalid response");
@@ -2289,7 +2345,7 @@
                 window.Prism.highlightElement(fileCode);
               }
               const size = typeof res.size === "number" ? res.size : res.text.length;
-              fileStatus.textContent = `${rel} (${fmtBytes(size)})`;
+              fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
             }
             localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
@@ -2299,18 +2355,28 @@
         fileBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showFileViewer();
+          void showFileViewer();
         };
-        fileCandidateRefreshBtn.onclick = (e) => {
+        fileManualBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void refreshFileCandidates();
+          fileManualVisible = !fileManualVisible;
+          applyFilePickerVisibility();
+          if (fileManualVisible) {
+            filePathInput.focus();
+            filePathInput.select();
+          }
         };
         fileCandidateSelect.onchange = () => {
           const v = String(fileCandidateSelect.value || "").trim();
           if (!v) return;
-          filePathInput.value = v;
-          void openFilePath();
+          setFilePath(v);
+          if (fileViewMode !== "diff") {
+            fileViewMode = "diff";
+            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+            applyFileMode();
+          }
+          void openFilePath(v);
         };
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
@@ -2318,7 +2384,7 @@
           fileViewMode = "diff";
           localStorage.setItem("codexweb.fileViewMode", fileViewMode);
           applyFileMode();
-          void openFilePath();
+          void openFilePath(activeFilePath);
         };
         fileModeFileBtn.onclick = (e) => {
           e.preventDefault();
@@ -2326,15 +2392,7 @@
           fileViewMode = "file";
           localStorage.setItem("codexweb.fileViewMode", fileViewMode);
           applyFileMode();
-          void openFilePath();
-        };
-        fileStagedBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          fileDiffStaged = !fileDiffStaged;
-          localStorage.setItem("codexweb.fileDiffStaged", fileDiffStaged ? "1" : "0");
-          applyFileMode();
-          if (fileViewMode === "diff") void openFilePath();
+          void openFilePath(activeFilePath);
         };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -2347,6 +2405,18 @@
           if (e.key !== "Enter") return;
           e.preventDefault();
           openFilePath();
+        });
+        chatInner.addEventListener("click", (e) => {
+          const target = e.target instanceof Element ? e.target.closest("a[data-local-path]") : null;
+          if (!target) return;
+          e.preventDefault();
+          const abs = String(target.getAttribute("data-local-path") || "").trim();
+          const rel = sessionRelativePath(abs);
+          if (!rel) {
+            setToast("file is outside the current session cwd");
+            return;
+          }
+          void showFileViewer({ path: rel, mode: "file", manual: false });
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
