@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260306.4";
+	      const UI_VERSION = "20260306.5";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -2768,7 +2768,8 @@
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
-	         let iosFocusNormalizeTimer = null;
+	         let iosViewportGuardTimer = null;
+	         let iosViewportGuardUntil = 0;
 	         function normalizePageScroll() {
 	           if (!isIOS) return;
 	           const y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
@@ -2777,40 +2778,35 @@
 	           document.documentElement.scrollTop = 0;
 	           document.body.scrollTop = 0;
 	         }
-	         function stopIOSFocusNormalization() {
-	           if (iosFocusNormalizeTimer) clearTimeout(iosFocusNormalizeTimer);
-	           iosFocusNormalizeTimer = null;
+	         function stopIOSViewportGuard() {
+	           if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
+	           iosViewportGuardTimer = null;
+	           iosViewportGuardUntil = 0;
 	         }
-	         function runIOSFocusNormalization({ preserveChatBottom } = {}) {
+	         function isIOSViewportGuardActive() {
+	           return isIOS && Date.now() < iosViewportGuardUntil;
+	         }
+	         function runIOSViewportGuard({ preserveChatBottom, durationMs = 1400 } = {}) {
 	           if (!isIOS) return;
-	           stopIOSFocusNormalization();
+	           stopIOSViewportGuard();
+	           iosViewportGuardUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
 	           const tick = () => {
 	             updateAppHeightVar();
 	             normalizePageScroll();
-	             if (preserveChatBottom) scrollToBottom();
-	           };
-	           tick();
-	           requestAnimationFrame(tick);
-	           let idx = 0;
-	           const delays = [80, 180, 320, 520];
-	           const arm = () => {
-	             if (idx >= delays.length) {
-	               iosFocusNormalizeTimer = null;
+	             if (preserveChatBottom && (autoScroll || isNearBottom())) scrollToBottom();
+	             if (!isIOSViewportGuardActive()) {
+	               iosViewportGuardTimer = null;
 	               return;
 	             }
-	             iosFocusNormalizeTimer = setTimeout(() => {
-	               tick();
-	               idx += 1;
-	               arm();
-	             }, delays[idx]);
+	             iosViewportGuardTimer = setTimeout(tick, 50);
 	           };
-	           arm();
+	           tick();
 	         }
 	         if (window.visualViewport) {
 	           const onViewportShift = () => {
 	             updateAppHeightVar();
 	             if (!isIOS) return;
-	             if (document.activeElement === textarea) {
+	             if (document.activeElement === textarea || isIOSViewportGuardActive()) {
 	               normalizePageScroll();
 	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
 	             }
@@ -2866,7 +2862,7 @@
                 autoScroll = true;
                 jumpBtn.style.display = "none";
               }
-	              if (isIOS) runIOSFocusNormalization({ preserveChatBottom: wasNear });
+	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: wasNear, durationMs: 1800 });
 	              else {
 	                const tick = () => {
 	                  updateAppHeightVar();
@@ -2881,9 +2877,8 @@
 	          textarea.addEventListener(
 	            "blur",
 	            () => {
-	              stopIOSFocusNormalization();
-	              normalizePageScroll();
-	              setTimeout(updateAppHeightVar, 0);
+	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: false, durationMs: 900 });
+	              else setTimeout(updateAppHeightVar, 0);
 	            },
 	            { passive: true }
 	          );
