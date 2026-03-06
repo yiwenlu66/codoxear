@@ -122,6 +122,7 @@ DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "300"))
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
 QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
+QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
 CHAT_INIT_SEED_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_SEED_SCAN_BYTES", str(512 * 1024)))
@@ -746,6 +747,7 @@ class Session:
     chat_index_log_off: int = 0
     idle_cache_log_off: int = -1
     idle_cache_value: bool | None = None
+    queue_idle_since: float | None = None
 
 
 class SessionManager:
@@ -785,6 +787,7 @@ class SessionManager:
         s.chat_index_log_off = int(meta_log_off)
         s.idle_cache_log_off = -1
         s.idle_cache_value = None
+        s.queue_idle_since = None
 
     def _discover_existing_if_stale(self, *, force: bool = False) -> None:
         now = time.time()
@@ -1228,17 +1231,34 @@ class SessionManager:
             self._save_queues()
         # At most one injection per sweep.
         for sid, text in items:
+            now_ts = time.time()
             try:
                 st = self.get_state(sid)
             except Exception:
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
             if not isinstance(st, dict):
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
             if "busy" not in st or "queue_len" not in st:
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
             busy = bool(st.get("busy"))
             ql = int(st.get("queue_len"))
             if busy or ql > 0:
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
             # Guardrail: only inject server-queued messages when the rollout log indicates the
             # session is idle. This avoids injecting "next" prompts mid-turn when the broker's
@@ -1247,15 +1267,40 @@ class SessionManager:
             try:
                 if isinstance(lp, Path) and lp.exists():
                     if not self.idle_from_log(sid):
+                        with self._lock:
+                            s0 = self._sessions.get(sid)
+                            if s0:
+                                s0.queue_idle_since = None
                         continue
             except Exception:
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
+            with self._lock:
+                s0 = self._sessions.get(sid)
+                if not s0:
+                    continue
+                idle_since = s0.queue_idle_since
+                if idle_since is None:
+                    s0.queue_idle_since = now_ts
+                    continue
+                if (now_ts - idle_since) < QUEUE_IDLE_GRACE_SECONDS:
+                    continue
             try:
                 self.send(sid, text)
             except Exception:
+                with self._lock:
+                    s0 = self._sessions.get(sid)
+                    if s0:
+                        s0.queue_idle_since = None
                 continue
             with self._lock:
                 q = self._queues.get(sid)
+                s0 = self._sessions.get(sid)
+                if s0:
+                    s0.queue_idle_since = None
                 if isinstance(q, list) and q and q[0] == text:
                     q.pop(0)
                     if not q:
