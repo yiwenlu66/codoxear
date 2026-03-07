@@ -83,7 +83,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertIsNone(rows[0]["snooze_until"])
         self.assertIsNone(rows[0]["dependency_session_id"])
 
-    def test_delete_session_allows_terminal_owned_and_clears_dependents(self) -> None:
+    def test_delete_session_kills_terminal_owned_and_clears_dependents(self) -> None:
         mgr = _make_manager()
         now = time.time()
         blocked = _session(sid="blocked", start_ts=now - 100, last_chat_ts=now - 10)
@@ -107,8 +107,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         ok = mgr.delete_session("target")
 
         self.assertTrue(ok)
-        self.assertEqual(called["shutdown"], 0)
-        self.assertIn("target", mgr._hidden_sessions)
+        self.assertEqual(called["shutdown"], 1)
         self.assertNotIn("target", mgr._sidebar_meta)
         self.assertNotIn("target", mgr._queues)
         self.assertNotIn("target", mgr._harness)

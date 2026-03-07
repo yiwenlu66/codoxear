@@ -1772,6 +1772,7 @@
 	             const ownerTxt = s.owned ? "W" : "T";
 	             const stateTxt = fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
+	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
 
 	            function closeOpenSwipe() {
 	              if (!openSwipeContent) return;
@@ -1871,7 +1872,7 @@
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, [
 	               el("span", { class: "ownerBadge", text: ownerTxt, title: s.owned ? "web-owned session" : "terminal-owned session" }),
-	               el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}` }),
+	               el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }),
 	             ]);
 
              if (mobile) {
@@ -3079,14 +3080,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           filePickerBtn.appendChild(el("span", { class: "fileMenuPath", text: entry.path }));
           const changed = Boolean(entry.changed);
-          const stat = el("span", { class: changed ? "fileMenuStat changed" : "fileMenuStat manual" });
           if (changed) {
+            const stat = el("span", { class: "fileMenuStat changed" });
             stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
             stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
-          } else {
-            stat.textContent = "manual";
+            filePickerBtn.appendChild(stat);
           }
-          filePickerBtn.appendChild(stat);
         }
 
         function upsertFileEntry(entry) {
@@ -3102,6 +3101,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileCandidateList.push(path);
           }
           fileEntryMap.set(path, merged);
+        }
+
+        function rememberOpenedFile(relPath, absPath = null) {
+          const rel = String(relPath || "").trim();
+          if (!rel) return;
+          upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
+          const s = selected ? sessionIndex.get(selected) : null;
+          if (!s) return;
+          const files = listFromFilesField(s.files);
+          const abs = typeof absPath === "string" && absPath.trim()
+            ? absPath.trim()
+            : s.cwd && rel !== "."
+              ? `${String(s.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
+              : "";
+          if (!abs) return;
+          const nextFiles = [abs, ...files.filter((x) => x !== abs)];
+          s.files = nextFiles;
         }
 
         async function getKnownFileRefCandidates() {
@@ -3144,18 +3160,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               title: path,
             });
             btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
-            const statText = entry.changed
-              ? `${entry.additions == null ? "+?" : `+${entry.additions}`} ${entry.deletions == null ? "-?" : `-${entry.deletions}`}`
-              : "manual";
-            const statCls = entry.changed ? "fileMenuStat changed" : "fileMenuStat manual";
-            const stat = el("span", { class: statCls });
             if (entry.changed) {
+              const stat = el("span", { class: "fileMenuStat changed" });
               stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
               stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
-            } else {
-              stat.textContent = statText;
+              btn.appendChild(stat);
             }
-            btn.appendChild(stat);
             btn.onclick = () => {
               setFilePath(path, { line: null });
               const selectedEntry = fileEntryMap.get(path);
@@ -3340,6 +3350,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               else if (!res.base_exists) fileStatus.textContent = `${rel} - new file`;
               else if (!res.current_exists) fileStatus.textContent = `${rel} - deleted`;
               else fileStatus.textContent = rel;
+              rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
               if (!res || typeof res.kind !== "string") throw new Error("invalid response");
@@ -3357,7 +3368,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 const size = typeof res.size === "number" ? res.size : res.text.length;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               }
-              if (!fileEntryMap.has(rel)) upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
+              rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
               renderFilePickerMenu();
             }
             localStorage.setItem("codexweb.filePath", rel);
@@ -3690,12 +3701,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             );
             addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
             addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
-            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
+	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
 	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
 	            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
 	            addRow("Model", d && d.model ? d.model : "-");
 	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
-	            addRow("Priority", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
+	            addRow("Priority", d && typeof d.final_priority === "number" ? Number(d.final_priority).toFixed(4) : "-");
+	            addRow("Priority offset", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
 	            addRow("Snooze", d && typeof d.snooze_until === "number" ? fmtTs(d.snooze_until) : "-");
 	            addRow("Depends on", d && d.dependency_session_id ? d.dependency_session_id : "-");
 	            addRow("UI", UI_VERSION);

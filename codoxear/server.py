@@ -730,7 +730,7 @@ def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
 def _current_git_branch(cwd: Path) -> str | None:
     try:
         branch = _run_git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
-    except RuntimeError:
+    except (RuntimeError, FileNotFoundError):
         return None
     if not branch:
         return None
@@ -966,13 +966,13 @@ class SessionManager:
         self._queues: dict[str, list[str]] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
-        self._discover_existing(force=True)
         self._load_harness()
         self._load_aliases()
         self._load_sidebar_meta()
         self._load_hidden_sessions()
         self._load_files()
         self._load_queues()
+        self._discover_existing(force=True)
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
         self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
@@ -2014,6 +2014,10 @@ class SessionManager:
                 blocked = dependency_session_id is not None
                 snoozed = snooze_until is not None and snooze_until > now_ts
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
+                cwd_path = Path(s.cwd).expanduser()
+                if not cwd_path.is_absolute():
+                    cwd_path = cwd_path.resolve()
+                git_branch = _current_git_branch(cwd_path)
                 items.append(
                     {
                         "session_id": s.session_id,
@@ -2035,6 +2039,7 @@ class SessionManager:
                         "harness_enabled": h_enabled,
                         "alias": alias,
                         "files": list(files),
+                        "git_branch": git_branch,
                         "priority_offset": priority_offset,
                         "snooze_until": snooze_until,
                         "dependency_session_id": dependency_session_id,
@@ -2476,18 +2481,11 @@ class SessionManager:
             s = self._sessions.get(session_id)
         if not s:
             return False
-        if s.owned:
-            ok = self.kill_session(session_id)
-            if ok:
-                self.files_clear(session_id)
-                self._clear_deleted_session_state(session_id)
-            return ok
-        self.files_clear(session_id)
-        with self._lock:
-            self._sessions.pop(session_id, None)
-        self._hide_session(session_id)
-        self._clear_deleted_session_state(session_id)
-        return True
+        ok = self.kill_session(session_id)
+        if ok:
+            self.files_clear(session_id)
+            self._clear_deleted_session_state(session_id)
+        return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
         with self._lock:
@@ -2848,6 +2846,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not cwd_path.is_absolute():
                     cwd_path = cwd_path.resolve()
                 git_branch = _current_git_branch(cwd_path)
+                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+                elapsed_s = max(0.0, time.time() - updated_ts)
+                time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                base_priority = _clip01(time_priority + float(sidebar_meta["priority_offset"]))
+                blocked = sidebar_meta["dependency_session_id"] is not None
+                snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
+                final_priority = 0.0 if (snoozed or blocked) else base_priority
                 _json_response(
                     self,
                     200,
@@ -2868,6 +2873,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "model": model,
                         "reasoning_effort": reasoning_effort,
                         "git_branch": git_branch,
+                        "time_priority": time_priority,
+                        "base_priority": base_priority,
+                        "final_priority": final_priority,
                         "priority_offset": sidebar_meta["priority_offset"],
                         "snooze_until": sidebar_meta["snooze_until"],
                         "dependency_session_id": sidebar_meta["dependency_session_id"],
@@ -3183,6 +3191,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 current_exists = bool(p.exists() and p.is_file())
                 if current_exists:
                     current_text, current_size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                try:
+                    MANAGER.files_add(session_id, str(p))
+                except KeyError:
+                    pass
                 base_exists = False
                 base_text = ""
                 try:
@@ -3203,6 +3215,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "ok": True,
                         "cwd": str(cwd),
                         "path": rel,
+                        "abs_path": str(p),
                         "current_exists": current_exists,
                         "current_size": int(current_size),
                         "current_text": current_text,
