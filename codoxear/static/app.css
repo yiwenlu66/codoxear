@@ -1156,22 +1156,41 @@ select {
         box-sizing: border-box;
       }
       .formViewer {
-        width: min(92vw, 640px);
+        width: min(92vw, 560px);
+      }
+      .formDialog {
+        border: 0;
+        padding: 12px;
+        position: relative;
+        overflow: visible;
+      }
+      .formDialog[open] {
+        display: flex;
+      }
+      .formDialog::backdrop {
+        background: rgba(15, 23, 42, 0.45);
       }
       .newSessionViewer {
-        width: min(92vw, 560px);
+        width: min(92vw, 480px);
       }
       .formBody {
         display: flex;
         flex-direction: column;
-        gap: 14px;
-        overflow: auto;
+        gap: 10px;
+        overflow: visible;
         -webkit-overflow-scrolling: touch;
+      }
+      .formGrid {
+        display: grid;
+        gap: 10px;
+      }
+      .formGrid.twoCol {
+        grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
       }
       .field {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
       }
       .fieldLabel {
         font-size: 13px;
@@ -1183,10 +1202,38 @@ select {
         color: var(--muted);
         line-height: 1.35;
       }
+      .pickerField {
+        position: relative;
+      }
+      .pickerInputRow {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 128px;
+        gap: 8px;
+        align-items: start;
+      }
+      .dialogPickerBtn {
+        min-height: 42px;
+      }
+      .sidePickerBtn {
+        width: 100%;
+      }
+      .dialogPickerMenu {
+        max-height: min(40vh, 320px);
+        z-index: 30;
+        position: absolute;
+        inset: auto auto auto 0;
+      }
+      .pickerEmpty {
+        padding: 10px 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
       .choiceChips {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 8px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
       }
       .choiceChip {
         border-radius: 999px;
@@ -1194,11 +1241,15 @@ select {
         font-size: 13px;
         line-height: 1;
         background: #ffffff;
+        flex: 0 0 auto;
       }
       .choiceChip.active {
         border-color: rgba(29, 78, 216, 0.35);
         background: rgba(29, 78, 216, 0.08);
         color: var(--accent);
+      }
+      .subtleBtn {
+        color: var(--muted);
       }
       .customSnoozeRow {
         display: none;
@@ -1226,7 +1277,7 @@ select {
         gap: 10px;
       }
       .formActions button {
-        min-width: 120px;
+        min-width: 108px;
       }
       .helpBody {
         overflow: auto;
@@ -1469,8 +1520,7 @@ select {
           padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
         }
         .helpViewer,
-        .diagViewer,
-        .formViewer {
+        .diagViewer {
           width: 100vw;
           max-height: none;
           left: 0;
@@ -1481,7 +1531,30 @@ select {
           border-radius: 0;
           padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
         }
+        .formViewer {
+          width: min(94vw, 520px);
+          max-height: min(calc(var(--appH, 100dvh) - 24px), 88vh);
+          left: 50%;
+          right: auto;
+          top: 50%;
+          bottom: auto;
+          transform: translate(-50%, -50%);
+          border-radius: 18px;
+          padding: 12px;
+        }
+        .formGrid.twoCol,
         .customSnoozeRow {
+          grid-template-columns: 1fr;
+        }
+        .choiceChips {
+          gap: 6px;
+          padding-bottom: 2px;
+        }
+        .choiceChip {
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+        .pickerInputRow {
           grid-template-columns: 1fr;
         }
         .sessionFilesLabel {

@@ -769,6 +769,8 @@
         const fileRefValidationCache = new Map();
         const fileRefValidationPending = new Map();
         const fileRefCandidateCache = new Map();
+        let editDependencyMenuOpen = false;
+        let newSessionRecentMenuOpen = false;
         const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
@@ -1039,7 +1041,6 @@
         root.appendChild(diagBackdrop);
         root.appendChild(diagViewer);
 
-        const editBackdrop = el("div", { class: "modalBackdrop", id: "editBackdrop" });
         const editCloseBtn = el("button", {
           id: "editCloseBtn",
           class: "icon-btn",
@@ -1065,12 +1066,18 @@
           value: "0",
         });
         const editPriorityValue = el("span", { class: "rangeValue", id: "editPriorityValue", text: "+0.00" });
+        const editPriorityResetBtn = el("button", {
+          id: "editPriorityResetBtn",
+          class: "icon-btn text-btn subtleBtn",
+          type: "button",
+          text: "Reset",
+        });
         const editSnoozeModeButtons = new Map();
         let editSnoozeMode = "none";
         const editSnoozeButtons = el("div", { class: "choiceChips", id: "editSnoozeButtons" });
         for (const [value, label] of [
           ["none", "No snooze"],
-          ["8h", "8 hours"],
+          ["4h", "4 hours"],
           ["tomorrow", "Tomorrow"],
           ["custom", "Custom"],
         ]) {
@@ -1089,35 +1096,40 @@
           editSnoozeCustomDate,
           editSnoozeCustomTime,
         ]);
-        const editDependencySelect = el("select", { id: "editDependencySelect" }, [el("option", { value: "", text: "No dependency" })]);
+        const editDependencyBtn = el("button", {
+          id: "editDependencyBtn",
+          class: "filePickerBtn dialogPickerBtn",
+          type: "button",
+          "aria-label": "Choose dependency",
+        });
+        const editDependencyMenu = el("div", { id: "editDependencyMenu", class: "filePickerMenu dialogPickerMenu" });
+        const editDependencyField = el("div", { class: "pickerField" }, [editDependencyBtn]);
         const editSaveBtn = el("button", { class: "primary", id: "editSaveBtn", type: "button", text: "Save" });
-        const editViewer = el("div", { class: "formViewer", id: "editViewer", role: "dialog", "aria-label": "Edit conversation" }, [
+        const editViewer = el("dialog", { class: "formViewer formDialog", id: "editViewer", "aria-label": "Edit conversation" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Edit conversation" }),
             el("div", { class: "actions" }, [editCloseBtn]),
           ]),
           editStatus,
           el("div", { class: "formBody" }, [
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Conversation name" }),
-              editNameInput,
-              el("span", { class: "fieldHint", text: "Leave blank to fall back to the derived session name." }),
-            ]),
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Priority offset" }),
-              el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue]),
-              el("span", { class: "fieldHint", text: "Range -1 to +1. Positive keeps the session near the top longer." }),
+            el("div", { class: "formGrid twoCol" }, [
+              el("label", { class: "field" }, [
+                el("span", { class: "fieldLabel", text: "Conversation name" }),
+                editNameInput,
+              ]),
+              el("label", { class: "field" }, [
+                el("span", { class: "fieldLabel", text: "Priority offset" }),
+                el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
+              ]),
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Snooze" }),
               editSnoozeButtons,
               editSnoozeCustomRow,
-              el("span", { class: "fieldHint", text: "Choose a preset or enter an exact custom date and time." }),
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Depends on" }),
-              editDependencySelect,
-              el("span", { class: "fieldHint", text: "A dependency suppresses this conversation until the target session is deleted." }),
+              editDependencyField,
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -1125,8 +1137,8 @@
             editSaveBtn,
           ]),
         ]);
-        root.appendChild(editBackdrop);
         root.appendChild(editViewer);
+        editViewer.appendChild(editDependencyMenu);
 
         const newSessionBackdrop = el("div", { class: "modalBackdrop", id: "newSessionBackdrop" });
         const newSessionCloseBtn = el("button", {
@@ -1141,12 +1153,21 @@
         const newSessionCwdInput = el("input", {
           id: "newSessionCwdInput",
           type: "text",
-          list: "cwdRecentList",
           placeholder: "/path/to/project",
           autocomplete: "off",
           spellcheck: "false",
         });
-        const cwdRecentList = el("datalist", { id: "cwdRecentList" });
+        const newSessionRecentBtn = el("button", {
+          id: "newSessionRecentBtn",
+          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
+          type: "button",
+          text: "Recent",
+        });
+        const newSessionRecentMenu = el("div", { id: "newSessionRecentMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionCwdField = el("div", { class: "pickerInputRow pickerField" }, [
+          newSessionCwdInput,
+          newSessionRecentBtn,
+        ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
@@ -1157,9 +1178,7 @@
           el("div", { class: "formBody" }, [
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Working directory" }),
-              newSessionCwdInput,
-              cwdRecentList,
-              el("span", { class: "fieldHint", text: "Choose a recent directory or type any path directly." }),
+              newSessionCwdField,
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -1169,6 +1188,7 @@
         ]);
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
+        newSessionViewer.appendChild(newSessionRecentMenu);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -2503,21 +2523,23 @@
             scheduleHarnessSave();
           };
         function renderRecentCwdOptions() {
-          cwdRecentList.innerHTML = "";
+          const out = [];
           const seen = new Set();
           for (const s of sessionIndex.values()) {
             const cwd = typeof s.cwd === "string" ? s.cwd.trim() : "";
             if (!cwd || seen.has(cwd)) continue;
             seen.add(cwd);
-            cwdRecentList.appendChild(el("option", { value: cwd }));
+            out.push(cwd);
           }
+          return out;
         }
 
         function hideEditSession() {
           editSessionId = null;
           editStatus.textContent = "";
-          editBackdrop.style.display = "none";
-          editViewer.style.display = "none";
+          editDependencyMenuOpen = false;
+          applyDialogMenus();
+          if (editViewer.open) editViewer.close();
         }
 
         function syncEditPriorityLabel() {
@@ -2525,7 +2547,7 @@
         }
 
         function setEditSnoozeMode(mode) {
-          editSnoozeMode = ["none", "8h", "tomorrow", "custom"].includes(mode) ? mode : "none";
+          editSnoozeMode = ["none", "4h", "tomorrow", "custom"].includes(mode) ? mode : "none";
           for (const [value, btn] of editSnoozeModeButtons.entries()) {
             btn.classList.toggle("active", value === editSnoozeMode);
           }
@@ -2552,14 +2574,106 @@
         }
 
         function fillDependencyOptions(currentSid, currentDependencySid) {
-          editDependencySelect.innerHTML = "";
-          editDependencySelect.appendChild(el("option", { value: "", text: "No dependency" }));
+          editDependencyMenu.innerHTML = "";
+          const addItem = (value, label, active) => {
+            const btn = el("button", {
+              class: "fileMenuItem" + (active ? " active" : ""),
+              type: "button",
+              title: label,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: label }));
+            btn.onclick = () => {
+              editDependencyBtn.dataset.value = value || "";
+              setDependencyButtonContent();
+              editDependencyMenuOpen = false;
+              applyDialogMenus();
+            };
+            editDependencyMenu.appendChild(btn);
+          };
+          addItem("", "No dependency", !currentDependencySid);
           for (const s of sessionIndex.values()) {
             if (!s || s.session_id === currentSid) continue;
             const label = `${sessionDisplayName(s)}${s.cwd ? ` | ${baseName(s.cwd)}` : ""}`;
-            editDependencySelect.appendChild(el("option", { value: s.session_id, text: label }));
+            addItem(s.session_id, label, currentDependencySid === s.session_id);
           }
-          editDependencySelect.value = currentDependencySid || "";
+          editDependencyBtn.dataset.value = currentDependencySid || "";
+          setDependencyButtonContent();
+        }
+
+        function setDependencyButtonContent() {
+          const value = String(editDependencyBtn.dataset.value || "");
+          let label = "No dependency";
+          if (value) {
+            const s = sessionIndex.get(value);
+            if (s) label = `${sessionDisplayName(s)}${s.cwd ? ` | ${baseName(s.cwd)}` : ""}`;
+          }
+          editDependencyBtn.innerHTML = "";
+          editDependencyBtn.appendChild(el("span", { class: "fileMenuPath", text: label }));
+        }
+
+        function renderRecentCwdMenu() {
+          newSessionRecentMenu.innerHTML = "";
+          const items = renderRecentCwdOptions();
+          if (!items.length) {
+            newSessionRecentMenu.appendChild(el("div", { class: "pickerEmpty", text: "No recent directories" }));
+            return;
+          }
+          for (const cwd of items) {
+            const btn = el("button", {
+              class: "fileMenuItem" + (newSessionCwdInput.value.trim() === cwd ? " active" : ""),
+              type: "button",
+              title: cwd,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
+            btn.onclick = () => {
+              newSessionCwdInput.value = cwd;
+              newSessionRecentMenuOpen = false;
+              applyDialogMenus();
+              newSessionCwdInput.focus();
+            };
+            newSessionRecentMenu.appendChild(btn);
+          }
+        }
+
+        function applyDialogMenus() {
+          editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
+          newSessionRecentMenu.classList.toggle("open", newSessionRecentMenuOpen);
+          if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
+          if (newSessionRecentMenuOpen) positionDialogMenu(newSessionRecentMenu, newSessionRecentBtn);
+        }
+
+        function positionDialogMenu(menu, anchorBtn) {
+          if (!menu || !anchorBtn) return;
+          const host = menu.parentElement;
+          if (!host) return;
+          const rect = anchorBtn.getBoundingClientRect();
+          const hostRect = host.getBoundingClientRect();
+          const viewportW = hostRect.width;
+          const viewportH = window.innerHeight;
+          const margin = 12;
+          const desiredWidth = Math.min(Math.max(rect.width, 280), viewportW - margin * 2);
+          menu.style.position = "absolute";
+          const left = Math.max(margin, Math.min(viewportW - margin - desiredWidth, rect.left - hostRect.left));
+          menu.style.left = `${left}px`;
+          menu.style.width = `${desiredWidth}px`;
+          menu.style.right = "auto";
+          menu.style.bottom = "auto";
+          menu.style.maxHeight = "";
+          const menuHeight = Math.min(menu.scrollHeight || 260, Math.floor(viewportH * 0.5));
+          const spaceBelow = viewportH - rect.bottom - margin;
+          const spaceAbove = rect.top - margin;
+          const openAbove = spaceBelow < Math.min(220, menuHeight) && spaceAbove > spaceBelow;
+          if (openAbove) {
+            const maxHeight = Math.max(120, spaceAbove - 8);
+            menu.style.maxHeight = `${maxHeight}px`;
+            const top = Math.max(margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 8);
+            menu.style.top = `${top}px`;
+          } else {
+            const maxHeight = Math.max(120, spaceBelow - 8);
+            menu.style.maxHeight = `${maxHeight}px`;
+            const top = Math.min(viewportH - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
+            menu.style.top = `${top}px`;
+          }
         }
 
         function openEditSession(sid) {
@@ -2581,23 +2695,22 @@
             fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
           }
           fillDependencyOptions(sid, s.dependency_session_id || "");
-          editBackdrop.style.display = "block";
-          editViewer.style.display = "flex";
-          editNameInput.focus();
-          editNameInput.select();
+          if (!editViewer.open) editViewer.showModal();
         }
 
         function hideNewSessionDialog() {
           newSessionStatus.textContent = "";
+          newSessionRecentMenuOpen = false;
+          applyDialogMenus();
           newSessionBackdrop.style.display = "none";
           newSessionViewer.style.display = "none";
         }
 
         function openNewSessionDialog() {
-          renderRecentCwdOptions();
           newSessionStatus.textContent = "";
           const cur = selected ? sessionIndex.get(selected) : null;
           newSessionCwdInput.value = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          renderRecentCwdMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
           newSessionCwdInput.focus();
@@ -2605,23 +2718,47 @@
         }
 
         editPriorityRange.oninput = syncEditPriorityLabel;
+        editPriorityResetBtn.onclick = () => {
+          editPriorityRange.value = "0";
+          syncEditPriorityLabel();
+        };
         for (const [mode, btn] of editSnoozeModeButtons.entries()) {
           btn.onclick = () => {
             setEditSnoozeMode(mode);
             if (mode === "tomorrow") fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
-            else if (mode === "8h") fillCustomSnoozeInputs(Math.floor(Date.now() / 1000) + 8 * 3600);
+            else if (mode === "4h") fillCustomSnoozeInputs(Math.floor(Date.now() / 1000) + 4 * 3600);
           };
         }
+        editDependencyBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          editDependencyMenuOpen = !editDependencyMenuOpen;
+          newSessionRecentMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionRecentBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          renderRecentCwdMenu();
+          newSessionRecentMenuOpen = !newSessionRecentMenuOpen;
+          editDependencyMenuOpen = false;
+          applyDialogMenus();
+        };
         editCloseBtn.onclick = () => hideEditSession();
         $("#editCancelBtn").onclick = () => hideEditSession();
-        editBackdrop.onclick = () => hideEditSession();
-        editViewer.onclick = (e) => e.stopPropagation();
+        editViewer.addEventListener("cancel", (e) => {
+          e.preventDefault();
+          hideEditSession();
+        });
+        editViewer.onclick = (e) => {
+          if (e.target === editViewer) hideEditSession();
+        };
         editSaveBtn.onclick = async () => {
           if (!editSessionId) return;
           let snoozeUntil = null;
           const snoozeMode = editSnoozeMode;
-          if (snoozeMode === "8h") {
-            snoozeUntil = Math.floor(Date.now() / 1000) + 8 * 3600;
+          if (snoozeMode === "4h") {
+            snoozeUntil = Math.floor(Date.now() / 1000) + 4 * 3600;
           } else if (snoozeMode === "tomorrow") {
             snoozeUntil = tomorrowSnoozeSeconds();
           } else if (snoozeMode === "custom") {
@@ -2646,7 +2783,7 @@
                 name: String(editNameInput.value || ""),
                 priority_offset: Number(editPriorityRange.value || 0),
                 snooze_until: snoozeUntil,
-                dependency_session_id: editDependencySelect.value || null,
+                dependency_session_id: String(editDependencyBtn.dataset.value || "") || null,
               },
             });
             hideEditSession();
@@ -2665,6 +2802,7 @@
         $("#newSessionCancelBtn").onclick = () => hideNewSessionDialog();
         newSessionBackdrop.onclick = () => hideNewSessionDialog();
         newSessionViewer.onclick = (e) => e.stopPropagation();
+        newSessionCwdInput.oninput = () => renderRecentCwdMenu();
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
           if (!cwd) {
@@ -3326,12 +3464,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           await openFileReference({ path, line });
         });
         document.addEventListener("click", (e) => {
-          if (fileViewer.style.display !== "flex" || !fileMenuOpen) return;
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
-          if (t.closest("#fileCandRow")) return;
-          fileMenuOpen = false;
-          applyFileMenuState();
+          if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
+            fileMenuOpen = false;
+            applyFileMenuState();
+          }
+          if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
+            editDependencyMenuOpen = false;
+            applyDialogMenus();
+          }
+          if (newSessionRecentMenuOpen && !t.closest("#newSessionRecentBtn") && !t.closest("#newSessionRecentMenu")) {
+            newSessionRecentMenuOpen = false;
+            applyDialogMenus();
+          }
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
