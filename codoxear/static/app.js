@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260306.7";
+	      const UI_VERSION = "20260307.1";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -256,22 +256,156 @@
         return null;
       }
 
-      function stripPathLocationSuffix(rawPath) {
-        const s = String(rawPath || "").trim();
-        return s.replace(/:\d+(?::\d+)?$/, "");
+      const CLICKABLE_FILE_EXTENSIONS = new Set([
+        "bash",
+        "c",
+        "cc",
+        "cfg",
+        "conf",
+        "cpp",
+        "css",
+        "csv",
+        "gif",
+        "go",
+        "h",
+        "hpp",
+        "html",
+        "htm",
+        "ico",
+        "ini",
+        "java",
+        "jpeg",
+        "jpg",
+        "js",
+        "json",
+        "jsonl",
+        "log",
+        "md",
+        "patch",
+        "png",
+        "py",
+        "rs",
+        "scss",
+        "sh",
+        "sql",
+        "svg",
+        "toml",
+        "ts",
+        "tsx",
+        "txt",
+        "webp",
+        "xml",
+        "yaml",
+        "yml",
+        "zsh",
+      ]);
+
+      function filePathExtension(path) {
+        const last = String(path || "").split("/").pop() || "";
+        const idx = last.lastIndexOf(".");
+        if (idx <= 0 || idx === last.length - 1) return "";
+        return last.slice(idx + 1).toLowerCase();
       }
 
-      function localPathFromRef(u) {
+      function hasClickableFileExtension(path) {
+        const ext = filePathExtension(path);
+        return ext ? CLICKABLE_FILE_EXTENSIONS.has(ext) : false;
+      }
+
+      function normalizeLineNumber(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) return null;
+        return Math.max(1, Math.floor(n));
+      }
+
+      function formatPriorityOffset(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return "0.00";
+        return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
+      }
+
+      function parseFileLocation(rawValue) {
+        const raw = String(rawValue || "").trim();
+        if (!raw) return null;
+        let path = raw;
+        let line = null;
+        let m = path.match(/^(.*)#L(\d+)(?:-\d+)?$/);
+        if (m) {
+          path = m[1];
+          line = normalizeLineNumber(m[2]);
+        } else {
+          m = path.match(/^(.*):(\d+)(?::\d+)?$/);
+          if (m && !/^[A-Za-z]:$/.test(m[1])) {
+            path = m[1];
+            line = normalizeLineNumber(m[2]);
+          }
+        }
+        path = String(path || "").trim();
+        if (!path) return null;
+        return { path, line };
+      }
+
+      function stripPathLocationSuffix(rawPath) {
+        const parsed = parseFileLocation(rawPath);
+        return parsed ? parsed.path : String(rawPath || "").trim();
+      }
+
+      function parseLocalFileRef(rawValue) {
+        const parsed = parseFileLocation(rawValue);
+        if (!parsed) return null;
+        const path = parsed.path;
+        if (!path) return null;
+        if (path.includes("://") || path.startsWith("mailto:")) return null;
+        if (path.startsWith("//")) return null;
+        const looksAbsolute = path.startsWith("/");
+        const looksRelative = path.startsWith("./") || path.startsWith("../") || path.includes("/");
+        const looksBareFile = !looksAbsolute && !looksRelative && hasClickableFileExtension(path);
+        if (!looksAbsolute && !looksRelative && !looksBareFile) return null;
+        if ((looksAbsolute || looksRelative || looksBareFile) && !hasClickableFileExtension(path)) return null;
+        return { path, line: parsed.line };
+      }
+
+      function localFileRefFromRef(u) {
         const raw = String(u ?? "").trim();
         if (!raw) return null;
-        if (raw.startsWith("/") && !raw.startsWith("//")) return stripPathLocationSuffix(raw);
+        const direct = parseLocalFileRef(raw);
+        if (direct) return direct;
         try {
           const url = new URL(raw, location.href);
           if (url.origin !== location.origin) return null;
-          const pathname = stripPathLocationSuffix(decodeURIComponent(url.pathname || ""));
-          if (/^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(pathname)) return pathname;
+          const combined = `${decodeURIComponent(url.pathname || "")}${url.hash || ""}`;
+          const parsed = parseLocalFileRef(combined);
+          if (!parsed) return null;
+          if (parsed.path.startsWith("/") && /^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(parsed.path)) {
+            return parsed;
+          }
         } catch {}
         return null;
+      }
+
+      function renderInlineText(rawText) {
+        const raw = String(rawText ?? "");
+        const re =
+          /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
+        let out = "";
+        let last = 0;
+        for (;;) {
+          const m = re.exec(raw);
+          if (!m) break;
+          const wholeStart = m.index;
+          const tokenStart = wholeStart + m[1].length;
+          const token = m[2];
+          out += escapeHtml(raw.slice(last, tokenStart));
+          const ref = parseLocalFileRef(token);
+          if (ref) {
+            out += `<span data-candidate-file-path="${escapeHtml(ref.path)}"${ref.line ? ` data-candidate-file-line="${ref.line}"` : ""}>${escapeHtml(token)}</span>`;
+          } else {
+            out += escapeHtml(token);
+          }
+          last = tokenStart + token.length;
+        }
+        out += escapeHtml(raw.slice(last));
+        return out;
       }
 
       function renderInlineMd(s) {
@@ -282,13 +416,18 @@
         for (;;) {
           const m = re.exec(raw);
           if (!m) break;
-          out += escapeHtml(raw.slice(last, m.index));
+          out += renderInlineText(raw.slice(last, m.index));
           if (m[1] !== undefined) {
-            out += `<code>${escapeHtml(m[1])}</code>`;
+            const inlineRef = parseLocalFileRef(m[1]);
+            if (inlineRef) {
+              out += `<code><span data-candidate-file-path="${escapeHtml(inlineRef.path)}"${inlineRef.line ? ` data-candidate-file-line="${inlineRef.line}"` : ""}>${escapeHtml(m[1])}</span></code>`;
+            } else {
+              out += `<code>${escapeHtml(m[1])}</code>`;
+            }
           } else if (m[2] !== undefined) {
-            const localPath = localPathFromRef(m[3]);
-            if (localPath) {
-              out += `<a href="#" class="inlineFileLink" data-local-path="${escapeHtml(localPath)}">${escapeHtml(m[2])}</a>`;
+            const localRef = localFileRefFromRef(m[3]);
+            if (localRef) {
+              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(m[2])}</span>`;
             } else {
               const href = safeUrl(m[3]);
               if (!href) out += `${escapeHtml(m[2])} (${escapeHtml(m[3])})`;
@@ -301,7 +440,7 @@
           }
           last = m.index + m[0].length;
         }
-        out += escapeHtml(raw.slice(last));
+        out += renderInlineText(raw.slice(last));
         return out;
       }
 
@@ -593,6 +732,7 @@
         const CHAT_DOM_WINDOW = 260;
         let activeLogPath = null;
         let activeThreadId = null;
+        let activeFileLine = null;
         let olderBefore = 0;
         let hasOlder = false;
         let loadingOlder = false;
@@ -626,7 +766,10 @@
 				    let typingRow = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
-         const recentEventKeys = [];
+        const fileRefValidationCache = new Map();
+        const fileRefValidationPending = new Map();
+        const fileRefCandidateCache = new Map();
+        const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
          let lastAssistantKey = "";
@@ -635,13 +778,14 @@
               let harnessMenuOpen = false;
               let harnessCfg = { enabled: false, request: "" };
               let harnessSaveTimer = null;
+              let editSessionId = null;
 
             const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
             titleLabel.style.cursor = "pointer";
-            titleLabel.title = "Click to rename";
+            titleLabel.title = "Edit conversation";
             titleLabel.onclick = () => {
               if (!selected) return;
-              void renameSessionId(selected);
+              openEditSession(selected);
             };
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
 				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
@@ -857,10 +1001,10 @@
             class: "helpBody",
             html: `<div class="muted">Sessions list</div>
 <ul class="md">
-  <li>On mobile: swipe left on a session to reveal <b>Rename</b> and <b>Duplicate</b>.</li>
-  <li>On mobile: swipe right on a web-owned session to reveal <b>Delete</b>.</li>
+  <li>On mobile: swipe left on a session to reveal <b>Edit</b> and <b>Duplicate</b>.</li>
+  <li>On mobile: swipe right on any session to reveal <b>Delete</b>.</li>
   <li>On desktop: session actions are shown on the right.</li>
-  <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle.</li>
+  <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
   <li>The status line starts with a boxed <b>W</b> (web-owned) or boxed <b>T</b> (terminal-owned).</li>
 </ul>
 <div class="muted">Queue</div>
@@ -894,6 +1038,137 @@
         ]);
         root.appendChild(diagBackdrop);
         root.appendChild(diagViewer);
+
+        const editBackdrop = el("div", { class: "modalBackdrop", id: "editBackdrop" });
+        const editCloseBtn = el("button", {
+          id: "editCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const editStatus = el("div", { class: "muted", id: "editStatus", text: "" });
+        const editNameInput = el("input", {
+          id: "editNameInput",
+          type: "text",
+          placeholder: "Conversation title",
+          maxlength: "80",
+          autocomplete: "off",
+        });
+        const editPriorityRange = el("input", {
+          id: "editPriorityRange",
+          type: "range",
+          min: "-1",
+          max: "1",
+          step: "0.05",
+          value: "0",
+        });
+        const editPriorityValue = el("span", { class: "rangeValue", id: "editPriorityValue", text: "+0.00" });
+        const editSnoozeModeButtons = new Map();
+        let editSnoozeMode = "none";
+        const editSnoozeButtons = el("div", { class: "choiceChips", id: "editSnoozeButtons" });
+        for (const [value, label] of [
+          ["none", "No snooze"],
+          ["8h", "8 hours"],
+          ["tomorrow", "Tomorrow"],
+          ["custom", "Custom"],
+        ]) {
+          const btn = el("button", {
+            type: "button",
+            class: "choiceChip",
+            "data-snooze-mode": value,
+            text: label,
+          });
+          editSnoozeModeButtons.set(value, btn);
+          editSnoozeButtons.appendChild(btn);
+        }
+        const editSnoozeCustomDate = el("input", { id: "editSnoozeCustomDate", type: "date" });
+        const editSnoozeCustomTime = el("input", { id: "editSnoozeCustomTime", type: "time", step: "60" });
+        const editSnoozeCustomRow = el("div", { class: "customSnoozeRow", id: "editSnoozeCustomRow" }, [
+          editSnoozeCustomDate,
+          editSnoozeCustomTime,
+        ]);
+        const editDependencySelect = el("select", { id: "editDependencySelect" }, [el("option", { value: "", text: "No dependency" })]);
+        const editSaveBtn = el("button", { class: "primary", id: "editSaveBtn", type: "button", text: "Save" });
+        const editViewer = el("div", { class: "formViewer", id: "editViewer", role: "dialog", "aria-label": "Edit conversation" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Edit conversation" }),
+            el("div", { class: "actions" }, [editCloseBtn]),
+          ]),
+          editStatus,
+          el("div", { class: "formBody" }, [
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Conversation name" }),
+              editNameInput,
+              el("span", { class: "fieldHint", text: "Leave blank to fall back to the derived session name." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Priority offset" }),
+              el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue]),
+              el("span", { class: "fieldHint", text: "Range -1 to +1. Positive keeps the session near the top longer." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Snooze" }),
+              editSnoozeButtons,
+              editSnoozeCustomRow,
+              el("span", { class: "fieldHint", text: "Choose a preset or enter an exact custom date and time." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Depends on" }),
+              editDependencySelect,
+              el("span", { class: "fieldHint", text: "A dependency suppresses this conversation until the target session is deleted." }),
+            ]),
+          ]),
+          el("div", { class: "formActions" }, [
+            el("button", { id: "editCancelBtn", type: "button", text: "Cancel" }),
+            editSaveBtn,
+          ]),
+        ]);
+        root.appendChild(editBackdrop);
+        root.appendChild(editViewer);
+
+        const newSessionBackdrop = el("div", { class: "modalBackdrop", id: "newSessionBackdrop" });
+        const newSessionCloseBtn = el("button", {
+          id: "newSessionCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const newSessionStatus = el("div", { class: "muted", id: "newSessionStatus", text: "" });
+        const newSessionCwdInput = el("input", {
+          id: "newSessionCwdInput",
+          type: "text",
+          list: "cwdRecentList",
+          placeholder: "/path/to/project",
+          autocomplete: "off",
+          spellcheck: "false",
+        });
+        const cwdRecentList = el("datalist", { id: "cwdRecentList" });
+        const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
+        const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "New session" }),
+            el("div", { class: "actions" }, [newSessionCloseBtn]),
+          ]),
+          newSessionStatus,
+          el("div", { class: "formBody" }, [
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Working directory" }),
+              newSessionCwdInput,
+              cwdRecentList,
+              el("span", { class: "fieldHint", text: "Choose a recent directory or type any path directly." }),
+            ]),
+          ]),
+          el("div", { class: "formActions" }, [
+            el("button", { id: "newSessionCancelBtn", type: "button", text: "Cancel" }),
+            newSessionStartBtn,
+          ]),
+        ]);
+        root.appendChild(newSessionBackdrop);
+        root.appendChild(newSessionViewer);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -1313,7 +1588,9 @@
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
-          bubble.appendChild(el("div", { class: "md", html: mdToHtmlCached(ev.text) }));
+          const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
+          bubble.appendChild(md);
+          void upgradeCandidateFileRefs(md);
           if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
 
           if (pending) {
@@ -1439,10 +1716,19 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
+          fileRefCandidateCache.clear();
           const mobile = isMobile();
             const sessions = (data.sessions || [])
                .slice()
-               .sort((a, b) => (b.updated_ts || b.start_ts || 0) - (a.updated_ts || a.start_ts || 0));
+               .sort((a, b) => {
+                 const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);
+                 if (p) return p;
+                 const u = Number(b.updated_ts || b.start_ts || 0) - Number(a.updated_ts || a.start_ts || 0);
+                 if (u) return u;
+                 const s0 = Number(b.start_ts || 0) - Number(a.start_ts || 0);
+                 if (s0) return s0;
+                 return String(a.session_id || "").localeCompare(String(b.session_id || ""));
+               });
 	           if (mobile && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 	             sessionIndex = new Map();
 	             for (const s of sessions) sessionIndex.set(s.session_id, s);
@@ -1515,8 +1801,8 @@
 
              const renameBtn = el("button", {
                class: "icon-btn",
-               title: "Rename session",
-               "aria-label": "Rename session",
+               title: "Edit conversation",
+               "aria-label": "Edit conversation",
                type: "button",
                html: iconSvg("edit"),
              });
@@ -1524,7 +1810,7 @@
                e.preventDefault();
                e.stopPropagation();
                closeOpenSwipe();
-               void renameSessionId(s.session_id);
+               openEditSession(s.session_id);
              };
              const dupBtn = el("button", {
                class: "icon-btn",
@@ -1544,18 +1830,20 @@
                }
                await spawnSessionWithCwd(cwd);
              };
-             const delBtn = s.owned
-               ? el("button", {
-                   class: "icon-btn danger sessionDel",
-                   title: "Delete session",
-                   "aria-label": "Delete session",
-                   type: "button",
-                   html: iconSvg("trash"),
-                 })
-               : null;
-             if (delBtn) delBtn.onclick = (e) => void doDelete(e);
+             const delBtn = el("button", {
+               class: "icon-btn danger sessionDel",
+               title: "Delete session",
+               "aria-label": "Delete session",
+               type: "button",
+               html: iconSvg("trash"),
+             });
+             delBtn.onclick = (e) => void doDelete(e);
 
-             const stateDot = el("span", { class: "stateDot" + (s.busy ? " busy" : " idle") });
+             const stateDot = el("span", {
+               class:
+                 "stateDot" +
+                 (s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
+             });
              const titleRow = el("div", { class: "sessionTitleRow" }, [
                stateDot,
                el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
@@ -1567,7 +1855,7 @@
 	             ]);
 
              if (mobile) {
-               const leftActions = el("div", { class: "sessionActions left" }, delBtn ? [delBtn] : []);
+               const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
                const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
                const inner = el("div", { class: "sessionInner" }, [top, meta]);
@@ -1581,7 +1869,7 @@
 	                  openSwipeContent = content;
 	               }
 
-		               const leftMax = s.owned ? 72 : 0;
+		               const leftMax = 72;
 	               const rightMax = 104;
 	               let startX = null;
 	               let startY = 0;
@@ -1666,7 +1954,7 @@
                };
 	             } else {
 	               card.classList.add("desktop");
-	               const actions = el("div", { class: "sessionActionsInline" }, delBtn ? [renameBtn, dupBtn, delBtn] : [renameBtn, dupBtn]);
+	               const actions = el("div", { class: "sessionActionsInline" }, [renameBtn, dupBtn, delBtn]);
 	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
 	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
@@ -2214,28 +2502,180 @@
             harnessCfg.request = String(e.target.value ?? "");
             scheduleHarnessSave();
           };
-        async function renameSessionId(sid) {
-          if (!sid) return;
-          const s = sessionIndex.get(sid);
-          const currentAlias = s && typeof s.alias === "string" ? s.alias : "";
-          const fallback = sessionDisplayName(s);
-          const def = currentAlias || fallback || "";
-          const next = prompt("Rename session (blank to clear):", def);
-          if (next === null) return;
-          try {
-            const res = await api(`/api/sessions/${sid}/rename`, { method: "POST", body: { name: String(next) } });
-            const alias = res && typeof res.alias === "string" ? res.alias : "";
-            if (s) s.alias = alias;
-            await refreshSessions();
-            if (selected === sid) {
-              const s2 = sessionIndex.get(sid);
-              if (s2) titleLabel.textContent = sessionTitleWithId(s2);
-            }
-            setToast(alias ? "renamed" : "alias cleared");
-          } catch (e) {
-            setToast(`rename error: ${e && e.message ? e.message : "unknown error"}`);
+        function renderRecentCwdOptions() {
+          cwdRecentList.innerHTML = "";
+          const seen = new Set();
+          for (const s of sessionIndex.values()) {
+            const cwd = typeof s.cwd === "string" ? s.cwd.trim() : "";
+            if (!cwd || seen.has(cwd)) continue;
+            seen.add(cwd);
+            cwdRecentList.appendChild(el("option", { value: cwd }));
           }
         }
+
+        function hideEditSession() {
+          editSessionId = null;
+          editStatus.textContent = "";
+          editBackdrop.style.display = "none";
+          editViewer.style.display = "none";
+        }
+
+        function syncEditPriorityLabel() {
+          editPriorityValue.textContent = formatPriorityOffset(editPriorityRange.value);
+        }
+
+        function setEditSnoozeMode(mode) {
+          editSnoozeMode = ["none", "8h", "tomorrow", "custom"].includes(mode) ? mode : "none";
+          for (const [value, btn] of editSnoozeModeButtons.entries()) {
+            btn.classList.toggle("active", value === editSnoozeMode);
+          }
+          editSnoozeCustomRow.style.display = editSnoozeMode === "custom" ? "grid" : "none";
+        }
+
+        function tomorrowSnoozeSeconds() {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          d.setHours(9, 0, 0, 0);
+          return Math.floor(d.getTime() / 1000);
+        }
+
+        function fillCustomSnoozeInputs(tsSeconds) {
+          const ts = Number(tsSeconds);
+          const d = Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : new Date(Date.now() + 24 * 3600 * 1000);
+          const yyyy = String(d.getFullYear()).padStart(4, "0");
+          const mm = String(d.getMonth() + 1).padStart(2, "0");
+          const dd = String(d.getDate()).padStart(2, "0");
+          const hh = String(d.getHours()).padStart(2, "0");
+          const mi = String(d.getMinutes()).padStart(2, "0");
+          editSnoozeCustomDate.value = `${yyyy}-${mm}-${dd}`;
+          editSnoozeCustomTime.value = `${hh}:${mi}`;
+        }
+
+        function fillDependencyOptions(currentSid, currentDependencySid) {
+          editDependencySelect.innerHTML = "";
+          editDependencySelect.appendChild(el("option", { value: "", text: "No dependency" }));
+          for (const s of sessionIndex.values()) {
+            if (!s || s.session_id === currentSid) continue;
+            const label = `${sessionDisplayName(s)}${s.cwd ? ` | ${baseName(s.cwd)}` : ""}`;
+            editDependencySelect.appendChild(el("option", { value: s.session_id, text: label }));
+          }
+          editDependencySelect.value = currentDependencySid || "";
+        }
+
+        function openEditSession(sid) {
+          if (!sid) return;
+          const s = sessionIndex.get(sid);
+          if (!s) return;
+          editSessionId = sid;
+          editStatus.textContent = "";
+          editNameInput.value = typeof s.alias === "string" ? s.alias : "";
+          editNameInput.placeholder = sessionDisplayName(s) || "Conversation title";
+          editPriorityRange.value = String(Number(s.priority_offset || 0));
+          syncEditPriorityLabel();
+          const snoozeUntil = Number(s.snooze_until || 0);
+          if (snoozeUntil > Date.now() / 1000) {
+            setEditSnoozeMode("custom");
+            fillCustomSnoozeInputs(snoozeUntil);
+          } else {
+            setEditSnoozeMode("none");
+            fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
+          }
+          fillDependencyOptions(sid, s.dependency_session_id || "");
+          editBackdrop.style.display = "block";
+          editViewer.style.display = "flex";
+          editNameInput.focus();
+          editNameInput.select();
+        }
+
+        function hideNewSessionDialog() {
+          newSessionStatus.textContent = "";
+          newSessionBackdrop.style.display = "none";
+          newSessionViewer.style.display = "none";
+        }
+
+        function openNewSessionDialog() {
+          renderRecentCwdOptions();
+          newSessionStatus.textContent = "";
+          const cur = selected ? sessionIndex.get(selected) : null;
+          newSessionCwdInput.value = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          newSessionBackdrop.style.display = "block";
+          newSessionViewer.style.display = "flex";
+          newSessionCwdInput.focus();
+          newSessionCwdInput.select();
+        }
+
+        editPriorityRange.oninput = syncEditPriorityLabel;
+        for (const [mode, btn] of editSnoozeModeButtons.entries()) {
+          btn.onclick = () => {
+            setEditSnoozeMode(mode);
+            if (mode === "tomorrow") fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
+            else if (mode === "8h") fillCustomSnoozeInputs(Math.floor(Date.now() / 1000) + 8 * 3600);
+          };
+        }
+        editCloseBtn.onclick = () => hideEditSession();
+        $("#editCancelBtn").onclick = () => hideEditSession();
+        editBackdrop.onclick = () => hideEditSession();
+        editViewer.onclick = (e) => e.stopPropagation();
+        editSaveBtn.onclick = async () => {
+          if (!editSessionId) return;
+          let snoozeUntil = null;
+          const snoozeMode = editSnoozeMode;
+          if (snoozeMode === "8h") {
+            snoozeUntil = Math.floor(Date.now() / 1000) + 8 * 3600;
+          } else if (snoozeMode === "tomorrow") {
+            snoozeUntil = tomorrowSnoozeSeconds();
+          } else if (snoozeMode === "custom") {
+            const dateRaw = String(editSnoozeCustomDate.value || "").trim();
+            const timeRaw = String(editSnoozeCustomTime.value || "").trim();
+            if (!dateRaw || !timeRaw) {
+              editStatus.textContent = "Choose both a custom date and time.";
+              return;
+            }
+            const parsed = Date.parse(`${dateRaw}T${timeRaw}`);
+            if (!Number.isFinite(parsed)) {
+              editStatus.textContent = "Invalid snooze time.";
+              return;
+            }
+            snoozeUntil = Math.floor(parsed / 1000);
+          }
+          try {
+            editStatus.textContent = "Saving...";
+            await api(`/api/sessions/${editSessionId}/edit`, {
+              method: "POST",
+              body: {
+                name: String(editNameInput.value || ""),
+                priority_offset: Number(editPriorityRange.value || 0),
+                snooze_until: snoozeUntil,
+                dependency_session_id: editDependencySelect.value || null,
+              },
+            });
+            hideEditSession();
+            await refreshSessions();
+            if (selected === editSessionId) {
+              const s2 = sessionIndex.get(editSessionId);
+              if (s2) titleLabel.textContent = sessionTitleWithId(s2);
+            }
+            setToast("conversation updated");
+          } catch (e) {
+            editStatus.textContent = e && e.message ? e.message : "Save failed";
+          }
+        };
+
+        newSessionCloseBtn.onclick = () => hideNewSessionDialog();
+        $("#newSessionCancelBtn").onclick = () => hideNewSessionDialog();
+        newSessionBackdrop.onclick = () => hideNewSessionDialog();
+        newSessionViewer.onclick = (e) => e.stopPropagation();
+        newSessionStartBtn.onclick = async () => {
+          const cwd = String(newSessionCwdInput.value || "").trim();
+          if (!cwd) {
+            newSessionStatus.textContent = "Working directory is required.";
+            return;
+          }
+          newSessionStatus.textContent = "Starting...";
+          const brokerPid = await spawnSessionWithCwd(cwd);
+          if (brokerPid) hideNewSessionDialog();
+          else newSessionStatus.textContent = "Start failed.";
+        };
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
         let fileCandidateList = [];
         let fileEntryMap = new Map();
@@ -2352,7 +2792,24 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return monacoReadyPromise;
         }
 
-        async function renderMonacoFile(rel, text) {
+        function applyEditorLineFocus(lineNumber) {
+          const line = normalizeLineNumber(lineNumber);
+          if (!fileEditor || !line) return;
+          if (fileEditorKind === "diff" && fileEditor.getModifiedEditor) {
+            const editor = fileEditor.getModifiedEditor();
+            editor.setPosition({ lineNumber: line, column: 1 });
+            editor.revealLineInCenter(line);
+            editor.focus();
+            return;
+          }
+          if (fileEditor.setPosition) {
+            fileEditor.setPosition({ lineNumber: line, column: 1 });
+            fileEditor.revealLineInCenter(line);
+            fileEditor.focus();
+          }
+        }
+
+        async function renderMonacoFile(rel, text, lineNumber = null) {
           const monaco = await ensureMonaco();
           const host = fileDiff;
           const lang = extToEditorLang(rel);
@@ -2381,15 +2838,24 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             monaco.editor.setModelLanguage(model, lang || "plaintext");
             model.setValue(String(text || ""));
           }
+          const targetLine = normalizeLineNumber(lineNumber) || 1;
           fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          fileEditor.setPosition({ lineNumber: 1, column: 1 });
-          fileEditor.revealPositionInCenter({ lineNumber: 1, column: 1 });
+          fileEditor.setPosition({ lineNumber: targetLine, column: 1 });
+          fileEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
           fileEditor.layout();
-          requestAnimationFrame(() => fileEditor && fileEditor.layout());
-          setTimeout(() => fileEditor && fileEditor.layout(), 60);
+          requestAnimationFrame(() => {
+            if (!fileEditor) return;
+            fileEditor.layout();
+            applyEditorLineFocus(targetLine);
+          });
+          setTimeout(() => {
+            if (!fileEditor) return;
+            fileEditor.layout();
+            applyEditorLineFocus(targetLine);
+          }, 60);
         }
 
-        async function renderMonacoDiff(rel, originalText, modifiedText) {
+        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null) {
           const monaco = await ensureMonaco();
           const host = fileDiff;
           const lang = extToEditorLang(rel);
@@ -2417,14 +2883,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditorModels = [originalModel, modifiedModel];
           const originalEditor = fileEditor.getOriginalEditor();
           const modifiedEditor = fileEditor.getModifiedEditor();
+          const targetLine = normalizeLineNumber(lineNumber) || 1;
           originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
-          originalEditor.setPosition({ lineNumber: 1, column: 1 });
-          modifiedEditor.setPosition({ lineNumber: 1, column: 1 });
-          modifiedEditor.revealPositionInCenter({ lineNumber: 1, column: 1 });
+          originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
+          modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
+          modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
           fileEditor.layout();
-          requestAnimationFrame(() => fileEditor && fileEditor.layout());
-          setTimeout(() => fileEditor && fileEditor.layout(), 60);
+          requestAnimationFrame(() => {
+            if (!fileEditor) return;
+            fileEditor.layout();
+            applyEditorLineFocus(targetLine);
+          });
+          setTimeout(() => {
+            if (!fileEditor) return;
+            fileEditor.layout();
+            applyEditorLineFocus(targetLine);
+          }, 60);
         }
 
         function applyFileMode() {
@@ -2437,9 +2912,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           filePickerMenu.classList.toggle("open", fileMenuOpen);
         }
 
-        function setFilePath(rel) {
+        function setFilePath(rel, { line = null } = {}) {
           const next = String(rel || "").trim();
           activeFilePath = next;
+          activeFileLine = normalizeLineNumber(line);
           const entry = fileEntryMap.get(next);
           setFilePickerButtonContent(entry || (next ? { path: next, changed: false, additions: null, deletions: null } : null), next || "Choose file");
           fileMenuOpen = false;
@@ -2490,6 +2966,35 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEntryMap.set(path, merged);
         }
 
+        async function getKnownFileRefCandidates() {
+          if (!selected) return [];
+          const sid = selected;
+          const hit = fileRefCandidateCache.get(sid);
+          if (hit) return hit;
+          const task = (async () => {
+            const out = new Set();
+            const s = sessionIndex.get(sid);
+            for (const abs of listFromFilesField(s && s.files)) {
+              const rel = sessionRelativePath(abs);
+              if (typeof rel === "string" && rel && rel !== ".") out.add(rel);
+            }
+            try {
+              const res = await api(`/api/sessions/${sid}/git/changed_files`);
+              const entries = Array.isArray(res.entries) ? res.entries : [];
+              for (const entry of entries) {
+                if (!entry || typeof entry.path !== "string") continue;
+                const path = String(entry.path).trim();
+                if (path) out.add(path);
+              }
+            } catch {}
+            return [...out];
+          })();
+          fileRefCandidateCache.set(sid, task);
+          const resolved = await task;
+          fileRefCandidateCache.set(sid, resolved);
+          return resolved;
+        }
+
         function renderFilePickerMenu() {
           filePickerMenu.innerHTML = "";
           if (!fileCandidateList.length) return;
@@ -2514,7 +3019,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             btn.appendChild(stat);
             btn.onclick = () => {
-              setFilePath(path);
+              setFilePath(path, { line: null });
               const selectedEntry = fileEntryMap.get(path);
               if (!selectedEntry || selectedEntry.changed) {
                 fileViewMode = "diff";
@@ -2524,9 +3029,67 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               localStorage.setItem("codexweb.fileViewMode", fileViewMode);
               applyFileMode();
               renderFilePickerMenu();
-              void openFilePath(path);
+              void openFilePath(path, { line: null });
             };
             filePickerMenu.appendChild(btn);
+          }
+        }
+
+        function fileRefValidationKey(path) {
+          return `${selected || ""}|${String(path || "").trim()}`;
+        }
+
+        async function inspectFileRefPath(path) {
+          const rawPath = String(path || "").trim();
+          if (!rawPath) return { ok: false };
+          let inspectPath = rawPath;
+          if (!rawPath.includes("/") && selected) {
+            const candidates = await getKnownFileRefCandidates();
+            const matches = candidates.filter((candidate) => {
+              const tail = String(candidate || "").split("/").pop() || "";
+              return tail === rawPath;
+            });
+            if (matches.length === 1) inspectPath = matches[0];
+            else if (matches.length > 1) return { ok: false, ambiguous: true, path: rawPath };
+          }
+          const key = fileRefValidationKey(inspectPath);
+          if (fileRefValidationCache.has(key)) return fileRefValidationCache.get(key);
+          const pending = fileRefValidationPending.get(key);
+          if (pending) return pending;
+          const task = (async () => {
+            try {
+              const body = { path: inspectPath };
+              if (selected) body.session_id = selected;
+              const res = await api("/api/files/inspect", { method: "POST", body });
+              return { ok: true, path: rawPath, inspectPath, kind: res.kind, resolvedPath: res.path };
+            } catch {
+              return { ok: false, path: rawPath, inspectPath };
+            }
+          })();
+          fileRefValidationPending.set(key, task);
+          const result = await task;
+          fileRefValidationPending.delete(key);
+          fileRefValidationCache.set(key, result);
+          return result;
+        }
+
+        async function upgradeCandidateFileRefs(root) {
+          if (!root) return;
+          const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
+          for (const node of nodes) {
+            const path = String(node.getAttribute("data-candidate-file-path") || "").trim();
+            const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
+            if (!path) continue;
+            const result = await inspectFileRefPath(path);
+            if (!result || !result.ok) continue;
+            const link = el("a", {
+              href: "#",
+              class: "inlineFileLink",
+              "data-file-path": result.inspectPath || path,
+            });
+            if (line) link.setAttribute("data-file-line", String(line));
+            link.textContent = node.textContent || path;
+            node.replaceWith(link);
           }
         }
 
@@ -2576,10 +3139,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
           } catch (e) {}
           renderFilePickerMenu();
-          setFilePath(activeFilePath || fileCandidateList[0] || "");
+          setFilePath(activeFilePath || fileCandidateList[0] || "", { line: activeFileLine });
         }
 
-        async function showFileViewer({ path = "", mode = "", manual = false } = {}) {
+        async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
           if (mode === "file" || mode === "diff") {
@@ -2590,8 +3153,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           await refreshFileCandidates();
           const preferred = String(path || "").trim() || activeFilePath || localStorage.getItem("codexweb.filePath") || "";
           if (preferred) {
-            setFilePath(preferred);
-            void openFilePath(preferred);
+            setFilePath(preferred, { line });
+            void openFilePath(preferred, { line });
             return;
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
@@ -2599,8 +3162,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileViewMode = "diff";
             localStorage.setItem("codexweb.fileViewMode", fileViewMode);
             applyFileMode();
-            setFilePath(first);
-            void openFilePath(first);
+            setFilePath(first, { line: null });
+            void openFilePath(first, { line: null });
             return;
           }
           setFilePickerButtonContent(null, "No files");
@@ -2613,8 +3176,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileDiff.style.display = "block";
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
+          activeFileLine = null;
         }
-        async function openFilePath(nextPath = null) {
+        async function openFilePath(nextPath = null, { line = undefined } = {}) {
           if (!selected) return;
           const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
           if (!rel) {
@@ -2622,6 +3186,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           activeFilePath = rel;
+          activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           fileStatus.textContent = "Loading...";
           disposeFileEditor();
           fileImage.removeAttribute("src");
@@ -2632,7 +3197,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              await renderMonacoDiff(rel, baseText, currentText);
+              await renderMonacoDiff(rel, baseText, currentText, activeFileLine);
               if (!res.base_exists && !res.current_exists) fileStatus.textContent = `${rel} - unavailable`;
               else if (!res.base_exists) fileStatus.textContent = `${rel} - new file`;
               else if (!res.current_exists) fileStatus.textContent = `${rel} - deleted`;
@@ -2650,7 +3215,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               } else {
                 if (typeof res.text !== "string") throw new Error("invalid response");
-                await renderMonacoFile(rel, res.text);
+                await renderMonacoFile(rel, res.text, activeFileLine);
                 const size = typeof res.size === "number" ? res.size : res.text.length;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               }
@@ -2681,7 +3246,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           localStorage.setItem("codexweb.fileViewMode", fileViewMode);
           applyFileMode();
           renderFilePickerMenu();
-          void openFilePath(activeFilePath);
+          void openFilePath(activeFilePath, { line: activeFileLine });
         };
         fileAddBtn.onclick = async (e) => {
           e.preventDefault();
@@ -2696,11 +3261,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const rel = sessionRelativePath(abs) || path;
             upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
             renderFilePickerMenu();
-            setFilePath(rel);
+            setFilePath(rel, { line: null });
             fileViewMode = "file";
             localStorage.setItem("codexweb.fileViewMode", fileViewMode);
             applyFileMode();
-            void openFilePath(rel);
+            void openFilePath(rel, { line: null });
           } catch (err) {
             setToast(`file open error: ${err && err.message ? err.message : "unknown error"}`);
           }
@@ -2711,19 +3276,36 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideFileViewer();
         };
         fileBackdrop.onclick = () => hideFileViewer();
-        chatInner.addEventListener("click", async (e) => {
-          const target = e.target instanceof Element ? e.target.closest("a[data-local-path]") : null;
-          if (!target) return;
-          e.preventDefault();
-          const abs = String(target.getAttribute("data-local-path") || "").trim();
-          const rel = sessionRelativePath(abs);
-          if (rel) {
-            void showFileViewer({ path: rel, mode: "file", manual: false });
+        async function openFileReference(ref) {
+          if (!ref || typeof ref.path !== "string") return;
+          const rawPath = String(ref.path || "").trim();
+          const line = normalizeLineNumber(ref.line);
+          if (!rawPath) return;
+          const parsed = parseLocalFileRef(rawPath);
+          if (!parsed) {
+            setToast("unsupported file reference");
+            return;
+          }
+          if (!parsed.path.startsWith("/")) {
+            if (!selected) {
+              setToast("select a session first");
+              return;
+            }
+            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
+            return;
+          }
+          if (selected) {
+            void showFileViewer({ path: parsed.path, mode: "file", manual: false, line });
+            return;
+          }
+          const currentRel = sessionRelativePath(parsed.path);
+          if (currentRel) {
+            void showFileViewer({ path: currentRel, mode: "file", manual: false, line });
             return;
           }
           const match = [...sessionIndex.values()].find((s) => {
             const cwd = String(s && s.cwd ? s.cwd : "").replace(/\/+$/, "");
-            return cwd && (abs === cwd || abs.startsWith(cwd + "/"));
+            return cwd && (parsed.path === cwd || parsed.path.startsWith(cwd + "/"));
           });
           if (!match) {
             setToast("file is outside the known session roots");
@@ -2731,8 +3313,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           await selectSession(match.session_id);
           const matchRoot = String(match.cwd || "").replace(/\/+$/, "");
-          const rel2 = abs === matchRoot ? "." : abs.slice(matchRoot.length + 1);
-          void showFileViewer({ path: rel2, mode: "file", manual: false });
+          const rel2 = parsed.path === matchRoot ? "." : parsed.path.slice(matchRoot.length + 1);
+          void showFileViewer({ path: rel2, mode: "file", manual: false, line });
+        }
+
+        chatInner.addEventListener("click", async (e) => {
+          const target = e.target instanceof Element ? e.target.closest("a[data-file-path]") : null;
+          if (!target) return;
+          e.preventDefault();
+          const path = String(target.getAttribute("data-file-path") || "").trim();
+          const line = normalizeLineNumber(target.getAttribute("data-file-line"));
+          await openFileReference({ path, line });
         });
         document.addEventListener("click", (e) => {
           if (fileViewer.style.display !== "flex" || !fileMenuOpen) return;
@@ -2749,6 +3340,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (queueViewer.style.display === "flex") hideQueueViewer();
           if (helpViewer.style.display === "flex") hideHelpViewer();
           if (diagViewer.style.display === "flex") hideDiagViewer();
+          if (editViewer.style.display === "flex") hideEditSession();
+          if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
 
         let sendChoicePending = null;
@@ -2952,9 +3545,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
             addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
             addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
+	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
 	            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
 	            addRow("Model", d && d.model ? d.model : "-");
 	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
+	            addRow("Priority", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
+	            addRow("Snooze", d && typeof d.snooze_until === "number" ? fmtTs(d.snooze_until) : "-");
+	            addRow("Depends on", d && d.dependency_session_id ? d.dependency_session_id : "-");
 	            addRow("UI", UI_VERSION);
 	            const tok = d && d.token && typeof d.token === "object" ? d.token : null;
 	            if (tok) {
@@ -3071,11 +3668,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
         $("#newBtn").onclick = async () => {
-          const cur = selected ? sessionIndex.get(selected) : null;
-          const def = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
-          const cwd = prompt("New session cwd:", def);
-          if (!cwd) return;
-          await spawnSessionWithCwd(cwd);
+          openNewSessionDialog();
         };
 	        interruptBtn.onclick = async () => {
 	          if (!selected) return;

@@ -8,6 +8,7 @@ import hmac
 import http.server
 import io
 import json
+import math
 import os
 import re
 import signal
@@ -96,6 +97,8 @@ HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 UPLOAD_DIR = APP_DIR / "uploads"
 HARNESS_PATH = APP_DIR / "harness.json"
 ALIAS_PATH = APP_DIR / "session_aliases.json"
+SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
+HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 
@@ -136,6 +139,8 @@ FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
 GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
+SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
+SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain three live lists: Deliverables, Next actions, Parked questions.
@@ -556,6 +561,48 @@ def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
     return target, repo_root, rel
 
 
+def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
+    name = str(raw_path).strip()
+    if not name or "/" in name or "\\" in name or "\x00" in name:
+        return None
+    if "." not in Path(name).name:
+        return None
+    root = search_root.resolve()
+    match: Path | None = None
+    for current_root, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in {".git", ".hg", ".svn", "__pycache__", "node_modules", "build", "dist"}]
+        if name not in filenames:
+            continue
+        candidate = (Path(current_root) / name).resolve()
+        if match is None:
+            match = candidate
+            continue
+        if candidate != match:
+            return None
+    return match
+
+
+def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
+    name = str(raw_path).strip()
+    if not name or "/" in name or "\\" in name or "\x00" in name:
+        return None
+    try:
+        tracked = MANAGER.files_get(session_id)
+    except KeyError:
+        return None
+    match: Path | None = None
+    for raw in tracked:
+        candidate = Path(raw).expanduser().resolve()
+        if candidate.name != name:
+            continue
+        if match is None:
+            match = candidate
+            continue
+        if candidate != match:
+            return None
+    return match
+
+
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
     cmd = ["git", *args]
     proc = subprocess.run(
@@ -629,6 +676,117 @@ def _clean_alias(name: str) -> str:
     if len(cleaned) > 80:
         cleaned = cleaned[:80].rstrip()
     return cleaned
+
+
+def _clip01(v: float) -> float:
+    if v <= 0.0:
+        return 0.0
+    if v >= 1.0:
+        return 1.0
+    return float(v)
+
+
+def _clean_priority_offset(value: Any) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, bool):
+        raise ValueError("priority_offset must be a number")
+    out = float(value)
+    if not math.isfinite(out):
+        raise ValueError("priority_offset must be finite")
+    if out < -1.0 or out > 1.0:
+        raise ValueError("priority_offset must be within [-1, 1]")
+    return out
+
+
+def _clean_snooze_until(value: Any) -> float | None:
+    if value in (None, "", 0):
+        return None
+    if isinstance(value, bool):
+        raise ValueError("snooze_until must be a unix timestamp or null")
+    out = float(value)
+    if not math.isfinite(out):
+        raise ValueError("snooze_until must be finite")
+    if out <= 0:
+        return None
+    return out
+
+
+def _clean_dependency_session_id(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise ValueError("dependency_session_id must be a string or null")
+    out = value.strip()
+    return out or None
+
+
+def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
+    if elapsed_s <= 0:
+        return 1.0
+    return _clip01(math.exp(-SIDEBAR_PRIORITY_LAMBDA * float(elapsed_s)))
+
+
+def _current_git_branch(cwd: Path) -> str | None:
+    try:
+        branch = _run_git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
+    except RuntimeError:
+        return None
+    if not branch:
+        return None
+    return branch
+
+
+def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
+    path_obj = Path(raw_path).expanduser()
+    if not path_obj.is_absolute():
+        if session_id:
+            MANAGER.refresh_session_meta(session_id)
+            s = MANAGER.get_session(session_id)
+            if s:
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                direct = (base / path_obj).resolve()
+                if direct.exists():
+                    path_obj = direct
+                else:
+                    tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
+                    if tracked is not None:
+                        path_obj = tracked
+                        return path_obj
+                    try:
+                        repo_root = Path(
+                            _run_git(base, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
+                        ).resolve()
+                    except RuntimeError:
+                        repo_root = base.resolve()
+                    path_obj = _resolve_unique_bare_filename(repo_root, raw_path) or direct
+            else:
+                path_obj = (Path.cwd() / path_obj).resolve()
+        else:
+            path_obj = (Path.cwd() / path_obj).resolve()
+    else:
+        path_obj = path_obj.resolve()
+    return path_obj
+
+
+def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
+    if not path_obj.exists():
+        raise FileNotFoundError("file not found")
+    if not path_obj.is_file():
+        raise ValueError("path is not a file")
+    try:
+        raw = path_obj.read_bytes()
+    except PermissionError as e:
+        raise PermissionError("permission denied") from e
+    size = len(raw)
+    if size > FILE_READ_MAX_BYTES:
+        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
+    kind, image_ctype = _file_kind(path_obj, raw)
+    if kind != "image" and b"\x00" in raw:
+        raise ValueError("binary file not supported")
+    return raw, size, kind, image_ctype
 
 
 def _iter_session_logs() -> list[Path]:
@@ -802,6 +960,8 @@ class SessionManager:
         self._last_discover_ts = 0.0
         self._harness: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
+        self._sidebar_meta: dict[str, dict[str, Any]] = {}
+        self._hidden_sessions: set[str] = set()
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[str]] = {}
         self._harness_last_injected: dict[str, float] = {}
@@ -809,6 +969,8 @@ class SessionManager:
         self._discover_existing(force=True)
         self._load_harness()
         self._load_aliases()
+        self._load_sidebar_meta()
+        self._load_hidden_sessions()
         self._load_files()
         self._load_queues()
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
@@ -906,6 +1068,79 @@ class SessionManager:
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, ALIAS_PATH)
 
+    def _load_sidebar_meta(self) -> None:
+        try:
+            raw = SIDEBAR_META_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid session_sidebar.json (expected object)")
+        cleaned: dict[str, dict[str, Any]] = {}
+        for sid, value in obj.items():
+            if not isinstance(sid, str) or not sid:
+                continue
+            if not isinstance(value, dict):
+                continue
+            offset = _clean_priority_offset(value.get("priority_offset"))
+            snooze_until = _clean_snooze_until(value.get("snooze_until"))
+            dependency_session_id = _clean_dependency_session_id(value.get("dependency_session_id"))
+            entry: dict[str, Any] = {"priority_offset": offset}
+            if snooze_until is not None:
+                entry["snooze_until"] = snooze_until
+            if dependency_session_id is not None:
+                entry["dependency_session_id"] = dependency_session_id
+            cleaned[sid] = entry
+        with self._lock:
+            self._sidebar_meta = cleaned
+
+    def _save_sidebar_meta(self) -> None:
+        with self._lock:
+            obj = dict(self._sidebar_meta)
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = SIDEBAR_META_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, SIDEBAR_META_PATH)
+
+    def _load_hidden_sessions(self) -> None:
+        try:
+            raw = HIDDEN_SESSIONS_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, list):
+            raise ValueError("invalid hidden_sessions.json (expected list)")
+        cleaned = {sid.strip() for sid in obj if isinstance(sid, str) and sid.strip()}
+        with self._lock:
+            self._hidden_sessions = cleaned
+
+    def _save_hidden_sessions(self) -> None:
+        with self._lock:
+            obj = sorted(getattr(self, "_hidden_sessions", set()))
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = HIDDEN_SESSIONS_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, HIDDEN_SESSIONS_PATH)
+
+    def _hide_session(self, session_id: str) -> None:
+        with self._lock:
+            hidden = getattr(self, "_hidden_sessions", None)
+            if not isinstance(hidden, set):
+                self._hidden_sessions = set()
+                hidden = self._hidden_sessions
+            hidden.add(session_id)
+        self._save_hidden_sessions()
+
+    def _unhide_session(self, session_id: str) -> None:
+        changed = False
+        with self._lock:
+            hidden = getattr(self, "_hidden_sessions", None)
+            if isinstance(hidden, set) and session_id in hidden:
+                hidden.remove(session_id)
+                changed = True
+        if changed:
+            self._save_hidden_sessions()
+
     def alias_set(self, session_id: str, name: str) -> str:
         alias = _clean_alias(name)
         with self._lock:
@@ -929,6 +1164,138 @@ class SessionManager:
                 return
             self._aliases.pop(session_id, None)
         self._save_aliases()
+
+    def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            meta_map = getattr(self, "_sidebar_meta", None)
+            entry = meta_map.get(session_id) if isinstance(meta_map, dict) else None
+        if not isinstance(entry, dict):
+            return {"priority_offset": 0.0, "snooze_until": None, "dependency_session_id": None}
+        return {
+            "priority_offset": _clean_priority_offset(entry.get("priority_offset")),
+            "snooze_until": _clean_snooze_until(entry.get("snooze_until")),
+            "dependency_session_id": _clean_dependency_session_id(entry.get("dependency_session_id")),
+        }
+
+    def sidebar_meta_set(
+        self,
+        session_id: str,
+        *,
+        priority_offset: Any,
+        snooze_until: Any,
+        dependency_session_id: Any,
+    ) -> dict[str, Any]:
+        offset = _clean_priority_offset(priority_offset)
+        snooze_until_clean = _clean_snooze_until(snooze_until)
+        dependency_clean = _clean_dependency_session_id(dependency_session_id)
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            if dependency_clean == session_id:
+                raise ValueError("session cannot depend on itself")
+            if dependency_clean is not None and dependency_clean not in self._sessions:
+                raise ValueError("dependency session not found")
+            entry = {"priority_offset": offset}
+            if snooze_until_clean is not None:
+                entry["snooze_until"] = snooze_until_clean
+            if dependency_clean is not None:
+                entry["dependency_session_id"] = dependency_clean
+            meta_map = getattr(self, "_sidebar_meta", None)
+            if not isinstance(meta_map, dict):
+                self._sidebar_meta = {}
+                meta_map = self._sidebar_meta
+            meta_map[session_id] = entry
+        self._save_sidebar_meta()
+        return {"priority_offset": offset, "snooze_until": snooze_until_clean, "dependency_session_id": dependency_clean}
+
+    def edit_session(
+        self,
+        session_id: str,
+        *,
+        name: str,
+        priority_offset: Any,
+        snooze_until: Any,
+        dependency_session_id: Any,
+    ) -> tuple[str, dict[str, Any]]:
+        alias = _clean_alias(name)
+        offset = _clean_priority_offset(priority_offset)
+        snooze_until_clean = _clean_snooze_until(snooze_until)
+        dependency_clean = _clean_dependency_session_id(dependency_session_id)
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+            if dependency_clean == session_id:
+                raise ValueError("session cannot depend on itself")
+            if dependency_clean is not None and dependency_clean not in self._sessions:
+                raise ValueError("dependency session not found")
+            aliases = getattr(self, "_aliases", None)
+            if not isinstance(aliases, dict):
+                self._aliases = {}
+                aliases = self._aliases
+            if alias:
+                aliases[session_id] = alias
+            else:
+                aliases.pop(session_id, None)
+            meta_map = getattr(self, "_sidebar_meta", None)
+            if not isinstance(meta_map, dict):
+                self._sidebar_meta = {}
+                meta_map = self._sidebar_meta
+            entry = {"priority_offset": offset}
+            if snooze_until_clean is not None:
+                entry["snooze_until"] = snooze_until_clean
+            if dependency_clean is not None:
+                entry["dependency_session_id"] = dependency_clean
+            meta_map[session_id] = entry
+        self._save_aliases()
+        self._save_sidebar_meta()
+        return alias, {"priority_offset": offset, "snooze_until": snooze_until_clean, "dependency_session_id": dependency_clean}
+
+    def _clear_deleted_session_state(self, session_id: str) -> None:
+        changed_sidebar = False
+        changed_harness = False
+        changed_files = False
+        changed_queues = False
+        with self._lock:
+            aliases = getattr(self, "_aliases", None)
+            if isinstance(aliases, dict):
+                aliases.pop(session_id, None)
+            meta_map = getattr(self, "_sidebar_meta", None)
+            if isinstance(meta_map, dict) and session_id in meta_map:
+                meta_map.pop(session_id, None)
+                changed_sidebar = True
+            if isinstance(meta_map, dict):
+                for entry in meta_map.values():
+                    if not isinstance(entry, dict):
+                        continue
+                    if entry.get("dependency_session_id") != session_id:
+                        continue
+                    entry.pop("dependency_session_id", None)
+                    changed_sidebar = True
+            harness = getattr(self, "_harness", None)
+            if isinstance(harness, dict) and session_id in harness:
+                harness.pop(session_id, None)
+                changed_harness = True
+            files = getattr(self, "_files", None)
+            if isinstance(files, dict):
+                for key in [f"sid:{session_id}", session_id]:
+                    if key in files:
+                        files.pop(key, None)
+                        changed_files = True
+            queues = getattr(self, "_queues", None)
+            if isinstance(queues, dict) and session_id in queues:
+                queues.pop(session_id, None)
+                changed_queues = True
+        self._save_aliases()
+        if changed_sidebar:
+            self._save_sidebar_meta()
+        if changed_harness:
+            self._save_harness()
+        if changed_files:
+            self._save_files()
+        if changed_queues:
+            self._save_queues()
 
     def _load_files(self) -> None:
         try:
@@ -1397,8 +1764,17 @@ class SessionManager:
                 log_path = None
 
             if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
+                self._unhide_session(session_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(meta_path)
+                continue
+            with self._lock:
+                hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
+            if session_id in hidden_sessions:
+                if (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
+                    self._unhide_session(session_id)
+                    _unlink_quiet(sock)
+                    _unlink_quiet(meta_path)
                 continue
 
             cwd_raw = meta.get("cwd")
@@ -1510,7 +1886,8 @@ class SessionManager:
         with self._lock:
             for sid, _sock in dead:
                 self._sessions.pop(sid, None)
-        for _sid, sock in dead:
+        for sid, sock in dead:
+            self._clear_deleted_session_state(sid)
             _unlink_quiet(sock)
             _unlink_quiet(sock.with_suffix(".json"))
 
@@ -1571,9 +1948,13 @@ class SessionManager:
         self._prune_dead_sessions()
         self._update_meta_counters()
         files_dirty = False
+        sidebar_dirty = False
+        now_ts = time.time()
         with self._lock:
             items: list[dict[str, Any]] = []
             qmap = getattr(self, "_queues", None)
+            meta_map = getattr(self, "_sidebar_meta", None)
+            active_ids = set(self._sessions.keys())
             for s in self._sessions.values():
                 cfg0 = self._harness.get(s.session_id)
                 h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
@@ -1602,13 +1983,37 @@ class SessionManager:
                                 break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 if s.last_chat_ts is None and log_exists and s.log_path is not None:
-                    s.last_chat_ts = float(s.log_path.stat().st_mtime)
+                    conv_ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=256 * 1024)
+                    if isinstance(conv_ts, (int, float)):
+                        s.last_chat_ts = float(conv_ts)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 compat_ql = 0
                 if isinstance(qmap, dict):
                     q0 = qmap.get(s.session_id)
                     if isinstance(q0, list):
                         compat_ql = len(q0)
+                meta0 = meta_map.get(s.session_id) if isinstance(meta_map, dict) else None
+                if not isinstance(meta0, dict):
+                    meta0 = {}
+                priority_offset = _clean_priority_offset(meta0.get("priority_offset"))
+                snooze_until = _clean_snooze_until(meta0.get("snooze_until"))
+                dependency_session_id = _clean_dependency_session_id(meta0.get("dependency_session_id"))
+                if dependency_session_id == s.session_id or (dependency_session_id is not None and dependency_session_id not in active_ids):
+                    dependency_session_id = None
+                    if isinstance(meta_map, dict) and isinstance(meta0, dict):
+                        meta0.pop("dependency_session_id", None)
+                        sidebar_dirty = True
+                if snooze_until is not None and snooze_until <= now_ts:
+                    snooze_until = None
+                    if isinstance(meta_map, dict) and isinstance(meta0, dict):
+                        meta0.pop("snooze_until", None)
+                        sidebar_dirty = True
+                elapsed_s = max(0.0, now_ts - updated_ts)
+                time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                base_priority = _clip01(time_priority + priority_offset)
+                blocked = dependency_session_id is not None
+                snoozed = snooze_until is not None and snooze_until > now_ts
+                final_priority = 0.0 if (snoozed or blocked) else base_priority
                 items.append(
                     {
                         "session_id": s.session_id,
@@ -1630,6 +2035,14 @@ class SessionManager:
                         "harness_enabled": h_enabled,
                         "alias": alias,
                         "files": list(files),
+                        "priority_offset": priority_offset,
+                        "snooze_until": snooze_until,
+                        "dependency_session_id": dependency_session_id,
+                        "time_priority": time_priority,
+                        "base_priority": base_priority,
+                        "final_priority": final_priority,
+                        "blocked": blocked,
+                        "snoozed": snoozed,
                     }
                 )
 
@@ -1651,6 +2064,16 @@ class SessionManager:
             out.append(it2)
         if files_dirty:
             self._save_files()
+        if sidebar_dirty:
+            self._save_sidebar_meta()
+        out.sort(
+            key=lambda item: (
+                -float(item.get("final_priority", 0.0)),
+                -float(item.get("updated_ts", item.get("start_ts", 0.0))),
+                -float(item.get("start_ts", 0.0)),
+                str(item.get("session_id", "")),
+            )
+        )
         return out
 
     def get_session(self, session_id: str) -> Session | None:
@@ -2048,18 +2471,23 @@ class SessionManager:
         threading.Thread(target=proc.wait, daemon=True).start()
         return {"broker_pid": int(proc.pid)}
 
-    def delete_web_session(self, session_id: str) -> bool:
+    def delete_session(self, session_id: str) -> bool:
         with self._lock:
             s = self._sessions.get(session_id)
         if not s:
             return False
-        if not s.owned:
-            raise PermissionError("not owned by web")
-        ok = self.kill_session(session_id)
-        if ok:
-            self.alias_clear(session_id)
-            self.files_clear(session_id)
-        return ok
+        if s.owned:
+            ok = self.kill_session(session_id)
+            if ok:
+                self.files_clear(session_id)
+                self._clear_deleted_session_state(session_id)
+            return ok
+        self.files_clear(session_id)
+        with self._lock:
+            self._sessions.pop(session_id, None)
+        self._hide_session(session_id)
+        self._clear_deleted_session_state(session_id)
+        return True
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
         with self._lock:
@@ -2073,6 +2501,7 @@ class SessionManager:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
                     self._sessions.pop(session_id, None)
+                self._clear_deleted_session_state(session_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -2192,6 +2621,7 @@ class SessionManager:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
                     self._sessions.pop(session_id, None)
+                self._clear_deleted_session_state(session_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -2413,6 +2843,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                 eff = tc.get("effort")
                             if isinstance(eff, str) and eff.strip():
                                 reasoning_effort = eff.strip()
+                sidebar_meta = MANAGER.sidebar_meta_get(session_id)
+                cwd_path = Path(s.cwd).expanduser()
+                if not cwd_path.is_absolute():
+                    cwd_path = cwd_path.resolve()
+                git_branch = _current_git_branch(cwd_path)
                 _json_response(
                     self,
                     200,
@@ -2432,6 +2867,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "model_provider": model_provider,
                         "model": model,
                         "reasoning_effort": reasoning_effort,
+                        "git_branch": git_branch,
+                        "priority_offset": sidebar_meta["priority_offset"],
+                        "snooze_until": sidebar_meta["snooze_until"],
+                        "dependency_session_id": sidebar_meta["dependency_session_id"],
                     },
                 )
                 return
@@ -3067,38 +3506,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 session_id_raw = obj.get("session_id")
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
-                path_obj = Path(path_raw).expanduser()
-                if not path_obj.is_absolute():
-                    if session_id:
-                        MANAGER.refresh_session_meta(session_id)
-                        s = MANAGER.get_session(session_id)
-                        if s:
-                            base = Path(s.cwd).expanduser()
-                            if not base.is_absolute():
-                                base = base.resolve()
-                            path_obj = (base / path_obj).resolve()
-                        else:
-                            path_obj = (Path.cwd() / path_obj).resolve()
-                    else:
-                        path_obj = (Path.cwd() / path_obj).resolve()
-                else:
-                    path_obj = path_obj.resolve()
-                if not path_obj.exists():
-                    _json_response(self, 404, {"error": "file not found"})
-                    return
-                if not path_obj.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
-                    return
                 try:
-                    raw = path_obj.read_bytes()
-                except PermissionError:
-                    _json_response(self, 403, {"error": "permission denied"})
+                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                    raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                size = len(raw)
-                if size > FILE_READ_MAX_BYTES:
-                    _json_response(self, 400, {"error": f"file too large (max {FILE_READ_MAX_BYTES} bytes)"})
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
                     return
-                kind, image_ctype = _file_kind(path_obj, raw)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 if session_id:
                     try:
                         MANAGER.files_add(session_id, str(path_obj))
@@ -3118,11 +3537,50 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
-                if b"\x00" in raw:
-                    _json_response(self, 400, {"error": "binary file not supported"})
-                    return
                 text = raw.decode("utf-8", errors="replace")
                 _json_response(self, 200, {"ok": True, "kind": "text", "path": str(path_obj), "size": int(size), "text": text})
+                return
+
+            if path == "/api/files/inspect":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                path_raw = obj.get("path")
+                if not isinstance(path_raw, str) or not path_raw.strip():
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                session_id_raw = obj.get("session_id")
+                session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
+                try:
+                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                    _raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "path": str(path_obj),
+                        "kind": kind,
+                        "content_type": image_ctype,
+                        "size": int(size),
+                    },
+                )
                 return
 
             if path == "/api/files/blob":
@@ -3163,18 +3621,45 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
                 _read_body(self)
-                try:
-                    ok = MANAGER.delete_web_session(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except PermissionError:
-                    _json_response(self, 403, {"error": "session not owned by web"})
-                    return
+                ok = MANAGER.delete_session(session_id)
                 if not ok:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 _json_response(self, 200, {"ok": True})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/edit"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                name = obj.get("name")
+                if not isinstance(name, str):
+                    _json_response(self, 400, {"error": "name required"})
+                    return
+                try:
+                    alias, sidebar_meta = MANAGER.edit_session(
+                        session_id,
+                        name=name,
+                        priority_offset=obj.get("priority_offset"),
+                        snooze_until=obj.get("snooze_until"),
+                        dependency_session_id=obj.get("dependency_session_id"),
+                    )
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, "alias": alias, **sidebar_meta})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/rename"):

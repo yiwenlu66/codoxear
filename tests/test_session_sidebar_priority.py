@@ -1,0 +1,159 @@
+import threading
+import time
+import unittest
+from pathlib import Path
+
+from codoxear.server import Session
+from codoxear.server import SessionManager
+
+
+def _make_manager() -> SessionManager:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    mgr._sessions = {}
+    mgr._harness = {}
+    mgr._aliases = {}
+    mgr._sidebar_meta = {}
+    mgr._hidden_sessions = set()
+    mgr._files = {}
+    mgr._queues = {}
+    mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_sidebar_meta = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_hidden_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_aliases = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_harness = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    return mgr
+
+
+def _session(*, sid: str, start_ts: float, last_chat_ts: float | None = None, owned: bool = False) -> Session:
+    return Session(
+        session_id=sid,
+        thread_id=sid,
+        broker_pid=100,
+        codex_pid=200,
+        owned=owned,
+        start_ts=start_ts,
+        cwd=f"/tmp/{sid}",
+        log_path=None,
+        sock_path=Path(f"/tmp/{sid}.sock"),
+        last_chat_ts=last_chat_ts,
+    )
+
+
+class TestSessionSidebarPriority(unittest.TestCase):
+    def test_list_sessions_sorts_by_final_priority_then_recency(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        recent = _session(sid="recent", start_ts=now - 100, last_chat_ts=now - 300)
+        older = _session(sid="older", start_ts=now - 200, last_chat_ts=now - 16 * 3600)
+        mgr._sessions = {recent.session_id: recent, older.session_id: older}
+        mgr._sidebar_meta = {
+            "recent": {"priority_offset": -0.8},
+            "older": {"priority_offset": 0.2},
+        }
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual([row["session_id"] for row in rows], ["older", "recent"])
+        self.assertAlmostEqual(rows[0]["final_priority"], 0.45, delta=0.04)
+        self.assertAlmostEqual(rows[1]["final_priority"], 0.19, delta=0.04)
+
+    def test_list_sessions_clears_expired_snooze_and_stale_dependency(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 50)
+        mgr._sessions = {current.session_id: current}
+        mgr._sidebar_meta = {
+            "current": {
+                "priority_offset": 0.1,
+                "snooze_until": now - 5,
+                "dependency_session_id": "missing",
+            }
+        }
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["session_id"], "current")
+        self.assertFalse(rows[0]["snoozed"])
+        self.assertFalse(rows[0]["blocked"])
+        self.assertIsNone(rows[0]["snooze_until"])
+        self.assertIsNone(rows[0]["dependency_session_id"])
+
+    def test_delete_session_allows_terminal_owned_and_clears_dependents(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        blocked = _session(sid="blocked", start_ts=now - 100, last_chat_ts=now - 10)
+        target = _session(sid="target", start_ts=now - 200, last_chat_ts=now - 20, owned=False)
+        mgr._sessions = {blocked.session_id: blocked, target.session_id: target}
+        mgr._sidebar_meta = {
+            "blocked": {"priority_offset": 0.0, "dependency_session_id": "target"},
+            "target": {"priority_offset": 0.5},
+        }
+        mgr._queues = {"target": ["queued"]}
+        mgr._harness = {"target": {"enabled": True, "request": "x"}}
+        mgr._files = {"cwd:/tmp/target": ["/tmp/target/a.py"]}
+        called = {"shutdown": 0}
+
+        def _sock_call(*args, **kwargs):
+            called["shutdown"] += 1
+            return {"ok": True}
+
+        mgr._sock_call = _sock_call  # type: ignore[method-assign]
+
+        ok = mgr.delete_session("target")
+
+        self.assertTrue(ok)
+        self.assertEqual(called["shutdown"], 0)
+        self.assertIn("target", mgr._hidden_sessions)
+        self.assertNotIn("target", mgr._sidebar_meta)
+        self.assertNotIn("target", mgr._queues)
+        self.assertNotIn("target", mgr._harness)
+        self.assertNotIn("cwd:/tmp/target", mgr._files)
+        self.assertIsNone(mgr._sidebar_meta["blocked"].get("dependency_session_id"))
+
+    def test_edit_session_is_atomic_when_dependency_invalid(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        s = _session(sid="edit", start_ts=now - 100, last_chat_ts=now - 20)
+        mgr._sessions = {s.session_id: s}
+        mgr._aliases = {"edit": "old name"}
+        mgr._sidebar_meta = {"edit": {"priority_offset": 0.1}}
+
+        with self.assertRaisesRegex(ValueError, "dependency session not found"):
+            mgr.edit_session(
+                "edit",
+                name="new name",
+                priority_offset=0.2,
+                snooze_until=None,
+                dependency_session_id="missing",
+            )
+
+        self.assertEqual(mgr._aliases["edit"], "old name")
+        self.assertEqual(mgr._sidebar_meta["edit"]["priority_offset"], 0.1)
+
+    def test_list_sessions_uses_start_ts_when_log_has_no_sidebar_relevant_message(self) -> None:
+        mgr = _make_manager()
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+        with unittest.mock.patch("codoxear.server._last_conversation_ts_from_tail", return_value=None):
+            s = _session(sid="nologmsg", start_ts=123.0, last_chat_ts=None)
+            s.log_path = Path("/tmp/fake-rollout.jsonl")
+            mgr._sessions = {s.session_id: s}
+            original_exists = Path.exists
+
+            def _exists(path_obj):
+                if str(path_obj) == "/tmp/fake-rollout.jsonl":
+                    return True
+                return original_exists(path_obj)
+
+            with unittest.mock.patch("pathlib.Path.exists", _exists):
+                rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["updated_ts"], 123.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
