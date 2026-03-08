@@ -19,10 +19,39 @@ def render_markdown(markdown: str) -> str:
         const ctx = {{
           console,
           location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_mdToHtml = mdToHtml;\n")}, ctx);
         process.stdout.write(ctx.__test_mdToHtml({json.dumps(markdown)}));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return proc.stdout
+
+
+def render_markdown_preview(markdown: str, file_path: str, session_id: str) -> str:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function escapeHtml")
+    end = source.index("function iconSvg")
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          console,
+          location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_markdownPreviewHtml = markdownPreviewHtml;\n")}, ctx);
+        process.stdout.write(ctx.__test_markdownPreviewHtml({json.dumps(markdown)}, {{ filePath: {json.dumps(file_path)}, sessionId: {json.dumps(session_id)} }}));
         """
     )
     proc = subprocess.run(
@@ -66,6 +95,11 @@ class TestMarkdownTables(unittest.TestCase):
     def test_non_table_pipe_text_stays_paragraph(self) -> None:
         html = render_markdown("Top 10 | pending | tasks")
         self.assertEqual(html, "<p>Top 10 | pending | tasks</p>")
+
+    def test_markdown_preview_resolves_relative_image_against_file_path(self) -> None:
+        html = render_markdown_preview("![diagram](../images/flow.png)", "docs/guides/intro.md", "sess-123")
+        self.assertIn('src="http://localhost/api/sessions/sess-123/file/blob?path=docs%2Fimages%2Fflow.png"', html)
+        self.assertIn('alt="diagram"', html)
 
 
 if __name__ == "__main__":
