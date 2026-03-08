@@ -36,6 +36,16 @@ def render_markdown(markdown: str) -> str:
 
 
 class TestMarkdownTables(unittest.TestCase):
+    def test_local_markdown_file_link_shows_line_on_link_face(self) -> None:
+        html = render_markdown("[server.py](/home/yiwen/codex-web/codoxear/server.py#L123)")
+        self.assertIn('data-candidate-file-path="/home/yiwen/codex-web/codoxear/server.py"', html)
+        self.assertIn('data-candidate-file-line="123"', html)
+        self.assertIn(">server.py#L123</span>", html)
+
+    def test_descriptive_markdown_link_text_stays_unchanged(self) -> None:
+        html = render_markdown("[server implementation](/home/yiwen/codex-web/codoxear/server.py#L123)")
+        self.assertIn(">server implementation</span>", html)
+
     def test_pipe_table_renders_as_html_table(self) -> None:
         html = render_markdown(
             textwrap.dedent(
