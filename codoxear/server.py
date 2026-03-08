@@ -138,6 +138,7 @@ FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
 GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
+GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
@@ -621,8 +622,100 @@ def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) ->
     return proc.stdout.decode("utf-8", errors="replace")
 
 
+def _expand_user_path(raw: str) -> Path:
+    home = str(Path.home())
+    expanded = raw.strip().replace("${HOME}", home)
+    expanded = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, expanded)
+    return Path(os.path.expanduser(os.path.expandvars(expanded)))
+
+
+def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{field_name} required")
+    path = _expand_user_path(raw)
+    if not path.is_dir():
+        raise ValueError(f"{field_name} is not a directory: {path}")
+    return path.resolve()
+
+
+def _resolve_new_path(raw: str, *, field_name: str) -> Path:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{field_name} required")
+    path = _expand_user_path(raw).resolve()
+    if path.exists():
+        raise ValueError(f"{field_name} already exists: {path}")
+    return path
+
+
+def _clean_worktree_branch(raw: str) -> str:
+    if not isinstance(raw, str):
+        raise ValueError("worktree_branch must be a string")
+    branch = raw.strip()
+    if not branch:
+        raise ValueError("worktree_branch required")
+    return branch
+
+
 def _require_git_repo(cwd: Path) -> None:
     _run_git(cwd, ["rev-parse", "--is-inside-work-tree"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=4096)
+
+
+def _git_repo_root(cwd: Path) -> Path | None:
+    try:
+        root = _run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
+    except (RuntimeError, FileNotFoundError):
+        return None
+    if not root:
+        return None
+    return Path(root).resolve()
+
+
+def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
+    repo_root = _git_repo_root(cwd)
+    git_branch = _current_git_branch(cwd) or ""
+    return {
+        "cwd": str(cwd),
+        "git_repo": repo_root is not None,
+        "git_root": str(repo_root) if repo_root is not None else "",
+        "git_branch": git_branch,
+    }
+
+
+def _worktree_path_slug(branch: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", branch).strip(".-")
+    return slug or "worktree"
+
+
+def _default_worktree_path(source_cwd: Path, branch: str) -> Path:
+    slug = _worktree_path_slug(branch)
+    return (source_cwd.parent / f"{source_cwd.name}-{slug}").resolve()
+
+
+def _create_git_worktree(source_cwd: Path, worktree_branch: str) -> Path:
+    repo_root = _git_repo_root(source_cwd)
+    if repo_root is None:
+        raise ValueError("cwd is not inside a git worktree")
+    branch = _clean_worktree_branch(worktree_branch)
+    target = _default_worktree_path(source_cwd, branch)
+    if target.exists():
+        raise ValueError(f"derived worktree path already exists: {target}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            ["git", "worktree", "add", "-b", branch, str(target)],
+            cwd=str(repo_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=GIT_WORKTREE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise ValueError("git worktree add timed out") from e
+    if proc.returncode != 0:
+        err = proc.stderr.decode("utf-8", errors="replace").strip()
+        out = proc.stdout.decode("utf-8", errors="replace").strip()
+        raise ValueError(err or out or f"git worktree add failed with code {proc.returncode}")
+    return target.resolve()
 
 
 def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
@@ -861,17 +954,25 @@ def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
     if not isinstance(cwd, str) or not cwd:
         return None
     try:
-        updated_ts = float(log_path.stat().st_mtime)
+        stat = log_path.stat()
+        updated_ts = float(stat.st_mtime)
     except FileNotFoundError:
         return None
     except Exception:
         updated_ts = 0.0
+    git_info = meta.get("git")
+    git_branch = ""
+    if isinstance(git_info, dict):
+        branch_raw = git_info.get("branch")
+        if isinstance(branch_raw, str):
+            git_branch = branch_raw
     return {
         "session_id": session_id,
         "cwd": cwd,
         "log_path": str(log_path),
         "updated_ts": updated_ts,
         "timestamp": meta.get("timestamp"),
+        "git_branch": git_branch,
     }
 
 
@@ -2563,25 +2664,24 @@ class SessionManager:
         cwd: str,
         args: list[str] | None = None,
         resume_session_id: str | None = None,
+        worktree_branch: str | None = None,
     ) -> dict[str, Any]:
-        if not isinstance(cwd, str) or not cwd.strip():
-            raise ValueError("cwd required")
+        cwd_path = _resolve_existing_dir(cwd, field_name="cwd")
+        cwd3 = str(cwd_path)
+        if resume_session_id is not None and worktree_branch is not None:
+            raise ValueError("worktree_branch cannot be used when resuming a session")
+        spawn_cwd = cwd_path
+        if worktree_branch is not None:
+            spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
 
-        home = str(Path.home())
-        cwd2 = cwd.strip().replace("${HOME}", home)
-        cwd2 = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd2)
-        cwd2 = os.path.expanduser(os.path.expandvars(cwd2))
-        if not Path(cwd2).is_dir():
-            raise ValueError(f"cwd is not a directory: {cwd2}")
-
-        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd2, "--"]
+        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
         codex_args = list(args or [])
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
                 raise ValueError("resume_session_id must be a non-empty string")
             found = False
-            for row in _list_resume_candidates_for_cwd(cwd2, limit=1000):
+            for row in _list_resume_candidates_for_cwd(cwd3, limit=1000):
                 if row.get("session_id") == resume_id:
                     found = True
                     break
@@ -2931,19 +3031,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 qs = urllib.parse.parse_qs(u.query)
                 cwd_raw = qs.get("cwd", [""])[0]
-                cwd = str(cwd_raw).strip()
-                if not cwd:
-                    _json_response(self, 400, {"error": "cwd required"})
+                try:
+                    cwd_path = _resolve_existing_dir(str(cwd_raw), field_name="cwd")
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
-                home = str(Path.home())
-                cwd2 = cwd.replace("${HOME}", home)
-                cwd2 = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd2)
-                cwd2 = os.path.expanduser(os.path.expandvars(cwd2))
-                if not Path(cwd2).is_dir():
-                    _json_response(self, 400, {"error": f"cwd is not a directory: {cwd2}"})
-                    return
-                cwd3 = str(Path(cwd2).resolve())
-                rows = _list_resume_candidates_for_cwd(cwd3)
+                info = _describe_session_cwd(cwd_path)
+                rows = _list_resume_candidates_for_cwd(info["cwd"])
                 for row in rows:
                     sid = row.get("session_id")
                     log_path_raw = row.get("log_path")
@@ -2953,7 +3047,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         preview = _first_user_message_preview_from_log(Path(log_path_raw))
                     row["alias"] = alias
                     row["first_user_message"] = preview
-                _json_response(self, 200, {"ok": True, "cwd": cwd3, "sessions": rows})
+                _json_response(self, 200, {"ok": True, **info, "sessions": rows})
                 return
 
             if path == "/api/metrics":
@@ -3666,6 +3760,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     _json_response(self, 400, {"error": "resume_session_id must be a string"})
                     return
+                worktree_branch_raw = obj.get("worktree_branch")
+                if worktree_branch_raw is None:
+                    worktree_branch = None
+                elif isinstance(worktree_branch_raw, str):
+                    worktree_branch = worktree_branch_raw.strip() or None
+                else:
+                    _json_response(self, 400, {"error": "worktree_branch must be a string"})
+                    return
                 args = obj.get("args")
                 if args is None:
                     args_list = None
@@ -3675,7 +3777,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
                 try:
-                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list, resume_session_id=resume_session_id)
+                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list, resume_session_id=resume_session_id, worktree_branch=worktree_branch)
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return

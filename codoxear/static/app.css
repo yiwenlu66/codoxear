@@ -1253,6 +1253,17 @@ select {
         color: var(--muted);
         line-height: 1.35;
       }
+      .checkField {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+      }
+      .checkField input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+      }
       .pickerField {
         position: relative;
       }

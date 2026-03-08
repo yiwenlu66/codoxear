@@ -1,4 +1,5 @@
 import json
+import subprocess
 import threading
 import unittest
 from pathlib import Path
@@ -7,6 +8,8 @@ from unittest.mock import ANY
 from unittest.mock import patch
 
 from codoxear.server import SessionManager
+from codoxear.server import _create_git_worktree
+from codoxear.server import _default_worktree_path
 from codoxear.server import _first_user_message_preview_from_log
 from codoxear.server import _list_resume_candidates_for_cwd
 
@@ -136,6 +139,75 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         with TemporaryDirectory() as td, patch("codoxear.server._list_resume_candidates_for_cwd", return_value=[]):
             with self.assertRaisesRegex(ValueError, "resume session not found for cwd"):
                 SessionManager.spawn_web_session(manager, cwd=td, resume_session_id="missing")
+
+    def test_create_git_worktree_creates_new_checkout(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            root.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (root / "README.md").write_text("x\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "commit", "-m", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            branch = "feature/test-worktree"
+            worktree = _default_worktree_path(root, branch)
+            result = _create_git_worktree(root, branch)
+            self.assertEqual(result, worktree.resolve())
+            self.assertTrue((worktree / ".git").exists())
+            branch_name = subprocess.run(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=worktree,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            ).stdout.strip()
+            self.assertEqual(branch_name, branch)
+
+    def test_spawn_web_session_uses_created_worktree_as_cwd(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 5432
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._create_git_worktree", return_value=Path(td) / "repo-worktree"), patch(
+            "codoxear.server._wait_or_raise", return_value=None
+        ), patch("codoxear.server.subprocess.Popen", return_value=_Proc()) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(manager, cwd=td, worktree_branch="feature/test-worktree")
+
+        argv = popen_mock.call_args.args[0]
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                str(Path(td) / "repo-worktree"),
+                "--",
+            ],
+        )
+        self.assertEqual(result, {"broker_pid": 5432})
+        self.assertEqual(thread_calls, ["start"])
+
+    def test_spawn_web_session_rejects_worktree_when_resuming(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        with TemporaryDirectory() as td:
+            with self.assertRaisesRegex(ValueError, "worktree_branch cannot be used when resuming a session"):
+                SessionManager.spawn_web_session(manager, cwd=td, resume_session_id="resume-a", worktree_branch="feature/test-worktree")
+
+    def test_spawn_web_session_rejects_worktree_outside_git(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        with TemporaryDirectory() as td:
+            with self.assertRaisesRegex(ValueError, "cwd is not inside a git worktree"):
+                SessionManager.spawn_web_session(manager, cwd=td, worktree_branch="feature/test-worktree")
 
 
 if __name__ == "__main__":
