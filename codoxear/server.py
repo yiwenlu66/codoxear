@@ -850,6 +850,120 @@ def _read_session_meta(log_path: Path) -> dict[str, Any]:
     return payload
 
 
+def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
+    meta = _read_session_meta(log_path)
+    if _is_subagent_session_meta(meta):
+        return None
+    session_id = meta.get("id")
+    cwd = meta.get("cwd")
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    if not isinstance(cwd, str) or not cwd:
+        return None
+    try:
+        updated_ts = float(log_path.stat().st_mtime)
+    except FileNotFoundError:
+        return None
+    except Exception:
+        updated_ts = 0.0
+    return {
+        "session_id": session_id,
+        "cwd": cwd,
+        "log_path": str(log_path),
+        "updated_ts": updated_ts,
+        "timestamp": meta.get("timestamp"),
+    }
+
+
+def _list_resume_candidates_for_cwd(cwd: str, *, limit: int = 12) -> list[dict[str, Any]]:
+    cwd2 = str(Path(cwd).expanduser().resolve())
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for log_path in _iter_session_logs():
+        try:
+            row = _resume_candidate_from_log(log_path)
+        except Exception:
+            continue
+        if not isinstance(row, dict):
+            continue
+        session_id = row.get("session_id")
+        row_cwd = row.get("cwd")
+        if not (isinstance(session_id, str) and session_id):
+            continue
+        if not (isinstance(row_cwd, str) and row_cwd == cwd2):
+            continue
+        if session_id in seen:
+            continue
+        out.append(row)
+        seen.add(session_id)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _resume_preview_from_text(text: str, *, max_chars: int = 120) -> str:
+    lines = [line.strip() for line in text.splitlines()]
+    compact = " ".join(line for line in lines if line)
+    compact = re.sub(r"\s+", " ", compact).strip()
+    if len(compact) <= max_chars:
+        return compact
+    head = compact[: max_chars - 1].rstrip()
+    cut = head.rfind(" ")
+    if cut >= max_chars * 0.6:
+        head = head[:cut].rstrip()
+    return head + "..."
+
+
+def _user_message_text(payload: dict[str, Any]) -> str:
+    content = payload.get("content")
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type not in ("input_text", "output_text", "text"):
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text.strip():
+            parts.append(text)
+    return "\n".join(parts).strip()
+
+
+def _is_scaffold_user_text(text: str) -> bool:
+    s = text.strip()
+    return s.startswith("# AGENTS.md instructions") or s.startswith("<environment_context>")
+
+
+def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int = 256 * 1024) -> str:
+    try:
+        with log_path.open("rb") as f:
+            total = 0
+            for raw in f:
+                total += len(raw)
+                if total > max_scan_bytes:
+                    break
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "response_item":
+                    continue
+                payload = obj.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                if payload.get("type") != "message" or payload.get("role") != "user":
+                    continue
+                text = _user_message_text(payload)
+                if not text or _is_scaffold_user_text(text):
+                    continue
+                return _resume_preview_from_text(text)
+    except FileNotFoundError:
+        return ""
+    return ""
+
+
 def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
     sm = _read_session_meta(log_path)
     if not sm:
@@ -2443,7 +2557,13 @@ class SessionManager:
         self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
         return True
 
-    def spawn_web_session(self, *, cwd: str, args: list[str] | None = None) -> dict[str, Any]:
+    def spawn_web_session(
+        self,
+        *,
+        cwd: str,
+        args: list[str] | None = None,
+        resume_session_id: str | None = None,
+    ) -> dict[str, Any]:
         if not isinstance(cwd, str) or not cwd.strip():
             raise ValueError("cwd required")
 
@@ -2455,8 +2575,20 @@ class SessionManager:
             raise ValueError(f"cwd is not a directory: {cwd2}")
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", cwd2, "--"]
-        if args:
-            argv.extend(args)
+        codex_args = list(args or [])
+        if resume_session_id is not None:
+            resume_id = str(resume_session_id).strip()
+            if not resume_id:
+                raise ValueError("resume_session_id must be a non-empty string")
+            found = False
+            for row in _list_resume_candidates_for_cwd(cwd2, limit=1000):
+                if row.get("session_id") == resume_id:
+                    found = True
+                    break
+            if not found:
+                raise ValueError(f"resume session not found for cwd: {resume_id}")
+            argv.extend(["resume", resume_id])
+        argv.extend(codex_args)
 
         env = dict(os.environ)
         if _DOTENV.exists():
@@ -2791,6 +2923,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
                 _json_response(self, 200, {"sessions": sessions})
+                return
+
+            if path == "/api/session_resume_candidates":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                cwd_raw = qs.get("cwd", [""])[0]
+                cwd = str(cwd_raw).strip()
+                if not cwd:
+                    _json_response(self, 400, {"error": "cwd required"})
+                    return
+                home = str(Path.home())
+                cwd2 = cwd.replace("${HOME}", home)
+                cwd2 = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, cwd2)
+                cwd2 = os.path.expanduser(os.path.expandvars(cwd2))
+                if not Path(cwd2).is_dir():
+                    _json_response(self, 400, {"error": f"cwd is not a directory: {cwd2}"})
+                    return
+                cwd3 = str(Path(cwd2).resolve())
+                rows = _list_resume_candidates_for_cwd(cwd3)
+                for row in rows:
+                    sid = row.get("session_id")
+                    log_path_raw = row.get("log_path")
+                    alias = MANAGER.alias_get(sid) if isinstance(sid, str) and sid else ""
+                    preview = ""
+                    if isinstance(log_path_raw, str) and log_path_raw:
+                        preview = _first_user_message_preview_from_log(Path(log_path_raw))
+                    row["alias"] = alias
+                    row["first_user_message"] = preview
+                _json_response(self, 200, {"ok": True, "cwd": cwd3, "sessions": rows})
                 return
 
             if path == "/api/metrics":
@@ -3495,6 +3658,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(cwd, str) or not cwd.strip():
                     _json_response(self, 400, {"error": "cwd required"})
                     return
+                resume_session_id_raw = obj.get("resume_session_id")
+                if resume_session_id_raw is None:
+                    resume_session_id = None
+                elif isinstance(resume_session_id_raw, str):
+                    resume_session_id = resume_session_id_raw.strip() or None
+                else:
+                    _json_response(self, 400, {"error": "resume_session_id must be a string"})
+                    return
                 args = obj.get("args")
                 if args is None:
                     args_list = None
@@ -3504,7 +3675,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
                 try:
-                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list)
+                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list, resume_session_id=resume_session_id)
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return

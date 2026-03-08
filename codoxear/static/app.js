@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260308.5";
+	      const UI_VERSION = "20260308.6";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -872,6 +872,11 @@
         const fileRefCandidateCache = new Map();
         let editDependencyMenuOpen = false;
         let newSessionRecentMenuOpen = false;
+        let newSessionResumeMenuOpen = false;
+        let newSessionResumeCandidates = [];
+        let newSessionResumeSelection = null;
+        let newSessionResumeLoadSeq = 0;
+        let newSessionResumeLoadTimer = null;
         const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
@@ -1269,6 +1274,14 @@
           newSessionCwdInput,
           newSessionRecentBtn,
         ]);
+        const newSessionResumeBtn = el("button", {
+          id: "newSessionResumeBtn",
+          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
+          type: "button",
+          text: "Start fresh",
+        });
+        const newSessionResumeMenu = el("div", { id: "newSessionResumeMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionResumeHint = el("div", { class: "muted", id: "newSessionResumeHint", text: "No prior sessions loaded." });
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
@@ -1281,6 +1294,11 @@
               el("span", { class: "fieldLabel", text: "Working directory" }),
               newSessionCwdField,
             ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Resume conversation" }),
+              newSessionResumeBtn,
+              newSessionResumeHint,
+            ]),
           ]),
           el("div", { class: "formActions" }, [
             el("button", { id: "newSessionCancelBtn", type: "button", text: "Cancel" }),
@@ -1290,6 +1308,7 @@
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
         newSessionViewer.appendChild(newSessionRecentMenu);
+        newSessionViewer.appendChild(newSessionResumeMenu);
 
         function setToast(text) {
           toast.textContent = text || "";
@@ -2731,17 +2750,110 @@
               newSessionCwdInput.value = cwd;
               newSessionRecentMenuOpen = false;
               applyDialogMenus();
+              scheduleNewSessionResumeLoad();
               newSessionCwdInput.focus();
             };
             newSessionRecentMenu.appendChild(btn);
           }
         }
 
+        function newSessionResumeLabel(item) {
+          if (!item || typeof item !== "object") return "Start fresh";
+          const alias = typeof item.alias === "string" ? item.alias.trim() : "";
+          const firstUser = typeof item.first_user_message === "string" ? item.first_user_message.trim() : "";
+          const primary = alias || firstUser || shortSessionId(item.session_id);
+          const ts = Number(item.updated_ts || 0);
+          const age = ts > 0 ? fmtRelativeAge(Math.max(0, Date.now() / 1000 - ts)) : "";
+          return `${age ? `${age} | ` : ""}${primary}`;
+        }
+
+        function setNewSessionResumeSelection(item) {
+          newSessionResumeSelection = item && typeof item === "object" ? item : null;
+          newSessionResumeBtn.innerHTML = "";
+          newSessionResumeBtn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(newSessionResumeSelection) }));
+          newSessionStartBtn.textContent = newSessionResumeSelection ? "Resume session" : "Start session";
+        }
+
+        function renderNewSessionResumeMenu() {
+          newSessionResumeMenu.innerHTML = "";
+          const freshBtn = el("button", {
+            class: "fileMenuItem" + (!newSessionResumeSelection ? " active" : ""),
+            type: "button",
+            title: "Start a new conversation",
+          });
+          freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
+          freshBtn.onclick = () => {
+            setNewSessionResumeSelection(null);
+            newSessionResumeMenuOpen = false;
+            applyDialogMenus();
+          };
+          newSessionResumeMenu.appendChild(freshBtn);
+          if (!newSessionResumeCandidates.length) {
+            newSessionResumeMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching sessions" }));
+            return;
+          }
+          for (const item of newSessionResumeCandidates) {
+            const btn = el("button", {
+              class: "fileMenuItem" + (newSessionResumeSelection && newSessionResumeSelection.session_id === item.session_id ? " active" : ""),
+              type: "button",
+              title: newSessionResumeLabel(item),
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(item) }));
+            btn.onclick = () => {
+              setNewSessionResumeSelection(item);
+              newSessionResumeMenuOpen = false;
+              applyDialogMenus();
+            };
+            newSessionResumeMenu.appendChild(btn);
+          }
+        }
+
+        async function loadNewSessionResumeCandidates(cwd) {
+          const raw = String(cwd || "").trim();
+          const seq = ++newSessionResumeLoadSeq;
+          if (!raw) {
+            newSessionResumeCandidates = [];
+            setNewSessionResumeSelection(null);
+            newSessionResumeHint.textContent = "Specify a working directory to load prior sessions.";
+            renderNewSessionResumeMenu();
+            return;
+          }
+          newSessionResumeHint.textContent = "Loading matching sessions...";
+          try {
+            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}`);
+            if (seq !== newSessionResumeLoadSeq) return;
+            const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
+            newSessionResumeCandidates = items;
+            const currentId = newSessionResumeSelection && typeof newSessionResumeSelection.session_id === "string" ? newSessionResumeSelection.session_id : "";
+            const next = currentId ? items.find((item) => item.session_id === currentId) || null : null;
+            setNewSessionResumeSelection(next);
+            newSessionResumeHint.textContent = items.length ? `${items.length} matching session${items.length === 1 ? "" : "s"} found.` : "No matching sessions for this directory.";
+            renderNewSessionResumeMenu();
+          } catch (e) {
+            if (seq !== newSessionResumeLoadSeq) return;
+            newSessionResumeCandidates = [];
+            setNewSessionResumeSelection(null);
+            newSessionResumeHint.textContent = e && e.message ? e.message : "Unable to load prior sessions.";
+            renderNewSessionResumeMenu();
+          }
+        }
+
+        function scheduleNewSessionResumeLoad() {
+          if (newSessionResumeLoadTimer) clearTimeout(newSessionResumeLoadTimer);
+          const cwd = String(newSessionCwdInput.value || "").trim();
+          newSessionResumeLoadTimer = setTimeout(() => {
+            newSessionResumeLoadTimer = null;
+            void loadNewSessionResumeCandidates(cwd);
+          }, 180);
+        }
+
         function applyDialogMenus() {
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionRecentMenu.classList.toggle("open", newSessionRecentMenuOpen);
+          newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionRecentMenuOpen) positionDialogMenu(newSessionRecentMenu, newSessionRecentBtn);
+          if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
 
         function positionDialogMenu(menu, anchorBtn) {
@@ -2805,6 +2917,7 @@
         function hideNewSessionDialog() {
           newSessionStatus.textContent = "";
           newSessionRecentMenuOpen = false;
+          newSessionResumeMenuOpen = false;
           applyDialogMenus();
           newSessionBackdrop.style.display = "none";
           newSessionViewer.style.display = "none";
@@ -2815,9 +2928,14 @@
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           newSessionStatus.textContent = String(statusText || "");
           newSessionCwdInput.value = initialCwd;
+          newSessionResumeCandidates = [];
+          setNewSessionResumeSelection(null);
+          newSessionResumeHint.textContent = "Loading matching sessions...";
           renderRecentCwdMenu();
+          renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
+          scheduleNewSessionResumeLoad();
           newSessionCwdInput.focus();
           newSessionCwdInput.select();
         }
@@ -2839,6 +2957,7 @@
           e.stopPropagation();
           editDependencyMenuOpen = !editDependencyMenuOpen;
           newSessionRecentMenuOpen = false;
+          newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
         newSessionRecentBtn.onclick = (e) => {
@@ -2847,6 +2966,16 @@
           renderRecentCwdMenu();
           newSessionRecentMenuOpen = !newSessionRecentMenuOpen;
           editDependencyMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionResumeBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          renderNewSessionResumeMenu();
+          newSessionResumeMenuOpen = !newSessionResumeMenuOpen;
+          editDependencyMenuOpen = false;
+          newSessionRecentMenuOpen = false;
           applyDialogMenus();
         };
         editCloseBtn.onclick = () => hideEditSession();
@@ -2907,15 +3036,18 @@
         $("#newSessionCancelBtn").onclick = () => hideNewSessionDialog();
         newSessionBackdrop.onclick = () => hideNewSessionDialog();
         newSessionViewer.onclick = (e) => e.stopPropagation();
-        newSessionCwdInput.oninput = () => renderRecentCwdMenu();
+        newSessionCwdInput.oninput = () => {
+          renderRecentCwdMenu();
+          scheduleNewSessionResumeLoad();
+        };
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
           if (!cwd) {
             newSessionStatus.textContent = "Working directory is required.";
             return;
           }
-          newSessionStatus.textContent = "Starting...";
-          const brokerPid = await spawnSessionWithCwd(cwd);
+          newSessionStatus.textContent = newSessionResumeSelection ? "Resuming..." : "Starting...";
+          const brokerPid = await spawnSessionWithCwd(cwd, newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null);
           if (brokerPid) hideNewSessionDialog();
           else newSessionStatus.textContent = "Start failed.";
         };
@@ -3632,6 +3764,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             newSessionRecentMenuOpen = false;
             applyDialogMenus();
           }
+          if (newSessionResumeMenuOpen && !t.closest("#newSessionResumeBtn") && !t.closest("#newSessionResumeMenu")) {
+            newSessionResumeMenuOpen = false;
+            applyDialogMenus();
+          }
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
@@ -3938,20 +4074,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd) {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
           }
           try {
-            setToast("starting...");
-            const res = await api("/api/sessions", { method: "POST", body: { cwd: String(cwd) } });
+            setToast(resumeSessionId ? "resuming..." : "starting...");
+            const body = { cwd: String(cwd) };
+            if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
+            const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
               return null;
             }
-            setToast(`started (broker ${brokerPid})`);
+            setToast(`${resumeSessionId ? "resumed" : "started"} (broker ${brokerPid})`);
             for (let i = 0; i < 60; i++) {
               const sessions = await refreshSessions();
               const found = (sessions || []).find((x) => Number(x.broker_pid || 0) === brokerPid);
@@ -3961,10 +4099,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
               await new Promise((r) => setTimeout(r, 250));
             }
-            setToast("session will appear once Codex creates a rollout log");
+            setToast(`${resumeSessionId ? "resumed" : "started"} session will appear once Codex creates a rollout log`);
             return brokerPid;
           } catch (e) {
-            setToast(`start error: ${e.message}`);
+            setToast(`${resumeSessionId ? "resume" : "start"} error: ${e.message}`);
             return null;
           }
         }
