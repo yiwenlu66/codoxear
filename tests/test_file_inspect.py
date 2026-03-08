@@ -2,10 +2,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_openable_file
 
 
 class TestInspectOpenableFile(unittest.TestCase):
+    def test_directory_is_supported_for_inspection(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "repo"
+            path.mkdir()
+            size, kind, image_ctype = _inspect_client_path(path)
+            self.assertEqual(size, 0)
+            self.assertEqual(kind, "directory")
+            self.assertIsNone(image_ctype)
+
     def test_text_file_is_supported(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "note.py"

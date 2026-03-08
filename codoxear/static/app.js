@@ -364,7 +364,6 @@
         const looksRelative = path.startsWith("./") || path.startsWith("../") || path.includes("/");
         const looksBareFile = !looksAbsolute && !looksRelative && hasClickableFileExtension(path);
         if (!looksAbsolute && !looksRelative && !looksBareFile) return null;
-        if ((looksAbsolute || looksRelative || looksBareFile) && !hasClickableFileExtension(path)) return null;
         return { path, line: parsed.line };
       }
 
@@ -2811,10 +2810,11 @@
           newSessionViewer.style.display = "none";
         }
 
-        function openNewSessionDialog() {
-          newSessionStatus.textContent = "";
+        function openNewSessionDialog({ cwd = null, statusText = "" } = {}) {
           const cur = selected ? sessionIndex.get(selected) : null;
-          newSessionCwdInput.value = cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          newSessionStatus.textContent = String(statusText || "");
+          newSessionCwdInput.value = initialCwd;
           renderRecentCwdMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
@@ -3359,9 +3359,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const link = el("a", {
               href: "#",
               class: "inlineFileLink",
-              "data-file-path": result.inspectPath || path,
+              "data-file-path": result.kind === "directory" ? result.resolvedPath || result.inspectPath || path : result.inspectPath || path,
+              "data-file-kind": result.kind || "text",
             });
-            if (line) link.setAttribute("data-file-line", String(line));
+            if (line && result.kind !== "directory") link.setAttribute("data-file-line", String(line));
             link.textContent = node.textContent || path;
             node.replaceWith(link);
           }
@@ -3594,12 +3595,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void showFileViewer({ path: rel2, mode: "file", manual: false, line });
         }
 
+        async function confirmDirectorySession(rawPath) {
+          const cwd = String(rawPath || "").trim();
+          if (!cwd) return;
+          openNewSessionDialog({
+            cwd,
+            statusText: "Review resume or worktree options, then start the session.",
+          });
+        }
+
         chatInner.addEventListener("click", async (e) => {
           const target = e.target instanceof Element ? e.target.closest("a[data-file-path]") : null;
           if (!target) return;
           e.preventDefault();
           const path = String(target.getAttribute("data-file-path") || "").trim();
+          const kind = String(target.getAttribute("data-file-kind") || "").trim();
           const line = normalizeLineNumber(target.getAttribute("data-file-line"));
+          if (kind === "directory") {
+            await confirmDirectorySession(path);
+            return;
+          }
           await openFileReference({ path, line });
         });
         document.addEventListener("click", (e) => {

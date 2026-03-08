@@ -789,6 +789,15 @@ def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]
     return raw, size, kind, image_ctype
 
 
+def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
+    if not path_obj.exists():
+        raise FileNotFoundError("file not found")
+    if path_obj.is_dir():
+        return 0, "directory", None
+    _raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
+    return size, kind, image_ctype
+
+
 def _iter_session_logs() -> list[Path]:
     return _iter_session_logs_impl(CODEX_SESSIONS_DIR)
 
@@ -3573,7 +3582,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    _raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
+                    size, kind, image_ctype = _inspect_client_path(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
