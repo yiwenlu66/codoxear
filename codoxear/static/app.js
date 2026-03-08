@@ -5,13 +5,16 @@
 	        const layoutH = Math.round(window.innerHeight);
 	        const visualH = Math.round(vv ? vv.height : window.innerHeight);
 	        const visualTop = Math.max(0, Math.round(vv ? vv.offsetTop : 0));
-	        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH && updateAppHeightVar._t === visualTop) return;
+	        const visualBottom = Math.max(0, layoutH - visualH - visualTop);
+	        if (updateAppHeightVar._h === visualH && updateAppHeightVar._l === layoutH && updateAppHeightVar._t === visualTop && updateAppHeightVar._b === visualBottom) return;
 	        updateAppHeightVar._h = visualH;
 	        updateAppHeightVar._l = layoutH;
 	        updateAppHeightVar._t = visualTop;
+	        updateAppHeightVar._b = visualBottom;
 	        document.documentElement.style.setProperty("--appH", `${visualH}px`);
 	        document.documentElement.style.setProperty("--layoutH", `${layoutH}px`);
 	        document.documentElement.style.setProperty("--vvTop", `${visualTop}px`);
+	        document.documentElement.style.setProperty("--vvBottom", `${visualBottom}px`);
 	      }
 	      updateAppHeightVar();
 	      window.addEventListener("resize", updateAppHeightVar);
@@ -2647,10 +2650,12 @@
           if (!menu || !anchorBtn) return;
           const host = menu.parentElement;
           if (!host) return;
+          const vv = window.visualViewport;
           const rect = anchorBtn.getBoundingClientRect();
           const hostRect = host.getBoundingClientRect();
           const viewportW = hostRect.width;
-          const viewportH = window.innerHeight;
+          const viewportTop = vv ? vv.offsetTop : 0;
+          const viewportBottom = viewportTop + (vv ? vv.height : window.innerHeight);
           const margin = 12;
           const desiredWidth = Math.min(Math.max(rect.width, 280), viewportW - margin * 2);
           menu.style.position = "absolute";
@@ -2660,19 +2665,19 @@
           menu.style.right = "auto";
           menu.style.bottom = "auto";
           menu.style.maxHeight = "";
-          const menuHeight = Math.min(menu.scrollHeight || 260, Math.floor(viewportH * 0.5));
-          const spaceBelow = viewportH - rect.bottom - margin;
-          const spaceAbove = rect.top - margin;
+          const menuHeight = Math.min(menu.scrollHeight || 260, Math.floor((viewportBottom - viewportTop) * 0.5));
+          const spaceBelow = viewportBottom - rect.bottom - margin;
+          const spaceAbove = rect.top - viewportTop - margin;
           const openAbove = spaceBelow < Math.min(220, menuHeight) && spaceAbove > spaceBelow;
           if (openAbove) {
             const maxHeight = Math.max(120, spaceAbove - 8);
             menu.style.maxHeight = `${maxHeight}px`;
-            const top = Math.max(margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 8);
+            const top = Math.max(viewportTop + margin - hostRect.top, rect.top - hostRect.top - Math.min(menuHeight, maxHeight) - 8);
             menu.style.top = `${top}px`;
           } else {
             const maxHeight = Math.max(120, spaceBelow - 8);
             menu.style.maxHeight = `${maxHeight}px`;
-            const top = Math.min(viewportH - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
+            const top = Math.min(viewportBottom - margin - hostRect.top - Math.min(menuHeight, maxHeight), rect.bottom - hostRect.top + 8);
             menu.style.top = `${top}px`;
           }
         }
