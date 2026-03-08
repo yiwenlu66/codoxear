@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260307.1";
+	      const UI_VERSION = "20260308.5";
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -554,6 +554,98 @@
           return out.join("");
         };
 
+        const splitTableCells = (line) => {
+          let text = String(line ?? "").trim();
+          if (!text.includes("|")) return [];
+          if (text.startsWith("|")) text = text.slice(1);
+          if (text.endsWith("|")) text = text.slice(0, -1);
+          const cells = [];
+          let cell = "";
+          let escaped = false;
+          for (const ch of text) {
+            if (escaped) {
+              cell += ch;
+              escaped = false;
+              continue;
+            }
+            if (ch === "\\") {
+              escaped = true;
+              continue;
+            }
+            if (ch === "|") {
+              cells.push(cell.trim());
+              cell = "";
+              continue;
+            }
+            cell += ch;
+          }
+          if (escaped) cell += "\\";
+          cells.push(cell.trim());
+          return cells;
+        };
+
+        const parseTableAlignmentRow = (line) => {
+          const cells = splitTableCells(line);
+          if (!cells.length) return null;
+          const alignments = [];
+          for (const cell of cells) {
+            const compact = String(cell ?? "").replace(/\s+/g, "");
+            if (!/^:?-{3,}:?$/.test(compact)) return null;
+            if (compact.startsWith(":") && compact.endsWith(":")) alignments.push("center");
+            else if (compact.endsWith(":")) alignments.push("right");
+            else if (compact.startsWith(":")) alignments.push("left");
+            else alignments.push("");
+          }
+          return alignments;
+        };
+
+        const parseTable = (lines, start) => {
+          if (start + 1 >= lines.length) return null;
+          const headerLine = lines[start] || "";
+          const separatorLine = lines[start + 1] || "";
+          if (!headerLine.includes("|") || !separatorLine.includes("|")) return null;
+          const headers = splitTableCells(headerLine);
+          const alignments = parseTableAlignmentRow(separatorLine);
+          if (!headers.length || !alignments || headers.length !== alignments.length) return null;
+          const rows = [];
+          let i = start + 2;
+          while (i < lines.length) {
+            const line = lines[i] || "";
+            if (!line.trim() || !line.includes("|")) break;
+            if (parseTableAlignmentRow(line)) break;
+            const cells = splitTableCells(line);
+            if (cells.length !== headers.length) break;
+            rows.push(cells);
+            i += 1;
+          }
+          return { node: { headers, alignments, rows }, next: i };
+        };
+
+        const renderTableCell = (tag, text, alignment) => {
+          const alignAttr = alignment ? ` style="text-align:${alignment}"` : "";
+          return `<${tag}${alignAttr}>${renderInlineMd(text || "")}</${tag}>`;
+        };
+
+        const renderTable = (node) => {
+          const out = [];
+          out.push('<div class="md-table-wrap"><table>');
+          out.push("<thead><tr>");
+          for (let i = 0; i < node.headers.length; i++) {
+            out.push(renderTableCell("th", node.headers[i], node.alignments[i]));
+          }
+          out.push("</tr></thead>");
+          out.push("<tbody>");
+          for (const row of node.rows) {
+            out.push("<tr>");
+            for (let i = 0; i < row.length; i++) {
+              out.push(renderTableCell("td", row[i], node.alignments[i]));
+            }
+            out.push("</tr>");
+          }
+          out.push("</tbody></table></div>");
+          return out.join("");
+        };
+
         const chunks = splitByFences(s);
 
         const out = [];
@@ -598,6 +690,13 @@
                 const parsed = parseList(lines, i);
                 out.push(renderList(parsed.node));
                 i = parsed.next - 1;
+                continue;
+              }
+              const table = parseTable(lines, i);
+              if (table) {
+                flushPara();
+                out.push(renderTable(table.node));
+                i = table.next - 1;
                 continue;
               }
               paraLines.push(l);

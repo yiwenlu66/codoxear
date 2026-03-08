@@ -761,6 +761,48 @@
       .md li {
         margin: 4px 0;
       }
+      .md-table-wrap {
+        margin: 10px 0 12px 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .md table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 13px;
+        line-height: 1.35;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(248, 250, 252, 0.92);
+      }
+      .md th,
+      .md td {
+        padding: 8px 10px;
+        vertical-align: top;
+        border-right: 1px solid rgba(15, 23, 42, 0.08);
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      }
+      .md th:last-child,
+      .md td:last-child {
+        border-right: 0;
+      }
+      .md tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .md th {
+        font-weight: 650;
+        background: rgba(226, 232, 240, 0.8);
+      }
+      .md td {
+        background: rgba(255, 255, 255, 0.94);
+      }
+      .md th p,
+      .md td p {
+        margin-bottom: 0;
+      }
 
       .composer {
         --composerCtl: 38px;
