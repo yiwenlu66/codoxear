@@ -385,6 +385,24 @@
         return null;
       }
 
+      function fileLocationDisplaySuffix(rawRef, lineNumber) {
+        const line = normalizeLineNumber(lineNumber);
+        if (!line) return "";
+        const raw = String(rawRef ?? "").trim();
+        if (/#L\d+(?:-\d+)?$/i.test(raw)) return `#L${line}`;
+        if (/:\d+(?::\d+)?$/.test(raw)) return `:${line}`;
+        return `#L${line}`;
+      }
+
+      function formatLocalFileLinkLabel(label, rawRef, localRef) {
+        const text = String(label ?? "");
+        if (!localRef || !localRef.line) return text;
+        const parsedLabel = parseFileLocation(text);
+        if (parsedLabel && parsedLabel.line) return text;
+        if (!parseLocalFileRef(text)) return text;
+        return `${text}${fileLocationDisplaySuffix(rawRef, localRef.line)}`;
+      }
+
       function renderInlineText(rawText) {
         const raw = String(rawText ?? "");
         const re =
@@ -429,7 +447,7 @@
           } else if (m[2] !== undefined) {
             const localRef = localFileRefFromRef(m[3]);
             if (localRef) {
-              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(m[2])}</span>`;
+              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(formatLocalFileLinkLabel(m[2], m[3], localRef))}</span>`;
             } else {
               const href = safeUrl(m[3]);
               if (!href) out += `${escapeHtml(m[2])} (${escapeHtml(m[3])})`;
