@@ -75,8 +75,10 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 Codoxear shows two kinds of sessions:
 
-- Terminal-owned: sessions started from your local terminal (via the `codex` wrapper). Codoxear can attach, but it does not offer a kill button.
-- Web-owned: sessions started from the Codoxear UI ("New session"). These are owned by the web server and show a delete button in the session list.
+- Terminal-owned: sessions started from your local terminal (via the `codex` wrapper). They are marked `T` in the UI.
+- Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
+
+The current UI offers Delete for either kind of session. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
 If you start a web-owned session and later want to continue it in your terminal, use `codex resume`.
 
@@ -90,7 +92,7 @@ For full remote interaction, run Codex in YOLO mode so confirmations do not bloc
 
 ### /new may show as pending until first prompt
 
-Codex does not always materialize (open) the new `rollout-*.jsonl` file immediately after `/new`. Codoxear tracks the active rollout by scanning `/proc` for writable rollout file descriptors, so the UI may show the session as pending until the first prompt is sent and the rollout file is created/opened.
+Codex does not always materialize (open) the new `rollout-*.jsonl` file immediately after `/new`. Codoxear tracks the active rollout by scanning the Codex process tree for open rollout-log file descriptors, so the UI may show the session as pending until the first prompt is sent and the rollout file is created/opened.
 
 ## Security model
 
@@ -113,7 +115,19 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_URL_PREFIX` (default empty). Example: `/codoxear` serves the UI at `/codoxear/` and the API under `/codoxear/api/*`.
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
-- `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `60`)
+- `CODEX_WEB_COOKIE_TTL_SECONDS` (default `2592000`, 30 days)
+- `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
+- `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `300`)
+- `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
+- `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
+- `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
+- `CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS` (default `1.0`)
+- `CODEX_WEB_METRICS_WINDOW` (default `256`)
+- `CODEX_WEB_FILE_READ_MAX_BYTES` (default `2097152`)
+- `CODEX_WEB_FILE_HISTORY_MAX` (default `20`)
+- `CODEX_WEB_GIT_DIFF_MAX_BYTES` (default `819200`)
+- `CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS` (default `4.0`)
+- `CODEX_WEB_GIT_CHANGED_FILES_MAX` (default `400`)
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 
 Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
