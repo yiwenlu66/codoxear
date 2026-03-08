@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260308.8";
+	      const UI_VERSION = "20260308.9";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -379,11 +379,61 @@
         return { path, line: parsed.line };
       }
 
-      function localFileRefFromRef(u) {
+      function normalizePathLike(rawPath) {
+        const raw = String(rawPath || "").trim();
+        if (!raw) return "";
+        const absolute = raw.startsWith("/");
+        const parts = raw.split("/");
+        const out = [];
+        for (const part of parts) {
+          if (!part || part === ".") continue;
+          if (part === "..") {
+            if (out.length && out[out.length - 1] !== "..") {
+              out.pop();
+              continue;
+            }
+            if (!absolute) out.push("..");
+            continue;
+          }
+          out.push(part);
+        }
+        const joined = out.join("/");
+        if (absolute) return joined ? `/${joined}` : "/";
+        return joined || ".";
+      }
+
+      function pathDirname(rawPath) {
+        const raw = normalizePathLike(rawPath);
+        if (!raw || raw === ".") return ".";
+        if (raw === "/") return "/";
+        const idx = raw.lastIndexOf("/");
+        if (idx < 0) return ".";
+        if (idx === 0) return "/";
+        return raw.slice(0, idx);
+      }
+
+      function resolveRelativePath(basePath, rawPath) {
+        const raw = String(rawPath || "").trim();
+        if (!raw) return "";
+        if (raw.startsWith("/")) return normalizePathLike(raw);
+        const baseDir = pathDirname(basePath);
+        if (!baseDir || baseDir === ".") return normalizePathLike(raw);
+        if (baseDir === "/") return normalizePathLike(`/${raw}`);
+        return normalizePathLike(`${baseDir}/${raw}`);
+      }
+
+      function resolveLocalRefWithOptions(ref, options) {
+        if (!ref || !options || typeof options.resolveLocalRef !== "function") return ref;
+        const next = options.resolveLocalRef({ path: ref.path, line: ref.line });
+        if (!next || typeof next.path !== "string" || !next.path.trim()) return ref;
+        return { path: next.path.trim(), line: normalizeLineNumber(next.line ?? ref.line) };
+      }
+
+      function localFileRefFromRef(u, options = null) {
         const raw = String(u ?? "").trim();
         if (!raw) return null;
         const direct = parseLocalFileRef(raw);
-        if (direct) return direct;
+        if (direct) return resolveLocalRefWithOptions(direct, options);
         try {
           const url = new URL(raw, location.href);
           if (url.origin !== location.origin) return null;
@@ -391,7 +441,7 @@
           const parsed = parseLocalFileRef(combined);
           if (!parsed) return null;
           if (parsed.path.startsWith("/") && /^\/(?:home|tmp|mnt|var|opt|usr|etc|private|Users|Volumes)\//.test(parsed.path)) {
-            return parsed;
+            return resolveLocalRefWithOptions(parsed, options);
           }
         } catch {}
         return null;
@@ -415,7 +465,7 @@
         return `${text}${fileLocationDisplaySuffix(rawRef, localRef.line)}`;
       }
 
-      function renderInlineText(rawText) {
+      function renderInlineText(rawText, options = null) {
         const raw = String(rawText ?? "");
         const re =
           /(^|[\s([{"'])((?:\/[A-Za-z0-9._~@%+=:,/-]+|(?:\.{1,2}\/)?[A-Za-z0-9._~@-]+(?:\/[A-Za-z0-9._~@-]+)+|[A-Za-z0-9._~@-]+\.[A-Za-z0-9._-]+)(?:#L\d+(?:-\d+)?)?(?::\d+(?::\d+)?)?)(?=$|[\s)\]}:;"',!?])/g;
@@ -428,7 +478,7 @@
           const tokenStart = wholeStart + m[1].length;
           const token = m[2];
           out += escapeHtml(raw.slice(last, tokenStart));
-          const ref = parseLocalFileRef(token);
+          const ref = resolveLocalRefWithOptions(parseLocalFileRef(token), options);
           if (ref) {
             out += `<span data-candidate-file-path="${escapeHtml(ref.path)}"${ref.line ? ` data-candidate-file-line="${ref.line}"` : ""}>${escapeHtml(token)}</span>`;
           } else {
@@ -440,43 +490,53 @@
         return out;
       }
 
-      function renderInlineMd(s) {
+      function renderInlineMd(s, options = null) {
         const raw = String(s ?? "");
-        const re = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
+        const re = /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*/g;
         let out = "";
         let last = 0;
         for (;;) {
           const m = re.exec(raw);
           if (!m) break;
-          out += renderInlineText(raw.slice(last, m.index));
+          out += renderInlineText(raw.slice(last, m.index), options);
           if (m[1] !== undefined) {
-            const inlineRef = parseLocalFileRef(m[1]);
+            const imageAlt = m[1];
+            const imageRef = m[2];
+            const localImageRef = localFileRefFromRef(imageRef, options);
+            const imageSrc =
+              options && typeof options.resolveImageSrc === "function"
+                ? options.resolveImageSrc(imageRef, localImageRef)
+                : safeUrl(imageRef);
+            if (!imageSrc) out += `![${escapeHtml(imageAlt)}](${escapeHtml(imageRef)})`;
+            else out += `<img src="${escapeHtml(imageSrc)}" alt="${escapeHtml(imageAlt)}" loading="lazy" />`;
+          } else if (m[3] !== undefined) {
+            const inlineRef = resolveLocalRefWithOptions(parseLocalFileRef(m[3]), options);
             if (inlineRef) {
-              out += `<code><span data-candidate-file-path="${escapeHtml(inlineRef.path)}"${inlineRef.line ? ` data-candidate-file-line="${inlineRef.line}"` : ""}>${escapeHtml(m[1])}</span></code>`;
+              out += `<code><span data-candidate-file-path="${escapeHtml(inlineRef.path)}"${inlineRef.line ? ` data-candidate-file-line="${inlineRef.line}"` : ""}>${escapeHtml(m[3])}</span></code>`;
             } else {
-              out += `<code>${escapeHtml(m[1])}</code>`;
-            }
-          } else if (m[2] !== undefined) {
-            const localRef = localFileRefFromRef(m[3]);
-            if (localRef) {
-              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(formatLocalFileLinkLabel(m[2], m[3], localRef))}</span>`;
-            } else {
-              const href = safeUrl(m[3]);
-              if (!href) out += `${escapeHtml(m[2])} (${escapeHtml(m[3])})`;
-              else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[2])}</a>`;
+              out += `<code>${escapeHtml(m[3])}</code>`;
             }
           } else if (m[4] !== undefined) {
-            out += `<strong>${escapeHtml(m[4])}</strong>`;
+            const localRef = localFileRefFromRef(m[5], options);
+            if (localRef) {
+              out += `<span data-candidate-file-path="${escapeHtml(localRef.path)}"${localRef.line ? ` data-candidate-file-line="${localRef.line}"` : ""}>${escapeHtml(formatLocalFileLinkLabel(m[4], m[5], localRef))}</span>`;
+            } else {
+              const href = safeUrl(m[5]);
+              if (!href) out += `${escapeHtml(m[4])} (${escapeHtml(m[5])})`;
+              else out += `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">${escapeHtml(m[4])}</a>`;
+            }
+          } else if (m[6] !== undefined) {
+            out += `<strong>${escapeHtml(m[6])}</strong>`;
           } else {
             out += escapeHtml(m[0]);
           }
           last = m.index + m[0].length;
         }
-        out += renderInlineText(raw.slice(last));
+        out += renderInlineText(raw.slice(last), options);
         return out;
       }
 
-      function mdToHtml(src) {
+      function mdToHtml(src, options = null) {
         const s = String(src ?? "").replaceAll("\r\n", "\n");
         const splitByFences = (input) => {
           const chunks = [];
@@ -575,7 +635,7 @@
           out.push(node.type === "ol" ? "<ol>" : "<ul>");
           for (const it of node.items) {
             out.push("<li>");
-            out.push(renderInlineMd(it.text || ""));
+            out.push(renderInlineMd(it.text || "", options));
             if (it.child) out.push(renderList(it.child));
             out.push("</li>");
           }
@@ -652,7 +712,7 @@
 
         const renderTableCell = (tag, text, alignment) => {
           const alignAttr = alignment ? ` style="text-align:${alignment}"` : "";
-          return `<${tag}${alignAttr}>${renderInlineMd(text || "")}</${tag}>`;
+          return `<${tag}${alignAttr}>${renderInlineMd(text || "", options)}</${tag}>`;
         };
 
         const renderTable = (node) => {
@@ -694,7 +754,7 @@
             let startIdx = 0;
             if (mHeading) {
               const level = mHeading[1].length;
-              out.push(`<h${level}>${renderInlineMd(mHeading[2])}</h${level}>`);
+              out.push(`<h${level}>${renderInlineMd(mHeading[2], options)}</h${level}>`);
               startIdx = 1;
             }
 
@@ -703,7 +763,7 @@
               const para = paraLines.join("\n").trim();
               paraLines = [];
               if (!para) return;
-              out.push(`<p>${renderInlineMd(para).replaceAll("\n", "<br />")}</p>`);
+              out.push(`<p>${renderInlineMd(para, options).replaceAll("\n", "<br />")}</p>`);
             };
 
             for (let i = startIdx; i < lines.length; i++) {
@@ -748,6 +808,34 @@
           mdCache.clear();
         }
         return html;
+      }
+
+      function isMarkdownPreviewable(path) {
+        const ext = filePathExtension(path);
+        return ext === "md" || ext === "markdown" || ext === "mdown" || ext === "mkd";
+      }
+
+      function previewImageUrlForRef(rawRef, localRef, { filePath, sessionId } = {}) {
+        if (localRef && localRef.path) {
+          if (sessionId) return resolveAppUrl(`/api/sessions/${sessionId}/file/blob?path=${encodeURIComponent(localRef.path)}`);
+          if (localRef.path.startsWith("/")) return resolveAppUrl(`/api/files/blob?path=${encodeURIComponent(localRef.path)}`);
+        }
+        const safe = safeUrl(rawRef);
+        return safe || null;
+      }
+
+      function markdownPreviewHtml(src, { filePath = "", sessionId = "" } = {}) {
+        const basePath = String(filePath || "").trim();
+        const sid = String(sessionId || "").trim();
+        return mdToHtml(src, {
+          resolveLocalRef(ref) {
+            if (!ref || typeof ref.path !== "string") return ref;
+            return { path: resolveRelativePath(basePath, ref.path), line: ref.line };
+          },
+          resolveImageSrc(rawRef, localRef) {
+            return previewImageUrlForRef(rawRef, localRef, { filePath: basePath, sessionId: sid });
+          },
+        });
       }
 
       function iconSvg(name) {
@@ -1066,6 +1154,14 @@
           "aria-label": "Toggle diff",
           text: "Diff",
         });
+        const fileModePreviewBtn = el("button", {
+          id: "fileModePreviewBtn",
+          class: "icon-btn text-btn",
+          type: "button",
+          title: "Toggle markdown preview",
+          "aria-label": "Toggle markdown preview",
+          text: "Preview",
+        });
         const fileAddBtn = el("button", {
           id: "fileAddBtn",
           class: "icon-btn text-btn",
@@ -1079,7 +1175,7 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileAddBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileAddBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerBtn, filePickerMenu]),
           fileStatus,
@@ -3207,7 +3303,8 @@
           if (brokerPid) hideNewSessionDialog();
           else newSessionStatus.textContent = "Start failed.";
         };
-        let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file"
+        let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
+        let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
         let activeFilePath = "";
@@ -3455,9 +3552,35 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }, 60);
         }
 
+        function renderMarkdownPreview(rel, text) {
+          disposeFileEditor();
+          fileDiff.innerHTML = "";
+          const preview = el("div", {
+            class: "md fileMarkdownPreview",
+            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: selected || "" }),
+          });
+          fileDiff.appendChild(preview);
+          void upgradeCandidateFileRefs(preview);
+        }
+
+        function setFileViewMode(mode) {
+          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
+          fileViewMode = next;
+          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+          if (next !== "diff") {
+            fileNonDiffMode = next;
+            localStorage.setItem("codexweb.fileNonDiffMode", fileNonDiffMode);
+          }
+          applyFileMode();
+        }
+
         function applyFileMode() {
           const isDiff = fileViewMode === "diff";
+          const isPreview = fileViewMode === "preview";
+          const previewable = isMarkdownPreviewable(activeFilePath);
           fileModeDiffBtn.classList.toggle("active", isDiff);
+          fileModePreviewBtn.classList.toggle("active", isPreview);
+          fileModePreviewBtn.style.display = previewable ? "" : "none";
         }
 
         function applyFileMenuState() {
@@ -3473,6 +3596,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           setFilePickerButtonContent(entry || (next ? { path: next, changed: false, additions: null, deletions: null } : null), next || "Choose file");
           fileMenuOpen = false;
           applyFileMenuState();
+          applyFileMode();
         }
 
         function formatFileChoice(entry) {
@@ -3584,12 +3708,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               setFilePath(path, { line: null });
               const selectedEntry = fileEntryMap.get(path);
               if (!selectedEntry || selectedEntry.changed) {
-                fileViewMode = "diff";
+                setFileViewMode("diff");
               } else {
-                fileViewMode = "file";
+                setFileViewMode(isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file");
               }
-              localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-              applyFileMode();
               renderFilePickerMenu();
               void openFilePath(path, { line: null });
             };
@@ -3708,11 +3830,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
-          if (mode === "file" || mode === "diff") {
-            fileViewMode = mode;
-            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-          }
-          applyFileMode();
+          if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
+          else applyFileMode();
           await refreshFileCandidates();
           const preferred = String(path || "").trim() || activeFilePath || localStorage.getItem("codexweb.filePath") || "";
           if (preferred) {
@@ -3722,9 +3841,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
           if (first) {
-            fileViewMode = "diff";
-            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-            applyFileMode();
+            setFileViewMode("diff");
             setFilePath(first, { line: null });
             void openFilePath(first, { line: null });
             return;
@@ -3756,7 +3873,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileImage.style.display = "none";
           fileDiff.style.display = "block";
           try {
-            if (fileViewMode === "diff") {
+            const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
+            if (viewMode !== fileViewMode) setFileViewMode(viewMode);
+            if (viewMode === "diff") {
               const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
@@ -3774,16 +3893,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (res.kind === "image") {
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
                 fileDiff.style.display = "none";
-                fileImage.src = res.image_url;
+                fileImage.src = resolveAppUrl(res.image_url);
                 fileImage.alt = rel;
                 fileImage.style.display = "block";
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               } else {
                 if (typeof res.text !== "string") throw new Error("invalid response");
-                await renderMonacoFile(rel, res.text, activeFileLine);
+                if (viewMode === "preview" && isMarkdownPreviewable(rel)) {
+                  renderMarkdownPreview(rel, res.text);
+                } else {
+                  await renderMonacoFile(rel, res.text, activeFileLine);
+                }
                 const size = typeof res.size === "number" ? res.size : res.text.length;
-                fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+                fileStatus.textContent = viewMode === "preview" && isMarkdownPreviewable(rel) ? `${rel} - preview - ${fmtBytes(size)}` : `${rel} - ${fmtBytes(size)}`;
               }
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
               renderFilePickerMenu();
@@ -3808,9 +3931,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          fileViewMode = fileViewMode === "diff" ? "file" : "diff";
-          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-          applyFileMode();
+          setFileViewMode(fileViewMode === "diff" ? fileNonDiffMode : "diff");
+          renderFilePickerMenu();
+          void openFilePath(activeFilePath, { line: activeFileLine });
+        };
+        fileModePreviewBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!isMarkdownPreviewable(activeFilePath)) return;
+          setFileViewMode(fileViewMode === "preview" ? "file" : "preview");
           renderFilePickerMenu();
           void openFilePath(activeFilePath, { line: activeFileLine });
         };
@@ -3828,9 +3957,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
             renderFilePickerMenu();
             setFilePath(rel, { line: null });
-            fileViewMode = "file";
-            localStorage.setItem("codexweb.fileViewMode", fileViewMode);
-            applyFileMode();
+            setFileViewMode(isMarkdownPreviewable(rel) && fileNonDiffMode === "preview" ? "preview" : "file");
             void openFilePath(rel, { line: null });
           } catch (err) {
             setToast(`file open error: ${err && err.message ? err.message : "unknown error"}`);
