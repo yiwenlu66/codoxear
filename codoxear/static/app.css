@@ -1182,9 +1182,12 @@ select {
       .formBody {
         display: flex;
         flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
         gap: 10px;
-        overflow: visible;
+        overflow: auto;
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
       }
       .formGrid {
         display: grid;
@@ -1539,12 +1542,12 @@ select {
         }
         .formViewer {
           width: min(94vw, 520px);
-          max-height: min(calc(var(--appH, 100dvh) - 24px), 88vh);
+          top: calc(var(--vvTop, 0px) + 8px);
+          bottom: calc(var(--vvBottom, 0px) + 8px);
+          max-height: none;
           left: 50%;
           right: auto;
-          top: 50%;
-          bottom: auto;
-          transform: translate(-50%, -50%);
+          transform: translateX(-50%);
           border-radius: 18px;
           padding: 12px;
         }
