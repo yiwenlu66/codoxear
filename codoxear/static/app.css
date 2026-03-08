@@ -1265,8 +1265,55 @@ select {
       .dialogPickerBtn {
         min-height: 42px;
       }
+      .dialogPickerBtn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
       .sidePickerBtn {
         width: 100%;
+      }
+      .pickerButtonText {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+      }
+      .pickerButtonText.placeholder .pickerButtonPrimary {
+        color: rgba(17, 24, 39, 0.78);
+      }
+      .pickerButtonPrimary {
+        width: 100%;
+        min-width: 0;
+        font-size: 13px;
+        line-height: 1.25;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pickerButtonSecondary {
+        width: 100%;
+        min-width: 0;
+        font-size: 11px;
+        line-height: 1.25;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .pickerButtonChevron {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(17, 24, 39, 0.55);
+      }
+      .pickerChevronIcon {
+        width: 16px;
+        height: 16px;
       }
       .dialogPickerMenu {
         max-height: min(40vh, 320px);
@@ -1585,8 +1632,8 @@ select {
         .formViewer {
           width: min(94vw, 520px);
           top: calc(var(--vvTop, 0px) + 8px);
-          bottom: calc(var(--vvBottom, 0px) + 8px);
-          max-height: none;
+          bottom: auto;
+          max-height: calc(var(--appH, 100dvh) - 16px);
           left: 50%;
           right: auto;
           transform: translateX(-50%);

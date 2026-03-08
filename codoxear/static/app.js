@@ -1,5 +1,12 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260308.6";
+	      const UI_VERSION = "20260308.8";
+	      function isTextEntryElement(target) {
+	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
+	        if (!(el instanceof HTMLElement)) return false;
+	        if (el.tagName !== "INPUT") return true;
+	        const type = String(el.getAttribute("type") || "text").toLowerCase();
+	        return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
+	      }
 	      function updateAppHeightVar() {
 	        const vv = window.visualViewport;
 	        const layoutH = Math.round(window.innerHeight);
@@ -22,6 +29,7 @@
       document.addEventListener(
         "gesturestart",
         (e) => {
+          if (isTextEntryElement(e.target)) return;
           e.preventDefault();
         },
         { passive: false }
@@ -29,6 +37,7 @@
       document.addEventListener(
         "gesturechange",
         (e) => {
+          if (isTextEntryElement(e.target)) return;
           e.preventDefault();
         },
         { passive: false }
@@ -36,6 +45,7 @@
       document.addEventListener(
         "gestureend",
         (e) => {
+          if (isTextEntryElement(e.target)) return;
           e.preventDefault();
         },
         { passive: false }
@@ -43,6 +53,7 @@
       document.addEventListener(
         "touchstart",
         (e) => {
+          if (isTextEntryElement(e.target)) return;
           if (e.touches && e.touches.length > 1) e.preventDefault();
         },
         { passive: false }
@@ -50,6 +61,7 @@
       document.addEventListener(
         "touchmove",
         (e) => {
+          if (isTextEntryElement(e.target)) return;
           if (e.touches && e.touches.length > 1) e.preventDefault();
         },
         { passive: false }
@@ -757,6 +769,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>`;
         if (name === "down")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
+        if (name === "chevronDown")
+          return `<svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
         if (name === "trash")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 16h10l1-16"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
         if (name === "edit")
@@ -1285,7 +1299,9 @@
           id: "newSessionRecentBtn",
           class: "filePickerBtn dialogPickerBtn sidePickerBtn",
           type: "button",
-          text: "Recent",
+          "aria-label": "Choose a recent working directory",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
         });
         const newSessionRecentMenu = el("div", { id: "newSessionRecentMenu", class: "filePickerMenu dialogPickerMenu" });
         const newSessionCwdField = el("div", { class: "pickerInputRow pickerField" }, [
@@ -1296,10 +1312,12 @@
           id: "newSessionResumeBtn",
           class: "filePickerBtn dialogPickerBtn sidePickerBtn",
           type: "button",
-          text: "Start fresh",
+          "aria-label": "Choose a conversation to resume",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
         });
         const newSessionResumeMenu = el("div", { id: "newSessionResumeMenu", class: "filePickerMenu dialogPickerMenu" });
-        const newSessionResumeHint = el("div", { class: "muted", id: "newSessionResumeHint", text: "No prior sessions loaded." });
+        const newSessionResumeHint = el("div", { class: "muted", id: "newSessionResumeHint", text: "Default is Start fresh. Open the menu to pick a matching recent conversation." });
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
@@ -1311,6 +1329,7 @@
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Working directory" }),
               newSessionCwdField,
+              el("span", { class: "fieldHint", text: "Type a path or open Recent directories." }),
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
@@ -2785,10 +2804,24 @@
           return `${age ? `${age} | ` : ""}${primary}`;
         }
 
+        function setPickerButtonContent(button, primaryText, secondaryText = "", placeholder = false) {
+          if (!button) return;
+          button.innerHTML = "";
+          const textWrap = el("span", { class: `pickerButtonText${placeholder ? " placeholder" : ""}` });
+          textWrap.appendChild(el("span", { class: "pickerButtonPrimary", text: String(primaryText || "") }));
+          if (secondaryText) textWrap.appendChild(el("span", { class: "pickerButtonSecondary", text: String(secondaryText) }));
+          button.appendChild(textWrap);
+          button.appendChild(el("span", { class: "pickerButtonChevron", html: iconSvg("chevronDown") }));
+        }
+
         function setNewSessionResumeSelection(item) {
           newSessionResumeSelection = item && typeof item === "object" ? item : null;
-          newSessionResumeBtn.innerHTML = "";
-          newSessionResumeBtn.appendChild(el("span", { class: "fileMenuPath", text: newSessionResumeLabel(newSessionResumeSelection) }));
+          setPickerButtonContent(
+            newSessionResumeBtn,
+            newSessionResumeSelection ? newSessionResumeLabel(newSessionResumeSelection) : "Start fresh",
+            newSessionResumeSelection ? "Matching recent conversation" : "Open to pick a matching recent conversation",
+            !newSessionResumeSelection
+          );
           newSessionStartBtn.textContent = newSessionResumeSelection ? "Resume session" : "Start session";
         }
 
@@ -2869,6 +2902,9 @@
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionRecentMenu.classList.toggle("open", newSessionRecentMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
+          editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
+          newSessionRecentBtn.setAttribute("aria-expanded", newSessionRecentMenuOpen ? "true" : "false");
+          newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionRecentMenuOpen) positionDialogMenu(newSessionRecentMenu, newSessionRecentBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
@@ -2949,13 +2985,20 @@
           newSessionResumeCandidates = [];
           setNewSessionResumeSelection(null);
           newSessionResumeHint.textContent = "Loading matching sessions...";
+          setPickerButtonContent(newSessionRecentBtn, "Recent directories", "Reuse a path from another session", true);
           renderRecentCwdMenu();
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
           scheduleNewSessionResumeLoad();
-          newSessionCwdInput.focus();
-          newSessionCwdInput.select();
+          if (isMobile()) return;
+          requestAnimationFrame(() => {
+            newSessionCwdInput.focus({ preventScroll: true });
+            const end = newSessionCwdInput.value.length;
+            try {
+              newSessionCwdInput.setSelectionRange(end, end);
+            } catch {}
+          });
         }
 
         editPriorityRange.oninput = syncEditPriorityLabel;
@@ -4212,10 +4255,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
          const isIOS =
            /iP(hone|od|ad)/.test(navigator.userAgent || "") ||
            (navigator.platform === "MacIntel" && navigator.maxTouchPoints && navigator.maxTouchPoints > 1);
+	         function activeTextEntryElement() {
+	           const active = document.activeElement;
+	           return isTextEntryElement(active) ? active : null;
+	         }
 	         let iosViewportGuardTimer = null;
 	         let iosViewportGuardUntil = 0;
 	         function normalizePageScroll() {
 	           if (!isIOS) return;
+	           const activeEntry = activeTextEntryElement();
+	           if (activeEntry && activeEntry !== textarea) return;
 	           const y = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
 	           if (y <= 0) return;
 	           window.scrollTo(0, 0);
@@ -4235,6 +4284,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	           stopIOSViewportGuard();
 	           iosViewportGuardUntil = Date.now() + Math.max(0, Number(durationMs) || 0);
 	           const tick = () => {
+	             const activeEntry = activeTextEntryElement();
+	             if (activeEntry && activeEntry !== textarea) {
+	               stopIOSViewportGuard();
+	               return;
+	             }
 	             updateAppHeightVar();
 	             normalizePageScroll();
 	             if (preserveChatBottom && (autoScroll || isNearBottom())) scrollToBottom();
@@ -4250,6 +4304,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	           const onViewportShift = () => {
 	             updateAppHeightVar();
 	             if (!isIOS) return;
+	             const activeEntry = activeTextEntryElement();
+	             if (activeEntry && activeEntry !== textarea) {
+	               stopIOSViewportGuard();
+	               return;
+	             }
 	             if (document.activeElement === textarea || isIOSViewportGuardActive()) {
 	               normalizePageScroll();
 	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
@@ -4321,8 +4380,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          textarea.addEventListener(
 	            "blur",
 	            () => {
-	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: false, durationMs: 900 });
-	              else setTimeout(updateAppHeightVar, 0);
+	              setTimeout(() => {
+	                if (isIOS) {
+	                  const activeEntry = activeTextEntryElement();
+	                  if (activeEntry && activeEntry !== textarea) {
+	                    stopIOSViewportGuard();
+	                    updateAppHeightVar();
+	                    return;
+	                  }
+	                  runIOSViewportGuard({ preserveChatBottom: false, durationMs: 900 });
+	                  return;
+	                }
+	                updateAppHeightVar();
+	              }, 0);
 	            },
 	            { passive: true }
 	          );
