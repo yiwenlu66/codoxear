@@ -1084,12 +1084,18 @@ select {
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
         background: #ffffff;
-        overflow: hidden;
+        overflow: auto;
       }
       .fileDiff .monaco-editor,
       .fileDiff .monaco-diff-editor,
       .fileDiff .overflow-guard {
         border-radius: 12px;
+      }
+      .fileDiff .monaco-diff-editor .editor.original,
+      .fileDiff .monaco-diff-editor .editor.original .monaco-editor,
+      .fileDiff .monaco-diff-editor .editor.original .overflow-guard {
+        width: 0 !important;
+        min-width: 0 !important;
       }
       .fileImage {
         display: none;

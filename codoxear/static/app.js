@@ -2848,6 +2848,7 @@
         }
 
         function disposeFileEditor() {
+          fileDiff.innerHTML = "";
           for (const model of fileEditorModels) {
             try {
               model.dispose();
@@ -2948,10 +2949,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        async function renderMonacoFile(rel, text, lineNumber = null) {
+        async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "") {
           const monaco = await ensureMonaco();
           const host = fileDiff;
-          const lang = extToEditorLang(rel);
+          const lang = langOverride || extToEditorLang(rel);
           if (fileEditorKind !== "file") {
             disposeFileEditor();
             fileEditor = monaco.editor.create(host, {
@@ -3005,23 +3006,44 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             readOnly: true,
             theme: "codoxear-github-light",
             renderSideBySide: false,
+            useInlineViewWhenSpaceIsLimited: true,
             lineNumbers: "on",
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
             wordWrap: "on",
+            diffWordWrap: "on",
             folding: false,
             renderLineHighlight: "none",
             glyphMargin: false,
             overviewRulerBorder: false,
             stickyScroll: { enabled: false },
             automaticLayout: true,
-            hideUnchangedRegions: { enabled: false },
+            hideUnchangedRegions: {
+              enabled: true,
+              contextLineCount: 4,
+              minimumLineCount: 1,
+              revealLineCount: 2,
+            },
           });
           fileEditor.setModel({ original: originalModel, modified: modifiedModel });
           fileEditorKind = "diff";
           fileEditorModels = [originalModel, modifiedModel];
           const originalEditor = fileEditor.getOriginalEditor();
           const modifiedEditor = fileEditor.getModifiedEditor();
+          originalEditor.updateOptions({
+            wordWrap: "on",
+            lineNumbers: "off",
+            glyphMargin: false,
+            lineDecorationsWidth: 0,
+            lineNumbersMinChars: 0,
+          });
+          modifiedEditor.updateOptions({
+            wordWrap: "on",
+            lineNumbers: "on",
+            glyphMargin: false,
+            lineDecorationsWidth: 0,
+            lineNumbersMinChars: 3,
+          });
           const targetLine = normalizeLineNumber(lineNumber) || 1;
           originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
@@ -3345,11 +3367,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
-              await renderMonacoDiff(rel, baseText, currentText, activeFileLine);
-              if (!res.base_exists && !res.current_exists) fileStatus.textContent = `${rel} - unavailable`;
-              else if (!res.base_exists) fileStatus.textContent = `${rel} - new file`;
-              else if (!res.current_exists) fileStatus.textContent = `${rel} - deleted`;
-              else fileStatus.textContent = rel;
+              if (!res.base_exists && !res.current_exists) {
+                disposeFileEditor();
+                fileStatus.textContent = `${rel} - no diff`;
+              } else {
+                await renderMonacoDiff(rel, baseText, currentText, activeFileLine);
+                fileStatus.textContent = `${rel} - diff`;
+              }
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
               const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
