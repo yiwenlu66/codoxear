@@ -426,10 +426,8 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     if scan <= 0:
         return None
     objs: list[dict[str, Any]] = []
-    saw_user = False
-    saw_explicit_turn_end = False
-    turn_open = False
-    last_terminal_event: str | None = None
+    saw_terminal_signal = False
+    idle = True
 
     def has_assistant_text(obj: dict[str, Any]) -> bool:
         p = obj.get("payload")
@@ -447,6 +445,8 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
 
     while True:
         objs = _read_jsonl_tail(path, scan)
+        saw_terminal_signal = False
+        idle = True
         for obj in objs:
             typ = obj.get("type")
             if typ == "event_msg":
@@ -455,24 +455,22 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     raise ValueError("invalid event_msg payload")
                 pt = p.get("type")
                 if pt == "user_message" and isinstance(p.get("message"), str):
-                    saw_user = True
-                    turn_open = True
-                    last_terminal_event = "user"
+                    saw_terminal_signal = True
+                    idle = False
                     continue
                 if pt == "agent_message":
                     msg = p.get("message")
                     if isinstance(msg, str) and msg.strip():
-                        last_terminal_event = "assistant"
-                        continue
-                if pt in ("turn_aborted", "thread_rolled_back"):
-                    turn_open = False
-                    saw_explicit_turn_end = True
-                    last_terminal_event = "aborted"
+                        saw_terminal_signal = True
+                        idle = False
                     continue
-                if pt in ("task_complete", "turn_complete"):
-                    turn_open = False
-                    saw_explicit_turn_end = True
-                    last_terminal_event = "complete"
+                if pt == "agent_reasoning":
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+                if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
+                    saw_terminal_signal = True
+                    idle = True
                     continue
             if typ == "response_item":
                 p = obj.get("payload")
@@ -480,31 +478,36 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     raise ValueError("invalid response_item payload")
                 pt = p.get("type")
                 if has_assistant_text(obj):
-                    last_terminal_event = "assistant"
+                    saw_terminal_signal = True
+                    idle = (p.get("end_turn") is True)
+                    continue
+                if pt == "reasoning":
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+                if pt in (
+                    "function_call",
+                    "function_call_output",
+                    "custom_tool_call",
+                    "custom_tool_call_output",
+                    "web_search_call",
+                    "local_shell_call",
+                ):
+                    saw_terminal_signal = True
+                    idle = False
                     continue
 
-        if saw_user or saw_explicit_turn_end or scan >= max_scan_bytes:
+        if saw_terminal_signal or scan >= max_scan_bytes:
             break
         scan *= 2
 
     if not objs:
         return None
 
-    if saw_explicit_turn_end:
-        return True
-
-    if turn_open:
-        return False
-
-    if (not saw_user) and (last_terminal_event is None):
+    if not saw_terminal_signal:
         return True if sz <= 128 * 1024 else False
 
-    if last_terminal_event in ("aborted", "complete"):
-        return True
-
-    if last_terminal_event in ("assistant", "user"):
-        return False
-    return False
+    return idle
 
 
 def _last_chat_role_ts_from_tail(
