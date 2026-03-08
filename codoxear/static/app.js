@@ -2789,8 +2789,7 @@
             const s = sessionIndex.get(value);
             if (s) label = `${sessionDisplayName(s)}${s.cwd ? ` | ${baseName(s.cwd)}` : ""}`;
           }
-          editDependencyBtn.innerHTML = "";
-          editDependencyBtn.appendChild(el("span", { class: "fileMenuPath", text: label }));
+          setPickerButtonContent(editDependencyBtn, label);
         }
 
         function renderRecentCwdMenu() {
