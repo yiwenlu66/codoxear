@@ -528,7 +528,13 @@ class Broker:
                     time.sleep(0.25)
                     continue
                 if root_pid > 0:
-                    lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=root_pid, cwd=self.cwd)
+                    ignored_paths = set(st.ignored_rollout_paths)
+                    lp = _proc_find_open_rollout_log(
+                        proc_root=PROC_ROOT,
+                        root_pid=root_pid,
+                        cwd=self.cwd,
+                        ignored_paths=ignored_paths,
+                    )
                     if lp and lp.exists():
                         self._maybe_register_or_switch_rollout(log_path=lp)
                         time.sleep(0.25)

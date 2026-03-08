@@ -279,6 +279,30 @@ def _proc_descendants(proc_root: Path, root_pid: int) -> list[int]:
     return out
 
 
+def _proc_fd_flags(proc_root: Path, pid: int, fd_name: str) -> int | None:
+    info_path = proc_root / str(pid) / "fdinfo" / fd_name
+    try:
+        raw = info_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    for line in raw.splitlines():
+        if not line.startswith("flags:"):
+            continue
+        flags_raw = line.split(":", 1)[1].strip().split()[0]
+        try:
+            return int(flags_raw, 8)
+        except ValueError:
+            return None
+    return None
+
+
+def _fd_has_write_intent(flags: int) -> bool:
+    access_mode = int(flags) & int(os.O_ACCMODE)
+    return access_mode in (int(os.O_WRONLY), int(os.O_RDWR))
+
+
 def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
     if sys.platform == "darwin":
         return _macos_open_rollout_logs(root_pid)
@@ -310,17 +334,68 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
     return out
 
 
+def proc_open_writable_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
+    if sys.platform == "darwin":
+        return set()
+    uid = int(os.getuid())
+    out: set[Path] = set()
+    for pid in _proc_descendants(proc_root, root_pid):
+        puid = _proc_pid_uid(proc_root, pid)
+        if (puid is not None) and (puid != uid):
+            continue
+        fd_dir = proc_root / str(pid) / "fd"
+        try:
+            entries = list(fd_dir.iterdir())
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        for ent in entries:
+            flags = _proc_fd_flags(proc_root, pid, ent.name)
+            if flags is None or (not _fd_has_write_intent(flags)):
+                continue
+            try:
+                tgt = os.readlink(ent)
+            except OSError:
+                continue
+            if tgt.endswith(" (deleted)"):
+                continue
+            if (not tgt.startswith("/")) or (not tgt.endswith(".jsonl")):
+                continue
+            if "/rollout-" not in tgt:
+                continue
+            out.add(Path(tgt))
+    return out
+
+
 def proc_find_open_rollout_log(
-    *, proc_root: Path, root_pid: int, cwd: str | None = None
+    *,
+    proc_root: Path,
+    root_pid: int,
+    cwd: str | None = None,
+    ignored_paths: set[Path] | None = None,
 ) -> Path | None:
-    cands = list(proc_open_rollout_logs(proc_root, root_pid))
+    cands = list(proc_open_writable_rollout_logs(proc_root, root_pid))
     if not cands:
         return None
+    ignored_resolved: set[Path] = set()
+    for p in ignored_paths or set():
+        try:
+            ignored_resolved.add(p.resolve())
+        except Exception:
+            ignored_resolved.add(p)
     try:
         cands.sort(key=lambda p: float(p.stat().st_mtime), reverse=True)
     except Exception:
         pass
+    matches: list[Path] = []
     for p in cands:
+        try:
+            rp = p.resolve()
+        except Exception:
+            rp = p
+        if rp in ignored_resolved:
+            continue
         payload = read_session_meta_payload(p, timeout_s=0.0)
         if not payload:
             continue
@@ -330,8 +405,10 @@ def proc_find_open_rollout_log(
             pcwd = payload.get("cwd")
             if not (isinstance(pcwd, str) and pcwd == cwd):
                 continue
-        return p
-    return None
+        matches.append(p)
+    if len(matches) != 1:
+        return None
+    return matches[0]
 
 
 def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[list[dict[str, Any]], int]:
