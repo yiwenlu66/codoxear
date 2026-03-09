@@ -17,6 +17,7 @@ def _make_manager() -> SessionManager:
     mgr._hidden_sessions = set()
     mgr._files = {}
     mgr._queues = {}
+    mgr._recent_cwds = {}
     mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
@@ -26,6 +27,7 @@ def _make_manager() -> SessionManager:
     mgr._save_harness = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]
     return mgr
 
 
@@ -152,6 +154,18 @@ class TestSessionSidebarPriority(unittest.TestCase):
                 rows = mgr.list_sessions()
 
         self.assertEqual(rows[0]["updated_ts"], 123.0)
+
+    def test_recent_cwds_include_backfilled_history_and_live_sessions(self) -> None:
+        mgr = _make_manager()
+        mgr._recent_cwds = {"/repo/ended": 100.0}
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
+        mgr._sessions = {current.session_id: current}
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+        mgr.list_sessions()
+
+        self.assertEqual(mgr.recent_cwds(limit=4), ["/tmp/current", "/repo/ended"])
 
 
 if __name__ == "__main__":

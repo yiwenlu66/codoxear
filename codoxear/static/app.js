@@ -977,10 +977,11 @@
 	         let openSwipeSessionId = null;
 	         let openSwipeTargetX = 0;
 	         let swipeRefreshDeferred = false;
-        const cacheBySession = new Map();
+	        const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
 	        let sessionIndex = new Map(); // session_id -> session info
+        let recentCwds = [];
 	        let sending = false;
 	        let localEchoSeq = 0;
 	        const pendingUser = [];
@@ -1361,15 +1362,13 @@
           ]),
           editStatus,
           el("div", { class: "formBody" }, [
-            el("div", { class: "formGrid twoCol" }, [
-              el("label", { class: "field" }, [
-                el("span", { class: "fieldLabel", text: "Conversation name" }),
-                editNameInput,
-              ]),
-              el("label", { class: "field" }, [
-                el("span", { class: "fieldLabel", text: "Priority offset" }),
-                el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
-              ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Conversation name" }),
+              editNameInput,
+            ]),
+            el("label", { class: "field editPriorityField" }, [
+              el("span", { class: "fieldLabel", text: "Priority offset" }),
+              el("div", { class: "sliderRow" }, [editPriorityRange, editPriorityValue, editPriorityResetBtn]),
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Snooze" }),
@@ -1415,7 +1414,7 @@
           "aria-expanded": "false",
         });
         const newSessionRecentMenu = el("div", { id: "newSessionRecentMenu", class: "filePickerMenu dialogPickerMenu" });
-        const newSessionCwdField = el("div", { class: "pickerInputRow pickerField" }, [
+        const newSessionCwdField = el("div", { class: "pickerInputRow pickerField cwdPickerField" }, [
           newSessionCwdInput,
           newSessionRecentBtn,
         ]);
@@ -2027,6 +2026,9 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
+          recentCwds = Array.isArray(data.recent_cwds)
+            ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
+            : [];
           fileRefCandidateCache.clear();
           const mobile = isMobile();
             const sessions = (data.sessions || [])
@@ -2817,8 +2819,8 @@
         function renderRecentCwdOptions() {
           const out = [];
           const seen = new Set();
-          for (const s of sessionIndex.values()) {
-            const cwd = typeof s.cwd === "string" ? s.cwd.trim() : "";
+          for (const raw of recentCwds) {
+            const cwd = typeof raw === "string" ? raw.trim() : "";
             if (!cwd || seen.has(cwd)) continue;
             seen.add(cwd);
             out.push(cwd);

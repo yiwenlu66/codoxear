@@ -101,6 +101,7 @@ SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
 HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 QUEUE_PATH = APP_DIR / "session_queues.json"
+RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
 
 _DOTENV = (Path.cwd() / ".env").resolve()
 if _DOTENV.exists():
@@ -140,9 +141,10 @@ GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
-SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))
+SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
+RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain three live lists: Deliverables, Next actions, Parked questions.
@@ -761,8 +763,6 @@ def _safe_filename(name: str, *, default: str = "file") -> str:
     return s[:96]
 
 
-def _clean_alias(name: str) -> str:
-    if not isinstance(name, str):
 def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_bytes: int = ATTACH_UPLOAD_MAX_BYTES) -> Path:
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError("session_id required")
@@ -1262,6 +1262,7 @@ class SessionManager:
         self._hidden_sessions: set[str] = set()
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[str]] = {}
+        self._recent_cwds: dict[str, float] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
         self._load_harness()
@@ -1270,6 +1271,8 @@ class SessionManager:
         self._load_hidden_sessions()
         self._load_files()
         self._load_queues()
+        self._load_recent_cwds()
+        self._backfill_recent_cwds_from_logs()
         self._discover_existing(force=True)
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
@@ -1668,6 +1671,95 @@ class SessionManager:
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, QUEUE_PATH)
 
+    def _load_recent_cwds(self) -> None:
+        try:
+            raw = RECENT_CWD_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid recent_cwds.json (expected object)")
+        cleaned: dict[str, float] = {}
+        for raw_cwd, raw_ts in obj.items():
+            cwd = _clean_recent_cwd(raw_cwd)
+            if cwd is None or isinstance(raw_ts, bool):
+                continue
+            try:
+                ts = float(raw_ts)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(ts) or ts <= 0:
+                continue
+            prev = cleaned.get(cwd)
+            if prev is None or ts > prev:
+                cleaned[cwd] = ts
+        top = sorted(cleaned.items(), key=lambda item: (-item[1], item[0]))[:RECENT_CWD_MAX]
+        with self._lock:
+            self._recent_cwds = dict(top)
+
+    def _save_recent_cwds(self) -> None:
+        with self._lock:
+            items = sorted(getattr(self, "_recent_cwds", {}).items(), key=lambda item: (-float(item[1]), item[0]))[:RECENT_CWD_MAX]
+        obj = {cwd: ts for cwd, ts in items}
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = RECENT_CWD_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, RECENT_CWD_PATH)
+
+    def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
+        cleaned = _clean_recent_cwd(cwd)
+        if cleaned is None:
+            return False
+        if isinstance(ts, bool):
+            ts_value = time.time()
+        else:
+            try:
+                ts_value = float(ts) if ts is not None else time.time()
+            except (TypeError, ValueError):
+                ts_value = time.time()
+        if not math.isfinite(ts_value) or ts_value <= 0:
+            ts_value = time.time()
+        with self._lock:
+            recent = getattr(self, "_recent_cwds", None)
+            if not isinstance(recent, dict):
+                self._recent_cwds = {}
+                recent = self._recent_cwds
+            prev = recent.get(cleaned)
+            if prev is not None and prev >= ts_value:
+                return False
+            recent[cleaned] = ts_value
+            if len(recent) > RECENT_CWD_MAX * 2:
+                keep = dict(sorted(recent.items(), key=lambda item: (-float(item[1]), item[0]))[:RECENT_CWD_MAX])
+                recent.clear()
+                recent.update(keep)
+        return True
+
+    def _backfill_recent_cwds_from_logs(self) -> None:
+        changed = False
+        seen: set[str] = set()
+        for log_path in _iter_session_logs():
+            try:
+                row = _resume_candidate_from_log(log_path)
+            except Exception:
+                continue
+            if not isinstance(row, dict):
+                continue
+            cwd = row.get("cwd")
+            if not isinstance(cwd, str) or not cwd or cwd in seen:
+                continue
+            seen.add(cwd)
+            if self._remember_recent_cwd(cwd, ts=row.get("updated_ts")):
+                changed = True
+            if len(seen) >= RECENT_CWD_MAX:
+                break
+        if changed:
+            self._save_recent_cwds()
+
+    def recent_cwds(self, *, limit: int = RECENT_CWD_MAX) -> list[str]:
+        with self._lock:
+            items = sorted(getattr(self, "_recent_cwds", {}).items(), key=lambda item: (-float(item[1]), item[0]))
+        return [cwd for cwd, _ts in items[: max(0, int(limit))]]
+
     def _compat_queue_len(self, session_id: str) -> int:
         with self._lock:
             qmap = getattr(self, "_queues", None)
@@ -2025,6 +2117,7 @@ class SessionManager:
             if (now - last) < DISCOVER_MIN_INTERVAL_SECONDS:
                 return
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
+        recent_cwd_dirty = False
         for sock in sorted(SOCK_DIR.glob("*.sock")):
             session_id = sock.stem
             # Prefer metadata file written by sessiond.
@@ -2079,6 +2172,8 @@ class SessionManager:
             if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
                 raise ValueError(f"invalid cwd in metadata for socket {sock}")
             cwd = cwd_raw
+            if self._remember_recent_cwd(cwd, ts=meta.get("updated_ts", meta.get("start_ts"))):
+                recent_cwd_dirty = True
 
             start_ts_raw = meta.get("start_ts")
             if not isinstance(start_ts_raw, (int, float)):
@@ -2141,6 +2236,8 @@ class SessionManager:
                     if prev.log_path != s.log_path:
                         prev.log_path = s.log_path
                         self._reset_log_caches(prev, meta_log_off=meta_log_off)
+        if recent_cwd_dirty:
+            self._save_recent_cwds()
         with self._lock:
             self._last_discover_ts = time.time()
 
@@ -2285,6 +2382,15 @@ class SessionManager:
                     if isinstance(conv_ts, (int, float)):
                         s.last_chat_ts = float(conv_ts)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+                cwd_recent = _clean_recent_cwd(s.cwd)
+                recent_map = getattr(self, "_recent_cwds", None)
+                if cwd_recent is not None:
+                    if not isinstance(recent_map, dict):
+                        self._recent_cwds = {}
+                        recent_map = self._recent_cwds
+                    prev_recent_ts = recent_map.get(cwd_recent)
+                    if prev_recent_ts is None or prev_recent_ts < updated_ts:
+                        recent_map[cwd_recent] = updated_ts
                 compat_ql = 0
                 if isinstance(qmap, dict):
                     q0 = qmap.get(s.session_id)
@@ -3094,9 +3200,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 t0 = time.perf_counter()
                 sessions = MANAGER.list_sessions()
+                recent_cwds = MANAGER.recent_cwds()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
-                _json_response(self, 200, {"sessions": sessions})
+                _json_response(self, 200, {"sessions": sessions, "recent_cwds": recent_cwds})
                 return
 
             if path == "/api/session_resume_candidates":

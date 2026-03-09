@@ -18,7 +18,6 @@
           --sidebar-w: 380px;
         }
       }
-
       *,
       *::before,
       *::after {
@@ -1310,6 +1309,43 @@ select {
       }
       .sidePickerBtn {
         width: 100%;
+      }
+      @media (min-width: 881px) {
+        .formViewer.newSessionViewer {
+          width: min(92vw, 560px);
+        }
+        .pickerInputRow.cwdPickerField {
+          grid-template-columns: minmax(0, 1fr) minmax(188px, 196px);
+          gap: 12px;
+          align-items: center;
+        }
+        #newSessionRecentBtn.sidePickerBtn {
+          min-height: 44px;
+          padding: 10px 14px;
+          border-radius: 14px;
+        }
+        #newSessionRecentBtn .pickerButtonPrimary {
+          font-size: 13px;
+        }
+        #newSessionRecentBtn .pickerButtonSecondary {
+          display: none;
+        }
+        #editViewer.formDialog {
+          width: min(92vw, 720px);
+        }
+        #editViewer .editPriorityField {
+          width: min(100%, 460px);
+        }
+        #editViewer .sliderRow {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto auto;
+          gap: 10px;
+          align-items: center;
+        }
+        #editViewer .choiceChips {
+          flex-wrap: wrap;
+          overflow: visible;
+        }
       }
       .pickerButtonText {
         min-width: 0;
