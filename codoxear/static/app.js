@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.12";
+	      const UI_VERSION = "20260309.14";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -877,6 +877,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
+        if (name === "copy")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>`;
         if (name === "help")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>`;
         if (name === "info")
@@ -1491,6 +1493,13 @@
           }, 2200);
         }
 
+        async function copyToClipboard(text) {
+          if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+            throw new Error("Clipboard API unavailable");
+          }
+          await navigator.clipboard.writeText(String(text ?? ""));
+        }
+
         let currentQueueLen = 0;
         function setStatus({ running, queueLen }) {
           const q = Math.max(0, Number(queueLen) || 0);
@@ -1910,6 +1919,35 @@
             bubble.style.opacity = "0.72";
             bubble.setAttribute("data-pending", "1");
             if (ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
+          }
+
+          if (role === "assistant") {
+            const shell = el("div", { class: "msg-shell assistant" });
+            shell.appendChild(bubble);
+            if (typeof ev.text === "string" && ev.text.length) {
+              const copyBtn = el("button", {
+                class: "icon-btn msg-copy-btn",
+                type: "button",
+                title: "Copy raw markdown",
+                "aria-label": "Copy raw markdown",
+                html: iconSvg("copy"),
+              });
+              copyBtn.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                  await copyToClipboard(ev.text);
+                  copyBtn.classList.add("copied");
+                  setTimeout(() => copyBtn.classList.remove("copied"), 1200);
+                  setToast("Copied markdown");
+                } catch (err) {
+                  setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+                }
+              };
+              shell.appendChild(copyBtn);
+            }
+            row.appendChild(shell);
+            return { row, bubble };
           }
 
           row.appendChild(bubble);

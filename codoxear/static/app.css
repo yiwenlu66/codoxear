@@ -615,6 +615,13 @@
       .msg-row.assistant {
         justify-content: flex-start;
       }
+      .msg-shell {
+        position: relative;
+        display: inline-flex;
+        align-items: flex-end;
+        max-width: min(760px, 82%);
+        min-width: 0;
+      }
       .msg {
         max-width: min(760px, 82%);
         min-width: 0;
@@ -633,6 +640,32 @@
       }
       .msg.assistant {
         background: var(--bubble-assistant);
+      }
+      .msg-shell .msg {
+        max-width: 100%;
+      }
+      .msg-copy-btn {
+        position: absolute;
+        right: -40px;
+        bottom: 0;
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: var(--shadow-sm);
+      }
+      .msg-copy-btn:hover {
+        border-color: rgba(37, 99, 235, 0.4);
+        color: var(--accent);
+      }
+      .msg-copy-btn.copied {
+        border-color: rgba(37, 99, 235, 0.45);
+        background: rgba(29, 78, 216, 0.08);
+        color: var(--accent);
+      }
+      .msg-copy-btn .icon {
+        width: 15px;
+        height: 15px;
       }
       .msg.typing {
         padding: 10px 12px;
