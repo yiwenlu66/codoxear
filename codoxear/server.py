@@ -142,6 +142,7 @@ GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECO
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
 ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))
+FILE_LIST_IGNORED_DIRS = frozenset({".git", ".hg", ".mypy_cache", ".pytest_cache", ".svn", "__pycache__", "build", "dist", "node_modules", "venv", ".venv"})
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
@@ -677,6 +678,29 @@ def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | 
         if candidate != match:
             return None
     return match
+
+
+def _list_session_relative_files(base: Path) -> list[str]:
+    root = base.expanduser()
+    if not root.is_absolute():
+        root = root.resolve()
+    if not root.exists():
+        raise FileNotFoundError("session cwd not found")
+    if not root.is_dir():
+        raise ValueError("session cwd is not a directory")
+    out: list[str] = []
+
+    def _onerror(err: OSError) -> None:
+        raise err
+
+    for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=_onerror, followlinks=False):
+        dirnames[:] = [name for name in sorted(dirnames) if name not in FILE_LIST_IGNORED_DIRS]
+        current_path = Path(current_root)
+        for name in sorted(filenames):
+            rel = (current_path / name).relative_to(root)
+            out.append(rel.as_posix())
+    out.sort()
+    return out
 
 
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
@@ -3515,6 +3539,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 assert raw is not None
                 text = raw.decode("utf-8", errors="replace")
                 _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": str(rel), "size": int(size), "text": text})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/list"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                try:
+                    files = _list_session_relative_files(base)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, "cwd": str(base), "files": files})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/blob"):

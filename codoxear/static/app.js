@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.10";
+	      const UI_VERSION = "20260309.12";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -1146,14 +1146,24 @@
           html: iconSvg("x"),
         });
         const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
-        const filePickerBtn = el("button", {
-          id: "filePickerBtn",
-          class: "filePickerBtn",
-          type: "button",
-          title: "Choose file",
-          "aria-label": "Choose file",
+        const filePickerInput = el("input", {
+          id: "filePickerInput",
+          class: "filePickerInput",
+          type: "text",
+          placeholder: "Choose or search files",
+          autocomplete: "off",
+          spellcheck: "false",
+          role: "combobox",
+          "aria-autocomplete": "list",
+          "aria-controls": "filePickerMenu",
+          "aria-expanded": "false",
         });
-        const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu" });
+        const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu", role: "listbox" });
+        const filePickerField = el("div", { class: "pickerField filePickerField", id: "filePickerField" }, [
+          el("span", { class: "filePickerIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
+          filePickerInput,
+          filePickerMenu,
+        ]);
         const fileModeDiffBtn = el("button", {
           id: "fileModeDiffBtn",
           class: "icon-btn",
@@ -1178,22 +1188,14 @@
           "aria-label": "Download file",
           html: iconSvg("download"),
         });
-        const fileAddBtn = el("button", {
-          id: "fileAddBtn",
-          class: "icon-btn",
-          type: "button",
-          title: "Add file",
-          "aria-label": "Add file",
-          html: iconSvg("plus"),
-        });
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn, fileAddBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn, fileCloseBtn]),
           ]),
-          el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerBtn, filePickerMenu]),
+          el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
           fileStatus,
           fileDiff,
           fileImage,
@@ -3447,6 +3449,12 @@
         let fileEntryMap = new Map();
         let activeFilePath = "";
         let fileMenuOpen = false;
+        let fileMenuFocus = -1;
+        let filePickerSearchActive = false;
+        let fileAllList = [];
+        let fileAllListLoaded = false;
+        let fileAllListPromise = null;
+        let fileAllListSessionId = "";
         let monacoReadyPromise = null;
         let monacoNs = null;
         let monacoThemeReady = false;
@@ -3726,46 +3734,34 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMenuState() {
-          filePickerBtn.classList.toggle("active", fileMenuOpen);
+          filePickerField.classList.toggle("active", fileMenuOpen);
           filePickerMenu.classList.toggle("open", fileMenuOpen);
+          filePickerInput.setAttribute("aria-expanded", fileMenuOpen ? "true" : "false");
+          if (!fileMenuOpen && fileMenuFocus < 0) filePickerInput.removeAttribute("aria-activedescendant");
+        }
+
+        function resetFilePickerInput() {
+          filePickerSearchActive = false;
+          fileMenuFocus = -1;
+          filePickerInput.value = activeFilePath || "";
+          filePickerInput.removeAttribute("aria-activedescendant");
+        }
+
+        function closeFilePickerMenu({ restoreInput = false } = {}) {
+          fileMenuOpen = false;
+          fileMenuFocus = -1;
+          if (restoreInput) resetFilePickerInput();
+          applyFileMenuState();
         }
 
         function setFilePath(rel, { line = null } = {}) {
           const next = String(rel || "").trim();
           activeFilePath = next;
           activeFileLine = normalizeLineNumber(line);
-          const entry = fileEntryMap.get(next);
-          setFilePickerButtonContent(entry || (next ? { path: next, changed: false, additions: null, deletions: null } : null), next || "Choose file");
+          resetFilePickerInput();
           fileMenuOpen = false;
           applyFileMenuState();
           applyFileMode();
-        }
-
-        function formatFileChoice(entry) {
-          const rel = String(entry && entry.path ? entry.path : "");
-          const changed = Boolean(entry && entry.changed);
-          const add = entry && Object.prototype.hasOwnProperty.call(entry, "additions") ? entry.additions : null;
-          const del = entry && Object.prototype.hasOwnProperty.call(entry, "deletions") ? entry.deletions : null;
-          const stat = changed
-            ? `  ${add == null ? "+?" : `+${add}`} ${del == null ? "-?" : `-${del}`}`
-            : "  manual";
-          return `${rel}${stat}`;
-        }
-
-        function setFilePickerButtonContent(entry, fallbackText = "Choose file") {
-          filePickerBtn.innerHTML = "";
-          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) {
-            filePickerBtn.textContent = fallbackText;
-            return;
-          }
-          filePickerBtn.appendChild(el("span", { class: "fileMenuPath", text: entry.path }));
-          const changed = Boolean(entry.changed);
-          if (changed) {
-            const stat = el("span", { class: "fileMenuStat changed" });
-            stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
-            stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
-            filePickerBtn.appendChild(stat);
-          }
         }
 
         function upsertFileEntry(entry) {
@@ -3784,7 +3780,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
-          const rel = String(relPath || "").trim();
+          const raw = String(relPath || "").trim();
+          const rel = sessionRelativePath(raw) || raw;
           if (!rel) return;
           upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
           const s = selected ? sessionIndex.get(selected) : null;
@@ -3800,6 +3797,125 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           s.files = nextFiles;
         }
 
+        function collectMessageFileRefs() {
+          if (!selected) return [];
+          const out = [];
+          const seen = new Set();
+          const nodes = Array.from(chatInner.querySelectorAll("[data-file-path], [data-candidate-file-path]"));
+          for (const node of nodes) {
+            if (!(node instanceof Element)) continue;
+            const kind = String(node.getAttribute("data-file-kind") || "").trim();
+            if (kind === "directory") continue;
+            const rawAbs = String(node.getAttribute("data-file-path") || "").trim();
+            const rawCandidate = String(node.getAttribute("data-candidate-file-path") || "").trim();
+            const raw = rawAbs || rawCandidate;
+            if (!raw) continue;
+            const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
+            if (!rel || rel === "." || seen.has(rel)) continue;
+            seen.add(rel);
+            out.push(rel);
+          }
+          return out;
+        }
+
+        function fileSearchScore(candidate, query) {
+          const text = String(candidate || "");
+          const raw = String(query || "").trim().toLowerCase();
+          if (!raw) return 0;
+          const lower = text.toLowerCase();
+          if (lower === raw) return 12000;
+          const base = baseName(text).toLowerCase();
+          if (base === raw) return 10000;
+          let total = 0;
+          for (const token of raw.split(/\s+/).filter(Boolean)) {
+            const exactIdx = lower.indexOf(token);
+            if (exactIdx >= 0) {
+              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
+              const boundaryBonus = !prev || "/._-".includes(prev) ? 24 : 0;
+              const baseIdx = base.indexOf(token);
+              total += 240 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 44 - baseIdx : 0);
+              continue;
+            }
+            let pos = -1;
+            let first = -1;
+            let last = -1;
+            let consecutive = 0;
+            let boundaries = 0;
+            for (const ch of token) {
+              pos = lower.indexOf(ch, pos + 1);
+              if (pos < 0) return -1;
+              if (first < 0) first = pos;
+              if (last >= 0 && pos === last + 1) consecutive += 1;
+              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
+              last = pos;
+            }
+            const span = last - first + 1;
+            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
+          }
+          return total;
+        }
+
+        function pickerEntryForPath(path, { score = 0 } = {}) {
+          const entry = fileEntryMap.get(path) || { path, additions: null, deletions: null, changed: false };
+          return {
+            path,
+            additions: entry.additions ?? null,
+            deletions: entry.deletions ?? null,
+            changed: Boolean(entry.changed),
+            added: fileEntryMap.has(path),
+            score,
+          };
+        }
+
+        function visibleFilePickerEntries() {
+          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          if (!query) return fileCandidateList.map((path) => pickerEntryForPath(path));
+          if (!fileAllListLoaded) return null;
+          const out = [];
+          const seen = new Set();
+          for (const rawPath of fileAllList) {
+            const path = String(rawPath || "").trim();
+            if (!path || path === "." || seen.has(path)) continue;
+            seen.add(path);
+            const score = fileSearchScore(path, query);
+            if (score < 0) continue;
+            out.push(pickerEntryForPath(path, { score }));
+          }
+          for (const path of fileCandidateList) {
+            if (seen.has(path)) continue;
+            const score = fileSearchScore(path, query);
+            if (score < 0) continue;
+            out.push(pickerEntryForPath(path, { score }));
+          }
+          out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
+          return out.slice(0, 120);
+        }
+
+        async function ensureSessionFileListLoaded() {
+          if (!selected) return [];
+          const sid = selected;
+          if (fileAllListSessionId === sid && fileAllListLoaded) return fileAllList;
+          if (fileAllListSessionId === sid && fileAllListPromise) return fileAllListPromise;
+          fileAllListSessionId = sid;
+          fileAllList = [];
+          fileAllListLoaded = false;
+          const task = (async () => {
+            const res = await api(`/api/sessions/${sid}/file/list`);
+            const files = Array.isArray(res && res.files)
+              ? res.files.filter((item, idx, arr) => typeof item === "string" && item.trim() && arr.indexOf(item) === idx)
+              : [];
+            fileAllList = files;
+            fileAllListLoaded = true;
+            return files;
+          })();
+          fileAllListPromise = task;
+          try {
+            return await task;
+          } finally {
+            if (fileAllListSessionId === sid) fileAllListPromise = null;
+          }
+        }
+
         async function getKnownFileRefCandidates() {
           if (!selected) return [];
           const sid = selected;
@@ -3811,6 +3927,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             for (const abs of listFromFilesField(s && s.files)) {
               const rel = sessionRelativePath(abs);
               if (typeof rel === "string" && rel && rel !== ".") out.add(rel);
+            }
+            for (const rel of collectMessageFileRefs()) {
+              if (rel) out.add(rel);
             }
             try {
               const res = await api(`/api/sessions/${sid}/git/changed_files`);
@@ -3831,12 +3950,27 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderFilePickerMenu() {
           filePickerMenu.innerHTML = "";
-          if (!fileCandidateList.length) return;
-          for (const path of fileCandidateList) {
-            const entry = fileEntryMap.get(path) || { path, changed: false, additions: null, deletions: null };
+          const entries = visibleFilePickerEntries();
+          const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          if (entries === null) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Loading files..." }));
+            return [];
+          }
+          if (!entries.length) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: query ? "No matching files" : "Type to search the current directory." }));
+            filePickerInput.removeAttribute("aria-activedescendant");
+            return entries;
+          }
+          if (fileMenuFocus >= entries.length) fileMenuFocus = entries.length ? entries.length - 1 : -1;
+          for (const [idx, entry] of entries.entries()) {
+            const path = entry.path;
+            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && !query);
             const btn = el("button", {
-              class: "fileMenuItem" + (activeFilePath === path ? " active" : ""),
+              id: `filePickerOption-${idx}`,
+              class: "fileMenuItem" + (active ? " active" : ""),
               type: "button",
+              role: "option",
+              "aria-selected": active ? "true" : "false",
               title: path,
             });
             btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
@@ -3846,10 +3980,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
               btn.appendChild(stat);
             }
+            btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = () => {
               setFilePath(path, { line: null });
               const selectedEntry = fileEntryMap.get(path);
-              if (!selectedEntry || selectedEntry.changed) {
+              if (selectedEntry && selectedEntry.changed) {
                 setFileViewMode("diff");
               } else {
                 setFileViewMode(isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file");
@@ -3859,6 +3994,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             };
             filePickerMenu.appendChild(btn);
           }
+          if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
+          else filePickerInput.removeAttribute("aria-activedescendant");
+          return entries;
         }
 
         function fileRefValidationKey(path) {
@@ -3948,6 +4086,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
                 changed: true,
               }));
+            const messageEntries = collectMessageFileRefs().map((path) => ({
+              path,
+              additions: null,
+              deletions: null,
+              changed: false,
+            }));
             const s = selected ? sessionIndex.get(selected) : null;
             const manualEntries = listFromFilesField(s && s.files)
               .map((abs) => sessionRelativePath(abs))
@@ -3955,7 +4099,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               .map((path) => ({ path, additions: null, deletions: null, changed: false }));
             const merged = [];
             const seen = new Set();
-            for (const entry of [...changedEntries, ...manualEntries]) {
+            for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
               if (!entry || !entry.path || seen.has(entry.path)) continue;
               seen.add(entry.path);
               merged.push(entry);
@@ -3972,6 +4116,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          if (fileAllListSessionId !== (selected || "")) {
+            fileAllList = [];
+            fileAllListLoaded = false;
+            fileAllListPromise = null;
+            fileAllListSessionId = selected || "";
+          }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
           await refreshFileCandidates();
@@ -3988,14 +4138,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void openFilePath(first, { line: null });
             return;
           }
-          setFilePickerButtonContent(null, "No files");
-          fileStatus.textContent = "No changed files. Use Add to open a file.";
+          resetFilePickerInput();
+          fileStatus.textContent = "Type to search the current directory.";
         }
         function hideFileViewer() {
           disposeFileEditor();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
           fileDiff.style.display = "block";
+          closeFilePickerMenu({ restoreInput: true });
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
           activeFileLine = null;
@@ -4051,8 +4202,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 fileStatus.textContent = viewMode === "preview" && isMarkdownPreviewable(rel) ? `${rel} - preview - ${fmtBytes(size)}` : `${rel} - ${fmtBytes(size)}`;
               }
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
-              renderFilePickerMenu();
             }
+            renderFilePickerMenu();
             localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
@@ -4063,12 +4214,80 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           void showFileViewer();
         };
-        filePickerBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          fileMenuOpen = !fileMenuOpen;
+        filePickerInput.onfocus = () => {
+          resetFilePickerInput();
           renderFilePickerMenu();
+          fileMenuOpen = true;
           applyFileMenuState();
+        };
+        filePickerInput.onclick = (e) => {
+          e.stopPropagation();
+          resetFilePickerInput();
+          renderFilePickerMenu();
+          fileMenuOpen = true;
+          applyFileMenuState();
+        };
+        filePickerInput.oninput = () => {
+          filePickerSearchActive = true;
+          fileMenuFocus = -1;
+          renderFilePickerMenu();
+          fileMenuOpen = true;
+          applyFileMenuState();
+          const query = String(filePickerInput.value || "").trim();
+          if (!query || !selected) return;
+          void ensureSessionFileListLoaded()
+            .then(() => {
+              if (!fileMenuOpen) return;
+              renderFilePickerMenu();
+              applyFileMenuState();
+            })
+            .catch((err) => {
+              if (!fileMenuOpen) return;
+              filePickerMenu.innerHTML = "";
+              filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: err && err.message ? err.message : "Unable to load files" }));
+            });
+        };
+        filePickerInput.onblur = () => {
+          requestAnimationFrame(() => {
+            if (filePickerField.contains(document.activeElement)) return;
+            closeFilePickerMenu({ restoreInput: true });
+          });
+        };
+        filePickerInput.onkeydown = (e) => {
+          const entries = renderFilePickerMenu();
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (!entries || !entries.length) return;
+            e.preventDefault();
+            fileMenuOpen = true;
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            if (fileMenuFocus < 0) fileMenuFocus = delta > 0 ? 0 : entries.length - 1;
+            else fileMenuFocus = (fileMenuFocus + delta + entries.length) % entries.length;
+            renderFilePickerMenu();
+            applyFileMenuState();
+            const active = document.getElementById(`filePickerOption-${fileMenuFocus}`);
+            if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
+            return;
+          }
+          if (e.key === "Enter" && fileMenuOpen) {
+            const active = entries && entries.length ? entries[fileMenuFocus >= 0 ? fileMenuFocus : filePickerSearchActive ? 0 : -1] : null;
+            if (!active) return;
+            e.preventDefault();
+            setFilePath(active.path, { line: null });
+            if (active.changed) setFileViewMode("diff");
+            else setFileViewMode(isMarkdownPreviewable(active.path) && fileNonDiffMode === "preview" ? "preview" : "file");
+            renderFilePickerMenu();
+            void openFilePath(active.path, { line: null });
+            return;
+          }
+          if (e.key === "Escape" && fileMenuOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeFilePickerMenu({ restoreInput: true });
+            return;
+          }
+          if (e.key === "Tab" && fileMenuOpen) {
+            closeFilePickerMenu({ restoreInput: true });
+          }
         };
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
@@ -4097,26 +4316,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           document.body.appendChild(link);
           link.click();
           link.remove();
-        };
-        fileAddBtn.onclick = async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!selected) return;
-          const raw = window.prompt("Open file", activeFilePath || "");
-          const path = String(raw || "").trim();
-          if (!path) return;
-          try {
-            const res = await api("/api/files/read", { method: "POST", body: { session_id: selected, path } });
-            const abs = typeof res.path === "string" ? res.path : path;
-            const rel = sessionRelativePath(abs) || path;
-            upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
-            renderFilePickerMenu();
-            setFilePath(rel, { line: null });
-            setFileViewMode(isMarkdownPreviewable(rel) && fileNonDiffMode === "preview" ? "preview" : "file");
-            void openFilePath(rel, { line: null });
-          } catch (err) {
-            setToast(`file open error: ${err && err.message ? err.message : "unknown error"}`);
-          }
         };
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -4191,8 +4390,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
           if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
-            fileMenuOpen = false;
-            applyFileMenuState();
+            closeFilePickerMenu({ restoreInput: true });
           }
           if (editDependencyMenuOpen && !t.closest("#editDependencyBtn") && !t.closest("#editDependencyMenu")) {
             editDependencyMenuOpen = false;

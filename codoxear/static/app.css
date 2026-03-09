@@ -1063,6 +1063,30 @@ select {
         align-items: center;
         position: relative;
       }
+      .filePickerField {
+        flex: 1 1 auto;
+        min-width: 0;
+        position: relative;
+      }
+      .filePickerInput {
+        padding-right: 40px;
+      }
+      .filePickerField.active .filePickerInput {
+        border-color: rgba(37, 99, 235, 0.42);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+      .filePickerIcon {
+        position: absolute;
+        right: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(17, 24, 39, 0.48);
+        pointer-events: none;
+        z-index: 1;
+      }
       .filePickerBtn {
         flex: 1 1 auto;
         min-width: 0;
