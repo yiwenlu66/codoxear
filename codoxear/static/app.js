@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.9";
+	      const UI_VERSION = "20260309.10";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -998,7 +998,8 @@
         const fileRefValidationPending = new Map();
         const fileRefCandidateCache = new Map();
         let editDependencyMenuOpen = false;
-        let newSessionRecentMenuOpen = false;
+        let newSessionCwdMenuOpen = false;
+        let newSessionCwdMenuFocus = -1;
         let newSessionResumeMenuOpen = false;
         let newSessionResumeCandidates = [];
         let newSessionResumeSelection = null;
@@ -1404,19 +1405,20 @@
           placeholder: "/path/to/project",
           autocomplete: "off",
           spellcheck: "false",
-        });
-        const newSessionRecentBtn = el("button", {
-          id: "newSessionRecentBtn",
-          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
-          type: "button",
-          "aria-label": "Choose a recent working directory",
-          "aria-haspopup": "menu",
+          role: "combobox",
+          "aria-autocomplete": "list",
+          "aria-controls": "newSessionCwdMenu",
           "aria-expanded": "false",
         });
-        const newSessionRecentMenu = el("div", { id: "newSessionRecentMenu", class: "filePickerMenu dialogPickerMenu" });
-        const newSessionCwdField = el("div", { class: "pickerInputRow pickerField cwdPickerField" }, [
+        const newSessionCwdMenu = el("div", {
+          id: "newSessionCwdMenu",
+          class: "filePickerMenu dialogPickerMenu cwdSuggestionMenu",
+          role: "listbox",
+        });
+        const newSessionCwdField = el("div", { class: "pickerField cwdPickerField cwdComboboxField", id: "newSessionCwdField" }, [
+          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
           newSessionCwdInput,
-          newSessionRecentBtn,
+          newSessionCwdMenu,
         ]);
         const newSessionResumeBtn = el("button", {
           id: "newSessionResumeBtn",
@@ -1461,7 +1463,7 @@
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Working directory" }),
               newSessionCwdField,
-              el("span", { class: "fieldHint", text: "Type a path or open Recent directories." }),
+              el("span", { class: "fieldHint", text: "Type any path. Recent directories appear inline as fuzzy suggestions." }),
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
@@ -1477,7 +1479,6 @@
         ]);
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
-        newSessionViewer.appendChild(newSessionRecentMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
         function setToast(text) {
@@ -2828,6 +2829,54 @@
           return out;
         }
 
+        function fuzzyRecentCwdScore(candidate, query) {
+          const text = String(candidate || "");
+          const raw = String(query || "").trim().toLowerCase();
+          if (!raw) return 0;
+          const lower = text.toLowerCase();
+          if (lower === raw) return 10000;
+          const base = baseName(text).toLowerCase();
+          if (base === raw) return 9000;
+          let total = 0;
+          for (const token of raw.split(/\s+/).filter(Boolean)) {
+            const exactIdx = lower.indexOf(token);
+            if (exactIdx >= 0) {
+              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
+              const boundaryBonus = !prev || "/._-".includes(prev) ? 28 : 0;
+              const baseIdx = base.indexOf(token);
+              total += 260 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 36 - baseIdx : 0);
+              continue;
+            }
+            let pos = -1;
+            let first = -1;
+            let last = -1;
+            let consecutive = 0;
+            let boundaries = 0;
+            for (const ch of token) {
+              pos = lower.indexOf(ch, pos + 1);
+              if (pos < 0) return -1;
+              if (first < 0) first = pos;
+              if (last >= 0 && pos === last + 1) consecutive += 1;
+              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
+              last = pos;
+            }
+            const span = last - first + 1;
+            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
+          }
+          return total;
+        }
+
+        function filteredRecentCwdOptions() {
+          const items = renderRecentCwdOptions();
+          const query = String(newSessionCwdInput.value || "").trim();
+          if (!query) return items.slice(0, 10).map((cwd, idx) => ({ cwd, idx, score: 1000 - idx }));
+          return items
+            .map((cwd, idx) => ({ cwd, idx, score: fuzzyRecentCwdScore(cwd, query) }))
+            .filter((item) => item.score >= 0)
+            .sort((a, b) => b.score - a.score || a.idx - b.idx || a.cwd.localeCompare(b.cwd))
+            .slice(0, 10);
+        }
+
         function hideEditSession() {
           editSessionId = null;
           editStatus.textContent = "";
@@ -2904,29 +2953,49 @@
           setPickerButtonContent(editDependencyBtn, label);
         }
 
+        function applyNewSessionCwdSuggestion(cwd) {
+          newSessionCwdInput.value = String(cwd || "");
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          applyDialogMenus();
+          scheduleNewSessionResumeLoad();
+          newSessionCwdInput.focus();
+          const end = newSessionCwdInput.value.length;
+          try {
+            newSessionCwdInput.setSelectionRange(end, end);
+          } catch {}
+        }
+
         function renderRecentCwdMenu() {
-          newSessionRecentMenu.innerHTML = "";
-          const items = renderRecentCwdOptions();
+          newSessionCwdMenu.innerHTML = "";
+          const raw = String(newSessionCwdInput.value || "").trim();
+          const items = filteredRecentCwdOptions();
+          if (newSessionCwdMenuFocus >= items.length) newSessionCwdMenuFocus = items.length ? items.length - 1 : -1;
           if (!items.length) {
-            newSessionRecentMenu.appendChild(el("div", { class: "pickerEmpty", text: "No recent directories" }));
-            return;
+            const emptyText = raw ? "No matching recent directories. Start still uses the typed path." : "No recent directories";
+            newSessionCwdMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
+            newSessionCwdInput.removeAttribute("aria-activedescendant");
+            return items;
           }
-          for (const cwd of items) {
+          for (const [idx, item] of items.entries()) {
+            const cwd = item.cwd;
+            const active = newSessionCwdMenuFocus === idx || (newSessionCwdMenuFocus < 0 && raw === cwd);
             const btn = el("button", {
-              class: "fileMenuItem" + (newSessionCwdInput.value.trim() === cwd ? " active" : ""),
+              id: `newSessionCwdOption-${idx}`,
+              class: "fileMenuItem" + (active ? " active" : ""),
               type: "button",
+              role: "option",
+              "aria-selected": active ? "true" : "false",
               title: cwd,
             });
             btn.appendChild(el("span", { class: "fileMenuPath", text: cwd }));
-            btn.onclick = () => {
-              newSessionCwdInput.value = cwd;
-              newSessionRecentMenuOpen = false;
-              applyDialogMenus();
-              scheduleNewSessionResumeLoad();
-              newSessionCwdInput.focus();
-            };
-            newSessionRecentMenu.appendChild(btn);
+            btn.onmousedown = (e) => e.preventDefault();
+            btn.onclick = () => applyNewSessionCwdSuggestion(cwd);
+            newSessionCwdMenu.appendChild(btn);
           }
+          if (newSessionCwdMenuFocus >= 0) newSessionCwdInput.setAttribute("aria-activedescendant", `newSessionCwdOption-${newSessionCwdMenuFocus}`);
+          else newSessionCwdInput.removeAttribute("aria-activedescendant");
+          return items;
         }
 
         function newSessionResumeLabel(item) {
@@ -3088,13 +3157,14 @@
 
         function applyDialogMenus() {
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
-          newSessionRecentMenu.classList.toggle("open", newSessionRecentMenuOpen);
+          newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
-          newSessionRecentBtn.setAttribute("aria-expanded", newSessionRecentMenuOpen ? "true" : "false");
+          newSessionCwdInput.setAttribute("aria-expanded", newSessionCwdMenuOpen ? "true" : "false");
+          if (!newSessionCwdMenuOpen && newSessionCwdMenuFocus < 0) newSessionCwdInput.removeAttribute("aria-activedescendant");
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
-          if (newSessionRecentMenuOpen) positionDialogMenu(newSessionRecentMenu, newSessionRecentBtn);
+          if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
 
@@ -3158,7 +3228,8 @@
 
         function hideNewSessionDialog() {
           newSessionStatus.textContent = "";
-          newSessionRecentMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
           newSessionBackdrop.style.display = "none";
@@ -3180,7 +3251,8 @@
           newSessionWorktreeField.style.display = "none";
           newSessionWorktreeHint.textContent = "";
           newSessionResumeHint.textContent = "Loading matching sessions...";
-          setPickerButtonContent(newSessionRecentBtn, "Recent directories", "Reuse a path from another session", true);
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
           renderRecentCwdMenu();
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
@@ -3213,16 +3285,8 @@
           e.preventDefault();
           e.stopPropagation();
           editDependencyMenuOpen = !editDependencyMenuOpen;
-          newSessionRecentMenuOpen = false;
-          newSessionResumeMenuOpen = false;
-          applyDialogMenus();
-        };
-        newSessionRecentBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          renderRecentCwdMenu();
-          newSessionRecentMenuOpen = !newSessionRecentMenuOpen;
-          editDependencyMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -3232,7 +3296,8 @@
           renderNewSessionResumeMenu();
           newSessionResumeMenuOpen = !newSessionResumeMenuOpen;
           editDependencyMenuOpen = false;
-          newSessionRecentMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
           applyDialogMenus();
         };
         editCloseBtn.onclick = () => hideEditSession();
@@ -3293,9 +3358,66 @@
         $("#newSessionCancelBtn").onclick = () => hideNewSessionDialog();
         newSessionBackdrop.onclick = () => hideNewSessionDialog();
         newSessionViewer.onclick = (e) => e.stopPropagation();
-        newSessionCwdInput.oninput = () => {
+        newSessionCwdInput.onclick = () => {
+          newSessionCwdMenuFocus = -1;
           renderRecentCwdMenu();
+          newSessionCwdMenuOpen = true;
+          editDependencyMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionCwdInput.oninput = () => {
+          newSessionCwdMenuFocus = -1;
+          renderRecentCwdMenu();
+          newSessionCwdMenuOpen = true;
           scheduleNewSessionResumeLoad();
+          applyDialogMenus();
+        };
+        newSessionCwdInput.onblur = () => {
+          requestAnimationFrame(() => {
+            if (newSessionCwdField.contains(document.activeElement)) return;
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+            applyDialogMenus();
+          });
+        };
+        newSessionCwdInput.onkeydown = (e) => {
+          const items = renderRecentCwdMenu();
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (!items.length) return;
+            e.preventDefault();
+            newSessionCwdMenuOpen = true;
+            editDependencyMenuOpen = false;
+            newSessionResumeMenuOpen = false;
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            if (newSessionCwdMenuFocus < 0) newSessionCwdMenuFocus = delta > 0 ? 0 : items.length - 1;
+            else newSessionCwdMenuFocus = (newSessionCwdMenuFocus + delta + items.length) % items.length;
+            renderRecentCwdMenu();
+            applyDialogMenus();
+            const active = document.getElementById(`newSessionCwdOption-${newSessionCwdMenuFocus}`);
+            if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
+            return;
+          }
+          if (e.key === "Enter" && newSessionCwdMenuOpen && newSessionCwdMenuFocus >= 0) {
+            const active = items[newSessionCwdMenuFocus];
+            if (!active) return;
+            e.preventDefault();
+            applyNewSessionCwdSuggestion(active.cwd);
+            return;
+          }
+          if (e.key === "Escape" && newSessionCwdMenuOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+            applyDialogMenus();
+            return;
+          }
+          if (e.key === "Tab" && newSessionCwdMenuOpen) {
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+            applyDialogMenus();
+          }
         };
         newSessionWorktreeToggle.onchange = () => {
           syncNewSessionWorktreeUi();
@@ -4076,8 +4198,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             editDependencyMenuOpen = false;
             applyDialogMenus();
           }
-          if (newSessionRecentMenuOpen && !t.closest("#newSessionRecentBtn") && !t.closest("#newSessionRecentMenu")) {
-            newSessionRecentMenuOpen = false;
+          if (newSessionCwdMenuOpen && !t.closest("#newSessionCwdField")) {
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
             applyDialogMenus();
           }
           if (newSessionResumeMenuOpen && !t.closest("#newSessionResumeBtn") && !t.closest("#newSessionResumeMenu")) {

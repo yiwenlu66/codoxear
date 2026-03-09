@@ -1292,6 +1292,24 @@ select {
       .pickerField {
         position: relative;
       }
+      .cwdComboboxField {
+        position: relative;
+      }
+      .cwdComboboxField input[type="text"] {
+        padding-right: 40px;
+      }
+      .cwdComboboxIcon {
+        position: absolute;
+        right: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(17, 24, 39, 0.48);
+        pointer-events: none;
+        z-index: 1;
+      }
       .pickerInputRow {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 128px;
@@ -1313,22 +1331,6 @@ select {
       @media (min-width: 881px) {
         .formViewer.newSessionViewer {
           width: min(92vw, 560px);
-        }
-        .pickerInputRow.cwdPickerField {
-          grid-template-columns: minmax(0, 1fr) minmax(188px, 196px);
-          gap: 12px;
-          align-items: center;
-        }
-        #newSessionRecentBtn.sidePickerBtn {
-          min-height: 44px;
-          padding: 10px 14px;
-          border-radius: 14px;
-        }
-        #newSessionRecentBtn .pickerButtonPrimary {
-          font-size: 13px;
-        }
-        #newSessionRecentBtn .pickerButtonSecondary {
-          display: none;
         }
         #editViewer.formDialog {
           width: min(92vw, 720px);
