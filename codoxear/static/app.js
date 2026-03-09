@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.8";
+	      const UI_VERSION = "20260309.9";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -857,6 +857,12 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>`;
         if (name === "down")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
+        if (name === "download")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+        if (name === "preview")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>`;
+        if (name === "diff")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 4v16"/><path d="M17 4v16"/><path d="M4 7h6"/><path d="M14 17h6"/><path d="M14 7h6"/><path d="M4 17h6"/></svg>`;
         if (name === "chevronDown")
           return `<svg class="icon pickerChevronIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
         if (name === "trash")
@@ -1148,34 +1154,42 @@
         const filePickerMenu = el("div", { id: "filePickerMenu", class: "filePickerMenu" });
         const fileModeDiffBtn = el("button", {
           id: "fileModeDiffBtn",
-          class: "icon-btn text-btn",
+          class: "icon-btn",
           type: "button",
           title: "Toggle diff",
           "aria-label": "Toggle diff",
-          text: "Diff",
+          html: iconSvg("diff"),
         });
         const fileModePreviewBtn = el("button", {
           id: "fileModePreviewBtn",
-          class: "icon-btn text-btn",
+          class: "icon-btn",
           type: "button",
           title: "Toggle markdown preview",
           "aria-label": "Toggle markdown preview",
-          text: "Preview",
+          html: iconSvg("preview"),
+        });
+        const fileDownloadBtn = el("button", {
+          id: "fileDownloadBtn",
+          class: "icon-btn",
+          type: "button",
+          title: "Download file",
+          "aria-label": "Download file",
+          html: iconSvg("download"),
         });
         const fileAddBtn = el("button", {
           id: "fileAddBtn",
-          class: "icon-btn text-btn",
+          class: "icon-btn",
           type: "button",
           title: "Add file",
           "aria-label": "Add file",
-          text: "Add",
+          html: iconSvg("plus"),
         });
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileAddBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn, fileAddBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerBtn, filePickerMenu]),
           fileStatus,
@@ -3575,11 +3589,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function applyFileMode() {
+          const hasPath = Boolean(activeFilePath);
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
           const previewable = isMarkdownPreviewable(activeFilePath);
-          fileModeDiffBtn.classList.toggle("active", isDiff);
-          fileModePreviewBtn.classList.toggle("active", isPreview);
+          fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
+          fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
+          fileModeDiffBtn.disabled = !hasPath;
+          fileModePreviewBtn.disabled = !hasPath;
+          fileDownloadBtn.disabled = !hasPath;
           fileModePreviewBtn.style.display = previewable ? "" : "none";
         }
 
@@ -3942,6 +3960,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           setFileViewMode(fileViewMode === "preview" ? "file" : "preview");
           renderFilePickerMenu();
           void openFilePath(activeFilePath, { line: activeFileLine });
+        };
+        fileDownloadBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!selected || !activeFilePath) return;
+          const url = resolveAppUrl(`/api/sessions/${selected}/file/download?path=${encodeURIComponent(activeFilePath)}`);
+          const link = document.createElement("a");
+          link.href = url;
+          link.rel = "noopener";
+          link.style.display = "none";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
         };
         fileAddBtn.onclick = async (e) => {
           e.preventDefault();

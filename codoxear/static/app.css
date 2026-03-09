@@ -1044,10 +1044,16 @@ select {
         justify-content: space-between;
         gap: 10px;
       }
+      .fileViewerHeader .title {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
       .fileViewerHeader .actions {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
       .fileCandRow.hidden {
         display: none;
@@ -1636,6 +1642,12 @@ select {
           transform: none;
           border-radius: 0;
           padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+        }
+        .fileViewerHeader {
+          align-items: flex-start;
+        }
+        .fileViewerHeader .actions {
+          gap: 6px;
         }
         .queueViewer {
           width: 100vw;

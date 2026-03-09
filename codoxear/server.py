@@ -912,6 +912,18 @@ def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]
     return raw, size, kind, image_ctype
 
 
+def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
+    if not path_obj.exists():
+        raise FileNotFoundError("file not found")
+    if not path_obj.is_file():
+        raise ValueError("path is not a file")
+    try:
+        raw = path_obj.read_bytes()
+    except PermissionError as e:
+        raise PermissionError("permission denied") from e
+    return raw, len(raw)
+
+
 def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
     if not path_obj.exists():
         raise FileNotFoundError("file not found")
@@ -919,6 +931,10 @@ def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
         return 0, "directory", None
     _raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
     return size, kind, image_ctype
+
+
+def _download_disposition(path_obj: Path) -> str:
+    return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}"
 
 
 def _iter_session_logs() -> list[Path]:
@@ -3299,6 +3315,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/download"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                p = _resolve_session_path(base, rel)
+                try:
+                    raw, size = _read_downloadable_file(p)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(size))
+                self.send_header("Content-Disposition", _download_disposition(p))
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")

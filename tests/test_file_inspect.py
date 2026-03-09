@@ -2,8 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from codoxear.server import _download_disposition
 from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_openable_file
+from codoxear.server import _read_downloadable_file
 
 
 class TestInspectOpenableFile(unittest.TestCase):
@@ -31,6 +33,19 @@ class TestInspectOpenableFile(unittest.TestCase):
             path.write_bytes(b"\x00\x01\x02\x03")
             with self.assertRaisesRegex(ValueError, "binary file not supported"):
                 _inspect_openable_file(path)
+
+    def test_binary_file_is_downloadable(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            raw_in = b"\x00\x01\x02\x03"
+            path.write_bytes(raw_in)
+            raw_out, size = _read_downloadable_file(path)
+            self.assertEqual(raw_out, raw_in)
+            self.assertEqual(size, len(raw_in))
+
+    def test_download_disposition_uses_utf8_filename(self) -> None:
+        path = Path("/tmp/report 1.py")
+        self.assertEqual(_download_disposition(path), "attachment; filename*=UTF-8''report%201.py")
 
 
 if __name__ == "__main__":
