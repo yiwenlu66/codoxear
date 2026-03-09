@@ -273,6 +273,78 @@ def _pid_alive(pid: int) -> bool:
         return True
 
 
+def _process_group_alive(root_pid: int) -> bool:
+    if root_pid <= 0:
+        return False
+    try:
+        os.killpg(root_pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _terminate_process_group(root_pid: int, *, wait_seconds: float = 1.0) -> bool:
+    if not _process_group_alive(root_pid):
+        return True
+    try:
+        os.killpg(root_pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    deadline = _now() + max(wait_seconds, 0.0)
+    while _process_group_alive(root_pid):
+        if _now() >= deadline:
+            break
+        time.sleep(0.05)
+    if not _process_group_alive(root_pid):
+        return True
+    try:
+        os.killpg(root_pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    deadline = _now() + 0.2
+    while _process_group_alive(root_pid):
+        if _now() >= deadline:
+            break
+        time.sleep(0.05)
+    return not _process_group_alive(root_pid)
+
+
+def _terminate_process(pid: int, *, wait_seconds: float = 1.0) -> bool:
+    if not _pid_alive(pid):
+        return True
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    deadline = _now() + max(wait_seconds, 0.0)
+    while _pid_alive(pid):
+        if _now() >= deadline:
+            break
+        time.sleep(0.05)
+    if not _pid_alive(pid):
+        return True
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    deadline = _now() + 0.2
+    while _pid_alive(pid):
+        if _now() >= deadline:
+            break
+        time.sleep(0.05)
+    return not _pid_alive(pid)
+
+
 def _unlink_quiet(path: Path) -> None:
     try:
         path.unlink()
@@ -791,6 +863,8 @@ def _attachment_inject_text(attachment_index: int, path: Path) -> str:
     return f"Attachment {idx}: {path}\n"
 
 
+def _clean_alias(name: str) -> str:
+    if not isinstance(name, str):
         return ""
     # Collapse whitespace and cap length to keep titles readable.
     cleaned = " ".join(name.split()).strip()
@@ -799,6 +873,13 @@ def _attachment_inject_text(attachment_index: int, path: Path) -> str:
     if len(cleaned) > 80:
         cleaned = cleaned[:80].rstrip()
     return cleaned
+
+
+def _clean_recent_cwd(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    out = value.strip()
+    return out or None
 
 
 def _clip01(v: float) -> float:
@@ -2830,13 +2911,37 @@ class SessionManager:
         finally:
             s.close()
 
+    def _kill_session_via_pids(self, s: Session) -> bool:
+        group_alive = _process_group_alive(int(s.codex_pid))
+        broker_alive = _pid_alive(int(s.broker_pid))
+        if not group_alive and not broker_alive:
+            _unlink_quiet(s.sock_path)
+            _unlink_quiet(s.sock_path.with_suffix(".json"))
+            return True
+        if group_alive and (not _terminate_process_group(int(s.codex_pid), wait_seconds=1.0)):
+            return False
+        if _pid_alive(int(s.broker_pid)) and (not _terminate_process(int(s.broker_pid), wait_seconds=1.0)):
+            return False
+        group_dead = not _process_group_alive(int(s.codex_pid))
+        broker_dead = not _pid_alive(int(s.broker_pid))
+        if group_dead and broker_dead:
+            _unlink_quiet(s.sock_path)
+            _unlink_quiet(s.sock_path.with_suffix(".json"))
+            return True
+        return False
+
     def kill_session(self, session_id: str) -> bool:
         with self._lock:
             s = self._sessions.get(session_id)
         if not s:
             return False
-        self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
-        return True
+        try:
+            resp = self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
+        except Exception:
+            return self._kill_session_via_pids(s)
+        if resp.get("ok") is True:
+            return True
+        return self._kill_session_via_pids(s)
 
     def spawn_web_session(
         self,
@@ -4388,8 +4493,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     raise ValueError("invalid json body (expected object)")
                 data_b64 = obj.get("data_b64")
                 filename = obj.get("filename")
+                attachment_index = obj.get("attachment_index")
                 if not isinstance(filename, str) or (not filename.strip()):
                     raise ValueError("filename required")
+                if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
+                    _json_response(self, 400, {"error": "attachment_index must be an integer"})
+                    return
                 if not isinstance(data_b64, str) or not data_b64:
                     _json_response(self, 400, {"error": "data_b64 required"})
                     return
@@ -4482,7 +4591,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-                attachment_index = obj.get("attachment_index")
-                if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
-                    _json_response(self, 400, {"error": "attachment_index must be an integer"})
-                    return

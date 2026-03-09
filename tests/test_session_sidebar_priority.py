@@ -2,6 +2,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from codoxear.server import Session
 from codoxear.server import SessionManager
@@ -115,6 +116,38 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertNotIn("target", mgr._harness)
         self.assertNotIn("cwd:/tmp/target", mgr._files)
         self.assertIsNone(mgr._sidebar_meta["blocked"].get("dependency_session_id"))
+
+    def test_kill_session_falls_back_to_pid_teardown_when_socket_is_dead(self) -> None:
+        mgr = _make_manager()
+        s = _session(sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False)
+        mgr._sessions = {s.session_id: s}
+
+        def _sock_call(*args, **kwargs):
+            raise OSError("dead socket")
+
+        mgr._sock_call = _sock_call  # type: ignore[method-assign]
+
+        with patch.object(mgr, "_kill_session_via_pids", return_value=True) as kill_via_pids:
+            ok = mgr.kill_session("target")
+
+        self.assertTrue(ok)
+        kill_via_pids.assert_called_once_with(s)
+
+    def test_kill_session_via_pids_prunes_stale_metadata_without_signals(self) -> None:
+        mgr = _make_manager()
+        s = _session(sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False)
+
+        with patch("codoxear.server._process_group_alive", return_value=False):
+            with patch("codoxear.server._pid_alive", return_value=False):
+                with patch("codoxear.server._terminate_process_group") as kill_group:
+                    with patch("codoxear.server._terminate_process") as kill_proc:
+                        with patch("codoxear.server._unlink_quiet") as unlink:
+                            ok = mgr._kill_session_via_pids(s)
+
+        self.assertTrue(ok)
+        kill_group.assert_not_called()
+        kill_proc.assert_not_called()
+        self.assertEqual(unlink.call_count, 2)
 
     def test_edit_session_is_atomic_when_dependency_invalid(self) -> None:
         mgr = _make_manager()

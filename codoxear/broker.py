@@ -101,6 +101,18 @@ def _pid_alive(pid: int) -> bool:
 
 
 
+def _process_group_alive(root_pid: int) -> bool:
+    if root_pid <= 0:
+        return False
+    try:
+        os.killpg(root_pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def _require_proc() -> None:
     if sys.platform.startswith("linux"):
         if not (PROC_ROOT / "self" / "fd").is_dir():
@@ -528,6 +540,31 @@ class Broker:
         self.codex_home = DEFAULT_CODEX_HOME
         self.sessions_dir = self.codex_home / "sessions"
 
+    def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
+        self._stop.set()
+        with self._lock:
+            st = self.state
+        if not st:
+            return
+        root_pid = int(st.codex_pid)
+        if not _process_group_alive(root_pid):
+            return
+        try:
+            os.killpg(root_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = _now() + max(wait_seconds, 0.0)
+        while _process_group_alive(root_pid):
+            if _now() >= deadline:
+                break
+            time.sleep(0.05)
+        if not _process_group_alive(root_pid):
+            return
+        try:
+            os.killpg(root_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+
     def _discover_log_watcher(self) -> None:
         try:
             while not self._stop.is_set():
@@ -564,7 +601,10 @@ class Broker:
                 time.sleep(0.25)
         except Exception:
             sys.stderr.write(f"error: log discover watcher crashed: {traceback.format_exc()}\n")
-            os.kill(os.getpid(), signal.SIGTERM)
+            try:
+                self._teardown_managed_process_group()
+            except Exception:
+                traceback.print_exc()
 
     def _register_from_log(self, *, log_path: Path) -> bool:
         sid = self._session_id_from_rollout_path(log_path)
@@ -862,6 +902,11 @@ class Broker:
             except socket.timeout:
                 continue
             except Exception:
+                sys.stderr.write(f"error: broker socket server crashed: {traceback.format_exc()}\n")
+                try:
+                    self._teardown_managed_process_group()
+                except Exception:
+                    traceback.print_exc()
                 break
             threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
 
@@ -1015,20 +1060,9 @@ class Broker:
                 return
 
             if cmd == "shutdown":
-                self._stop.set()
-                with self._lock:
-                    st = self.state
-                if st:
-                    try:
-                        os.killpg(st.codex_pid, signal.SIGTERM)
-                    except Exception:
-                        traceback.print_exc()
-                        try:
-                            os.kill(st.codex_pid, signal.SIGTERM)
-                        except Exception:
-                            traceback.print_exc()
                 f.write(b'{"ok":true}\n')
                 f.flush()
+                self._teardown_managed_process_group()
                 return
 
             f.write(b'{"error":"unknown cmd"}\n')

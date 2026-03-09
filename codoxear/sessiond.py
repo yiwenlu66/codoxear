@@ -81,6 +81,17 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
+def _process_group_alive(root_pid: int) -> bool:
+    if root_pid <= 0:
+        return False
+    try:
+        os.killpg(root_pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
 
 @dataclass
 class State:
@@ -108,6 +119,31 @@ class Sessiond:
         self.state: State | None = None
         self.codex_home = DEFAULT_CODEX_HOME
         self.sessions_dir = self.codex_home / "sessions"
+
+    def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
+        self._stop.set()
+        with self._lock:
+            st = self.state
+        if not st:
+            return
+        root_pid = int(st.codex_pid)
+        if not _process_group_alive(root_pid):
+            return
+        try:
+            os.killpg(root_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        deadline = _now() + max(wait_seconds, 0.0)
+        while _process_group_alive(root_pid):
+            if _now() >= deadline:
+                break
+            time.sleep(0.05)
+        if not _process_group_alive(root_pid):
+            return
+        try:
+            os.killpg(root_pid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
 
     def _pty_reader(self) -> None:
         st = self.state
@@ -238,6 +274,11 @@ class Sessiond:
             except socket.timeout:
                 continue
             except Exception:
+                sys.stderr.write(f"error: sessiond socket server crashed: {traceback.format_exc()}\n")
+                try:
+                    self._teardown_managed_process_group()
+                except Exception:
+                    traceback.print_exc()
                 break
             threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
 
@@ -319,20 +360,9 @@ class Sessiond:
                 return
 
             if cmd == "shutdown":
-                self._stop.set()
-                with self._lock:
-                    st = self.state
-                if st:
-                    try:
-                        os.killpg(st.codex_pid, signal.SIGTERM)
-                    except Exception:
-                        traceback.print_exc()
-                        try:
-                            os.kill(st.codex_pid, signal.SIGTERM)
-                        except Exception:
-                            traceback.print_exc()
                 f.write(b'{"ok":true}\n')
                 f.flush()
+                self._teardown_managed_process_group()
                 return
 
             f.write(b'{"error":"unknown cmd"}\n')
