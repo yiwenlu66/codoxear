@@ -43,6 +43,8 @@ DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
 ENTER_SEQ = os.environ.get("CODEX_WEB_ENTER_SEQ", "\r")
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
+_BRACKETED_PASTE_START = b"\x1b[200~"
+_BRACKETED_PASTE_END = b"\x1b[201~"
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -57,8 +59,27 @@ def _seq_bytes(raw: str) -> bytes:
     return _pty_util.seq_bytes(raw)
 
 
+def _write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        n = os.write(fd, view)
+        if n <= 0:
+            raise OSError("short write to PTY")
+        view = view[n:]
+
+
+def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
+    _write_all(fd, _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END)
+    if not suffix:
+        return
+    if delay_s > 0:
+        time.sleep(delay_s)
+    _write_all(fd, suffix)
+
+
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
+
 
 
 @dataclass
@@ -101,18 +122,18 @@ class Sessiond:
                 # Minimal terminal-emulator responses for Codex TUI startup.
                 if b"\x1b[6n" in b:
                     try:
-                        os.write(fd, b"\x1b[1;1R")
+                        _write_all(fd, b"\x1b[1;1R")
                     except Exception:
                         traceback.print_exc()
                 # xterm "report terminal size" queries (some TUIs use these).
                 if b"\x1b[18t" in b:
                     try:
-                        os.write(fd, f"\x1b[8;{self.rows};{self.cols}t".encode("ascii"))
+                        _write_all(fd, f"\x1b[8;{self.rows};{self.cols}t".encode("ascii"))
                     except Exception:
                         traceback.print_exc()
                 if b"\x1b[14t" in b:
                     try:
-                        os.write(fd, b"\x1b[4;0;0t")
+                        _write_all(fd, b"\x1b[4;0;0t")
                     except Exception:
                         traceback.print_exc()
                 s = b.decode("utf-8", errors="replace")
@@ -190,7 +211,7 @@ class Sessiond:
                     wrote_any = False
                     for msg in q:
                         try:
-                            os.write(fd, msg.encode("utf-8") + _encode_enter())
+                            _inject(fd, text=msg, suffix=_encode_enter())
                             wrote_any = True
                         except Exception:
                             break
@@ -256,23 +277,25 @@ class Sessiond:
                 text = req.get("text")
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
-                else:
-                    fd: int | None = None
-                    enter = _encode_enter()
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            fd = st.pty_master_fd
-                            resp = {"queued": False, "queue_len": len(st.queue)}
-                    if fd is not None:
-                        os.write(fd, text.encode("utf-8"))
-                        if enter:
-                            time.sleep(0.2)
-                            os.write(fd, enter)
+                    f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                    f.flush()
+                    return
+                fd: int | None = None
+                enter = _encode_enter()
+                with self._lock:
+                    st = self.state
+                    if not st:
+                        resp = {"error": "no state"}
+                    else:
+                        fd = st.pty_master_fd
+                        resp = {"queued": False, "queue_len": len(st.queue)}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
+                if fd is not None:
+                    try:
+                        _inject(fd, text=text, suffix=enter)
+                    except Exception:
+                        traceback.print_exc()
                 return
 
             if cmd == "keys":
@@ -287,7 +310,7 @@ class Sessiond:
                             resp = {"error": "no state"}
                         else:
                             try:
-                                os.write(st.pty_master_fd, b)
+                                _write_all(st.pty_master_fd, b)
                                 resp = {"ok": True}
                             except Exception as e:
                                 resp = {"error": str(e)}

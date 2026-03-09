@@ -54,6 +54,8 @@ if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
 BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
 INTERRUPT_HINT_TAIL_MAX = 4096
+_BRACKETED_PASTE_START = b"\x1b[200~"
+_BRACKETED_PASTE_END = b"\x1b[201~"
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
@@ -96,6 +98,7 @@ def _pid_alive(pid: int) -> bool:
     except Exception:
         return False
     return True
+
 
 
 def _require_proc() -> None:
@@ -194,13 +197,23 @@ def _encode_enter() -> bytes:
     return b
 
 
-def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.2) -> None:
-    os.write(fd, text.encode("utf-8"))
+def _write_all(fd: int, data: bytes) -> None:
+    view = memoryview(data)
+    while view:
+        n = os.write(fd, view)
+        if n <= 0:
+            raise OSError("short write to PTY")
+        view = view[n:]
+
+
+def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
+    payload = _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END
+    _write_all(fd, payload)
     if not suffix:
         return
-    for _i in range(3):
+    if delay_s > 0:
         time.sleep(delay_s)
-        os.write(fd, suffix)
+    _write_all(fd, suffix)
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -591,43 +604,43 @@ class Broker:
         self._term_query_buf = (self._term_query_buf + b)[-256:]
         if b"\x1b[5n" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b[0n")
+                _write_all(fd, b"\x1b[0n")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[5n", b"")
         if b"\x1b[6n" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b[1;1R")
+                _write_all(fd, b"\x1b[1;1R")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[6n", b"")
         if b"\x1b[c" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b[?1;2c")
+                _write_all(fd, b"\x1b[?1;2c")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[c", b"")
         if b"\x1b[>c" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b[>0;0;0c")
+                _write_all(fd, b"\x1b[>0;0;0c")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[>c", b"")
         if b"\x1b[?u" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b[?1u")
+                _write_all(fd, b"\x1b[?1u")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b[?u", b"")
         if b"\x1b]10;?\x1b\\" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b]10;rgb:c0c0/c0c0/c0c0\x1b\\")
+                _write_all(fd, b"\x1b]10;rgb:c0c0/c0c0/c0c0\x1b\\")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b]10;?\x1b\\", b"")
         if b"\x1b]11;?\x1b\\" in self._term_query_buf:
             try:
-                os.write(fd, b"\x1b]11;rgb:0000/0000/0000\x1b\\")
+                _write_all(fd, b"\x1b]11;rgb:0000/0000/0000\x1b\\")
             except Exception:
                 traceback.print_exc()
             self._term_query_buf = self._term_query_buf.replace(b"\x1b]11;?\x1b\\", b"")
@@ -643,7 +656,7 @@ class Broker:
                 b = os.read(fd, 4096)
                 if not b:
                     break
-                os.write(out_fd, b)
+                _write_all(out_fd, b)
                 self._maybe_reply_to_terminal_queries(fd=fd, b=b)
                 s = b.decode("utf-8", errors="replace")
                 if s:
@@ -681,7 +694,7 @@ class Broker:
                         continue
                     st2.last_local_input_ts = _now()
                     try:
-                        os.write(fd, b)
+                        _write_all(fd, b)
                     except OSError:
                         break
             except OSError:
@@ -731,7 +744,7 @@ class Broker:
                             st3.last_turn_activity_ts = now_ts
                 for b in kq:
                     try:
-                        os.write(fd, b)
+                        _write_all(fd, b)
                     except Exception:
                         break
                 if msg is None:
@@ -885,29 +898,34 @@ class Broker:
                 text = req.get("text")
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
-                else:
-                    seq_raw = req.get("enter_seq")
-                    seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
-                    fd: int | None = None
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            now_ts = _now()
-                            st.pending_calls.clear()
-                            st.busy = True
-                            st.turn_open = True
-                            st.turn_has_completion_candidate = False
-                            st.last_interrupt_hint_ts = 0.0
-                            if now_ts > st.last_turn_activity_ts:
-                                st.last_turn_activity_ts = now_ts
-                            fd = st.pty_master_fd
-                            resp = {"queued": False, "queue_len": len(st.queue)}
-                    if fd is not None:
-                        _inject(fd, text=text, suffix=seq)
+                    f.write((json.dumps(resp) + "\n").encode("utf-8"))
+                    f.flush()
+                    return
+                seq_raw = req.get("enter_seq")
+                seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+                fd: int | None = None
+                with self._lock:
+                    st = self.state
+                    if not st:
+                        resp = {"error": "no state"}
+                    else:
+                        now_ts = _now()
+                        st.pending_calls.clear()
+                        st.busy = True
+                        st.turn_open = True
+                        st.turn_has_completion_candidate = False
+                        st.last_interrupt_hint_ts = 0.0
+                        if now_ts > st.last_turn_activity_ts:
+                            st.last_turn_activity_ts = now_ts
+                        fd = st.pty_master_fd
+                        resp = {"queued": False, "queue_len": len(st.queue)}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
+                if fd is not None:
+                    try:
+                        _inject(fd, text=text, suffix=seq)
+                    except Exception:
+                        traceback.print_exc()
                 return
 
             if cmd == "enqueue":
@@ -989,7 +1007,7 @@ class Broker:
                             resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
                     if fd is not None:
                         try:
-                            os.write(fd, b)
+                            _write_all(fd, b)
                         except Exception:
                             traceback.print_exc()
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
