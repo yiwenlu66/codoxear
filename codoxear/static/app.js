@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.14";
+	      const UI_VERSION = "20260309.15";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -1820,6 +1820,10 @@
           return chat.scrollHeight - (chat.scrollTop + chat.clientHeight) <= thresholdPx;
         }
 
+        function syncJumpButton() {
+          jumpBtn.style.display = autoScroll || isNearBottom() ? "none" : "inline-flex";
+        }
+
         function scrollToBottom() {
           // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
           // on-screen keyboard opens/closes.
@@ -1886,10 +1890,8 @@
           }
           if (autoScroll) {
             requestAnimationFrame(() => scrollToBottom());
-            jumpBtn.style.display = "none";
-          } else {
-            jumpBtn.style.display = "inline-flex";
           }
+          syncJumpButton();
         }
 
         function trimRenderedRows({ fromTop }) {
@@ -2375,10 +2377,8 @@
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
-            jumpBtn.style.display = "none";
-          } else {
-            jumpBtn.style.display = "inline-flex";
           }
+          syncJumpButton();
           if (ev.role === "user") lastAssistantKey = "";
           else if (!ev.pending && ev.role === "assistant") lastAssistantKey = assistantTextKey(ev) || "";
         }
@@ -4820,14 +4820,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          lastScrollTop = cur;
 	          if (d < 0) autoScroll = false;
           else if (isNearBottom()) autoScroll = true;
-          jumpBtn.style.display = autoScroll ? "none" : "inline-flex";
+          syncJumpButton();
         });
         chat.addEventListener(
           "wheel",
           (e) => {
             if (e.deltaY < 0) {
               autoScroll = false;
-              jumpBtn.style.display = "inline-flex";
+              syncJumpButton();
               maybeAutoLoadOlder();
             }
           },
@@ -4852,7 +4852,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             // Finger moves down -> content scrolls up.
             if (dy > 0) {
               autoScroll = false;
-              jumpBtn.style.display = "inline-flex";
+              syncJumpButton();
               maybeAutoLoadOlder();
             }
           },
@@ -4860,8 +4860,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         );
         jumpBtn.onclick = () => {
           autoScroll = true;
-          jumpBtn.style.display = "none";
           scrollToBottom();
+          syncJumpButton();
         };
         olderBtn.onclick = () => {
           void loadOlderMessages({ auto: false });
@@ -4981,7 +4981,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	              const wasNear = isNearBottom();
               if (wasNear) {
                 autoScroll = true;
-                jumpBtn.style.display = "none";
+                syncJumpButton();
               }
 	              if (isIOS) runIOSViewportGuard({ preserveChatBottom: wasNear, durationMs: 1800 });
 	              else {
