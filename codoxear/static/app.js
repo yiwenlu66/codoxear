@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260308.9";
+	      const UI_VERSION = "20260309.8";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -978,7 +978,7 @@
 	        let sending = false;
 	        let localEchoSeq = 0;
 	        const pendingUser = [];
-	        let attachedImages = 0;
+	        let attachedFiles = 0;
 		        let autoScroll = true;
 			        let backfillToken = 0;
         let backfillState = null;
@@ -1093,15 +1093,15 @@
             class: "icon-btn",
             id: "attachBtn",
             type: "button",
-            title: "Attach image",
-            "aria-label": "Attach image",
+            title: "Attach file",
+            "aria-label": "Attach file",
             html: iconSvg("paperclip"),
           }),
           el("div", { class: "inputWrap" }, [
             el("textarea", { id: "msg", placeholder: "", "aria-label": "Enter your instructions here" }),
             el("div", { class: "ph", id: "msgPh", text: "Enter your instructions here" }),
           ]),
-          el("input", { id: "imgInput", type: "file", accept: "image/*", style: "display:none" }),
+          el("input", { id: "imgInput", type: "file", style: "display:none" }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
           el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
         ]);
@@ -4554,7 +4554,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
         const setAttachCount = (n) => {
           const next = Math.max(0, Number(n) || 0);
-          attachedImages = next;
+          attachedFiles = next;
           if (!attachBadgeEl) return;
           if (next > 0) {
             attachBadgeEl.textContent = String(next);
@@ -4645,10 +4645,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		          if (sending) return;
 		          try {
 	            function safeStem(name) {
-	              const s = String(name || "image");
+	              const s = String(name || "file");
 	              const base = s.split("/").pop() || s;
 	              const dot = base.lastIndexOf(".");
-	              return (dot > 0 ? base.slice(0, dot) : base).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "image";
+	              return (dot > 0 ? base.slice(0, dot) : base).replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "file";
 	            }
 	            function extLower(name) {
 	              const s = String(name || "");
@@ -4660,9 +4660,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	              const e = extLower(file.name);
 	              return t.includes("heic") || t.includes("heif") || e === "heic" || e === "heif";
 	            }
-	            function isSupportedMime(type) {
-	              const t = String(type || "").toLowerCase();
-	              return t === "image/png" || t === "image/jpeg" || t === "image/jpg" || t === "image/webp";
+	            function looksLikeImage(file) {
+	              const t = String(file && file.type ? file.type : "").toLowerCase();
+	              if (t.startsWith("image/")) return true;
+	              const e = extLower(file && file.name ? file.name : "");
+	              return ["png", "jpg", "jpeg", "webp", "gif", "bmp", "svg", "avif", "heic", "heif"].includes(e);
 	            }
 	            function b64FromBytes(bytes) {
 	              let bin = "";
@@ -4704,12 +4706,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	              }
 	            }
 
-	            setToast("attaching image...");
+	            setToast("uploading file...");
 	            const maxBytes = 10 * 1024 * 1024;
 	            let uploadBlob = f;
-	            let uploadName = f.name || "image";
-	            if (f.size > maxBytes || isLikelyHeic(f) || !isSupportedMime(f.type)) {
-	              setToast("converting image...");
+	            let uploadName = f.name || "file";
+	            if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
+	              setToast("compressing image...");
 	              const stem = safeStem(f.name);
 	              uploadName = `${stem}.jpg`;
 	              // Try a few (dim, quality) pairs until it fits.
@@ -4730,15 +4732,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            }
 
 	            const ab = await uploadBlob.arrayBuffer();
-	            if (ab.byteLength > maxBytes) throw new Error("image too large");
-	            const b64 = b64FromBytes(new Uint8Array(ab));
-		            const res = await api(`/api/sessions/${selected}/inject_image`, {
+	            if (ab.byteLength > maxBytes) throw new Error("file too large");
+		            const b64 = b64FromBytes(new Uint8Array(ab));
+			            const res = await api(`/api/sessions/${selected}/inject_image`, {
 		              method: "POST",
-		              body: { filename: uploadName, data_b64: b64 },
+		              body: { filename: uploadName, data_b64: b64, attachment_index: attachedFiles + 1 },
 		            });
 		            if (res && res.ok) {
-		              setToast("image attached");
-		              setAttachCount(attachedImages + 1);
+		              setToast("file attached");
+		              setAttachCount(attachedFiles + 1);
 		            }
 		            pollFastUntilMs = Date.now() + 4000;
 		            kickPoll(0);

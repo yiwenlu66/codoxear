@@ -141,6 +141,7 @@ GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECO
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
+ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
@@ -748,19 +749,48 @@ def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
     return out
 
 
-def _safe_filename(name: str) -> str:
+def _safe_filename(name: str, *, default: str = "file") -> str:
     out = []
-    for ch in name:
+    base = Path(str(name or "")).name
+    for ch in base:
         if ch.isalnum() or ch in ("-", "_", ".", " "):
             out.append(ch)
     s = "".join(out).strip().replace(" ", "_")
     if not s:
-        return "image"
+        return default
     return s[:96]
 
 
 def _clean_alias(name: str) -> str:
     if not isinstance(name, str):
+def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_bytes: int = ATTACH_UPLOAD_MAX_BYTES) -> Path:
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError("session_id required")
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("filename required")
+    if not isinstance(raw, (bytes, bytearray)):
+        raise ValueError("file bytes required")
+    data = bytes(raw)
+    if len(data) > int(max_bytes):
+        raise ValueError("file too large")
+    safe_name = _safe_filename(filename, default="file")
+    subdir = (UPLOAD_DIR / session_id).resolve()
+    subdir.mkdir(parents=True, exist_ok=True)
+    out_path = (subdir / f"{int(_now() * 1000)}_{safe_name}").resolve()
+    if not str(out_path).startswith(str(subdir) + os.sep):
+        raise ValueError("bad path")
+    out_path.write_bytes(data)
+    os.chmod(out_path, 0o600)
+    return out_path
+
+
+def _attachment_inject_text(attachment_index: int, path: Path) -> str:
+    idx = int(attachment_index)
+    if idx <= 0:
+        raise ValueError("attachment_index must be >= 1")
+    return f"Attachment {idx}: {path}\n"
+
+
         return ""
     # Collapse whitespace and cap length to keep titles readable.
     cleaned = " ".join(name.split()).strip()
@@ -4145,7 +4175,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "broker": resp})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/inject_image"):
+            if path.startswith("/api/sessions/") and (path.endswith("/inject_file") or path.endswith("/inject_image")):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
@@ -4170,45 +4200,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except Exception:
                     _json_response(self, 400, {"error": "invalid base64"})
                     return
-                if len(raw) > 10 * 1024 * 1024:
-                    _json_response(self, 413, {"error": "image too large"})
-                    return
-
-                sniffed = _sniff_image_ext(raw)
-                if sniffed is None:
-                    _json_response(self, 400, {"error": "unsupported image format"})
-                    return
-                if sniffed == ".png":
-                    raw = _repair_png_crc(raw)
                 try:
-                    _validate_image(raw)
-                except Exception as e:
-                    _json_response(self, 400, {"error": f"invalid image: {e}"})
+                    out_path = _stage_uploaded_file(session_id, filename, raw)
+                except ValueError as e:
+                    status = 413 if str(e) == "file too large" else 400
+                    _json_response(self, status, {"error": str(e)})
                     return
 
-                stem = Path(_safe_filename(filename)).stem
-                if not stem:
-                    raise ValueError("invalid filename")
-                safe = stem + sniffed
-
-                subdir = UPLOAD_DIR / session_id
-                subdir.mkdir(parents=True, exist_ok=True)
-                ts = int(_now() * 1000)
-                out_path = (subdir / f"{ts}_{safe}").resolve()
-                if not str(out_path).startswith(str(subdir.resolve())):
-                    _json_response(self, 400, {"error": "bad path"})
+                try:
+                    inject_text = _attachment_inject_text(attachment_index, out_path)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
-                out_path.write_bytes(raw)
-                os.chmod(out_path, 0o600)
 
-                # Bracketed paste: inject the image path; Codex TUI attaches if it exists and is an image.
-                seq = f"\x1b[200~{str(out_path)}\x1b[201~"
+                # Bracketed paste: inject the staged attachment line into the active broker input.
+                seq = f"\x1b[200~{inject_text}\x1b[201~"
                 try:
                     resp = MANAGER.inject_keys(session_id, seq)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                _json_response(self, 200, {"ok": True, "path": str(out_path), "broker": resp})
+                _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
                 return
 
             if path == "/api/hooks/notify":
@@ -4272,3 +4284,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+                attachment_index = obj.get("attachment_index")
+                if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
+                    _json_response(self, 400, {"error": "attachment_index must be an integer"})
+                    return
