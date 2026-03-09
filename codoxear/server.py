@@ -912,6 +912,35 @@ def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]
     return raw, size, kind, image_ctype
 
 
+def _inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
+    if not path_obj.exists():
+        raise FileNotFoundError("file not found")
+    if not path_obj.is_file():
+        raise ValueError("path is not a file")
+    try:
+        size = path_obj.stat().st_size
+        with path_obj.open("rb") as f:
+            prefix = f.read(64)
+    except PermissionError as e:
+        raise PermissionError("permission denied") from e
+    kind, image_ctype = _file_kind(path_obj, prefix)
+    if kind == "image":
+        return size, kind, image_ctype
+    if b"\x00" in prefix:
+        raise ValueError("binary file not supported")
+    if size > FILE_READ_MAX_BYTES:
+        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
+    return size, kind, image_ctype
+
+
+def _read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
+    size, kind, image_ctype = _inspect_path_metadata(path_obj)
+    if kind == "image":
+        return kind, size, image_ctype, None
+    raw = path_obj.read_bytes()
+    return kind, size, image_ctype, raw
+
+
 def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
     if not path_obj.exists():
         raise FileNotFoundError("file not found")
@@ -929,8 +958,7 @@ def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
         raise FileNotFoundError("file not found")
     if path_obj.is_dir():
         return 0, "directory", None
-    _raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
-    return size, kind, image_ctype
+    return _inspect_path_metadata(path_obj)
 
 
 def _download_disposition(path_obj: Path) -> str:
@@ -3245,12 +3273,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not p.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
-                raw = p.read_bytes()
-                size = len(raw)
-                if size > FILE_READ_MAX_BYTES:
-                    _json_response(self, 400, {"error": f"file too large (max {FILE_READ_MAX_BYTES} bytes)"})
+                try:
+                    kind, size, image_ctype, raw = _read_text_or_image(p)
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
                     return
-                kind, image_ctype = _file_kind(p, raw)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
@@ -3270,9 +3300,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
-                if b"\x00" in raw:
-                    _json_response(self, 400, {"error": "binary file not supported"})
-                    return
+                assert raw is not None
                 text = raw.decode("utf-8", errors="replace")
                 _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": str(rel), "size": int(size), "text": text})
                 return
@@ -3895,7 +3923,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    raw, size, kind, image_ctype = _inspect_openable_file(path_obj)
+                    kind, size, image_ctype, raw = _read_text_or_image(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -3924,6 +3952,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
+                assert raw is not None
                 text = raw.decode("utf-8", errors="replace")
                 _json_response(self, 200, {"ok": True, "kind": "text", "path": str(path_obj), "size": int(size), "text": text})
                 return
