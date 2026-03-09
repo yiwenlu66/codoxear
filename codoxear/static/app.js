@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.15";
+	      const UI_VERSION = "20260309.16";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -1493,11 +1493,40 @@
           }, 2200);
         }
 
-        async function copyToClipboard(text) {
-          if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
-            throw new Error("Clipboard API unavailable");
+        function copyTextViaSelection(text) {
+          if (typeof document.execCommand !== "function") {
+            throw new Error("Selection copy unavailable");
           }
-          await navigator.clipboard.writeText(String(text ?? ""));
+          const value = String(text ?? "");
+          const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          const ta = el("textarea", { "aria-hidden": "true" });
+          ta.value = value;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.top = "0";
+          ta.style.left = "0";
+          ta.style.width = "1px";
+          ta.style.height = "1px";
+          ta.style.padding = "0";
+          ta.style.border = "0";
+          ta.style.opacity = "0";
+          ta.style.pointerEvents = "none";
+          document.body.appendChild(ta);
+          ta.focus({ preventScroll: true });
+          ta.select();
+          ta.setSelectionRange(0, value.length);
+          const ok = document.execCommand("copy");
+          ta.remove();
+          if (active) active.focus({ preventScroll: true });
+          if (!ok) throw new Error("Selection copy failed");
+        }
+
+        async function copyToClipboard(text) {
+          if (window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(String(text ?? ""));
+            return;
+          }
+          copyTextViaSelection(text);
         }
 
         let currentQueueLen = 0;
