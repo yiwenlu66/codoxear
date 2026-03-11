@@ -1260,7 +1260,7 @@
 <ul class="md">
   <li>On mobile: swipe left on a session to reveal <b>Edit</b> and <b>Duplicate</b>.</li>
   <li>On mobile: swipe right on any session to reveal <b>Delete</b>.</li>
-  <li>On desktop: session actions are shown on the right.</li>
+  <li>On desktop: move the mouse over a session to show <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>.</li>
   <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
   <li>The status line starts with a boxed <b>W</b> (web-owned) or boxed <b>T</b> (terminal-owned).</li>
 </ul>
