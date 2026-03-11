@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260309.16";
+	      const UI_VERSION = "20260311.3";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -1952,36 +1952,32 @@
             if (ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
           }
 
-          if (role === "assistant") {
-            const shell = el("div", { class: "msg-shell assistant" });
-            shell.appendChild(bubble);
-            if (typeof ev.text === "string" && ev.text.length) {
-              const copyBtn = el("button", {
-                class: "icon-btn msg-copy-btn",
-                type: "button",
-                title: "Copy raw markdown",
-                "aria-label": "Copy raw markdown",
-                html: iconSvg("copy"),
-              });
-              copyBtn.onclick = async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                try {
-                  await copyToClipboard(ev.text);
-                  copyBtn.classList.add("copied");
-                  setTimeout(() => copyBtn.classList.remove("copied"), 1200);
-                  setToast("Copied markdown");
-                } catch (err) {
-                  setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
-                }
-              };
-              shell.appendChild(copyBtn);
-            }
-            row.appendChild(shell);
-            return { row, bubble };
+          const shell = el("div", { class: `msg-shell ${role}` });
+          shell.appendChild(bubble);
+          if (typeof ev.text === "string" && ev.text.length) {
+            const copyBtn = el("button", {
+              class: "icon-btn msg-copy-btn",
+              type: "button",
+              title: "Copy raw markdown",
+              "aria-label": "Copy raw markdown",
+              html: iconSvg("copy"),
+            });
+            copyBtn.onclick = async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                await copyToClipboard(ev.text);
+                copyBtn.classList.add("copied");
+                setTimeout(() => copyBtn.classList.remove("copied"), 1200);
+                setToast("Copied markdown");
+              } catch (err) {
+                setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+              }
+            };
+            shell.appendChild(copyBtn);
           }
 
-          row.appendChild(bubble);
+          row.appendChild(shell);
           return { row, bubble };
         }
 

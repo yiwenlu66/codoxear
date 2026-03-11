@@ -686,8 +686,14 @@
         width: 30px;
         height: 30px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.96);
+        border-color: rgba(15, 23, 42, 0.14);
+        background: rgba(233, 238, 245, 0.98);
+        color: rgba(17, 24, 39, 0.7);
         box-shadow: var(--shadow-sm);
+      }
+      .msg-shell.user .msg-copy-btn {
+        left: -40px;
+        right: auto;
       }
       .msg-copy-btn:hover {
         border-color: rgba(37, 99, 235, 0.4);
