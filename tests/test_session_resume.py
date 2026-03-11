@@ -95,6 +95,41 @@ class TestSessionResumeCandidates(unittest.TestCase):
 
 
 class TestSpawnWebSessionResume(unittest.TestCase):
+    def test_spawn_web_session_marks_spawn_cwd_trusted(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 3210
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
+            "codoxear.server.subprocess.Popen", return_value=_Proc()
+        ) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(manager, cwd=td, args=["--search"])
+
+        argv = popen_mock.call_args.args[0]
+        trust_override = f'projects={{ {json.dumps(str(Path(td).resolve()))} = {{ trust_level = "trusted" }} }}'
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "-c",
+                trust_override,
+                "--search",
+            ],
+        )
+        self.assertEqual(result, {"broker_pid": 3210})
+        self.assertEqual(thread_calls, ["start"])
+
     def test_spawn_web_session_passes_resume_id_to_broker(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         thread_calls: list[str] = []
@@ -117,6 +152,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             )
 
         argv = popen_mock.call_args.args[0]
+        trust_override = f'projects={{ {json.dumps(str(Path(td).resolve()))} = {{ trust_level = "trusted" }} }}'
         self.assertEqual(
             argv,
             [
@@ -126,6 +162,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--cwd",
                 td,
                 "--",
+                "-c",
+                trust_override,
                 "resume",
                 "resume-a",
                 "--search",
@@ -183,6 +221,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             result = SessionManager.spawn_web_session(manager, cwd=td, worktree_branch="feature/test-worktree")
 
         argv = popen_mock.call_args.args[0]
+        trust_override = f'projects={{ {json.dumps(str((Path(td) / "repo-worktree").resolve()))} = {{ trust_level = "trusted" }} }}'
         self.assertEqual(
             argv,
             [
@@ -192,6 +231,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--cwd",
                 str(Path(td) / "repo-worktree"),
                 "--",
+                "-c",
+                trust_override,
             ],
         )
         self.assertEqual(result, {"broker_pid": 5432})

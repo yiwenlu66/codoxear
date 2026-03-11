@@ -737,6 +737,10 @@ def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
     return path.resolve()
 
 
+def _codex_trust_override_for_path(path: Path) -> str:
+    return f'projects={{ {json.dumps(str(path.resolve()))} = {{ trust_level = "trusted" }} }}'
+
+
 def _resolve_new_path(raw: str, *, field_name: str) -> Path:
     if not isinstance(raw, str) or not raw.strip():
         raise ValueError(f"{field_name} required")
@@ -2984,7 +2988,7 @@ class SessionManager:
             spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
-        codex_args = list(args or [])
+        codex_args = ["-c", _codex_trust_override_for_path(spawn_cwd)]
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
@@ -2996,7 +3000,8 @@ class SessionManager:
                     break
             if not found:
                 raise ValueError(f"resume session not found for cwd: {resume_id}")
-            argv.extend(["resume", resume_id])
+            codex_args.extend(["resume", resume_id])
+        codex_args.extend(args or [])
         argv.extend(codex_args)
 
         env = dict(os.environ)
