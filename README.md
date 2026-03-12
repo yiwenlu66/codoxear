@@ -43,19 +43,21 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
     - Default bind: `::` (IPv6, usually reachable on LAN)
     - Default port: `8743`
 
-3. Wrap your local `codex` with the broker (zsh/bash function, not an alias):
+3. Add a separate `codox` wrapper for brokered sessions (zsh/bash function, not an alias):
+
+   Never wrap or replace `codex()` itself. Web-owned sessions launch `codex` internally, so wrapping `codex()` to call `codoxear-broker` can recurse back into the broker and create an unbounded session-spawn loop.
 
    Add to `~/.zshrc` or `~/.bashrc`:
 
    ```sh
-   codex() {
+   codox() {
      codoxear-broker -- "$@"
    }
    ```
 
    Restart your shell or `source` your rc file.
 
-4. Start Codex in your terminal as usual (via the wrapper). Codoxear will discover the session.
+4. Use `codox` instead of `codex` when you want the terminal session to be registered with Codoxear. Leave plain `codex` unwrapped.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
@@ -75,12 +77,12 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 Codoxear shows two kinds of sessions:
 
-- Terminal-owned: sessions started from your local terminal (via the `codex` wrapper). They are marked `T` in the UI.
+- Terminal-owned: sessions started from your local terminal via `codox` (the broker wrapper). They are marked `T` in the UI.
 - Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
 
 The current UI offers Delete for either kind of session. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
-If you start a web-owned session and later want to continue it in your terminal, use `codex resume`.
+If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use `codox resume`. Use plain `codex` only for sessions that should stay outside Codoxear.
 
 ## Known limitations
 
