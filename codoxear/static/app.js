@@ -429,6 +429,34 @@
         return { path: next.path.trim(), line: normalizeLineNumber(next.line ?? ref.line) };
       }
 
+      function rewriteOaiMemCitations(rawText) {
+        const raw = String(rawText ?? "");
+        if (!raw.includes("<oai-mem-citation>")) return raw;
+        const blockRe =
+          /<oai-mem-citation>\s*<citation_entries>\s*([\s\S]*?)\s*<\/citation_entries>\s*<rollout_ids>[\s\S]*?<\/rollout_ids>\s*<\/oai-mem-citation>/g;
+        return raw.replace(blockRe, (whole, body) => {
+          const lines = String(body || "")
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean);
+          if (!lines.length) return whole;
+          const items = [];
+          for (const line of lines) {
+            const m = line.match(/^(.*?):(\d+)(?:-(\d+))?\|note=\[(.*)\]$/);
+            if (!m) return whole;
+            const relPath = String(m[1] || "").trim().replace(/^\.?\//, "");
+            const startLine = normalizeLineNumber(m[2]);
+            const endLine = normalizeLineNumber(m[3]);
+            const note = String(m[4] || "").trim();
+            if (!relPath || !startLine || !note) return whole;
+            const rangeSuffix = endLine && endLine >= startLine ? `#L${startLine}-${endLine}` : `#L${startLine}`;
+            const target = `~/.codex/memories/${relPath}${rangeSuffix}`;
+            items.push(`[${note}](${target})`);
+          }
+          return `\n---\n\nMemory citations:\n${items.map((item, idx) => `${idx + 1}. ${item}`).join("\n")}`;
+        });
+      }
+
       function localFileRefFromRef(u, options = null) {
         const raw = String(u ?? "").trim();
         if (!raw) return null;
@@ -537,7 +565,7 @@
       }
 
       function mdToHtml(src, options = null) {
-        const s = String(src ?? "").replaceAll("\r\n", "\n");
+        const s = rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n"));
         const splitByFences = (input) => {
           const chunks = [];
           const lines = String(input ?? "").split("\n");
@@ -771,6 +799,11 @@
               const t = l.trim();
               if (!t) {
                 flushPara();
+                continue;
+              }
+              if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(t.replace(/\s+/g, ""))) {
+                flushPara();
+                out.push("<hr />");
                 continue;
               }
               const info = listItemInfo(l);
@@ -4105,10 +4138,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!path) continue;
             const result = await inspectFileRefPath(path);
             if (!result || !result.ok) continue;
+            const resolvedPath = String(result.resolvedPath || result.inspectPath || path).trim();
             const link = el("a", {
               href: "#",
               class: "inlineFileLink",
-              "data-file-path": result.kind === "directory" ? result.resolvedPath || result.inspectPath || path : result.inspectPath || path,
+              "data-file-path": resolvedPath,
               "data-file-kind": result.kind || "text",
             });
             if (line && result.kind !== "directory") link.setAttribute("data-file-line", String(line));

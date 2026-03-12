@@ -101,6 +101,37 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn('src="http://localhost/api/sessions/sess-123/file/blob?path=docs%2Fimages%2Fflow.png"', html)
         self.assertIn('alt="diagram"', html)
 
+    def test_oai_mem_citation_block_renders_memory_links(self) -> None:
+        html = render_markdown(
+            textwrap.dedent(
+                """\
+                <oai-mem-citation>
+                <citation_entries>
+                MEMORY.md:4773-4779|note=[used corrected memex memory-estimation guidance and the bs64 OOM interpretation]
+                rollout_summaries/2026-02-17T21-23-02-example.md:10-12|note=[weekly report format]
+                </citation_entries>
+                <rollout_ids>
+                </rollout_ids>
+                </oai-mem-citation>
+                """
+            )
+        )
+        self.assertIn("<hr />", html)
+        self.assertIn("<p>Memory citations:</p>", html)
+        self.assertIn("<ol>", html)
+        self.assertIn('data-candidate-file-path="~/.codex/memories/MEMORY.md"', html)
+        self.assertIn('data-candidate-file-line="4773"', html)
+        self.assertIn(">used corrected memex memory-estimation guidance and the bs64 OOM interpretation</span>", html)
+        self.assertIn('data-candidate-file-path="~/.codex/memories/rollout_summaries/2026-02-17T21-23-02-example.md"', html)
+        self.assertIn('data-candidate-file-line="10"', html)
+        self.assertIn(">weekly report format</span>", html)
+        self.assertNotIn("oai-mem-citation", html)
+
+    def test_candidate_file_link_source_prefers_resolved_path(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('const resolvedPath = String(result.resolvedPath || result.inspectPath || path).trim();', source)
+        self.assertIn('"data-file-path": resolvedPath,', source)
+
 
 if __name__ == "__main__":
     unittest.main()

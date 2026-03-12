@@ -831,6 +831,12 @@
         margin: 0 0 10px 20px;
         padding: 0;
       }
+      .md hr {
+        margin: 14px 0 12px 0;
+        height: 0;
+        border: 0;
+        border-top: 1px solid rgba(15, 23, 42, 0.12);
+      }
       .md li {
         margin: 4px 0;
       }
