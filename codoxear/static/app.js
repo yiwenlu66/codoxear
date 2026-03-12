@@ -3846,7 +3846,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const raw = String(relPath || "").trim();
           const rel = sessionRelativePath(raw) || raw;
           if (!rel) return;
-          upsertFileEntry({ path: rel, additions: null, deletions: null, changed: false });
+          const current = fileEntryMap.get(rel);
+          upsertFileEntry({
+            path: rel,
+            additions: current && current.changed ? current.additions : null,
+            deletions: current && current.changed ? current.deletions : null,
+            changed: Boolean(current && current.changed),
+          });
           const s = selected ? sessionIndex.get(selected) : null;
           if (!s) return;
           const files = listFromFilesField(s.files);
