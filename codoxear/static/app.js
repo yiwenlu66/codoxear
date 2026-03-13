@@ -2773,6 +2773,25 @@
           return data;
         }
 
+        async function jumpToLatest() {
+          if (!selected) return;
+          const sid = selected;
+          const gen = pollGen;
+          autoScroll = true;
+          try {
+            await refreshInitPageState(sid, gen, { rerender: true });
+          } catch (e) {
+            if (selected !== sid || pollGen !== gen) return;
+            setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+          if (selected !== sid || pollGen !== gen) return;
+          requestAnimationFrame(() => {
+            scrollToBottom();
+            syncJumpButton();
+          });
+          kickPoll(0);
+        }
+
 		        async function selectSession(id) {
 	          pollGen += 1;
 	          const myGen = pollGen;
@@ -4949,9 +4968,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           { passive: true }
         );
         jumpBtn.onclick = () => {
-          autoScroll = true;
-          scrollToBottom();
-          syncJumpButton();
+          void jumpToLatest();
         };
         olderBtn.onclick = () => {
           void loadOlderMessages({ auto: false });

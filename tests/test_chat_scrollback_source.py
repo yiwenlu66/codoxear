@@ -6,6 +6,19 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 
 class TestChatScrollbackSource(unittest.TestCase):
+    def test_jump_button_reloads_latest_page_before_scroll(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function jumpToLatest() {")
+        end = source.index("async function selectSession(id) {", start)
+        block = source[start:end]
+        self.assertIn("await refreshInitPageState(sid, gen, { rerender: true });", block)
+        self.assertIn("kickPoll(0);", block)
+
+        handler_start = source.index("jumpBtn.onclick = () => {")
+        handler_end = source.index("olderBtn.onclick = () => {", handler_start)
+        handler = source[handler_start:handler_end]
+        self.assertIn("void jumpToLatest();", handler)
+
     def test_cached_session_selection_refreshes_init_page_state(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function selectSession(id) {")
