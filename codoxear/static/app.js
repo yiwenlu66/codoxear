@@ -1973,6 +1973,22 @@
           }
         }
 
+        function trimRenderedRowsBeforeViewport() {
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          if (rows.length <= CHAT_DOM_WINDOW) return;
+          const extra = rows.length - CHAT_DOM_WINDOW;
+          const viewportTop = chat.scrollTop + 1;
+          let firstVisible = 0;
+          while (firstVisible < rows.length) {
+            const row = rows[firstVisible];
+            if ((row.offsetTop + row.offsetHeight) > viewportTop) break;
+            firstVisible += 1;
+          }
+          const removable = Math.min(extra, firstVisible);
+          if (removable <= 0) return;
+          for (const row of rows.slice(0, removable)) row.remove();
+        }
+
         function makeRow(ev, { ts, pending }) {
           const role = ev.role === "user" ? "user" : "assistant";
           const row = el("div", { class: `msg-row ${role}` });
@@ -2462,7 +2478,8 @@
           const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
-          trimRenderedRows({ fromTop: false });
+          chat.scrollTop = 1;
+          trimRenderedRowsBeforeViewport();
           rebuildDecorations({ preserveScroll: false });
           chat.scrollTop = 1;
         }

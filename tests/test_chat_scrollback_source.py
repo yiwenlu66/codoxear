@@ -39,9 +39,20 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("function prependOlderEvents(allEvents) {")
         end = source.index("async function loadOlderMessages", start)
         block = source[start:end]
+        self.assertIn("trimRenderedRowsBeforeViewport();", block)
         self.assertIn("rebuildDecorations({ preserveScroll: false });", block)
         self.assertIn("chat.scrollTop = 1;", block)
         self.assertNotIn("chat.scrollTop = oldTop + (chat.scrollHeight - oldH);", block)
+        self.assertNotIn("trimRenderedRows({ fromTop: false });", block)
+
+    def test_viewport_tail_trim_only_removes_rows_before_visible_band(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function trimRenderedRowsBeforeViewport() {")
+        end = source.index("function makeRow(ev, { ts, pending }) {", start)
+        block = source[start:end]
+        self.assertIn("const viewportTop = chat.scrollTop + 1;", block)
+        self.assertIn("const removable = Math.min(extra, firstVisible);", block)
+        self.assertIn("for (const row of rows.slice(0, removable)) row.remove();", block)
 
 
 if __name__ == "__main__":
