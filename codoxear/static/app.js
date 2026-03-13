@@ -2454,8 +2454,6 @@
             msgs.push(ev);
           }
           if (!msgs.length) return;
-          const oldTop = chat.scrollTop;
-          const oldH = chat.scrollHeight;
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
@@ -2465,8 +2463,8 @@
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
           trimRenderedRows({ fromTop: false });
-          rebuildDecorations({ preserveScroll: true });
-          chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
+          rebuildDecorations({ preserveScroll: false });
+          chat.scrollTop = 1;
         }
 
         async function loadOlderMessages({ auto = false } = {}) {
@@ -2729,6 +2727,52 @@
           pollTimer = setTimeout(pollLoop, ms);
         }
 
+        async function refreshInitPageState(sid, gen, { rerender = false } = {}) {
+          const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+          if (pollGen !== gen || selected !== sid) return null;
+          const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
+          const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
+          const nextOlderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+          const nextHasOlder = Boolean(data.has_older);
+          const logChanged = Boolean(nextLogPath && activeLogPath && nextLogPath !== activeLogPath);
+
+          if (nextLogPath) activeLogPath = nextLogPath;
+          if (nextThreadId) activeThreadId = nextThreadId;
+          olderBefore = nextOlderBefore;
+          setOlderState({ hasMore: nextHasOlder, isLoading: false });
+          setCacheMeta(sid, {
+            logPath: activeLogPath,
+            olderBefore,
+            hasOlder: nextHasOlder,
+          });
+
+          const nowBusy = Boolean(data.busy);
+          const turnStart = Boolean(data.turn_start);
+          const turnEnd = Boolean(data.turn_end);
+          const turnAborted = Boolean(data.turn_aborted);
+          if (turnStart || nowBusy) turnOpen = true;
+          if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
+          setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
+          setContext(data.token);
+          setTyping(Boolean(turnOpen || nowBusy));
+
+          if (rerender || logChanged) {
+            offset = Number(data.offset) || 0;
+            resetChatRenderState();
+            const evs = Array.isArray(data.events) ? data.events : [];
+            if (evs.length) startInitialRender(evs);
+            olderBefore = nextOlderBefore;
+            setOlderState({ hasMore: nextHasOlder, isLoading: false });
+            setCacheMeta(sid, {
+              logPath: activeLogPath,
+              offset,
+              olderBefore,
+              hasOlder: nextHasOlder,
+            });
+          }
+          return data;
+        }
+
 		        async function selectSession(id) {
 	          pollGen += 1;
 	          const myGen = pollGen;
@@ -2774,6 +2818,11 @@
                   setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
                   startInitialRender(cached.events);
                   try {
+                    await refreshInitPageState(sid, myGen);
+                  } catch {
+                    // ignore and rely on poll refresh
+                  }
+                  try {
                     await pollMessages(sid, myGen);
                   } catch {
                     // ignore and rely on next poll
@@ -2781,30 +2830,9 @@
                   if (pollGen !== myGen || selected !== sid) return;
                 } else {
 				            try {
-						            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+						            const data = await refreshInitPageState(sid, myGen, { rerender: true });
 					            if (pollGen !== myGen || selected !== sid) return;
-                    if (data && typeof data.log_path === "string") activeLogPath = data.log_path;
-                    if (data && typeof data.thread_id === "string") activeThreadId = data.thread_id;
-				            offset = data.offset;
-				            const evs = Array.isArray(data.events) ? data.events : [];
-					            if (evs.length) startInitialRender(evs);
-                    olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
-                    setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
-                    setCacheMeta(sid, {
-                      logPath: activeLogPath,
-                      offset,
-                      olderBefore,
-                      hasOlder: Boolean(data.has_older),
-                    });
-				            const nowBusy = Boolean(data.busy);
-	            const turnStart = Boolean(data.turn_start);
-	            const turnEnd = Boolean(data.turn_end);
-	            const turnAborted = Boolean(data.turn_aborted);
-				            if (turnStart || nowBusy) turnOpen = true;
-				            if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
-				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-				            setContext(data.token);
-				            setTyping(Boolean(turnOpen || nowBusy));
+                    if (!data) return;
 			          } catch {
 			            await pollMessages(sid, myGen);
 			            if (pollGen !== myGen || selected !== sid) return;
@@ -4881,6 +4909,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          lastScrollTop = cur;
 	          if (d < 0) autoScroll = false;
           else if (isNearBottom()) autoScroll = true;
+          if (cur <= 1 && d <= 0) maybeAutoLoadOlder();
           syncJumpButton();
         });
         chat.addEventListener(
