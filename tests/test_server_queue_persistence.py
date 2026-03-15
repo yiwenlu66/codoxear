@@ -12,7 +12,6 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions = {}
         mgr._queues = {}
         mgr._save_queues = lambda: None
-        mgr._sock_call = lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("enqueue must not call broker"))
 
         sid = "s1"
         mgr._sessions[sid] = Session(
@@ -29,8 +28,5 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         resp = SessionManager.enqueue(mgr, sid, "hello queued")
         self.assertTrue(resp.get("queued"))
-        self.assertEqual(resp.get("backend"), "server_compat")
         self.assertEqual(resp.get("queue_len"), 1)
-        self.assertEqual(resp.get("queue_len_total"), 1)
         self.assertEqual(mgr._queues.get(sid), ["hello queued"])
-

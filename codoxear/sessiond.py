@@ -14,7 +14,7 @@ import traceback
 import select
 import sys
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -102,7 +102,6 @@ class State:
     pty_master_fd: int
     start_ts: float
     busy: bool = False
-    queue: list[str] = field(default_factory=list)
     output_tail: str = ""
     output_tail_max: int = 64 * 1024
     log_off: int = 0
@@ -236,25 +235,8 @@ class Sessiond:
 
             if saw_turn_end:
                 with self._lock:
-                    if not self.state:
-                        continue
-                    self.state.busy = False
-                    q = self.state.queue[:]
-                    self.state.queue.clear()
-                    fd = self.state.pty_master_fd
-
-                if q:
-                    wrote_any = False
-                    for msg in q:
-                        try:
-                            _inject(fd, text=msg, suffix=_encode_enter())
-                            wrote_any = True
-                        except Exception:
-                            break
-                    if wrote_any:
-                        with self._lock:
-                            if self.state:
-                                self.state.busy = True
+                    if self.state:
+                        self.state.busy = False
 
     def _sock_server(self) -> None:
         st = self.state
@@ -301,7 +283,7 @@ class Sessiond:
                     if not st:
                         resp = {"error": "no state"}
                     else:
-                        resp = {"busy": st.busy, "queue_len": len(st.queue)}
+                        resp = {"busy": st.busy, "queue_len": 0}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 return
@@ -329,7 +311,7 @@ class Sessiond:
                         resp = {"error": "no state"}
                     else:
                         fd = st.pty_master_fd
-                        resp = {"queued": False, "queue_len": len(st.queue)}
+                        resp = {"queued": False, "queue_len": 0}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 if fd is not None:

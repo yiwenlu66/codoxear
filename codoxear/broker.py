@@ -499,7 +499,6 @@ class State:
     sock_path: Path | None = None
     busy: bool = False
     stdin_eof: bool = False
-    queue: list[str] = field(default_factory=list)
     key_queue: list[bytes] = field(default_factory=list)
     output_tail: str = ""
     output_tail_max: int = 256 * 1024
@@ -755,17 +754,15 @@ class Broker:
 
             objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
             def maybe_drain_one_if_idle() -> None:
-                now_ts = _now()
                 fd: int | None = None
                 kq: list[bytes] = []
-                msg: str | None = None
                 with self._lock:
                     st3 = self.state
                     if not st3:
                         return
                     if st3.busy or st3.turn_open or st3.pending_calls:
                         return
-                    if not st3.queue and not st3.key_queue:
+                    if not st3.key_queue:
                         return
                     fd = st3.pty_master_fd
                     if fd is None:
@@ -773,39 +770,11 @@ class Broker:
                     if st3.key_queue:
                         kq = st3.key_queue[:]
                         st3.key_queue.clear()
-                    if st3.queue:
-                        msg = st3.queue[0]
-                        st3.pending_calls.clear()
-                        st3.busy = True
-                        st3.turn_open = True
-                        st3.turn_has_completion_candidate = False
-                        st3.last_interrupt_hint_ts = 0.0
-                        if now_ts > st3.last_turn_activity_ts:
-                            st3.last_turn_activity_ts = now_ts
                 for b in kq:
                     try:
                         _write_all(fd, b)
                     except Exception:
                         break
-                if msg is None:
-                    return
-                try:
-                    _inject(fd, text=msg, suffix=_encode_enter())
-                except Exception:
-                    traceback.print_exc()
-                    with self._lock:
-                        st4 = self.state
-                        if st4 and st4.queue and st4.queue[0] == msg:
-                            st4.busy = False
-                            st4.turn_open = False
-                            st4.turn_has_completion_candidate = False
-                            st4.last_turn_activity_ts = 0.0
-                            st4.last_interrupt_hint_ts = 0.0
-                    return
-                with self._lock:
-                    st4 = self.state
-                    if st4 and st4.queue and st4.queue[0] == msg:
-                        st4.queue.pop(0)
 
             def maybe_mark_idle() -> None:
                 now_ts = _now()
@@ -926,7 +895,7 @@ class Broker:
                     if not st:
                         resp = {"error": "no state"}
                     else:
-                        resp = {"busy": st.busy, "queue_len": len(st.queue), "token": st.token}
+                        resp = {"busy": st.busy, "queue_len": 0, "token": st.token}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 return
@@ -963,7 +932,7 @@ class Broker:
                         if now_ts > st.last_turn_activity_ts:
                             st.last_turn_activity_ts = now_ts
                         fd = st.pty_master_fd
-                        resp = {"queued": False, "queue_len": len(st.queue)}
+                        resp = {"queued": False, "queue_len": 0}
                 f.write((json.dumps(resp) + "\n").encode("utf-8"))
                 f.flush()
                 if fd is not None:
@@ -971,69 +940,6 @@ class Broker:
                         _inject(fd, text=text, suffix=seq)
                     except Exception:
                         traceback.print_exc()
-                return
-
-            if cmd == "enqueue":
-                text = req.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    resp = {"error": "text required"}
-                else:
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            st.queue.append(text)
-                            resp = {"queued": True, "queue_len": len(st.queue)}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
-                return
-
-            if cmd == "queue_list":
-                with self._lock:
-                    st = self.state
-                    resp = {"queue": list(st.queue) if st else []}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
-                return
-
-            if cmd == "queue_delete":
-                idx = req.get("index")
-                if not isinstance(idx, int):
-                    resp = {"error": "index required"}
-                else:
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        elif idx < 0 or idx >= len(st.queue):
-                            resp = {"error": "index out of range", "queue_len": len(st.queue)}
-                        else:
-                            st.queue.pop(idx)
-                            resp = {"ok": True, "queue_len": len(st.queue)}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
-                return
-
-            if cmd == "queue_update":
-                idx = req.get("index")
-                text = req.get("text")
-                if not isinstance(idx, int):
-                    resp = {"error": "index required"}
-                elif not isinstance(text, str) or not text.strip():
-                    resp = {"error": "text required"}
-                else:
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        elif idx < 0 or idx >= len(st.queue):
-                            resp = {"error": "index out of range", "queue_len": len(st.queue)}
-                        else:
-                            st.queue[idx] = text
-                            resp = {"ok": True, "queue_len": len(st.queue)}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
                 return
 
             if cmd == "keys":

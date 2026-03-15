@@ -4606,7 +4606,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               clearComposer();
               try {
                 const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-              const qn = res && typeof res.queue_len_total === "number" ? res.queue_len_total : res && typeof res.queue_len === "number" ? res.queue_len : null;
+              const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
                 if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
                 else setToast("sent");
                 pollFastUntilMs = Date.now() + 5000;
@@ -4817,12 +4817,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void (async () => {
                 try {
                   const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-                  const qn =
-                    res && typeof res.queue_len_total === "number"
-                      ? res.queue_len_total
-                      : res && typeof res.queue_len === "number"
-                        ? res.queue_len
-                        : null;
+                  const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
                   if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
                   else setToast("sent");
                   pollFastUntilMs = Date.now() + 5000;
