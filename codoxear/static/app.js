@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260312.1";
+	      const UI_VERSION = "20260316.1";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -1291,8 +1291,8 @@
             class: "helpBody",
             html: `<div class="muted">Sessions list</div>
 <ul class="md">
-  <li>On mobile: swipe left on a session to reveal <b>Edit</b> and <b>Duplicate</b>.</li>
-  <li>On mobile: swipe right on any session to reveal <b>Delete</b>.</li>
+  <li>On touch devices: swipe left on a session to reveal <b>Edit</b> and <b>Duplicate</b>.</li>
+  <li>On touch devices: swipe right on any session to reveal <b>Delete</b>.</li>
   <li>On desktop: move the mouse over a session to show <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>.</li>
   <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
   <li>The status line starts with a boxed <b>W</b> (web-owned) or boxed <b>T</b> (terminal-owned).</li>
@@ -2127,6 +2127,13 @@
           return window.matchMedia && window.matchMedia("(max-width: 880px)").matches;
         }
 
+        function useDesktopSessionActions() {
+          return Boolean(
+            window.matchMedia &&
+              window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 881px)").matches
+          );
+        }
+
         function setSidebarOpen(open) {
           if (open) {
             document.body.classList.add("sidebar-open");
@@ -2153,7 +2160,7 @@
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
           fileRefCandidateCache.clear();
-          const mobile = isMobile();
+          const swipeActions = !useDesktopSessionActions();
             const sessions = (data.sessions || [])
                .slice()
                .sort((a, b) => {
@@ -2165,7 +2172,7 @@
                  if (s0) return s0;
                  return String(a.session_id || "").localeCompare(String(b.session_id || ""));
                });
-	           if (mobile && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
+	           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 	             sessionIndex = new Map();
 	             for (const s of sessions) sessionIndex.set(s.session_id, s);
 	             swipeRefreshDeferred = true;
@@ -2291,7 +2298,7 @@
 	               el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }),
 	             ]);
 
-             if (mobile) {
+             if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
                const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
