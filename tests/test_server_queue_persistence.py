@@ -2,10 +2,15 @@ import threading
 import unittest
 from pathlib import Path
 
-from codoxear.server import Session, SessionManager
+from codoxear.server import Session, SessionManager, _match_session_route
 
 
 class TestServerQueuePersistence(unittest.TestCase):
+    def test_match_session_route_requires_exact_suffix(self) -> None:
+        self.assertEqual(_match_session_route("/api/sessions/s1/delete", "delete"), "s1")
+        self.assertIsNone(_match_session_route("/api/sessions/s1/queue/delete", "delete"))
+        self.assertEqual(_match_session_route("/api/sessions/s1/queue/delete", "queue", "delete"), "s1")
+
     def test_enqueue_persists_in_server_queue(self) -> None:
         mgr = SessionManager.__new__(SessionManager)
         mgr._lock = threading.Lock()

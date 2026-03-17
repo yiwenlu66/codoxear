@@ -79,6 +79,20 @@ def _normalize_url_prefix(raw: str | None) -> str:
     return s
 
 
+def _match_session_route(path: str, *suffix: str) -> str | None:
+    parts = path.split("/")
+    if len(parts) != 4 + len(suffix):
+        return None
+    if parts[:3] != ["", "api", "sessions"]:
+        return None
+    session_id = parts[3]
+    if not session_id:
+        return None
+    if tuple(parts[4:]) != tuple(suffix):
+        return None
+    return session_id
+
+
 def _strip_url_prefix(prefix: str, path: str) -> str | None:
     if not prefix:
         return path
@@ -4237,12 +4251,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(raw)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/delete"):
+            session_id = _match_session_route(path, "delete")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 _read_body(self)
                 ok = MANAGER.delete_session(session_id)
                 if not ok:
