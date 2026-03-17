@@ -4252,14 +4252,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!selected) return [];
           const out = [];
           const seen = new Set();
-          const nodes = Array.from(chatInner.querySelectorAll("[data-file-path], [data-candidate-file-path]"));
+          const nodes = Array.from(chatInner.querySelectorAll("[data-file-path]"));
           for (const node of nodes) {
             if (!(node instanceof Element)) continue;
             const kind = String(node.getAttribute("data-file-kind") || "").trim();
             if (kind === "directory") continue;
             const rawAbs = String(node.getAttribute("data-file-path") || "").trim();
-            const rawCandidate = String(node.getAttribute("data-candidate-file-path") || "").trim();
-            const raw = rawAbs || rawCandidate;
+            const raw = rawAbs;
             if (!raw) continue;
             const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
             if (!rel || rel === "." || seen.has(rel)) continue;
