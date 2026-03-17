@@ -1,6 +1,7 @@
 import threading
 import time
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -199,6 +200,45 @@ class TestSessionSidebarPriority(unittest.TestCase):
         mgr.list_sessions()
 
         self.assertEqual(mgr.recent_cwds(limit=4), ["/tmp/current", "/repo/ended"])
+
+    def test_list_sessions_exposes_model_and_reasoning_effort(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
+        current.model = "gpt-5.4"
+        current.reasoning_effort = "xhigh"
+        mgr._sessions = {current.session_id: current}
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["model"], "gpt-5.4")
+        self.assertEqual(rows[0]["reasoning_effort"], "xhigh")
+
+    def test_list_sessions_falls_back_to_log_run_settings(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
+        with tempfile.TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout-2026-03-17T00-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session_meta","payload":{"id":"current","cwd":"/tmp/current","timestamp":"2026-03-17T00:00:00Z"}}',
+                        '{"type":"turn_context","payload":{"model":"gpt-5.4","reasoning_effort":"high"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            current.log_path = log_path
+            mgr._sessions = {current.session_id: current}
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["model"], "gpt-5.4")
+        self.assertEqual(rows[0]["reasoning_effort"], "high")
 
 
 if __name__ == "__main__":

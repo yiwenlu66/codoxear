@@ -134,9 +134,9 @@
         return new URL(rel, appBaseUrl).toString();
       }
 
-      async function api(path, { method = "GET", body } = {}) {
+      async function api(path, { method = "GET", body, signal } = {}) {
         const t0 = performance.now();
-        const opts = { method, headers: {} };
+        const opts = { method, headers: {}, signal };
         if (body !== undefined) {
           opts.headers["Content-Type"] = "application/json";
           opts.body = JSON.stringify(body);
@@ -908,6 +908,10 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>`;
         if (name === "queue")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>`;
+        if (name === "web")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4a13 13 0 0 1 0 16"/><path d="M12 4a13 13 0 0 0 0 16"/></svg>`;
+        if (name === "terminal")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 3 2-3 2"/><path d="M13 14h4"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         if (name === "copy")
@@ -1035,12 +1039,16 @@
         let editDependencyMenuOpen = false;
         let newSessionCwdMenuOpen = false;
         let newSessionCwdMenuFocus = -1;
+        let newSessionModelMenuOpen = false;
+        let newSessionModelMenuFocus = -1;
+        let newSessionReasoningMenuOpen = false;
         let newSessionResumeMenuOpen = false;
         let newSessionResumeCandidates = [];
         let newSessionResumeSelection = null;
         let newSessionResumeLoadSeq = 0;
         let newSessionResumeLoadTimer = null;
         let newSessionCwdInfo = { git_repo: false, git_root: "", git_branch: "" };
+        let latestSessions = [];
         const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
@@ -1289,18 +1297,29 @@
           ]),
           el("div", {
             class: "helpBody",
-            html: `<div class="muted">Sessions list</div>
+            html: `<div class="muted">Sessions</div>
 <ul class="md">
-  <li>On touch devices: swipe left on a session to reveal <b>Edit</b> and <b>Duplicate</b>.</li>
-  <li>On touch devices: swipe right on any session to reveal <b>Delete</b>.</li>
-  <li>On desktop: move the mouse over a session to show <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>.</li>
-  <li>The dot indicates state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
-  <li>The status line starts with a boxed <b>W</b> (web-owned) or boxed <b>T</b> (terminal-owned).</li>
+  <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
+  <li>The dot on the title row shows state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
+  <li>The metadata line shows the owner icon first, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
+  <li>Click the conversation title in the top bar to rename or reprioritize it. <b>Details</b> shows the exact model, reasoning level, queue state, and token usage.</li>
 </ul>
-<div class="muted">Queue</div>
+<div class="muted">New session</div>
 <ul class="md">
-  <li>When a response is running, choose <b>Send after current</b> to enqueue the message for that session.</li>
-  <li>Queued messages are stored with the session and sent when it becomes idle.</li>
+  <li><b>New session</b> can start fresh or resume a matching conversation in the current working directory.</li>
+  <li>You can choose working directory, model, and reasoning level up front. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+</ul>
+<div class="muted">Messages and queue</div>
+<ul class="md">
+  <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
+  <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
+  <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
+</ul>
+<div class="muted">Files</div>
+<ul class="md">
+  <li><b>View file</b> opens recent or changed files from the selected session, with diff, file, and preview modes where available.</li>
+  <li>File paths mentioned in assistant messages become clickable when the server can resolve them.</li>
+  <li><b>Attach file</b> adds local files or images to the current prompt.</li>
 </ul>`,
           }),
         ]);
@@ -1464,6 +1483,47 @@
           autocomplete: "off",
           spellcheck: "false",
         });
+        const newSessionModelInput = el("input", {
+          id: "newSessionModelInput",
+          type: "text",
+          placeholder: "default",
+          autocomplete: "off",
+          spellcheck: "false",
+          role: "combobox",
+          "aria-autocomplete": "list",
+          "aria-controls": "newSessionModelMenu",
+          "aria-expanded": "false",
+        });
+        const newSessionModelMenu = el("div", {
+          id: "newSessionModelMenu",
+          class: "filePickerMenu dialogPickerMenu cwdSuggestionMenu",
+          role: "listbox",
+        });
+        const newSessionModelField = el("div", { class: "pickerField comboboxField cwdComboboxField", id: "newSessionModelField" }, [
+          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
+          newSessionModelInput,
+          newSessionModelMenu,
+        ]);
+        let newSessionReasoningEffort = "high";
+        const newSessionReasoningBtn = el("button", {
+          id: "newSessionReasoningBtn",
+          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
+          type: "button",
+          "aria-label": "Choose reasoning effort",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+        });
+        const newSessionReasoningMenu = el("div", { id: "newSessionReasoningMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionReasoningField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionReasoningField" }, [
+          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
+          newSessionReasoningBtn,
+        ]);
+        const newSessionReasoningOptions = [
+          ["xhigh", "xhigh"],
+          ["high", "high"],
+          ["medium", "medium"],
+          ["low", "low"],
+        ];
         const newSessionResumeBtn = el("button", {
           id: "newSessionResumeBtn",
           class: "filePickerBtn dialogPickerBtn sidePickerBtn",
@@ -1509,6 +1569,16 @@
               el("span", { class: "fieldLabel", text: "Session name" }),
               newSessionNameInput,
             ]),
+            el("div", { class: "formGrid newSessionRunConfigRow" }, [
+              el("label", { class: "field" }, [
+                el("span", { class: "fieldLabel", text: "Model" }),
+                newSessionModelField,
+              ]),
+              el("label", { class: "field" }, [
+                el("span", { class: "fieldLabel", text: "Reasoning effort" }),
+                newSessionReasoningField,
+              ]),
+            ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
@@ -1522,6 +1592,8 @@
         ]);
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
+        newSessionViewer.appendChild(newSessionModelMenu);
+        newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
         function setToast(text) {
@@ -2156,6 +2228,7 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
+          latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
           recentCwds = Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
@@ -2192,7 +2265,8 @@
 
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
-	             const ownerTxt = s.owned ? "W" : "T";
+	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
+	             const effortMark = effortTxt === "xhigh" ? "X" : effortTxt === "high" ? "H" : effortTxt === "medium" ? "M" : effortTxt === "low" ? "L" : "";
 	             const stateTxt = fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
 	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
@@ -2272,7 +2346,7 @@
                  setToast("cwd unavailable");
                  return;
                }
-               await spawnSessionWithCwd(cwd);
+               await spawnSessionWithCwd(cwd, null, null, "", s && s.model ? s.model : "default", s && s.reasoning_effort ? s.reasoning_effort : "high");
              };
              const delBtn = el("button", {
                class: "icon-btn danger sessionDel",
@@ -2293,10 +2367,24 @@
                el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
              ]);
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
-	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, [
-	               el("span", { class: "ownerBadge", text: ownerTxt, title: s.owned ? "web-owned session" : "terminal-owned session" }),
-	               el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }),
-	             ]);
+	             const metaItems = [
+	               el("span", {
+	                 class: `ownerBadge ownerIconBadge ${s.owned ? "owner-web" : "owner-terminal"}`,
+	                 html: iconSvg(s.owned ? "web" : "terminal"),
+	                 title: s.owned ? "web-owned session" : "terminal-owned session",
+	               })
+	             ];
+	             if (effortMark) {
+	               metaItems.push(
+	                 el("span", {
+	                   class: `effortMark effort-${effortTxt}`,
+	                   text: effortMark,
+	                   title: `reasoning effort ${effortTxt}`,
+	                 })
+	               );
+	             }
+	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
+	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
 
              if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
@@ -3210,6 +3298,51 @@
           syncNewSessionWorktreeUi();
         }
 
+        function renderNewSessionReasoningMenu() {
+          newSessionReasoningMenu.innerHTML = "";
+          for (const [value, label] of newSessionReasoningOptions) {
+            const btn = el("button", {
+              class: "fileMenuItem" + (newSessionReasoningEffort === value ? " active" : ""),
+              type: "button",
+              title: label,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: label }));
+            btn.onclick = () => {
+              setNewSessionReasoningEffort(value);
+              newSessionReasoningMenuOpen = false;
+              applyDialogMenus();
+            };
+            newSessionReasoningMenu.appendChild(btn);
+          }
+        }
+
+        function sessionModelOptions() {
+          const seen = new Set();
+          const out = ["default"];
+          for (const item of latestSessions) {
+            const model = typeof item.model === "string" ? item.model.trim() : "";
+            if (!model || seen.has(model)) continue;
+            seen.add(model);
+            out.push(model);
+          }
+          return out;
+        }
+
+        function filteredNewSessionModelOptions() {
+          const query = String(newSessionModelInput.value || "").trim().toLowerCase();
+          const options = sessionModelOptions();
+          if (!query) return options.slice(0, 12);
+          const exact = options.filter((value) => value.toLowerCase() === query);
+          const prefix = options.filter((value) => value.toLowerCase() !== query && value.toLowerCase().startsWith(query));
+          const contains = options.filter((value) => !value.toLowerCase().startsWith(query) && value.toLowerCase().includes(query));
+          return exact.concat(prefix, contains).slice(0, 12);
+        }
+
+        function setNewSessionReasoningEffort(value) {
+          newSessionReasoningEffort = ["xhigh", "high", "medium", "low"].includes(value) ? value : "high";
+          setPickerButtonContent(newSessionReasoningBtn, newSessionReasoningEffort);
+        }
+
         function worktreePathSlug(branch) {
           return String(branch || "")
             .trim()
@@ -3267,6 +3400,48 @@
           }
         }
 
+        function selectNewSessionModel(model) {
+          newSessionModelInput.value = String(model || "default");
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          applyDialogMenus();
+          newSessionModelInput.focus();
+          const end = newSessionModelInput.value.length;
+          try {
+            newSessionModelInput.setSelectionRange(end, end);
+          } catch (_) {}
+        }
+
+        function renderNewSessionModelMenu() {
+          newSessionModelMenu.innerHTML = "";
+          const items = filteredNewSessionModelOptions();
+          const raw = String(newSessionModelInput.value || "").trim();
+          if (newSessionModelMenuFocus >= items.length) newSessionModelMenuFocus = items.length ? items.length - 1 : -1;
+          if (!items.length) {
+            newSessionModelMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching models" }));
+            newSessionModelInput.removeAttribute("aria-activedescendant");
+            return items;
+          }
+          for (const [idx, model] of items.entries()) {
+            const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && raw === model);
+            const btn = el("button", {
+              id: `newSessionModelOption-${idx}`,
+              class: "fileMenuItem" + (active ? " active" : ""),
+              type: "button",
+              role: "option",
+              "aria-selected": active ? "true" : "false",
+              title: model,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: model }));
+            btn.onmousedown = (e) => e.preventDefault();
+            btn.onclick = () => selectNewSessionModel(model);
+            newSessionModelMenu.appendChild(btn);
+          }
+          if (newSessionModelMenuFocus >= 0) newSessionModelInput.setAttribute("aria-activedescendant", `newSessionModelOption-${newSessionModelMenuFocus}`);
+          else newSessionModelInput.removeAttribute("aria-activedescendant");
+          return items;
+        }
+
         async function loadNewSessionResumeCandidates(cwd) {
           const raw = String(cwd || "").trim();
           const seq = ++newSessionResumeLoadSeq;
@@ -3315,13 +3490,20 @@
         function applyDialogMenus() {
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
+          newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);
+          newSessionReasoningMenu.classList.toggle("open", newSessionReasoningMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
           newSessionCwdInput.setAttribute("aria-expanded", newSessionCwdMenuOpen ? "true" : "false");
           if (!newSessionCwdMenuOpen && newSessionCwdMenuFocus < 0) newSessionCwdInput.removeAttribute("aria-activedescendant");
+          newSessionModelInput.setAttribute("aria-expanded", newSessionModelMenuOpen ? "true" : "false");
+          if (!newSessionModelMenuOpen && newSessionModelMenuFocus < 0) newSessionModelInput.removeAttribute("aria-activedescendant");
+          newSessionReasoningBtn.setAttribute("aria-expanded", newSessionReasoningMenuOpen ? "true" : "false");
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
+          if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
+          if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
 
@@ -3387,6 +3569,9 @@
           newSessionStatus.textContent = "";
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
           newSessionBackdrop.style.display = "none";
@@ -3399,10 +3584,12 @@
           newSessionStatus.textContent = String(statusText || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";
+          newSessionModelInput.value = "default";
           syncNewSessionNamePlaceholder();
           newSessionResumeCandidates = [];
           setNewSessionResumeSelection(null);
           clearNewSessionCwdInfo();
+          setNewSessionReasoningEffort("high");
           newSessionWorktreeToggle.checked = false;
           newSessionWorktreeInput.value = "";
           newSessionWorktreeInput.disabled = true;
@@ -3410,7 +3597,12 @@
           newSessionWorktreeField.style.display = "none";
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
           renderRecentCwdMenu();
+          renderNewSessionModelMenu();
+          renderNewSessionReasoningMenu();
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
@@ -3455,6 +3647,9 @@
           editDependencyMenuOpen = false;
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
           applyDialogMenus();
         };
         editCloseBtn.onclick = () => hideEditSession();
@@ -3520,6 +3715,8 @@
           renderRecentCwdMenu();
           newSessionCwdMenuOpen = true;
           editDependencyMenuOpen = false;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -3528,6 +3725,8 @@
           syncNewSessionNamePlaceholder();
           renderRecentCwdMenu();
           newSessionCwdMenuOpen = true;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
           scheduleNewSessionResumeLoad();
           applyDialogMenus();
         };
@@ -3546,6 +3745,8 @@
             e.preventDefault();
             newSessionCwdMenuOpen = true;
             editDependencyMenuOpen = false;
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
             if (newSessionCwdMenuFocus < 0) newSessionCwdMenuFocus = delta > 0 ? 0 : items.length - 1;
@@ -3577,11 +3778,91 @@
             applyDialogMenus();
           }
         };
+        newSessionModelInput.onclick = () => {
+          newSessionModelMenuFocus = -1;
+          renderNewSessionModelMenu();
+          newSessionModelMenuOpen = true;
+          editDependencyMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionModelInput.oninput = () => {
+          newSessionModelMenuFocus = -1;
+          renderNewSessionModelMenu();
+          newSessionModelMenuOpen = true;
+          newSessionReasoningMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionModelInput.onblur = () => {
+          requestAnimationFrame(() => {
+            if (newSessionModelField.contains(document.activeElement)) return;
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+            applyDialogMenus();
+          });
+        };
+        newSessionModelInput.onkeydown = (e) => {
+          const items = renderNewSessionModelMenu();
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (!items.length) return;
+            e.preventDefault();
+            newSessionModelMenuOpen = true;
+            editDependencyMenuOpen = false;
+            newSessionCwdMenuOpen = false;
+            newSessionCwdMenuFocus = -1;
+            newSessionReasoningMenuOpen = false;
+            newSessionResumeMenuOpen = false;
+            const delta = e.key === "ArrowDown" ? 1 : -1;
+            if (newSessionModelMenuFocus < 0) newSessionModelMenuFocus = delta > 0 ? 0 : items.length - 1;
+            else newSessionModelMenuFocus = (newSessionModelMenuFocus + delta + items.length) % items.length;
+            renderNewSessionModelMenu();
+            applyDialogMenus();
+            const active = document.getElementById(`newSessionModelOption-${newSessionModelMenuFocus}`);
+            if (active && typeof active.scrollIntoView === "function") active.scrollIntoView({ block: "nearest" });
+            return;
+          }
+          if (e.key === "Enter" && newSessionModelMenuOpen && newSessionModelMenuFocus >= 0) {
+            const active = items[newSessionModelMenuFocus];
+            if (!active) return;
+            e.preventDefault();
+            selectNewSessionModel(active);
+            return;
+          }
+          if (e.key === "Escape" && newSessionModelMenuOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+            applyDialogMenus();
+            return;
+          }
+          if (e.key === "Tab" && newSessionModelMenuOpen) {
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+            applyDialogMenus();
+          }
+        };
         newSessionWorktreeToggle.onchange = () => {
           syncNewSessionWorktreeUi();
           if (newSessionWorktreeToggle.checked) newSessionWorktreeInput.focus();
         };
         newSessionWorktreeInput.oninput = () => syncNewSessionWorktreeUi();
+        newSessionReasoningBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          renderNewSessionReasoningMenu();
+          newSessionReasoningMenuOpen = !newSessionReasoningMenuOpen;
+          editDependencyMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionResumeMenuOpen = false;
+          applyDialogMenus();
+        };
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
           if (!cwd) {
@@ -3589,6 +3870,7 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
+          const model = String(newSessionModelInput.value || "").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
           if (newSessionWorktreeToggle.checked && !worktreeBranch) {
@@ -3596,7 +3878,7 @@
             return;
           }
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : "Starting...";
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName);
+          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort);
           if (brokerPid) hideNewSessionDialog();
           else newSessionStatus.textContent = "Start failed.";
         };
@@ -3608,10 +3890,16 @@
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
-        let fileAllList = [];
-        let fileAllListLoaded = false;
-        let fileAllListPromise = null;
-        let fileAllListSessionId = "";
+        let fileSearchResults = [];
+        let fileSearchLoadedQuery = "";
+        let fileSearchPendingQuery = "";
+        let fileSearchErrorQuery = "";
+        let fileSearchError = "";
+        let fileSearchTruncatedQuery = "";
+        let fileSearchSessionId = "";
+        let fileSearchSeq = 0;
+        let fileSearchTimer = null;
+        let fileSearchAbort = null;
         let monacoReadyPromise = null;
         let monacoNs = null;
         let monacoThemeReady = false;
@@ -4030,18 +4318,141 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           };
         }
 
+        function resetFileSearchState() {
+          if (fileSearchTimer) {
+            clearTimeout(fileSearchTimer);
+            fileSearchTimer = null;
+          }
+          if (fileSearchAbort) {
+            try {
+              fileSearchAbort.abort();
+            } catch (_) {}
+            fileSearchAbort = null;
+          }
+          fileSearchResults = [];
+          fileSearchLoadedQuery = "";
+          fileSearchPendingQuery = "";
+          fileSearchErrorQuery = "";
+          fileSearchError = "";
+          fileSearchTruncatedQuery = "";
+          fileSearchSeq += 1;
+        }
+
+        async function requestSessionFileSearch(query) {
+          const trimmed = String(query || "").trim();
+          if (!trimmed || !selected) {
+            resetFileSearchState();
+            fileSearchSessionId = selected || "";
+            return [];
+          }
+          const sid = selected;
+          if (fileSearchSessionId !== sid) {
+            resetFileSearchState();
+            fileSearchSessionId = sid;
+          }
+          if (fileSearchLoadedQuery === trimmed) return fileSearchResults;
+          const seq = ++fileSearchSeq;
+          fileSearchPendingQuery = trimmed;
+          fileSearchErrorQuery = "";
+          fileSearchError = "";
+          fileSearchTruncatedQuery = "";
+          if (fileSearchAbort) {
+            try {
+              fileSearchAbort.abort();
+            } catch (_) {}
+          }
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          fileSearchAbort = controller;
+          try {
+            const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(trimmed)}&limit=120`, {
+              signal: controller ? controller.signal : undefined,
+            });
+            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
+            const matches = [];
+            const seen = new Set();
+            for (const item of Array.isArray(res && res.matches) ? res.matches : []) {
+              const path = item && typeof item.path === "string" ? item.path.trim() : "";
+              if (!path || path === "." || seen.has(path)) continue;
+              seen.add(path);
+              const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
+              matches.push({ path, score });
+            }
+            fileSearchResults = matches;
+            fileSearchLoadedQuery = trimmed;
+            fileSearchPendingQuery = "";
+            fileSearchTruncatedQuery = res && res.truncated ? trimmed : "";
+            return matches;
+          } catch (err) {
+            if (controller && controller.signal && controller.signal.aborted) return [];
+            if (seq !== fileSearchSeq || fileSearchSessionId !== sid) return [];
+            fileSearchResults = [];
+            fileSearchLoadedQuery = "";
+            fileSearchPendingQuery = "";
+            fileSearchErrorQuery = trimmed;
+            fileSearchError = err && err.message ? err.message : "Unable to search files";
+            fileSearchTruncatedQuery = "";
+            throw err;
+          } finally {
+            if (fileSearchAbort === controller) fileSearchAbort = null;
+          }
+        }
+
+        function scheduleSessionFileSearch(query) {
+          const trimmed = String(query || "").trim();
+          if (fileSearchTimer) {
+            clearTimeout(fileSearchTimer);
+            fileSearchTimer = null;
+          }
+          if (!trimmed || !selected) {
+            resetFileSearchState();
+            fileSearchSessionId = selected || "";
+            return;
+          }
+          if (fileSearchSessionId !== (selected || "")) {
+            resetFileSearchState();
+            fileSearchSessionId = selected || "";
+          }
+          if (fileSearchAbort) {
+            try {
+              fileSearchAbort.abort();
+            } catch (_) {}
+            fileSearchAbort = null;
+          }
+          fileSearchPendingQuery = trimmed;
+          fileSearchErrorQuery = "";
+          fileSearchError = "";
+          fileSearchTruncatedQuery = "";
+          fileSearchTimer = setTimeout(() => {
+            fileSearchTimer = null;
+            void requestSessionFileSearch(trimmed)
+              .then(() => {
+                if (!fileMenuOpen) return;
+                if (String(filePickerInput.value || "").trim() !== trimmed) return;
+                renderFilePickerMenu();
+                applyFileMenuState();
+              })
+              .catch(() => {
+                if (!fileMenuOpen) return;
+                if (String(filePickerInput.value || "").trim() !== trimmed) return;
+                renderFilePickerMenu();
+                applyFileMenuState();
+              });
+          }, 120);
+        }
+
         function visibleFilePickerEntries() {
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
           if (!query) return fileCandidateList.map((path) => pickerEntryForPath(path));
-          if (!fileAllListLoaded) return null;
+          if (fileSearchPendingQuery === query) return null;
+          if (fileSearchErrorQuery === query) return [];
+          if (fileSearchLoadedQuery !== query) return null;
           const out = [];
           const seen = new Set();
-          for (const rawPath of fileAllList) {
-            const path = String(rawPath || "").trim();
+          for (const item of fileSearchResults) {
+            const path = item && typeof item.path === "string" ? item.path.trim() : "";
             if (!path || path === "." || seen.has(path)) continue;
             seen.add(path);
-            const score = fileSearchScore(path, query);
-            if (score < 0) continue;
+            const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
             out.push(pickerEntryForPath(path, { score }));
           }
           for (const path of fileCandidateList) {
@@ -4052,31 +4463,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
           return out.slice(0, 120);
-        }
-
-        async function ensureSessionFileListLoaded() {
-          if (!selected) return [];
-          const sid = selected;
-          if (fileAllListSessionId === sid && fileAllListLoaded) return fileAllList;
-          if (fileAllListSessionId === sid && fileAllListPromise) return fileAllListPromise;
-          fileAllListSessionId = sid;
-          fileAllList = [];
-          fileAllListLoaded = false;
-          const task = (async () => {
-            const res = await api(`/api/sessions/${sid}/file/list`);
-            const files = Array.isArray(res && res.files)
-              ? res.files.filter((item, idx, arr) => typeof item === "string" && item.trim() && arr.indexOf(item) === idx)
-              : [];
-            fileAllList = files;
-            fileAllListLoaded = true;
-            return files;
-          })();
-          fileAllListPromise = task;
-          try {
-            return await task;
-          } finally {
-            if (fileAllListSessionId === sid) fileAllListPromise = null;
-          }
         }
 
         async function getKnownFileRefCandidates() {
@@ -4116,11 +4502,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const entries = visibleFilePickerEntries();
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
           if (entries === null) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Loading files..." }));
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
             return [];
           }
           if (!entries.length) {
-            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: query ? "No matching files" : "Type to search the current directory." }));
+            const emptyText = query
+              ? fileSearchErrorQuery === query
+                ? fileSearchError || "Unable to search files"
+                : "No matching files"
+              : "Type to search files.";
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: emptyText }));
             filePickerInput.removeAttribute("aria-activedescendant");
             return entries;
           }
@@ -4156,6 +4547,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void openFilePath(path, { line: null });
             };
             filePickerMenu.appendChild(btn);
+          }
+          if (query && fileSearchTruncatedQuery === query) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
           }
           if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
           else filePickerInput.removeAttribute("aria-activedescendant");
@@ -4280,11 +4674,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
-          if (fileAllListSessionId !== (selected || "")) {
-            fileAllList = [];
-            fileAllListLoaded = false;
-            fileAllListPromise = null;
-            fileAllListSessionId = selected || "";
+          if (fileSearchSessionId !== (selected || "")) {
+            resetFileSearchState();
+            fileSearchSessionId = selected || "";
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
@@ -4303,7 +4695,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           resetFilePickerInput();
-          fileStatus.textContent = "Type to search the current directory.";
+          fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
           disposeFileEditor();
@@ -4311,6 +4703,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileImage.style.display = "none";
           fileDiff.style.display = "block";
           closeFilePickerMenu({ restoreInput: true });
+          resetFileSearchState();
+          fileSearchSessionId = selected || "";
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
           activeFileLine = null;
@@ -4398,18 +4792,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileMenuOpen = true;
           applyFileMenuState();
           const query = String(filePickerInput.value || "").trim();
-          if (!query || !selected) return;
-          void ensureSessionFileListLoaded()
-            .then(() => {
-              if (!fileMenuOpen) return;
-              renderFilePickerMenu();
-              applyFileMenuState();
-            })
-            .catch((err) => {
-              if (!fileMenuOpen) return;
-              filePickerMenu.innerHTML = "";
-              filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: err && err.message ? err.message : "Unable to load files" }));
-            });
+          if (!query || !selected) {
+            resetFileSearchState();
+            fileSearchSessionId = selected || "";
+            renderFilePickerMenu();
+            applyFileMenuState();
+            return;
+          }
+          scheduleSessionFileSearch(query);
+          renderFilePickerMenu();
+          applyFileMenuState();
         };
         filePickerInput.onblur = () => {
           requestAnimationFrame(() => {
@@ -4563,6 +4955,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (newSessionCwdMenuOpen && !t.closest("#newSessionCwdField")) {
             newSessionCwdMenuOpen = false;
             newSessionCwdMenuFocus = -1;
+            applyDialogMenus();
+          }
+          if (newSessionModelMenuOpen && !t.closest("#newSessionModelField")) {
+            newSessionModelMenuOpen = false;
+            newSessionModelMenuFocus = -1;
+            applyDialogMenus();
+          }
+          if (newSessionReasoningMenuOpen && !t.closest("#newSessionReasoningBtn") && !t.closest("#newSessionReasoningMenu")) {
+            newSessionReasoningMenuOpen = false;
             applyDialogMenus();
           }
           if (newSessionResumeMenuOpen && !t.closest("#newSessionResumeBtn") && !t.closest("#newSessionResumeMenu")) {
@@ -4870,7 +5271,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "") {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high") {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
@@ -4878,10 +5279,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : "starting...";
             const alias = String(sessionName || "").trim();
+            const modelName = String(model || "").trim();
+            const effortName = String(reasoningEffort || "").trim().toLowerCase();
             setToast(modeLabel);
             const body = { cwd: String(cwd) };
             if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
             if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
+            if (modelName) body.model = modelName;
+            if (effortName) body.reasoning_effort = effortName;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {

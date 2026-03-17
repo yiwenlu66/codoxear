@@ -242,6 +242,48 @@
 	        background: rgba(255, 255, 255, 0.92);
 	        flex: 0 0 auto;
 	      }
+	      .ownerIconBadge {
+	        width: 12px;
+	        height: 12px;
+	        border: 0;
+	        border-radius: 0;
+	        background: transparent;
+	        padding: 0;
+	      }
+	      .ownerIconBadge .icon {
+	        width: 12px;
+	        height: 12px;
+	      }
+	      .ownerBadge.owner-web {
+	        color: var(--muted);
+	      }
+	      .ownerBadge.owner-terminal {
+	        color: var(--muted);
+	      }
+	      .effortMark {
+	        display: inline-flex;
+	        align-items: center;
+	        justify-content: center;
+	        flex: 0 0 auto;
+	        min-width: 12px;
+	        height: 12px;
+	        font-size: 10px;
+	        font-weight: 700;
+	        line-height: 12px;
+	        letter-spacing: 0.02em;
+	      }
+	      .effortMark.effort-xhigh {
+	        color: #9f5f5f;
+	      }
+	      .effortMark.effort-high {
+	        color: #9f7754;
+	      }
+	      .effortMark.effort-medium {
+	        color: #8f7e58;
+	      }
+	      .effortMark.effort-low {
+	        color: #668466;
+	      }
 	      .metaText {
 	        min-width: 0;
 	        overflow: hidden;
@@ -1175,7 +1217,8 @@ select {
         border: 1px solid var(--border);
         background: #ffffff;
         color: var(--text);
-        font-size: 13px;
+        font-family: inherit;
+        font-size: 14px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -1364,6 +1407,10 @@ select {
         display: grid;
         gap: 10px;
       }
+      .newSessionRunConfigRow {
+        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+        align-items: start;
+      }
       .formGrid.twoCol {
         grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
       }
@@ -1402,6 +1449,15 @@ select {
       .cwdComboboxField input[type="text"] {
         padding-right: 40px;
       }
+      .comboboxField input[type="text"] {
+        padding-right: 40px;
+      }
+      .pickerButtonField .filePickerBtn {
+        padding-right: 40px;
+      }
+      .pickerButtonField .pickerButtonChevron {
+        display: none;
+      }
       .cwdComboboxIcon {
         position: absolute;
         right: 14px;
@@ -1421,7 +1477,12 @@ select {
         align-items: start;
       }
       .dialogPickerBtn {
-        min-height: 42px;
+        min-height: 39px;
+        height: 39px;
+        border-radius: 18px;
+        box-sizing: border-box;
+        font-size: 14px;
+        line-height: normal;
       }
       .dialogPickerBtn {
         display: flex;
@@ -1431,6 +1492,11 @@ select {
       }
       .sidePickerBtn {
         width: 100%;
+      }
+      @media (max-width: 700px) {
+        .newSessionRunConfigRow {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
       @media (min-width: 881px) {
         .formViewer.newSessionViewer {
@@ -1467,8 +1533,8 @@ select {
       .pickerButtonPrimary {
         width: 100%;
         min-width: 0;
-        font-size: 13px;
-        line-height: 1.25;
+        font-size: 14px;
+        line-height: normal;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;

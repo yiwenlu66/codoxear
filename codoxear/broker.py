@@ -37,6 +37,8 @@ PROC_ROOT = Path("/proc")
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
+MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
+REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
     DEFAULT_CODEX_HOME = Path.home() / ".codex"
@@ -846,6 +848,8 @@ class Broker:
             "start_ts": st.start_ts,
             "log_path": str(st.log_path) if st.log_path else None,
             "sock_path": str(st.sock_path),
+            "model": MODEL_OVERRIDE or None,
+            "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
         }
         meta_path = st.sock_path.with_suffix(".json")
         SOCK_DIR.mkdir(parents=True, exist_ok=True)

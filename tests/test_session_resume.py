@@ -172,6 +172,52 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertEqual(result, {"broker_pid": 4321})
         self.assertEqual(thread_calls, ["start"])
 
+    def test_spawn_web_session_passes_model_and_reasoning_to_broker(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 6543
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
+            "codoxear.server.subprocess.Popen", return_value=_Proc()
+        ) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(
+                manager,
+                cwd=td,
+                model="gpt-5.4",
+                reasoning_effort="xhigh",
+            )
+
+        argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
+        trust_override = f'projects={{ {json.dumps(str(Path(td).resolve()))} = {{ trust_level = "trusted" }} }}'
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "-c",
+                trust_override,
+                "--model",
+                "gpt-5.4",
+                "-c",
+                'model_reasoning_effort="xhigh"',
+            ],
+        )
+        self.assertEqual(env["CODEX_WEB_MODEL"], "gpt-5.4")
+        self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "xhigh")
+        self.assertEqual(result, {"broker_pid": 6543})
+        self.assertEqual(thread_calls, ["start"])
+
     def test_spawn_web_session_rejects_resume_id_not_in_cwd(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         with TemporaryDirectory() as td, patch("codoxear.server._list_resume_candidates_for_cwd", return_value=[]):

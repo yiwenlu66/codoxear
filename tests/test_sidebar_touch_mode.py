@@ -55,7 +55,6 @@ class TestSidebarTouchMode(unittest.TestCase):
         self.assertIn("const swipeActions = !useDesktopSessionActions();", source)
         self.assertIn("if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {", source)
         self.assertIn("if (swipeActions) {", source)
-        self.assertIn("On touch devices: swipe left on a session", source)
 
 
 if __name__ == "__main__":

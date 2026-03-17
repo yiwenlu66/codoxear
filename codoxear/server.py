@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import errno
 import hashlib
+import heapq
 import hmac
 import http.server
 import io
@@ -19,6 +20,7 @@ import struct
 import sys
 import threading
 import time
+import tomllib
 import traceback
 import urllib.parse
 import zlib
@@ -134,6 +136,9 @@ if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
 else:
     CODEX_HOME = Path(_CODEX_HOME_ENV)
 CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
+CODEX_CONFIG_PATH = CODEX_HOME / "config.toml"
+MODELS_CACHE_PATH = CODEX_HOME / "models_cache.json"
+SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -151,6 +156,9 @@ CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "1
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
+FILE_SEARCH_LIMIT = int(os.environ.get("CODEX_WEB_FILE_SEARCH_LIMIT", "120"))
+FILE_SEARCH_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_FILE_SEARCH_TIMEOUT_SECONDS", "0.75"))
+FILE_SEARCH_MAX_CANDIDATES = int(os.environ.get("CODEX_WEB_FILE_SEARCH_MAX_CANDIDATES", "200000"))
 GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
@@ -787,6 +795,154 @@ def _git_repo_root(cwd: Path) -> Path | None:
     return Path(root).resolve()
 
 
+def _file_search_score(candidate: str, query: str) -> int:
+    text = str(candidate or "")
+    raw = str(query or "").strip().lower()
+    if not raw:
+        return 0
+    lower = text.lower()
+    if lower == raw:
+        return 12000
+    base = Path(text).name.lower()
+    if base == raw:
+        return 10000
+    total = 0
+    for token in [part for part in raw.split() if part]:
+        exact_idx = lower.find(token)
+        if exact_idx >= 0:
+            prev = lower[exact_idx - 1] if exact_idx > 0 else ""
+            boundary_bonus = 24 if (not prev or prev in "/._-") else 0
+            base_idx = base.find(token)
+            total += 240 - exact_idx * 2 + boundary_bonus + (44 - base_idx if base_idx >= 0 else 0)
+            continue
+        pos = -1
+        first = -1
+        last = -1
+        consecutive = 0
+        boundaries = 0
+        for ch in token:
+            pos = lower.find(ch, pos + 1)
+            if pos < 0:
+                return -1
+            if first < 0:
+                first = pos
+            if last >= 0 and pos == last + 1:
+                consecutive += 1
+            if pos == 0 or lower[pos - 1] in "/._-":
+                boundaries += 1
+            last = pos
+        span = last - first + 1
+        total += 120 - first - max(0, span - len(token)) * 4 + consecutive * 10 + boundaries * 8
+    return total
+
+
+def _push_file_search_match(heap: list[tuple[int, str]], *, path: str, score: int, limit: int) -> None:
+    item = (score, path)
+    if len(heap) < limit:
+        heapq.heappush(heap, item)
+        return
+    if item > heap[0]:
+        heapq.heapreplace(heap, item)
+
+
+def _finish_file_search(heap: list[tuple[int, str]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
+    matches = [{"path": path, "score": score} for score, path in sorted(heap, key=lambda item: (-item[0], item[1]))]
+    return {
+        "mode": mode,
+        "query": query,
+        "matches": matches,
+        "scanned": scanned,
+        "truncated": truncated,
+    }
+
+
+def _search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[str, Any]:
+    deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
+    heap: list[tuple[int, str]] = []
+    scanned = 0
+    truncated = False
+
+    def _onerror(err: OSError) -> None:
+        raise err
+
+    for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=_onerror, followlinks=False):
+        dirnames[:] = [name for name in sorted(dirnames) if name not in FILE_LIST_IGNORED_DIRS]
+        current_path = Path(current_root)
+        for name in sorted(filenames):
+            scanned += 1
+            if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
+                truncated = True
+                return _finish_file_search(heap, mode="walk", query=query, scanned=scanned - 1, truncated=truncated)
+            rel = (current_path / name).relative_to(root).as_posix()
+            score = _file_search_score(rel, query)
+            if score < 0:
+                continue
+            _push_file_search_match(heap, path=rel, score=score, limit=limit)
+    return _finish_file_search(heap, mode="walk", query=query, scanned=scanned, truncated=truncated)
+
+
+def _search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
+    deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
+    heap: list[tuple[int, str]] = []
+    scanned = 0
+    truncated = False
+    proc = subprocess.Popen(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    try:
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            path = raw_line.rstrip("\n")
+            if not path:
+                continue
+            scanned += 1
+            if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
+                truncated = True
+                proc.kill()
+                break
+            score = _file_search_score(path, query)
+            if score < 0:
+                continue
+            _push_file_search_match(heap, path=path, score=score, limit=limit)
+        stderr = proc.stderr.read() if proc.stderr is not None else ""
+        return_code = proc.wait()
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+        if proc.stderr is not None:
+            proc.stderr.close()
+    if truncated:
+        return _finish_file_search(heap, mode="git", query=query, scanned=scanned - 1, truncated=True)
+    if return_code != 0:
+        err = stderr.strip()
+        raise RuntimeError(err or f"git ls-files failed with code {return_code}")
+    return _finish_file_search(heap, mode="git", query=query, scanned=scanned, truncated=False)
+
+
+def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_SEARCH_LIMIT) -> dict[str, Any]:
+    root = base.expanduser()
+    if not root.is_absolute():
+        root = root.resolve()
+    if not root.exists():
+        raise FileNotFoundError("session cwd not found")
+    if not root.is_dir():
+        raise ValueError("session cwd is not a directory")
+    raw_query = str(query).strip()
+    if not raw_query:
+        raise ValueError("query required")
+    clamped_limit = max(1, min(int(limit), FILE_SEARCH_LIMIT))
+    repo_root = _git_repo_root(root)
+    if repo_root is not None:
+        return _search_git_relative_files(root, query=raw_query, limit=clamped_limit)
+    return _search_walk_relative_files(root, query=raw_query, limit=clamped_limit)
+
+
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
     repo_root = _git_repo_root(cwd)
     git_branch = _current_git_branch(cwd) or ""
@@ -967,6 +1123,41 @@ def _clean_dependency_session_id(value: Any) -> str | None:
     return out or None
 
 
+def _clean_optional_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    out = value.strip()
+    return out or None
+
+
+def _normalize_requested_model(value: Any) -> str | None:
+    out = _clean_optional_text(value)
+    if out is None:
+        return None
+    return None if out.lower() == "default" else out
+
+
+def _display_reasoning_effort(value: Any) -> str | None:
+    out = _clean_optional_text(value)
+    if out is None:
+        return None
+    lowered = out.lower()
+    return lowered if lowered in SUPPORTED_REASONING_EFFORTS else None
+
+
+def _normalize_requested_reasoning_effort(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("reasoning_effort must be a string")
+    out = value.strip().lower()
+    if not out:
+        return None
+    if out not in SUPPORTED_REASONING_EFFORTS:
+        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_REASONING_EFFORTS)}")
+    return out
+
+
 def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
     if elapsed_s <= 0:
         return 1.0
@@ -1138,6 +1329,67 @@ def _read_session_meta(log_path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"invalid session_meta payload in {log_path}")
     return payload
+
+
+def _turn_context_run_settings(payload: Any) -> tuple[str | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None
+    return (
+        _clean_optional_text(payload.get("model")),
+        _display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort")),
+    )
+
+
+def _read_run_settings_from_log(log_path: Path) -> tuple[str | None, str | None, str | None]:
+    meta = _read_session_meta(log_path)
+    model_provider = _clean_optional_text(meta.get("model_provider"))
+    model = _clean_optional_text(meta.get("model"))
+    reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
+    if model is None or reasoning_effort is None:
+        ctx_model, ctx_effort = _turn_context_run_settings(_rollout_log._find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024))
+        if model is None:
+            model = ctx_model
+        if reasoning_effort is None:
+            reasoning_effort = ctx_effort
+    return model_provider, model, reasoning_effort
+
+
+def _read_codex_launch_defaults() -> dict[str, str | None]:
+    configured_model = None
+    configured_effort = None
+    if CODEX_CONFIG_PATH.exists():
+        data = tomllib.loads(CODEX_CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Codex config in {CODEX_CONFIG_PATH}")
+        configured_model = _clean_optional_text(data.get("model"))
+        configured_effort = _display_reasoning_effort(data.get("model_reasoning_effort"))
+    if configured_effort is not None:
+        return {"reasoning_effort": configured_effort}
+    if not MODELS_CACHE_PATH.exists():
+        return {"reasoning_effort": None}
+    cache = json.loads(MODELS_CACHE_PATH.read_text(encoding="utf-8"))
+    models = cache.get("models") if isinstance(cache, dict) else None
+    if not isinstance(models, list):
+        raise ValueError(f"invalid models cache in {MODELS_CACHE_PATH}")
+    rows: list[dict[str, Any]] = [row for row in models if isinstance(row, dict)]
+    if not rows:
+        return {"reasoning_effort": None}
+    if configured_model is not None:
+        for row in rows:
+            names = {
+                _clean_optional_text(row.get("slug")),
+                _clean_optional_text(row.get("display_name")),
+            }
+            if configured_model in names:
+                return {"reasoning_effort": _display_reasoning_effort(row.get("default_reasoning_level"))}
+    ranked = sorted(
+        rows,
+        key=lambda row: (
+            int(row.get("priority")) if isinstance(row.get("priority"), int) else 999999,
+            _clean_optional_text(row.get("slug")) or "",
+        ),
+    )
+    return {"reasoning_effort": _display_reasoning_effort(ranked[0].get("default_reasoning_level"))}
 
 
 def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
@@ -1371,6 +1623,9 @@ class Session:
     idle_cache_log_off: int = -1
     idle_cache_value: bool | None = None
     queue_idle_since: float | None = None
+    model_provider: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
 
 
 class SessionManager:
@@ -1418,6 +1673,23 @@ class SessionManager:
         s.idle_cache_log_off = -1
         s.idle_cache_value = None
         s.queue_idle_since = None
+        s.model_provider = None
+        s.model = None
+        s.reasoning_effort = None
+
+    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None) -> tuple[str | None, str | None, str | None]:
+        model_provider = _clean_optional_text(meta.get("model_provider"))
+        model = _clean_optional_text(meta.get("model"))
+        reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
+        if log_path is not None and log_path.exists():
+            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path)
+            if log_provider is not None:
+                model_provider = log_provider
+            if log_model is not None:
+                model = log_model
+            if log_effort is not None:
+                reasoning_effort = log_effort
+        return model_provider, model, reasoning_effort
 
     def _discover_existing_if_stale(self, *, force: bool = False) -> None:
         now = time.time()
@@ -2308,6 +2580,7 @@ class SessionManager:
             if not isinstance(start_ts_raw, (int, float)):
                 raise ValueError(f"invalid start_ts in metadata for socket {sock}")
             start_ts = float(start_ts_raw)
+            model_provider, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
 
             # Validate socket is responsive.
             try:
@@ -2345,11 +2618,17 @@ class SessionManager:
                 meta_tools=0,
                 meta_system=0,
                 meta_log_off=meta_log_off,
+                model_provider=model_provider,
+                model=model,
+                reasoning_effort=reasoning_effort,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
                 if not prev:
                     self._reset_log_caches(s, meta_log_off=meta_log_off)
+                    s.model_provider = model_provider
+                    s.model = model
+                    s.reasoning_effort = reasoning_effort
                     self._sessions[session_id] = s
                 else:
                     prev.sock_path = s.sock_path
@@ -2365,6 +2644,9 @@ class SessionManager:
                     if prev.log_path != s.log_path:
                         prev.log_path = s.log_path
                         self._reset_log_caches(prev, meta_log_off=meta_log_off)
+                    prev.model_provider = model_provider
+                    prev.model = model
+                    prev.reasoning_effort = reasoning_effort
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -2506,6 +2788,17 @@ class SessionManager:
                                     files_dirty = True
                                 break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
+                if log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None):
+                    try:
+                        log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path)
+                    except (FileNotFoundError, ValueError):
+                        log_provider = log_model = log_effort = None
+                    if s.model_provider is None:
+                        s.model_provider = log_provider
+                    if s.model is None:
+                        s.model = log_model
+                    if s.reasoning_effort is None:
+                        s.reasoning_effort = log_effort
                 if s.last_chat_ts is None and log_exists and s.log_path is not None:
                     conv_ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=256 * 1024)
                     if isinstance(conv_ts, (int, float)):
@@ -2573,6 +2866,9 @@ class SessionManager:
                         "alias": alias,
                         "files": list(files),
                         "git_branch": git_branch,
+                        "model_provider": s.model_provider,
+                        "model": s.model,
+                        "reasoning_effort": s.reasoning_effort,
                         "priority_offset": priority_offset,
                         "snooze_until": snooze_until,
                         "dependency_session_id": dependency_session_id,
@@ -2656,6 +2952,7 @@ class SessionManager:
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
         cwd = cwd_raw
+        model_provider, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
 
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -2671,6 +2968,9 @@ class SessionManager:
                 else:
                     log_off = 0
                 self._reset_log_caches(s2, meta_log_off=log_off)
+            s2.model_provider = model_provider
+            s2.model = model
+            s2.reasoning_effort = reasoning_effort
         if self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -2914,6 +3214,13 @@ class SessionManager:
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
         _th, _tools, _sys, last_ts, token_update, new_events = _analyze_log_chunk(objs)
+        model = None
+        reasoning_effort = None
+        for obj in reversed(objs):
+            if not isinstance(obj, dict) or obj.get("type") != "turn_context":
+                continue
+            model, reasoning_effort = _turn_context_run_settings(obj.get("payload"))
+            break
         self._append_chat_events(session_id, new_events, new_off=new_off, latest_token=token_update)
         with self._lock:
             s = self._sessions.get(session_id)
@@ -2921,6 +3228,10 @@ class SessionManager:
                 if isinstance(last_ts, (int, float)):
                     tsf = float(last_ts)
                     s.last_chat_ts = tsf if s.last_chat_ts is None else max(s.last_chat_ts, tsf)
+                if model is not None:
+                    s.model = model
+                if reasoning_effort is not None:
+                    s.reasoning_effort = reasoning_effort
                 s.idle_cache_log_off = -1
 
     def idle_from_log(self, session_id: str) -> bool:
@@ -3004,6 +3315,8 @@ class SessionManager:
         args: list[str] | None = None,
         resume_session_id: str | None = None,
         worktree_branch: str | None = None,
+        model: str | None = None,
+        reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
         cwd_path = _resolve_existing_dir(cwd, field_name="cwd")
         cwd3 = str(cwd_path)
@@ -3015,6 +3328,10 @@ class SessionManager:
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
         codex_args = ["-c", _codex_trust_override_for_path(spawn_cwd)]
+        if model is not None:
+            codex_args.extend(["--model", model])
+        if reasoning_effort is not None:
+            codex_args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
@@ -3036,6 +3353,12 @@ class SessionManager:
                 env.setdefault(k, v)
         env["CODEX_WEB_OWNER"] = "web"
         env.setdefault("CODEX_HOME", str(CODEX_HOME))
+        env.pop("CODEX_WEB_MODEL", None)
+        env.pop("CODEX_WEB_REASONING_EFFORT", None)
+        if model is not None:
+            env["CODEX_WEB_MODEL"] = model
+        if reasoning_effort is not None:
+            env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
 
         try:
             proc = subprocess.Popen(
@@ -3284,9 +3607,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 t0 = time.perf_counter()
                 sessions = MANAGER.list_sessions()
                 recent_cwds = MANAGER.recent_cwds()
+                new_session_defaults = _read_codex_launch_defaults()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
-                _json_response(self, 200, {"sessions": sessions, "recent_cwds": recent_cwds})
+                _json_response(self, 200, {"sessions": sessions, "recent_cwds": recent_cwds, "new_session_defaults": new_session_defaults})
                 return
 
             if path == "/api/session_resume_candidates":
@@ -3346,31 +3670,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st_token = state.get("token")
                 if isinstance(st_token, dict) or st_token is None:
                     token_val = st_token
-                meta = None
-                if s.log_path is not None and s.log_path.exists():
-                    meta = _read_session_meta(s.log_path)
-                model_provider = meta.get("model_provider") if isinstance(meta, dict) else None
-                if not isinstance(model_provider, str) or not model_provider.strip():
-                    model_provider = None
-                model = meta.get("model") if isinstance(meta, dict) else None
-                if not isinstance(model, str) or not model.strip():
-                    model = None
-                reasoning_effort = meta.get("reasoning_effort") if isinstance(meta, dict) else None
-                if not isinstance(reasoning_effort, str) or not reasoning_effort.strip():
-                    reasoning_effort = None
-                if (model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
-                    tc = _rollout_log._find_latest_turn_context(s.log_path, max_scan_bytes=8 * 1024 * 1024)
-                    if isinstance(tc, dict):
-                        if model is None:
-                            m2 = tc.get("model")
-                            if isinstance(m2, str) and m2.strip():
-                                model = m2.strip()
-                        if reasoning_effort is None:
-                            eff = tc.get("reasoning_effort")
-                            if not (isinstance(eff, str) and eff.strip()):
-                                eff = tc.get("effort")
-                            if isinstance(eff, str) and eff.strip():
-                                reasoning_effort = eff.strip()
+                model_provider = s.model_provider
+                model = s.model
+                reasoning_effort = s.reasoning_effort
+                if (model_provider is None or model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
+                    log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path)
+                    if model_provider is None:
+                        model_provider = log_provider
+                    if model is None:
+                        model = log_model
+                    if reasoning_effort is None:
+                        reasoning_effort = log_effort
                 sidebar_meta = MANAGER.sidebar_meta_get(session_id)
                 cwd_path = Path(s.cwd).expanduser()
                 if not cwd_path.is_absolute():
@@ -3493,6 +3803,63 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 assert raw is not None
                 text = raw.decode("utf-8", errors="replace")
                 _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": str(rel), "size": int(size), "text": text})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/search"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                query_raw = qs.get("q")
+                if not query_raw or not query_raw[0].strip():
+                    _json_response(self, 400, {"error": "q required"})
+                    return
+                limit_raw = qs.get("limit", [str(FILE_SEARCH_LIMIT)])[0]
+                try:
+                    limit = int(str(limit_raw).strip() or str(FILE_SEARCH_LIMIT))
+                except ValueError:
+                    _json_response(self, 400, {"error": "limit must be an integer"})
+                    return
+                if limit < 1:
+                    _json_response(self, 400, {"error": "limit must be >= 1"})
+                    return
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                try:
+                    result = _search_session_relative_files(base, query=query_raw[0], limit=limit)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except (RuntimeError, ValueError) as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "cwd": str(base),
+                        "query": result["query"],
+                        "mode": result["mode"],
+                        "matches": result["matches"],
+                        "scanned": result["scanned"],
+                        "truncated": result["truncated"],
+                    },
+                )
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/list"):
@@ -4093,6 +4460,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(cwd, str) or not cwd.strip():
                     _json_response(self, 400, {"error": "cwd required"})
                     return
+                try:
+                    model = _normalize_requested_model(obj.get("model"))
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
+                    reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 resume_session_id_raw = obj.get("resume_session_id")
                 if resume_session_id_raw is None:
                     resume_session_id = None
@@ -4118,7 +4495,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
                 try:
-                    res = MANAGER.spawn_web_session(cwd=cwd, args=args_list, resume_session_id=resume_session_id, worktree_branch=worktree_branch)
+                    res = MANAGER.spawn_web_session(
+                        cwd=cwd,
+                        args=args_list,
+                        resume_session_id=resume_session_id,
+                        worktree_branch=worktree_branch,
+                        model=model,
+                        reasoning_effort=reasoning_effort,
+                    )
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
