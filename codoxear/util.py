@@ -336,7 +336,7 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
 
 def proc_open_writable_rollout_logs(proc_root: Path, root_pid: int) -> set[Path]:
     if sys.platform == "darwin":
-        return set()
+        return _macos_open_rollout_logs(root_pid)
     uid = int(os.getuid())
     out: set[Path] = set()
     for pid in _proc_descendants(proc_root, root_pid):
