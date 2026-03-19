@@ -3327,7 +3327,12 @@ class SessionManager:
             spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
-        codex_args = ["-c", _codex_trust_override_for_path(spawn_cwd)]
+        # Web-owned sessions need a fully remote-safe mode that does not block on TUI confirmations.
+        codex_args = [
+            "-c",
+            _codex_trust_override_for_path(spawn_cwd),
+            "--dangerously-bypass-approvals-and-sandbox",
+        ]
         if model is not None:
             codex_args.extend(["--model", model])
         if reasoning_effort is not None:

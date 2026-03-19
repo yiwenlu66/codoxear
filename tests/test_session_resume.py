@@ -124,6 +124,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "--dangerously-bypass-approvals-and-sandbox",
                 "--search",
             ],
         )
@@ -164,6 +165,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "--dangerously-bypass-approvals-and-sandbox",
                 "resume",
                 "resume-a",
                 "--search",
@@ -207,6 +209,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
                 "gpt-5.4",
                 "-c",
@@ -279,6 +282,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "--dangerously-bypass-approvals-and-sandbox",
             ],
         )
         self.assertEqual(result, {"broker_pid": 5432})
