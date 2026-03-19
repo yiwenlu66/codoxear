@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from codoxear.server import SessionManager
 from codoxear.server import _create_git_worktree
+from codoxear.server import _describe_session_cwd
 from codoxear.server import _default_worktree_path
 from codoxear.server import _first_user_message_preview_from_log
 from codoxear.server import _list_resume_candidates_for_cwd
@@ -20,6 +21,17 @@ def _write_jsonl(path: Path, objs: list[dict]) -> None:
 
 
 class TestSessionResumeCandidates(unittest.TestCase):
+    def test_describe_session_cwd_marks_missing_dir_for_creation(self) -> None:
+        with TemporaryDirectory() as td:
+            target = Path(td) / "missing" / "child"
+
+            info = _describe_session_cwd(target.resolve())
+
+        self.assertEqual(info["cwd"], str(target.resolve()))
+        self.assertFalse(info["exists"])
+        self.assertTrue(info["will_create"])
+        self.assertFalse(info["git_repo"])
+
     def test_list_resume_candidates_filters_same_cwd_and_dedupes(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -95,6 +107,50 @@ class TestSessionResumeCandidates(unittest.TestCase):
 
 
 class TestSpawnWebSessionResume(unittest.TestCase):
+    def test_spawn_web_session_creates_missing_cwd(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 2468
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
+            "codoxear.server.subprocess.Popen", return_value=_Proc()
+        ) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            target = Path(td) / "new" / "session"
+            result = SessionManager.spawn_web_session(manager, cwd=str(target))
+            self.assertTrue(target.is_dir())
+
+        argv = popen_mock.call_args.args[0]
+        trust_override = f'projects={{ {json.dumps(str(target.resolve()))} = {{ trust_level = "trusted" }} }}'
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                str(target.resolve()),
+                "--",
+                "-c",
+                trust_override,
+                "--dangerously-bypass-approvals-and-sandbox",
+            ],
+        )
+        self.assertEqual(result, {"broker_pid": 2468})
+        self.assertEqual(thread_calls, ["start"])
+
+    def test_spawn_web_session_surfaces_mkdir_failure(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        with TemporaryDirectory() as td, patch("pathlib.Path.mkdir", side_effect=PermissionError(13, "Permission denied")):
+            target = Path(td) / "blocked" / "session"
+            with self.assertRaisesRegex(ValueError, r"cwd could not be created: .*Permission denied"):
+                SessionManager.spawn_web_session(manager, cwd=str(target))
+
     def test_spawn_web_session_marks_spawn_cwd_trusted(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         thread_calls: list[str] = []

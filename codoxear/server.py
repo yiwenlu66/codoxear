@@ -759,6 +759,15 @@ def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
     return path.resolve()
 
 
+def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"{field_name} required")
+    path = _expand_user_path(raw).resolve()
+    if path.exists() and not path.is_dir():
+        raise ValueError(f"{field_name} is not a directory: {path}")
+    return path
+
+
 def _codex_trust_override_for_path(path: Path) -> str:
     return f'projects={{ {json.dumps(str(path.resolve()))} = {{ trust_level = "trusted" }} }}'
 
@@ -944,10 +953,15 @@ def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_
 
 
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
-    repo_root = _git_repo_root(cwd)
-    git_branch = _current_git_branch(cwd) or ""
+    exists = cwd.exists()
+    if exists and not cwd.is_dir():
+        raise ValueError(f"cwd is not a directory: {cwd}")
+    repo_root = _git_repo_root(cwd) if exists else None
+    git_branch = (_current_git_branch(cwd) or "") if exists else ""
     return {
         "cwd": str(cwd),
+        "exists": exists,
+        "will_create": not exists,
         "git_repo": repo_root is not None,
         "git_root": str(repo_root) if repo_root is not None else "",
         "git_branch": git_branch,
@@ -3318,7 +3332,15 @@ class SessionManager:
         model: str | None = None,
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
-        cwd_path = _resolve_existing_dir(cwd, field_name="cwd")
+        cwd_path = _resolve_dir_target(cwd, field_name="cwd")
+        if not cwd_path.exists():
+            try:
+                cwd_path.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                detail = e.strerror or str(e)
+                raise ValueError(f"cwd could not be created: {cwd_path}: {detail}") from e
+        if not cwd_path.is_dir():
+            raise ValueError(f"cwd is not a directory: {cwd_path}")
         cwd3 = str(cwd_path)
         if resume_session_id is not None and worktree_branch is not None:
             raise ValueError("worktree_branch cannot be used when resuming a session")
@@ -3625,12 +3647,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 qs = urllib.parse.parse_qs(u.query)
                 cwd_raw = qs.get("cwd", [""])[0]
                 try:
-                    cwd_path = _resolve_existing_dir(str(cwd_raw), field_name="cwd")
+                    cwd_path = _resolve_dir_target(str(cwd_raw), field_name="cwd")
                 except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
+                    _json_response(self, 400, {"error": str(e), "field": "cwd"})
                     return
                 info = _describe_session_cwd(cwd_path)
-                rows = _list_resume_candidates_for_cwd(info["cwd"])
+                rows = _list_resume_candidates_for_cwd(info["cwd"]) if info["exists"] else []
                 for row in rows:
                     sid = row.get("session_id")
                     log_path_raw = row.get("log_path")
@@ -4463,7 +4485,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     raise ValueError("invalid json body (expected object)")
                 cwd = obj.get("cwd")
                 if not isinstance(cwd, str) or not cwd.strip():
-                    _json_response(self, 400, {"error": "cwd required"})
+                    _json_response(self, 400, {"error": "cwd required", "field": "cwd"})
                     return
                 try:
                     model = _normalize_requested_model(obj.get("model"))
@@ -4509,7 +4531,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         reasoning_effort=reasoning_effort,
                     )
                 except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
+                    payload: dict[str, Any] = {"error": str(e)}
+                    if str(e).startswith("cwd "):
+                        payload["field"] = "cwd"
+                    _json_response(self, 400, payload)
                     return
                 _json_response(self, 200, {"ok": True, **res})
                 return

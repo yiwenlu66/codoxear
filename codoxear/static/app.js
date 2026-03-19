@@ -1047,7 +1047,8 @@
         let newSessionResumeSelection = null;
         let newSessionResumeLoadSeq = 0;
         let newSessionResumeLoadTimer = null;
-        let newSessionCwdInfo = { git_repo: false, git_root: "", git_branch: "" };
+        let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
+        let newSessionCwdError = "";
         let latestSessions = [];
         const recentEventKeys = [];
          const recentEventKeySet = new Set();
@@ -1476,6 +1477,7 @@
           newSessionCwdInput,
           newSessionCwdMenu,
         ]);
+        const newSessionCwdHint = el("div", { class: "fieldHint", id: "newSessionCwdHint", text: "" });
         const newSessionNameInput = el("input", {
           id: "newSessionNameInput",
           type: "text",
@@ -1564,6 +1566,7 @@
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Working directory" }),
               newSessionCwdField,
+              newSessionCwdHint,
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Session name" }),
@@ -3218,6 +3221,7 @@
 
         function applyNewSessionCwdSuggestion(cwd) {
           newSessionCwdInput.value = String(cwd || "");
+          setNewSessionCwdError("");
           syncNewSessionNamePlaceholder();
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
@@ -3350,8 +3354,23 @@
             .replace(/^[.-]+|[.-]+$/g, "") || "worktree";
         }
 
+        function syncNewSessionCwdHint() {
+          const errorText = String(newSessionCwdError || "").trim();
+          const hintText = !errorText && newSessionCwdInfo && newSessionCwdInfo.will_create ? "Directory will be created when you start the session." : "";
+          const text = errorText || hintText;
+          newSessionCwdField.classList.toggle("error", !!errorText);
+          newSessionCwdHint.classList.toggle("danger", !!errorText);
+          newSessionCwdHint.textContent = text;
+        }
+
+        function setNewSessionCwdError(message) {
+          newSessionCwdError = String(message || "").trim();
+          syncNewSessionCwdHint();
+        }
+
         function clearNewSessionCwdInfo() {
-          newSessionCwdInfo = { git_repo: false, git_root: "", git_branch: "" };
+          newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
+          syncNewSessionCwdHint();
         }
 
         function syncNewSessionWorktreeUi() {
@@ -3446,6 +3465,7 @@
           const raw = String(cwd || "").trim();
           const seq = ++newSessionResumeLoadSeq;
           if (!raw) {
+            setNewSessionCwdError("");
             newSessionResumeCandidates = [];
             setNewSessionResumeSelection(null);
             clearNewSessionCwdInfo();
@@ -3457,10 +3477,13 @@
             const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}`);
             if (seq !== newSessionResumeLoadSeq) return;
             newSessionCwdInfo = {
+              exists: !!(res && res.exists),
+              will_create: !!(res && res.will_create),
               git_repo: !!(res && res.git_repo),
               git_root: res && typeof res.git_root === "string" ? res.git_root : "",
               git_branch: res && typeof res.git_branch === "string" ? res.git_branch : "",
             };
+            setNewSessionCwdError("");
             const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
             newSessionResumeCandidates = items;
             const currentId = newSessionResumeSelection && typeof newSessionResumeSelection.session_id === "string" ? newSessionResumeSelection.session_id : "";
@@ -3473,6 +3496,7 @@
             newSessionResumeCandidates = [];
             setNewSessionResumeSelection(null);
             clearNewSessionCwdInfo();
+            if (e && e.obj && e.obj.field === "cwd") setNewSessionCwdError(e.message);
             renderNewSessionResumeMenu();
             syncNewSessionWorktreeUi();
           }
@@ -3588,6 +3612,7 @@
           syncNewSessionNamePlaceholder();
           newSessionResumeCandidates = [];
           setNewSessionResumeSelection(null);
+          setNewSessionCwdError("");
           clearNewSessionCwdInfo();
           setNewSessionReasoningEffort("high");
           newSessionWorktreeToggle.checked = false;
@@ -3722,6 +3747,7 @@
         };
         newSessionCwdInput.oninput = () => {
           newSessionCwdMenuFocus = -1;
+          setNewSessionCwdError("");
           syncNewSessionNamePlaceholder();
           renderRecentCwdMenu();
           newSessionCwdMenuOpen = true;
@@ -3865,8 +3891,10 @@
         };
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
+          setNewSessionCwdError("");
           if (!cwd) {
-            newSessionStatus.textContent = "Working directory is required.";
+            newSessionStatus.textContent = "";
+            setNewSessionCwdError("Working directory is required.");
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
@@ -3878,9 +3906,16 @@
             return;
           }
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : "Starting...";
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort);
+          let cwdStartError = false;
+          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort, (e) => {
+            if (e && e.obj && e.obj.field === "cwd") {
+              cwdStartError = true;
+              newSessionStatus.textContent = "";
+              setNewSessionCwdError(e.message);
+            }
+          });
           if (brokerPid) hideNewSessionDialog();
-          else newSessionStatus.textContent = "Start failed.";
+          else if (!cwdStartError) newSessionStatus.textContent = "Start failed.";
         };
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
         let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
@@ -5270,7 +5305,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high") {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high", errorHandler = null) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
@@ -5312,6 +5347,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return brokerPid;
           } catch (e) {
             const errLabel = resumeSessionId ? "resume" : worktreeBranch ? "worktree start" : "start";
+            if (typeof errorHandler === "function") errorHandler(e);
             setToast(`${errLabel} error: ${e.message}`);
             return null;
           }

@@ -1449,6 +1449,10 @@ select {
       .cwdComboboxField input[type="text"] {
         padding-right: 40px;
       }
+      .cwdComboboxField.error input[type="text"] {
+        border-color: rgba(185, 28, 28, 0.45);
+        box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.12);
+      }
       .comboboxField input[type="text"] {
         padding-right: 40px;
       }
@@ -1469,6 +1473,9 @@ select {
         color: rgba(17, 24, 39, 0.48);
         pointer-events: none;
         z-index: 1;
+      }
+      .cwdComboboxField.error .cwdComboboxIcon {
+        color: rgba(185, 28, 28, 0.72);
       }
       .pickerInputRow {
         display: grid;
