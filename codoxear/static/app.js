@@ -231,6 +231,24 @@
         return ts ? `Session ${fmtTs(ts)}` : "Session";
       }
 
+      function sessionLaunchKind(s) {
+        if (s && s.transport === "tmux") return "web_tmux";
+        if (s && s.owned) return "web";
+        return "terminal";
+      }
+
+      function sessionLaunchIcon(s) {
+        const kind = sessionLaunchKind(s);
+        if (kind === "web_tmux") return "tmux";
+        return kind === "web" ? "web" : "terminal";
+      }
+
+      function sessionLaunchLabel(s) {
+        const kind = sessionLaunchKind(s);
+        if (kind === "web_tmux") return "web-owned tmux session";
+        return kind === "web" ? "web-owned session" : "terminal-owned session";
+      }
+
 	      function fmtIdleAge(seconds) {
 	        const s = Number(seconds);
 	        if (!(s >= 0)) return "";
@@ -912,6 +930,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M4 12h16"/><path d="M12 4a13 13 0 0 1 0 16"/><path d="M12 4a13 13 0 0 0 0 16"/></svg>`;
         if (name === "terminal")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 3 2-3 2"/><path d="M13 14h4"/></svg>`;
+        if (name === "tmux")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 5v14"/><path d="M10 12h11"/><path d="m6 10 2 2-2 2"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         if (name === "copy")
@@ -1050,6 +1070,7 @@
         let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
         let newSessionCwdError = "";
         let latestSessions = [];
+        let tmuxAvailable = false;
         const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
@@ -1308,7 +1329,7 @@
 <div class="muted">New session</div>
 <ul class="md">
   <li><b>New session</b> can start fresh or resume a matching conversation in the current working directory.</li>
-  <li>You can choose working directory, model, and reasoning level up front. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>You can choose working directory, model, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
 </ul>
 <div class="muted">Messages and queue</div>
 <ul class="md">
@@ -1535,6 +1556,17 @@
           "aria-expanded": "false",
         });
         const newSessionResumeMenu = el("div", { id: "newSessionResumeMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionTmuxToggle = el("input", {
+          id: "newSessionTmuxToggle",
+          type: "checkbox",
+        });
+        const newSessionTmuxField = el("div", { class: "field", id: "newSessionTmuxField" }, [
+          el("span", { class: "fieldLabel", text: "Launch mode" }),
+          el("label", { class: "checkField" }, [
+            newSessionTmuxToggle,
+            el("span", { text: "Create in tmux" }),
+          ]),
+        ]);
         const newSessionWorktreeToggle = el("input", {
           id: "newSessionWorktreeToggle",
           type: "checkbox",
@@ -1586,6 +1618,7 @@
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
             ]),
+            newSessionTmuxField,
             newSessionWorktreeField,
           ]),
           el("div", { class: "formActions" }, [
@@ -2232,9 +2265,11 @@
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+          tmuxAvailable = !!data.tmux_available;
           recentCwds = Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
+          if (newSessionViewer.style.display === "flex") syncNewSessionTmuxUi();
           fileRefCandidateCache.clear();
           const swipeActions = !useDesktopSessionActions();
             const sessions = (data.sessions || [])
@@ -2349,7 +2384,15 @@
                  setToast("cwd unavailable");
                  return;
                }
-               await spawnSessionWithCwd(cwd, null, null, "", s && s.model ? s.model : "default", s && s.reasoning_effort ? s.reasoning_effort : "high");
+               await spawnSessionWithCwd(
+                 cwd,
+                 null,
+                 null,
+                 "",
+                 s && s.model ? s.model : "default",
+                 s && s.reasoning_effort ? s.reasoning_effort : "high",
+                 !!(s && s.transport === "tmux")
+               );
              };
              const delBtn = el("button", {
                class: "icon-btn danger sessionDel",
@@ -2372,9 +2415,9 @@
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
 	             const metaItems = [
 	               el("span", {
-	                 class: `ownerBadge ownerIconBadge ${s.owned ? "owner-web" : "owner-terminal"}`,
-	                 html: iconSvg(s.owned ? "web" : "terminal"),
-	                 title: s.owned ? "web-owned session" : "terminal-owned session",
+	                 class: `ownerBadge ownerIconBadge ${s.transport === "tmux" ? "owner-tmux" : s.owned ? "owner-web" : "owner-terminal"}`,
+	                 html: iconSvg(sessionLaunchIcon(s)),
+	                 title: sessionLaunchLabel(s),
 	               })
 	             ];
 	             if (effortMark) {
@@ -3373,6 +3416,12 @@
           syncNewSessionCwdHint();
         }
 
+        function syncNewSessionTmuxUi() {
+          if (!tmuxAvailable) newSessionTmuxToggle.checked = false;
+          newSessionTmuxToggle.disabled = !tmuxAvailable;
+          newSessionTmuxField.style.opacity = tmuxAvailable ? "1" : "0.58";
+        }
+
         function syncNewSessionWorktreeUi() {
           const canOffer = !!(newSessionCwdInfo && newSessionCwdInfo.git_repo) && !newSessionResumeSelection;
           if (!canOffer) newSessionWorktreeToggle.checked = false;
@@ -3615,6 +3664,7 @@
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
           setNewSessionReasoningEffort("high");
+          newSessionTmuxToggle.checked = false;
           newSessionWorktreeToggle.checked = false;
           newSessionWorktreeInput.value = "";
           newSessionWorktreeInput.disabled = true;
@@ -3632,6 +3682,7 @@
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
           scheduleNewSessionResumeLoad();
+          syncNewSessionTmuxUi();
           syncNewSessionWorktreeUi();
           if (isMobile()) return;
           requestAnimationFrame(() => {
@@ -3900,14 +3951,15 @@
           const sessionName = String(newSessionNameInput.value || "").trim();
           const model = String(newSessionModelInput.value || "").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
+          const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
           if (newSessionWorktreeToggle.checked && !worktreeBranch) {
             newSessionStatus.textContent = "Branch name is required.";
             return;
           }
-          newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : "Starting...";
+          newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
           let cwdStartError = false;
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort, (e) => {
+          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort, createInTmux, (e) => {
             if (e && e.obj && e.obj.field === "cwd") {
               cwdStartError = true;
               newSessionStatus.textContent = "";
@@ -5205,7 +5257,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             };
             addRow("Session", d && d.session_id ? d.session_id : "-");
             addRow("Thread", d && d.thread_id ? d.thread_id : "-");
-            addRow("Owned", d && typeof d.owned === "boolean" ? (d.owned ? "web" : "terminal") : "-");
+            addRow("Owned", d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
             addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
             addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
             addRow("CWD", d && d.cwd ? d.cwd : "-", { mono: true });
@@ -5217,6 +5269,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
             addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
 	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
+	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
 	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
 	            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
 	            addRow("Model", d && d.model ? d.model : "-");
@@ -5305,13 +5358,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high", errorHandler = null) {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high", createInTmux = false, errorHandler = null) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
           }
           try {
-            const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : "starting...";
+            const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
             const alias = String(sessionName || "").trim();
             const modelName = String(model || "").trim();
             const effortName = String(reasoningEffort || "").trim().toLowerCase();
@@ -5321,13 +5374,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
             if (modelName) body.model = modelName;
             if (effortName) body.reasoning_effort = effortName;
+            if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
               return null;
             }
-            const doneLabel = resumeSessionId ? "resumed" : worktreeBranch ? "worktree started" : "started";
+            const doneLabel = resumeSessionId ? "resumed" : worktreeBranch ? "worktree started" : createInTmux ? "tmux started" : "started";
             setToast(`${doneLabel} (broker ${brokerPid})`);
             for (let i = 0; i < 60; i++) {
               const sessions = await refreshSessions();

@@ -12,7 +12,10 @@ import json
 import math
 import os
 import re
+import secrets
 import signal
+import shlex
+import shutil
 import socket
 import socketserver
 import subprocess
@@ -129,6 +132,8 @@ COOKIE_TTL_SECONDS = int(os.environ.get("CODEX_WEB_COOKIE_TTL_SECONDS", str(30 *
 COOKIE_SECURE = os.environ.get("CODEX_WEB_COOKIE_SECURE", "0") == "1"
 URL_PREFIX = _normalize_url_prefix(os.environ.get("CODEX_WEB_URL_PREFIX"))
 COOKIE_PATH = (URL_PREFIX + "/") if URL_PREFIX else "/"
+TMUX_SESSION_NAME = (os.environ.get("CODEX_WEB_TMUX_SESSION") or "codoxear").strip() or "codoxear"
+TMUX_META_WAIT_SECONDS = 3.0
 
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
@@ -281,6 +286,30 @@ def _drain_stream(f: Any) -> None:
         if not b:
             break
     f.close()
+
+
+def _tmux_available() -> bool:
+    return shutil.which("tmux") is not None
+
+
+def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_META_WAIT_SECONDS) -> dict[str, Any]:
+    deadline = time.time() + max(timeout_s, 0.0)
+    while time.time() <= deadline:
+        for meta_path in sorted(SOCK_DIR.glob("*.json")):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                continue
+            if not isinstance(meta, dict):
+                continue
+            if _clean_optional_text(meta.get("spawn_nonce")) != spawn_nonce:
+                continue
+            broker_pid = meta.get("broker_pid")
+            if not isinstance(broker_pid, int):
+                continue
+            return meta
+        time.sleep(0.05)
+    raise RuntimeError(f"tmux launch did not publish broker metadata within {timeout_s:.1f}s")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -1640,6 +1669,9 @@ class Session:
     model_provider: str | None = None
     model: str | None = None
     reasoning_effort: str | None = None
+    transport: str | None = None
+    tmux_session: str | None = None
+    tmux_window: str | None = None
 
 
 class SessionManager:
@@ -1704,6 +1736,14 @@ class SessionManager:
             if log_effort is not None:
                 reasoning_effort = log_effort
         return model_provider, model, reasoning_effort
+
+    def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+        transport = _clean_optional_text(meta.get("transport"))
+        tmux_session = _clean_optional_text(meta.get("tmux_session"))
+        tmux_window = _clean_optional_text(meta.get("tmux_window"))
+        if transport is None and (tmux_session is not None or tmux_window is not None):
+            transport = "tmux"
+        return transport, tmux_session, tmux_window
 
     def _discover_existing_if_stale(self, *, force: bool = False) -> None:
         now = time.time()
@@ -2553,6 +2593,7 @@ class SessionManager:
             codex_pid = int(codex_pid_raw)
             broker_pid = int(broker_pid_raw)
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
+            transport, tmux_session, tmux_window = self._session_transport(meta=meta)
 
             log_path: Path | None = None
             if "log_path" not in meta:
@@ -2621,6 +2662,7 @@ class SessionManager:
                 broker_pid=broker_pid,
                 codex_pid=codex_pid,
                 owned=owned,
+                transport=transport,
                 start_ts=float(start_ts),
                 cwd=str(cwd),
                 log_path=log_path,
@@ -2635,6 +2677,8 @@ class SessionManager:
                 model_provider=model_provider,
                 model=model,
                 reasoning_effort=reasoning_effort,
+                tmux_session=tmux_session,
+                tmux_window=tmux_window,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -2650,6 +2694,7 @@ class SessionManager:
                     prev.broker_pid = s.broker_pid
                     prev.codex_pid = s.codex_pid
                     prev.owned = s.owned
+                    prev.transport = s.transport
                     prev.start_ts = s.start_ts
                     prev.cwd = s.cwd
                     prev.busy = s.busy
@@ -2661,6 +2706,8 @@ class SessionManager:
                     prev.model_provider = model_provider
                     prev.model = model
                     prev.reasoning_effort = reasoning_effort
+                    prev.tmux_session = tmux_session
+                    prev.tmux_window = tmux_window
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -2865,6 +2912,7 @@ class SessionManager:
                         "pid": s.codex_pid,
                         "broker_pid": s.broker_pid,
                         "owned": s.owned,
+                        "transport": s.transport,
                         "cwd": s.cwd,
                         "start_ts": s.start_ts,
                         "updated_ts": updated_ts,
@@ -2883,6 +2931,8 @@ class SessionManager:
                         "model_provider": s.model_provider,
                         "model": s.model,
                         "reasoning_effort": s.reasoning_effort,
+                        "tmux_session": s.tmux_session,
+                        "tmux_window": s.tmux_window,
                         "priority_offset": priority_offset,
                         "snooze_until": snooze_until,
                         "dependency_session_id": dependency_session_id,
@@ -2949,6 +2999,7 @@ class SessionManager:
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
+        transport, tmux_session, tmux_window = self._session_transport(meta=meta)
         if "log_path" not in meta:
             raise ValueError(f"missing log_path in metadata for socket {sock}")
         log_path: Path | None
@@ -2975,6 +3026,7 @@ class SessionManager:
             s2.thread_id = thread_id
             s2.cwd = str(cwd)
             s2.owned = bool(owned)
+            s2.transport = transport
             if s2.log_path != log_path:
                 s2.log_path = log_path
                 if log_path is not None:
@@ -2985,6 +3037,8 @@ class SessionManager:
             s2.model_provider = model_provider
             s2.model = model
             s2.reasoning_effort = reasoning_effort
+            s2.tmux_session = tmux_session
+            s2.tmux_window = tmux_window
         if self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -3331,6 +3385,7 @@ class SessionManager:
         worktree_branch: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        create_in_tmux: bool = False,
     ) -> dict[str, Any]:
         cwd_path = _resolve_dir_target(cwd, field_name="cwd")
         if not cwd_path.exists():
@@ -3382,10 +3437,62 @@ class SessionManager:
         env.setdefault("CODEX_HOME", str(CODEX_HOME))
         env.pop("CODEX_WEB_MODEL", None)
         env.pop("CODEX_WEB_REASONING_EFFORT", None)
+        env.pop("CODEX_WEB_TRANSPORT", None)
+        env.pop("CODEX_WEB_TMUX_SESSION", None)
+        env.pop("CODEX_WEB_TMUX_WINDOW", None)
+        env.pop("CODEX_WEB_SPAWN_NONCE", None)
         if model is not None:
             env["CODEX_WEB_MODEL"] = model
         if reasoning_effort is not None:
             env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+        if create_in_tmux:
+            tmux_bin = shutil.which("tmux")
+            if tmux_bin is None:
+                raise ValueError("tmux is unavailable on this host")
+            spawn_nonce = secrets.token_hex(8)
+            tmux_window = _safe_filename(f"{Path(spawn_cwd).name or 'session'}-{spawn_nonce[:6]}", default="session")
+            env["CODEX_WEB_TRANSPORT"] = "tmux"
+            env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
+            env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
+            env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
+            inline_env = {
+                "CODEX_HOME": str(env["CODEX_HOME"]),
+                "CODEX_WEB_OWNER": "web",
+                "CODEX_WEB_TRANSPORT": "tmux",
+                "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
+                "CODEX_WEB_TMUX_WINDOW": tmux_window,
+                "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+            }
+            if model is not None:
+                inline_env["CODEX_WEB_MODEL"] = model
+            if reasoning_effort is not None:
+                inline_env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+            codex_bin = _clean_optional_text(os.environ.get("CODEX_BIN"))
+            if codex_bin is not None:
+                inline_env["CODEX_BIN"] = codex_bin
+            repo_root = Path(__file__).resolve().parent.parent
+            inline_argv = ["env", *[f"{key}={value}" for key, value in inline_env.items()], *argv]
+            shell_cmd = f"cd {shlex.quote(str(repo_root))} && exec {shlex.join(inline_argv)}"
+            has_session = subprocess.run(
+                [tmux_bin, "has-session", "-t", TMUX_SESSION_NAME],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+                check=False,
+            )
+            if has_session.returncode == 0:
+                tmux_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
+            else:
+                tmux_argv = [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TMUX_SESSION_NAME, "-n", tmux_window, shell_cmd]
+            tmux_proc = subprocess.run(tmux_argv, capture_output=True, text=True, env=env, check=False)
+            if tmux_proc.returncode != 0:
+                detail = (tmux_proc.stderr or tmux_proc.stdout or f"exit status {tmux_proc.returncode}").strip()
+                raise RuntimeError(f"tmux launch failed: {detail}")
+            meta = _wait_for_spawned_broker_meta(spawn_nonce)
+            broker_pid = meta.get("broker_pid")
+            if not isinstance(broker_pid, int):
+                raise RuntimeError("tmux launch metadata is missing broker_pid")
+            return {"broker_pid": int(broker_pid), "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
 
         try:
             proc = subprocess.Popen(
@@ -3637,7 +3744,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 new_session_defaults = _read_codex_launch_defaults()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
-                _json_response(self, 200, {"sessions": sessions, "recent_cwds": recent_cwds, "new_session_defaults": new_session_defaults})
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "sessions": sessions,
+                        "recent_cwds": recent_cwds,
+                        "new_session_defaults": new_session_defaults,
+                        "tmux_available": _tmux_available(),
+                        "tmux_session_name": TMUX_SESSION_NAME,
+                    },
+                )
                 return
 
             if path == "/api/session_resume_candidates":
@@ -3727,6 +3844,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "session_id": s.session_id,
                         "thread_id": s.thread_id,
                         "owned": bool(s.owned),
+                        "transport": s.transport,
                         "cwd": s.cwd,
                         "start_ts": float(s.start_ts),
                         "updated_ts": float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts),
@@ -3739,6 +3857,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "model_provider": model_provider,
                         "model": model,
                         "reasoning_effort": reasoning_effort,
+                        "tmux_session": s.tmux_session,
+                        "tmux_window": s.tmux_window,
                         "git_branch": git_branch,
                         "time_priority": time_priority,
                         "base_priority": base_priority,
@@ -4497,6 +4617,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
+                create_in_tmux_raw = obj.get("create_in_tmux")
+                if create_in_tmux_raw is None:
+                    create_in_tmux = False
+                elif isinstance(create_in_tmux_raw, bool):
+                    create_in_tmux = create_in_tmux_raw
+                else:
+                    _json_response(self, 400, {"error": "create_in_tmux must be a boolean"})
+                    return
                 resume_session_id_raw = obj.get("resume_session_id")
                 if resume_session_id_raw is None:
                     resume_session_id = None
@@ -4529,6 +4657,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         worktree_branch=worktree_branch,
                         model=model,
                         reasoning_effort=reasoning_effort,
+                        create_in_tmux=create_in_tmux,
                     )
                 except ValueError as e:
                     payload: dict[str, Any] = {"error": str(e)}

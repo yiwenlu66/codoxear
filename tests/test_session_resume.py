@@ -277,6 +277,37 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertEqual(result, {"broker_pid": 6543})
         self.assertEqual(thread_calls, ["start"])
 
+    def test_spawn_web_session_can_start_in_tmux(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+
+        with TemporaryDirectory() as td, patch("codoxear.server.shutil.which", return_value="/usr/bin/tmux"), patch(
+            "codoxear.server._wait_for_spawned_broker_meta", return_value={"broker_pid": 7777}
+        ) as wait_mock, patch(
+            "codoxear.server.subprocess.run",
+            side_effect=[
+                subprocess.CompletedProcess(["/usr/bin/tmux", "has-session", "-t", "codoxear"], 1, stdout="", stderr=""),
+                subprocess.CompletedProcess(["/usr/bin/tmux", "new-session"], 0, stdout="%8\n", stderr=""),
+            ],
+        ) as run_mock:
+            result = SessionManager.spawn_web_session(manager, cwd=td, model="gpt-5.4", create_in_tmux=True)
+
+        self.assertEqual(result, {"broker_pid": 7777, "tmux_session": "codoxear", "tmux_window": ANY})
+        tmux_argv = run_mock.call_args_list[1].args[0]
+        self.assertEqual(tmux_argv[:8], ["/usr/bin/tmux", "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", "codoxear"])
+        shell_cmd = tmux_argv[-1]
+        self.assertIn("CODEX_WEB_TRANSPORT=tmux", shell_cmd)
+        self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
+        self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
+        self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)
+        self.assertIn("codoxear.broker", shell_cmd)
+        wait_mock.assert_called_once()
+
+    def test_spawn_web_session_rejects_tmux_when_unavailable(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        with TemporaryDirectory() as td, patch("codoxear.server.shutil.which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "tmux is unavailable on this host"):
+                SessionManager.spawn_web_session(manager, cwd=td, create_in_tmux=True)
+
     def test_spawn_web_session_rejects_resume_id_not_in_cwd(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         with TemporaryDirectory() as td, patch("codoxear.server._list_resume_candidates_for_cwd", return_value=[]):

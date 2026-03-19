@@ -72,15 +72,17 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 - Desktop Linux: start Codex in your GUI terminal emulator, then continue the same live TUI session on your phone or a laptop browser.
 - Headless Linux: start Codex inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
 - Web-owned sessions: start a new Codex session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
+- Web-owned tmux sessions: start a new Codex session from the Codoxear UI with `Create in tmux` enabled to run it inside tmux session `codoxear` for shell-side observability.
 
 ## Session ownership
 
-Codoxear shows two kinds of sessions:
+Codoxear shows three kinds of sessions:
 
 - Terminal-owned: sessions started from your local terminal via `codox` (the broker wrapper). They are marked `T` in the UI.
 - Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
+- Web-owned tmux: sessions started from the Codoxear UI with `Create in tmux` enabled. They are marked with the tmux split-pane icon in the UI and run under tmux session `codoxear`.
 
-The current UI offers Delete for either kind of session. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
+The current UI offers Delete for all session kinds. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use `codox resume`. Use plain `codex` only for sessions that should stay outside Codoxear.
 

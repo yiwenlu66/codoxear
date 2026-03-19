@@ -852,6 +852,10 @@ class Broker:
             "sock_path": str(st.sock_path),
             "model": MODEL_OVERRIDE or None,
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
+            "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
+            "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
+            "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
+            "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
         }
         meta_path = st.sock_path.with_suffix(".json")
         SOCK_DIR.mkdir(parents=True, exist_ok=True)

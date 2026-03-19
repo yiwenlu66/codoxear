@@ -215,6 +215,22 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(rows[0]["model"], "gpt-5.4")
         self.assertEqual(rows[0]["reasoning_effort"], "xhigh")
 
+    def test_list_sessions_exposes_tmux_transport(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
+        current.transport = "tmux"
+        current.tmux_session = "codoxear"
+        current.tmux_window = "current-abcd12"
+        mgr._sessions = {current.session_id: current}
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["transport"], "tmux")
+        self.assertEqual(rows[0]["tmux_session"], "codoxear")
+        self.assertEqual(rows[0]["tmux_window"], "current-abcd12")
+
     def test_list_sessions_falls_back_to_log_run_settings(self) -> None:
         mgr = _make_manager()
         now = time.time()
