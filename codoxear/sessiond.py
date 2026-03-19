@@ -24,6 +24,8 @@ from .util import now as _now
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload
+from .util import _send_socket_json_line as _send_socket_json_line
+from .util import _socket_peer_disconnected as _socket_peer_disconnected
 
 
 APP_DIR = _default_app_dir()
@@ -274,8 +276,9 @@ class Sessiond:
             traceback.print_exc()
 
     def _handle_conn(self, conn: socket.socket) -> None:
+        f = None
         try:
-            f = conn.makefile("rwb")
+            f = conn.makefile("rb")
             line = f.readline()
             if not line:
                 return
@@ -288,24 +291,21 @@ class Sessiond:
                         resp = {"error": "no state"}
                     else:
                         resp = {"busy": st.busy, "queue_len": 0}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "tail":
                 with self._lock:
                     st = self.state
                     resp = {"tail": st.output_tail if st else ""}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "send":
                 text = req.get("text")
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
-                    f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                    f.flush()
+                    _send_socket_json_line(conn, resp)
                     return
                 fd: int | None = None
                 enter = _encode_enter()
@@ -316,8 +316,7 @@ class Sessiond:
                     else:
                         fd = st.pty_master_fd
                         resp = {"queued": False, "queue_len": 0}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 if fd is not None:
                     try:
                         _inject(fd, text=text, suffix=enter)
@@ -341,28 +340,35 @@ class Sessiond:
                                 resp = {"ok": True}
                             except Exception as e:
                                 resp = {"error": str(e)}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "shutdown":
-                f.write(b'{"ok":true}\n')
-                f.flush()
+                _send_socket_json_line(conn, {"ok": True})
                 self._teardown_managed_process_group()
                 return
 
-            f.write(b'{"error":"unknown cmd"}\n')
-            f.flush()
-        except Exception:
+            _send_socket_json_line(conn, {"error": "unknown cmd"})
+        except Exception as exc:
+            if _socket_peer_disconnected(exc):
+                return
             try:
-                conn.sendall((json.dumps({"error": "exception", "trace": traceback.format_exc()}) + "\n").encode("utf-8"))
-            except Exception:
-                traceback.print_exc()
+                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
+            except Exception as send_exc:
+                if not _socket_peer_disconnected(send_exc):
+                    traceback.print_exc()
         finally:
+            if f is not None:
+                try:
+                    f.close()
+                except Exception as close_exc:
+                    if not _socket_peer_disconnected(close_exc):
+                        traceback.print_exc()
             try:
                 conn.close()
-            except Exception:
-                traceback.print_exc()
+            except Exception as close_exc:
+                if not _socket_peer_disconnected(close_exc):
+                    traceback.print_exc()
 
     def _ensure_root_repo(self) -> None:
         if (ROOT_REPO_DIR / ".git").exists():

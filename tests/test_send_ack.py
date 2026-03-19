@@ -3,6 +3,7 @@ import socket
 import threading
 import time
 import unittest
+import errno
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,6 +19,36 @@ def _recv_line(sock: socket.socket) -> bytes:
             break
         buf += chunk
     return buf.split(b"\n", 1)[0]
+
+
+class _FakeReadFile:
+    def __init__(self, line: bytes) -> None:
+        self._line = line
+        self.closed = False
+
+    def readline(self) -> bytes:
+        return self._line
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _BrokenPipeConn:
+    def __init__(self, line: bytes) -> None:
+        self._line = line
+        self.file = _FakeReadFile(line)
+        self.sendall_calls = 0
+        self.closed = False
+
+    def makefile(self, _mode: str) -> _FakeReadFile:
+        return self.file
+
+    def sendall(self, _data: bytes) -> None:
+        self.sendall_calls += 1
+        raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class TestSendAck(unittest.TestCase):
@@ -106,3 +137,43 @@ class TestSendAck(unittest.TestCase):
                 self.assertFalse(thread.is_alive())
         finally:
             client_sock.close()
+
+    def test_broker_ignores_broken_pipe_while_replying(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = BrokerState(
+            codex_pid=1,
+            pty_master_fd=1,
+            cwd="/tmp",
+            start_ts=0.0,
+            codex_home=Path("/tmp"),
+            sessions_dir=Path("/tmp"),
+        )
+        conn = _BrokenPipeConn((json.dumps({"cmd": "state"}) + "\n").encode("utf-8"))
+
+        with patch("codoxear.broker.traceback.print_exc") as print_exc:
+            broker._handle_conn(conn)
+
+        self.assertEqual(conn.sendall_calls, 1)
+        self.assertTrue(conn.file.closed)
+        self.assertTrue(conn.closed)
+        print_exc.assert_not_called()
+
+    def test_sessiond_ignores_broken_pipe_while_replying(self) -> None:
+        sessiond = Sessiond("/tmp", [])
+        sessiond.state = SessiondState(
+            session_id="sid",
+            codex_pid=1,
+            log_path=Path("/tmp/log.jsonl"),
+            sock_path=Path("/tmp/test.sock"),
+            pty_master_fd=1,
+            start_ts=0.0,
+        )
+        conn = _BrokenPipeConn((json.dumps({"cmd": "state"}) + "\n").encode("utf-8"))
+
+        with patch("codoxear.sessiond.traceback.print_exc") as print_exc:
+            sessiond._handle_conn(conn)
+
+        self.assertEqual(conn.sendall_calls, 1)
+        self.assertTrue(conn.file.closed)
+        self.assertTrue(conn.closed)
+        print_exc.assert_not_called()

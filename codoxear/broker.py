@@ -28,6 +28,8 @@ from codoxear.util import find_session_log_for_session_id as _find_session_log_f
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
+from codoxear.util import _send_socket_json_line as _send_socket_json_line
+from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
 
 
@@ -886,8 +888,9 @@ class Broker:
         s.close()
 
     def _handle_conn(self, conn: socket.socket) -> None:
+        f = None
         try:
-            f = conn.makefile("rwb")
+            f = conn.makefile("rb")
             line = f.readline()
             if not line:
                 return
@@ -900,24 +903,21 @@ class Broker:
                         resp = {"error": "no state"}
                     else:
                         resp = {"busy": st.busy, "queue_len": 0, "token": st.token}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "tail":
                 with self._lock:
                     st = self.state
                     resp = {"tail": st.output_tail if st else ""}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "send":
                 text = req.get("text")
                 if not isinstance(text, str) or not text.strip():
                     resp = {"error": "text required"}
-                    f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                    f.flush()
+                    _send_socket_json_line(conn, resp)
                     return
                 seq_raw = req.get("enter_seq")
                 seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
@@ -937,8 +937,7 @@ class Broker:
                             st.last_turn_activity_ts = now_ts
                         fd = st.pty_master_fd
                         resp = {"queued": False, "queue_len": 0}
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 if fd is not None:
                     try:
                         _inject(fd, text=text, suffix=seq)
@@ -965,28 +964,35 @@ class Broker:
                             _write_all(fd, b)
                         except Exception:
                             traceback.print_exc()
-                f.write((json.dumps(resp) + "\n").encode("utf-8"))
-                f.flush()
+                _send_socket_json_line(conn, resp)
                 return
 
             if cmd == "shutdown":
-                f.write(b'{"ok":true}\n')
-                f.flush()
+                _send_socket_json_line(conn, {"ok": True})
                 self._teardown_managed_process_group()
                 return
 
-            f.write(b'{"error":"unknown cmd"}\n')
-            f.flush()
-        except Exception:
+            _send_socket_json_line(conn, {"error": "unknown cmd"})
+        except Exception as exc:
+            if _socket_peer_disconnected(exc):
+                return
             try:
-                conn.sendall((json.dumps({"error": "exception", "trace": traceback.format_exc()}) + "\n").encode("utf-8"))
-            except Exception:
-                traceback.print_exc()
+                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
+            except Exception as send_exc:
+                if not _socket_peer_disconnected(send_exc):
+                    traceback.print_exc()
         finally:
+            if f is not None:
+                try:
+                    f.close()
+                except Exception as close_exc:
+                    if not _socket_peer_disconnected(close_exc):
+                        traceback.print_exc()
             try:
                 conn.close()
-            except Exception:
-                traceback.print_exc()
+            except Exception as close_exc:
+                if not _socket_peer_disconnected(close_exc):
+                    traceback.print_exc()
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
         # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),

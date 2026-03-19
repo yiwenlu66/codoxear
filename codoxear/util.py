@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import datetime
+import errno
 import json
 import os
+import socket
 import sys
 import time
 import traceback
@@ -24,6 +26,22 @@ def _log_exception(context: str, exc: BaseException) -> None:
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip("\n")
     if tb:
         _log_error(f"traceback ({ts}):\n{tb}")
+
+
+def _socket_peer_disconnected(exc: BaseException) -> bool:
+    if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+        return True
+    return isinstance(exc, OSError) and exc.errno in (
+        errno.EPIPE,
+        errno.ECONNRESET,
+        errno.ECONNABORTED,
+        errno.ENOTCONN,
+        errno.ESHUTDOWN,
+    )
+
+
+def _send_socket_json_line(conn: socket.socket, payload: dict[str, Any]) -> None:
+    conn.sendall((json.dumps(payload) + "\n").encode("utf-8"))
 
 
 def default_app_dir() -> Path:
