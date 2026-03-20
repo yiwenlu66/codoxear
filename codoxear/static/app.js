@@ -3664,7 +3664,7 @@
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
           setNewSessionReasoningEffort("high");
-          newSessionTmuxToggle.checked = false;
+          newSessionTmuxToggle.checked = tmuxAvailable;
           newSessionWorktreeToggle.checked = false;
           newSessionWorktreeInput.value = "";
           newSessionWorktreeInput.disabled = true;
