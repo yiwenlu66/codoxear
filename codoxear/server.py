@@ -2407,7 +2407,12 @@ class SessionManager:
     def _harness_loop(self) -> None:
         # Persist across browser disconnects: server is the scheduler.
         while not self._stop.is_set():
-            self._harness_sweep()
+            try:
+                self._harness_sweep()
+            except Exception as e:
+                sys.stderr.write(f"error: harness sweep failed: {type(e).__name__}: {e}\n")
+                traceback.print_exc(file=sys.stderr)
+                sys.stderr.flush()
             self._stop.wait(HARNESS_SWEEP_SECONDS)
 
     def _harness_sweep(self) -> None:
@@ -2426,43 +2431,48 @@ class SessionManager:
         for sid, s, cfg, last_inj in items:
             if not bool(cfg.get("enabled")):
                 continue
-            request = cfg.get("request")
-            if not isinstance(request, str):
-                request = ""
-            prompt = _render_harness_prompt(request)
-            lp = s.log_path
-            if lp is None or (not lp.exists()):
-                continue
-            scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
-            with self._lock:
-                scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
-            if (last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS)) or (scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS)):
-                continue
-            st = self.get_state(sid)
-            if not isinstance(st, dict):
-                raise ValueError("invalid broker state response")
-            if "busy" not in st or "queue_len" not in st:
-                raise ValueError("invalid broker state response")
-            busy = bool(st.get("busy"))
-            ql = int(st.get("queue_len"))
-            if busy or ql > 0 or self._queue_len(sid) > 0:
-                continue
-            last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
-            if not last:
-                continue
-            role, ts = last
-            if role != "assistant":
-                continue
-            if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
-                continue
-            with self._lock:
-                scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
-            if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
-                continue
-            self.send(sid, prompt)
-            with self._lock:
-                self._harness_last_injected[sid] = now
-                self._harness_last_injected_scope[scope_key] = now
+            try:
+                request = cfg.get("request")
+                if not isinstance(request, str):
+                    request = ""
+                prompt = _render_harness_prompt(request)
+                lp = s.log_path
+                if lp is None or (not lp.exists()):
+                    continue
+                scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
+                with self._lock:
+                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+                if (last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS)) or (scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS)):
+                    continue
+                st = self.get_state(sid)
+                if not isinstance(st, dict):
+                    raise ValueError("invalid broker state response")
+                if "busy" not in st or "queue_len" not in st:
+                    raise ValueError("invalid broker state response")
+                busy = bool(st.get("busy"))
+                ql = int(st.get("queue_len"))
+                if busy or ql > 0 or self._queue_len(sid) > 0:
+                    continue
+                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
+                if not last:
+                    continue
+                role, ts = last
+                if role != "assistant":
+                    continue
+                if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
+                    continue
+                with self._lock:
+                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+                if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
+                    continue
+                self.send(sid, prompt)
+                with self._lock:
+                    self._harness_last_injected[sid] = now
+                    self._harness_last_injected_scope[scope_key] = now
+            except Exception as e:
+                sys.stderr.write(f"error: harness session {sid} skipped: {type(e).__name__}: {e}\n")
+                traceback.print_exc(file=sys.stderr)
+                sys.stderr.flush()
 
     def _queue_loop(self) -> None:
         while not self._stop.is_set():

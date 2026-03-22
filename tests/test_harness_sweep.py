@@ -88,6 +88,36 @@ class TestHarnessSweep(unittest.TestCase):
                 ],
             )
 
+    def test_session_timeout_does_not_kill_other_injections(self) -> None:
+        with TemporaryDirectory() as td:
+            p1 = Path(td) / "rollout-a.jsonl"
+            p2 = Path(td) / "rollout-b.jsonl"
+            p1.write_text("{}", encoding="utf-8")
+            p2.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-timeout"] = _make_session(sid="sid-timeout", thread_id="thread-timeout", log_path=p1)
+            mgr._sessions["sid-ok"] = _make_session(sid="sid-ok", thread_id="thread-ok", log_path=p2)
+            mgr._harness["sid-timeout"] = {"enabled": True, "request": "A"}
+            mgr._harness["sid-ok"] = {"enabled": True, "request": "B"}
+
+            sent: list[tuple[str, str]] = []
+
+            def _state(sid: str) -> dict[str, int | bool]:
+                if sid == "sid-timeout":
+                    raise TimeoutError("timed out")
+                return {"busy": False, "queue_len": 0}
+
+            mgr.get_state = _state  # type: ignore[method-assign]
+            mgr.send = lambda sid, text: (sent.append((sid, text)) or {"ok": True})  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0), patch("codoxear.server.HARNESS_IDLE_SECONDS", 300), patch(
+                "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
+            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
+                mgr._harness_sweep()
+
+            self.assertEqual(sent, [("sid-ok", "PFX\n\n---\n\nAdditional request from user: B\n")])
+
 
 if __name__ == "__main__":
     unittest.main()
