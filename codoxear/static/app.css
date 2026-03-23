@@ -456,6 +456,7 @@
         border: 1px solid var(--border);
         color: var(--muted);
         background: #ffffff;
+        white-space: nowrap;
       }
 	      .badge.busy {
 	        color: var(--accent);
