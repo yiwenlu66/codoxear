@@ -45,8 +45,11 @@ DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
 ENTER_SEQ = os.environ.get("CODEX_WEB_ENTER_SEQ", "\r")
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
+MODEL_PROVIDER_OVERRIDE = os.environ.get("CODEX_WEB_MODEL_PROVIDER", "").strip()
+PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD", "").strip()
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
 REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
+SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
 _BRACKETED_PASTE_START = b"\x1b[200~"
 _BRACKETED_PASTE_END = b"\x1b[201~"
 
@@ -199,8 +202,11 @@ class Sessiond:
             "start_ts": float(st.start_ts),
             "log_path": str(st.log_path),
             "sock_path": str(st.sock_path),
+            "model_provider": MODEL_PROVIDER_OVERRIDE or None,
+            "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
             "model": MODEL_OVERRIDE or None,
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
+            "service_tier": SERVICE_TIER_OVERRIDE or None,
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")

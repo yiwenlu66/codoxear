@@ -39,8 +39,11 @@ PROC_ROOT = Path("/proc")
 
 CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
+MODEL_PROVIDER_OVERRIDE = os.environ.get("CODEX_WEB_MODEL_PROVIDER", "").strip()
+PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD", "").strip()
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
 REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
+SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
     DEFAULT_CODEX_HOME = Path.home() / ".codex"
@@ -850,8 +853,11 @@ class Broker:
             "start_ts": st.start_ts,
             "log_path": str(st.log_path) if st.log_path else None,
             "sock_path": str(st.sock_path),
+            "model_provider": MODEL_PROVIDER_OVERRIDE or None,
+            "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
             "model": MODEL_OVERRIDE or None,
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
+            "service_tier": SERVICE_TIER_OVERRIDE or None,
             "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
             "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
             "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
