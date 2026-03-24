@@ -1084,6 +1084,7 @@ class Broker:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         start_ts = _now()
         headless = (OWNER_TAG == "web")
+        local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
         pid, master_fd = pty.fork()
         if pid == 0:
@@ -1114,7 +1115,7 @@ class Broker:
                 traceback.print_exc()
                 os._exit(127)
 
-        if (not headless) and (not self._emulate_terminal) and sys.stdin.isatty():
+        if local_terminal:
             try:
                 fd = sys.stdin.fileno()
                 self._stdin_termios = termios.tcgetattr(fd)
@@ -1152,7 +1153,9 @@ class Broker:
         self._write_meta()
         threading.Thread(target=self._sock_server, daemon=True).start()
         threading.Thread(target=self._pty_to_stdout, daemon=True).start()
-        if not headless:
+        # Web-owned sessions launched inside tmux still have a real terminal and must
+        # forward local pane input like a normal broker session.
+        if local_terminal:
             threading.Thread(target=self._stdin_to_pty, daemon=True).start()
         threading.Thread(target=self._log_watcher, daemon=True).start()
         threading.Thread(target=self._discover_log_watcher, daemon=True).start()

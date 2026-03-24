@@ -2,6 +2,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from codoxear.broker import Broker
@@ -35,6 +36,17 @@ class _AcceptCrashSocket:
 
     def close(self) -> None:
         return
+
+
+class _FakeThread:
+    started_targets: list[str] = []
+
+    def __init__(self, *, target, daemon: bool) -> None:
+        self._target = target
+        self._daemon = daemon
+
+    def start(self) -> None:
+        self.started_targets.append(self._target.__name__)
 
 
 class TestBrokerFailClosed(unittest.TestCase):
@@ -75,6 +87,62 @@ class TestBrokerFailClosed(unittest.TestCase):
                             broker._sock_server()
 
         teardown.assert_called_once_with()
+
+    def test_web_owned_broker_forwards_local_stdin_when_tty_is_present(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: True, fileno=lambda: 9)
+        _FakeThread.started_targets = []
+        with tempfile.TemporaryDirectory() as td:
+            broker = Broker(cwd=td, codex_args=[])
+            broker.sessions_dir = Path(td) / "sessions"
+            with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.sys.stdin", fake_stdin), patch(
+                "codoxear.broker._require_proc"
+            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.fork", return_value=(1234, 55)
+            ), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch("codoxear.broker.termios.tcgetattr", return_value=["saved"]), patch(
+                "codoxear.broker.termios.tcsetattr"
+            ), patch("codoxear.broker.tty.setraw"), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch(
+                "codoxear.broker.os.close"
+            ), patch.object(
+                broker, "_write_meta"
+            ), patch(
+                "codoxear.broker.threading.Thread", _FakeThread
+            ):
+                broker._emulate_terminal = False
+                exit_code = broker.run()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("_stdin_to_pty", _FakeThread.started_targets)
+
+    def test_web_owned_headless_broker_keeps_local_stdin_disabled_without_tty(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        _FakeThread.started_targets = []
+        with tempfile.TemporaryDirectory() as td:
+            with patch("codoxear.broker.sys.stdin", fake_stdin):
+                broker = Broker(cwd=td, codex_args=[])
+            broker.sessions_dir = Path(td) / "sessions"
+            with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.sys.stdin", fake_stdin), patch(
+                "codoxear.broker._require_proc"
+            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.fork", return_value=(1234, 55)
+            ), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch(
+                "codoxear.broker.os.close"
+            ), patch.object(
+                broker, "_write_meta"
+            ), patch(
+                "codoxear.broker.threading.Thread", _FakeThread
+            ):
+                exit_code = broker.run()
+
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("_stdin_to_pty", _FakeThread.started_targets)
 
 
 if __name__ == "__main__":
