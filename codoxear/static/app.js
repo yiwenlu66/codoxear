@@ -249,6 +249,27 @@
         return kind === "web" ? "web-owned session" : "terminal-owned session";
       }
 
+      function sessionIsFast(s) {
+        return !!(s && typeof s.service_tier === "string" && s.service_tier.trim().toLowerCase() === "fast");
+      }
+
+      function providerChoiceToSettings(choice) {
+        const value = String(choice || "").trim() || "chatgpt";
+        if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
+        if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
+        return { model_provider: value, preferred_auth_method: "apikey" };
+      }
+
+      function sessionProviderChoice(s) {
+        if (!s || typeof s !== "object") return "chatgpt";
+        const explicit = typeof s.provider_choice === "string" ? s.provider_choice.trim() : "";
+        if (explicit) return explicit;
+        const provider = typeof s.model_provider === "string" ? s.model_provider.trim() : "";
+        const auth = typeof s.preferred_auth_method === "string" ? s.preferred_auth_method.trim() : "";
+        if (provider === "openai") return auth === "chatgpt" ? "chatgpt" : "openai-api";
+        return provider || "chatgpt";
+      }
+
 	      function fmtIdleAge(seconds) {
 	        const s = Number(seconds);
 	        if (!(s >= 0)) return "";
@@ -932,6 +953,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 3 2-3 2"/><path d="M13 14h4"/></svg>`;
         if (name === "tmux")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 5v14"/><path d="M10 12h11"/><path d="m6 10 2 2-2 2"/></svg>`;
+        if (name === "lightning")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 5 14h6l-1 8 8-12h-6z"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         if (name === "copy")
@@ -1061,6 +1084,7 @@
         let newSessionCwdMenuFocus = -1;
         let newSessionModelMenuOpen = false;
         let newSessionModelMenuFocus = -1;
+        let newSessionProviderMenuOpen = false;
         let newSessionReasoningMenuOpen = false;
         let newSessionResumeMenuOpen = false;
         let newSessionResumeCandidates = [];
@@ -1069,6 +1093,10 @@
         let newSessionResumeLoadTimer = null;
         let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
         let newSessionCwdError = "";
+        let newSessionProvider = "chatgpt";
+        let newSessionProviderOptions = ["chatgpt", "openai-api"];
+        let newSessionFast = false;
+        let newSessionDefaults = { model_provider: "openai", preferred_auth_method: "chatgpt", provider_choice: "chatgpt", model: null, model_providers: ["chatgpt", "openai-api"], reasoning_effort: "high", service_tier: "flex" };
         let latestSessions = [];
         let tmuxAvailable = false;
         const recentEventKeys = [];
@@ -1509,7 +1537,7 @@
         const newSessionModelInput = el("input", {
           id: "newSessionModelInput",
           type: "text",
-          placeholder: "default",
+          placeholder: "Model",
           autocomplete: "off",
           spellcheck: "false",
           role: "combobox",
@@ -1526,6 +1554,19 @@
           el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
           newSessionModelInput,
           newSessionModelMenu,
+        ]);
+        const newSessionProviderBtn = el("button", {
+          id: "newSessionProviderBtn",
+          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
+          type: "button",
+          "aria-label": "Choose provider",
+          "aria-haspopup": "menu",
+          "aria-expanded": "false",
+        });
+        const newSessionProviderMenu = el("div", { id: "newSessionProviderMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionProviderField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionProviderField" }, [
+          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
+          newSessionProviderBtn,
         ]);
         let newSessionReasoningEffort = "high";
         const newSessionReasoningBtn = el("button", {
@@ -1565,6 +1606,24 @@
           el("label", { class: "checkField" }, [
             newSessionTmuxToggle,
             el("span", { text: "Create in tmux" }),
+          ]),
+        ]);
+        const newSessionProviderTmuxRow = el("div", { class: "formGrid newSessionOptionsRow" }, [
+          el("label", { class: "field" }, [
+            el("span", { class: "fieldLabel", text: "Provider" }),
+            newSessionProviderField,
+          ]),
+          newSessionTmuxField,
+        ]);
+        const newSessionFastToggle = el("input", {
+          id: "newSessionFastToggle",
+          type: "checkbox",
+        });
+        const newSessionFastField = el("div", { class: "field compactToggleField", id: "newSessionFastField" }, [
+          el("span", { class: "fieldLabel", text: "Speed" }),
+          el("label", { class: "checkField" }, [
+            newSessionFastToggle,
+            el("span", { text: "Fast" }),
           ]),
         ]);
         const newSessionWorktreeToggle = el("input", {
@@ -1613,12 +1672,13 @@
                 el("span", { class: "fieldLabel", text: "Reasoning effort" }),
                 newSessionReasoningField,
               ]),
+              newSessionFastField,
             ]),
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
             ]),
-            newSessionTmuxField,
+            newSessionProviderTmuxRow,
             newSessionWorktreeField,
           ]),
           el("div", { class: "formActions" }, [
@@ -1629,6 +1689,7 @@
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
         newSessionViewer.appendChild(newSessionModelMenu);
+        newSessionViewer.appendChild(newSessionProviderMenu);
         newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
@@ -2265,11 +2326,20 @@
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+          newSessionDefaults = data && typeof data.new_session_defaults === "object" && data.new_session_defaults ? data.new_session_defaults : {};
+          newSessionProviderOptions = Array.isArray(newSessionDefaults.model_providers)
+            ? newSessionDefaults.model_providers.filter((value, idx, arr) => typeof value === "string" && value.trim() && arr.indexOf(value) === idx)
+            : ["chatgpt", "openai-api"];
+          if (!newSessionProviderOptions.includes("chatgpt")) newSessionProviderOptions.unshift("chatgpt");
+          if (!newSessionProviderOptions.includes("openai-api")) newSessionProviderOptions.splice(1, 0, "openai-api");
           tmuxAvailable = !!data.tmux_available;
           recentCwds = Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
-          if (newSessionViewer.style.display === "flex") syncNewSessionTmuxUi();
+          if (newSessionViewer.style.display === "flex") {
+            syncNewSessionTmuxUi();
+            renderNewSessionProviderMenu();
+          }
           fileRefCandidateCache.clear();
           const swipeActions = !useDesktopSessionActions();
             const sessions = (data.sessions || [])
@@ -2389,8 +2459,10 @@
                  null,
                  null,
                  "",
+                 sessionProviderChoice(s),
                  s && s.model ? s.model : "default",
                  s && s.reasoning_effort ? s.reasoning_effort : "high",
+                 sessionIsFast(s),
                  !!(s && s.transport === "tmux")
                );
              };
@@ -2410,7 +2482,12 @@
              });
              const titleRow = el("div", { class: "sessionTitleRow" }, [
                stateDot,
-               el("div", { class: "titleLine", text: title, title: s.cwd || "" }),
+               el("div", { class: "titleLine", title: s.cwd || "" }, [
+                 el("span", { class: "titleText", text: title }),
+                 sessionIsFast(s)
+                   ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" })
+                   : null,
+               ].filter(Boolean)),
              ]);
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
 	             const metaItems = [
@@ -3363,15 +3440,45 @@
           }
         }
 
+        function setNewSessionProvider(value) {
+          const next = String(value || "").trim() || "chatgpt";
+          newSessionProvider = newSessionProviderOptions.includes(next) ? next : "chatgpt";
+          setPickerButtonContent(newSessionProviderBtn, newSessionProvider);
+        }
+
+        function renderNewSessionProviderMenu() {
+          newSessionProviderMenu.innerHTML = "";
+          for (const provider of newSessionProviderOptions) {
+            const btn = el("button", {
+              class: "fileMenuItem" + (newSessionProvider === provider ? " active" : ""),
+              type: "button",
+              title: provider,
+            });
+            btn.appendChild(el("span", { class: "fileMenuPath", text: provider }));
+            btn.onclick = () => {
+              setNewSessionProvider(provider);
+              newSessionProviderMenuOpen = false;
+              applyDialogMenus();
+            };
+            newSessionProviderMenu.appendChild(btn);
+          }
+        }
+
         function sessionModelOptions() {
           const seen = new Set();
-          const out = ["default"];
+          const out = [];
+          const configured = typeof newSessionDefaults.model === "string" ? newSessionDefaults.model.trim() : "";
+          if (configured) {
+            seen.add(configured);
+            out.push(configured);
+          }
           for (const item of latestSessions) {
             const model = typeof item.model === "string" ? item.model.trim() : "";
             if (!model || seen.has(model)) continue;
             seen.add(model);
             out.push(model);
           }
+          if (!out.length) out.push("default");
           return out;
         }
 
@@ -3388,6 +3495,11 @@
         function setNewSessionReasoningEffort(value) {
           newSessionReasoningEffort = ["xhigh", "high", "medium", "low"].includes(value) ? value : "high";
           setPickerButtonContent(newSessionReasoningBtn, newSessionReasoningEffort);
+        }
+
+        function setNewSessionFast(value) {
+          newSessionFast = !!value;
+          newSessionFastToggle.checked = newSessionFast;
         }
 
         function worktreePathSlug(branch) {
@@ -3484,6 +3596,14 @@
           newSessionModelMenu.innerHTML = "";
           const items = filteredNewSessionModelOptions();
           const raw = String(newSessionModelInput.value || "").trim();
+          const configured = typeof newSessionDefaults.model === "string" ? newSessionDefaults.model.trim() : "";
+          if (newSessionModelMenuFocus < 0) {
+            const selected = raw || configured;
+            if (selected) {
+              const selectedIdx = items.findIndex((item) => item === selected);
+              if (selectedIdx >= 0) newSessionModelMenuFocus = selectedIdx;
+            }
+          }
           if (newSessionModelMenuFocus >= items.length) newSessionModelMenuFocus = items.length ? items.length - 1 : -1;
           if (!items.length) {
             newSessionModelMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching models" }));
@@ -3564,6 +3684,7 @@
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);
+          newSessionProviderMenu.classList.toggle("open", newSessionProviderMenuOpen);
           newSessionReasoningMenu.classList.toggle("open", newSessionReasoningMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
@@ -3571,11 +3692,13 @@
           if (!newSessionCwdMenuOpen && newSessionCwdMenuFocus < 0) newSessionCwdInput.removeAttribute("aria-activedescendant");
           newSessionModelInput.setAttribute("aria-expanded", newSessionModelMenuOpen ? "true" : "false");
           if (!newSessionModelMenuOpen && newSessionModelMenuFocus < 0) newSessionModelInput.removeAttribute("aria-activedescendant");
+          newSessionProviderBtn.setAttribute("aria-expanded", newSessionProviderMenuOpen ? "true" : "false");
           newSessionReasoningBtn.setAttribute("aria-expanded", newSessionReasoningMenuOpen ? "true" : "false");
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
           if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
+          if (newSessionProviderMenuOpen) positionDialogMenu(newSessionProviderMenu, newSessionProviderBtn);
           if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
@@ -3644,6 +3767,7 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
@@ -3657,13 +3781,15 @@
           newSessionStatus.textContent = String(statusText || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";
-          newSessionModelInput.value = "default";
+          newSessionModelInput.value = typeof newSessionDefaults.model === "string" && newSessionDefaults.model.trim() ? newSessionDefaults.model.trim() : "";
           syncNewSessionNamePlaceholder();
           newSessionResumeCandidates = [];
           setNewSessionResumeSelection(null);
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
-          setNewSessionReasoningEffort("high");
+          setNewSessionProvider(newSessionDefaults.provider_choice || "chatgpt");
+          setNewSessionReasoningEffort(newSessionDefaults.reasoning_effort || "high");
+          setNewSessionFast(String(newSessionDefaults.service_tier || "flex").toLowerCase() === "fast");
           newSessionTmuxToggle.checked = tmuxAvailable;
           newSessionWorktreeToggle.checked = false;
           newSessionWorktreeInput.value = "";
@@ -3674,9 +3800,11 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           renderRecentCwdMenu();
           renderNewSessionModelMenu();
+          renderNewSessionProviderMenu();
           renderNewSessionReasoningMenu();
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
@@ -3725,6 +3853,7 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           applyDialogMenus();
         };
@@ -3793,6 +3922,7 @@
           editDependencyMenuOpen = false;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -3804,6 +3934,7 @@
           newSessionCwdMenuOpen = true;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           scheduleNewSessionResumeLoad();
           applyDialogMenus();
         };
@@ -3824,6 +3955,7 @@
             editDependencyMenuOpen = false;
             newSessionModelMenuOpen = false;
             newSessionModelMenuFocus = -1;
+            newSessionProviderMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
             if (newSessionCwdMenuFocus < 0) newSessionCwdMenuFocus = delta > 0 ? 0 : items.length - 1;
@@ -3862,6 +3994,7 @@
           editDependencyMenuOpen = false;
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
@@ -3871,6 +4004,7 @@
           renderNewSessionModelMenu();
           newSessionModelMenuOpen = true;
           newSessionReasoningMenuOpen = false;
+          newSessionProviderMenuOpen = false;
           applyDialogMenus();
         };
         newSessionModelInput.onblur = () => {
@@ -3890,6 +4024,7 @@
             editDependencyMenuOpen = false;
             newSessionCwdMenuOpen = false;
             newSessionCwdMenuFocus = -1;
+            newSessionProviderMenuOpen = false;
             newSessionReasoningMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
@@ -3927,6 +4062,21 @@
           if (newSessionWorktreeToggle.checked) newSessionWorktreeInput.focus();
         };
         newSessionWorktreeInput.oninput = () => syncNewSessionWorktreeUi();
+        newSessionProviderBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          renderNewSessionProviderMenu();
+          newSessionProviderMenuOpen = !newSessionProviderMenuOpen;
+          editDependencyMenuOpen = false;
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          applyDialogMenus();
+        };
+        newSessionFastToggle.onchange = () => setNewSessionFast(newSessionFastToggle.checked);
         newSessionReasoningBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -3937,6 +4087,7 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -3949,6 +4100,7 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
+          const providerChoice = String(newSessionProvider || "chatgpt").trim() || "chatgpt";
           const model = String(newSessionModelInput.value || "").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
           const createInTmux = !!newSessionTmuxToggle.checked;
@@ -3959,7 +4111,7 @@
           }
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
           let cwdStartError = false;
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, model, newSessionReasoningEffort, createInTmux, (e) => {
+          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
             if (e && e.obj && e.obj.field === "cwd") {
               cwdStartError = true;
               newSessionStatus.textContent = "";
@@ -5048,6 +5200,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             newSessionModelMenuFocus = -1;
             applyDialogMenus();
           }
+          if (newSessionProviderMenuOpen && !t.closest("#newSessionProviderField") && !t.closest("#newSessionProviderMenu")) {
+            newSessionProviderMenuOpen = false;
+            applyDialogMenus();
+          }
           if (newSessionReasoningMenuOpen && !t.closest("#newSessionReasoningBtn") && !t.closest("#newSessionReasoningMenu")) {
             newSessionReasoningMenuOpen = false;
             applyDialogMenus();
@@ -5271,9 +5427,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
 	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
 	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
-	            addRow("Provider", d && d.model_provider ? d.model_provider : "-");
+	            addRow("Provider", d && d.provider_choice ? d.provider_choice : d && d.model_provider ? d.model_provider : "-");
 	            addRow("Model", d && d.model ? d.model : "-");
 	            addRow("Reasoning", d && d.reasoning_effort ? d.reasoning_effort : "-");
+	            addRow("Service tier", d && d.service_tier ? d.service_tier : "-");
 	            addRow("Priority", d && typeof d.final_priority === "number" ? Number(d.final_priority).toFixed(4) : "-");
 	            addRow("Priority offset", d && typeof d.priority_offset === "number" ? formatPriorityOffset(d.priority_offset) : "-");
 	            addRow("Snooze", d && typeof d.snooze_until === "number" ? fmtTs(d.snooze_until) : "-");
@@ -5358,7 +5515,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", model = "default", reasoningEffort = "high", createInTmux = false, errorHandler = null) {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
@@ -5366,14 +5523,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
             const alias = String(sessionName || "").trim();
+            const providerName = String(providerChoice || "").trim() || "chatgpt";
+            const providerSettings = providerChoiceToSettings(providerName);
             const modelName = String(model || "").trim();
             const effortName = String(reasoningEffort || "").trim().toLowerCase();
             setToast(modeLabel);
             const body = { cwd: String(cwd) };
             if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
             if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
+            body.model_provider = providerSettings.model_provider;
+            body.preferred_auth_method = providerSettings.preferred_auth_method;
             if (modelName) body.model = modelName;
             if (effortName) body.reasoning_effort = effortName;
+            body.service_tier = fast ? "fast" : "flex";
             if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;

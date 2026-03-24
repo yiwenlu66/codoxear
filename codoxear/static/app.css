@@ -431,12 +431,32 @@
         border-color: rgba(185, 28, 28, 0.25);
       }
       .titleLine {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
         font-weight: 650;
         font-size: 14px;
         overflow: hidden;
+        max-width: 220px;
+      }
+      .titleText {
+        overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
-        max-width: 220px;
+      }
+      .sessionFastIcon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgba(17, 24, 39, 0.62);
+        flex: 0 0 auto;
+        opacity: 0.9;
+      }
+      .sessionFastIcon .icon {
+        width: 11px;
+        height: 11px;
+        stroke-width: 1.7;
       }
       .subLine {
         margin-top: 3px;
@@ -1409,8 +1429,12 @@ select {
         gap: 10px;
       }
       .newSessionRunConfigRow {
-        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
         align-items: start;
+      }
+      .newSessionOptionsRow {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
       }
       .formGrid.twoCol {
         grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
@@ -1440,6 +1464,20 @@ select {
         width: 16px;
         height: 16px;
         margin: 0;
+      }
+      .compactToggleField {
+        justify-content: flex-end;
+      }
+      .compactToggleField .checkField {
+        min-height: 40px;
+        padding: 0 4px;
+      }
+      .newSessionOptionsRow #newSessionTmuxField {
+        justify-content: flex-end;
+      }
+      .newSessionOptionsRow #newSessionTmuxField .checkField {
+        min-height: 40px;
+        padding: 0 4px;
       }
       .pickerField {
         position: relative;
@@ -1504,6 +1542,12 @@ select {
       @media (max-width: 700px) {
         .newSessionRunConfigRow {
           grid-template-columns: minmax(0, 1fr);
+        }
+        .newSessionOptionsRow {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .newSessionOptionsRow #newSessionTmuxField {
+          justify-content: flex-start;
         }
       }
       @media (min-width: 881px) {

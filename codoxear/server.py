@@ -1397,26 +1397,102 @@ def _read_run_settings_from_log(log_path: Path) -> tuple[str | None, str | None,
     return model_provider, model, reasoning_effort
 
 
-def _read_codex_launch_defaults() -> dict[str, str | None]:
+def _normalize_requested_model_provider(value: Any, *, allowed: set[str] | None = None) -> str | None:
+    provider = _clean_optional_text(value)
+    if provider is None:
+        return None
+    if allowed is not None and provider not in allowed:
+        allowed_txt = ", ".join(sorted(allowed))
+        raise ValueError(f"model_provider must be one of {allowed_txt}")
+    return provider
+
+
+def _normalize_requested_service_tier(value: Any) -> str | None:
+    tier = _clean_optional_text(value)
+    if tier is None:
+        return None
+    if tier not in {"fast", "flex"}:
+        raise ValueError("service_tier must be one of fast, flex")
+    return tier
+
+
+def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
+    method = _clean_optional_text(value)
+    if method is None:
+        return None
+    if method not in {"chatgpt", "apikey"}:
+        raise ValueError("preferred_auth_method must be one of chatgpt, apikey")
+    return method
+
+
+def _configured_model_providers(data: dict[str, Any]) -> list[str]:
+    providers = ["openai"]
+    seen = {"openai"}
+    raw = data.get("model_providers")
+    if not isinstance(raw, dict):
+        return providers
+    for key in raw.keys():
+        if not isinstance(key, str):
+            continue
+        name = key.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        providers.append(name)
+    return providers
+
+
+def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
+    provider = model_provider or "openai"
+    if provider == "openai":
+        return "chatgpt" if preferred_auth_method == "chatgpt" else "openai-api"
+    return provider
+
+
+def _read_codex_launch_defaults() -> dict[str, Any]:
     configured_model = None
     configured_effort = None
+    configured_provider = "openai"
+    configured_auth_method = "apikey"
+    configured_service_tier = "flex"
+    configured_providers = ["chatgpt", "openai-api"]
     if CODEX_CONFIG_PATH.exists():
         data = tomllib.loads(CODEX_CONFIG_PATH.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError(f"invalid Codex config in {CODEX_CONFIG_PATH}")
         configured_model = _clean_optional_text(data.get("model"))
         configured_effort = _display_reasoning_effort(data.get("model_reasoning_effort"))
+        configured_auth_method = _normalize_requested_preferred_auth_method(data.get("preferred_auth_method")) or configured_auth_method
+        configured_providers = ["chatgpt", "openai-api", *[p for p in _configured_model_providers(data) if p != "openai"]]
+        configured_provider = _normalize_requested_model_provider(
+            data.get("model_provider") or data.get("model_provider_id"),
+            allowed=set(["openai", *[p for p in configured_providers if p not in {"chatgpt", "openai-api"}]]),
+        ) or configured_provider
+        configured_service_tier = _normalize_requested_service_tier(
+            data.get("service_tier"),
+        ) or configured_service_tier
+    defaults: dict[str, Any] = {
+        "model_provider": configured_provider,
+        "preferred_auth_method": configured_auth_method,
+        "provider_choice": _provider_choice_for_settings(model_provider=configured_provider, preferred_auth_method=configured_auth_method),
+        "model": configured_model,
+        "model_providers": configured_providers,
+        "service_tier": configured_service_tier,
+    }
     if configured_effort is not None:
-        return {"reasoning_effort": configured_effort}
+        defaults["reasoning_effort"] = configured_effort
+        return defaults
     if not MODELS_CACHE_PATH.exists():
-        return {"reasoning_effort": None}
+        defaults["reasoning_effort"] = None
+        return defaults
     cache = json.loads(MODELS_CACHE_PATH.read_text(encoding="utf-8"))
     models = cache.get("models") if isinstance(cache, dict) else None
     if not isinstance(models, list):
         raise ValueError(f"invalid models cache in {MODELS_CACHE_PATH}")
     rows: list[dict[str, Any]] = [row for row in models if isinstance(row, dict)]
     if not rows:
-        return {"reasoning_effort": None}
+        defaults["reasoning_effort"] = None
+        return defaults
     if configured_model is not None:
         for row in rows:
             names = {
@@ -1424,7 +1500,8 @@ def _read_codex_launch_defaults() -> dict[str, str | None]:
                 _clean_optional_text(row.get("display_name")),
             }
             if configured_model in names:
-                return {"reasoning_effort": _display_reasoning_effort(row.get("default_reasoning_level"))}
+                defaults["reasoning_effort"] = _display_reasoning_effort(row.get("default_reasoning_level"))
+                return defaults
     ranked = sorted(
         rows,
         key=lambda row: (
@@ -1432,7 +1509,8 @@ def _read_codex_launch_defaults() -> dict[str, str | None]:
             _clean_optional_text(row.get("slug")) or "",
         ),
     )
-    return {"reasoning_effort": _display_reasoning_effort(ranked[0].get("default_reasoning_level"))}
+    defaults["reasoning_effort"] = _display_reasoning_effort(ranked[0].get("default_reasoning_level"))
+    return defaults
 
 
 def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
@@ -1667,8 +1745,10 @@ class Session:
     idle_cache_value: bool | None = None
     queue_idle_since: float | None = None
     model_provider: str | None = None
+    preferred_auth_method: str | None = None
     model: str | None = None
     reasoning_effort: str | None = None
+    service_tier: str | None = None
     transport: str | None = None
     tmux_session: str | None = None
     tmux_window: str | None = None
@@ -1720,11 +1800,14 @@ class SessionManager:
         s.idle_cache_value = None
         s.queue_idle_since = None
         s.model_provider = None
+        s.preferred_auth_method = None
         s.model = None
         s.reasoning_effort = None
+        s.service_tier = None
 
-    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None) -> tuple[str | None, str | None, str | None]:
+    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None) -> tuple[str | None, str | None, str | None, str | None]:
         model_provider = _clean_optional_text(meta.get("model_provider"))
+        preferred_auth_method = _normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
         model = _clean_optional_text(meta.get("model"))
         reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
         if log_path is not None and log_path.exists():
@@ -1735,7 +1818,7 @@ class SessionManager:
                 model = log_model
             if log_effort is not None:
                 reasoning_effort = log_effort
-        return model_provider, model, reasoning_effort
+        return model_provider, preferred_auth_method, model, reasoning_effort
 
     def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
         transport = _clean_optional_text(meta.get("transport"))
@@ -2645,7 +2728,8 @@ class SessionManager:
             if not isinstance(start_ts_raw, (int, float)):
                 raise ValueError(f"invalid start_ts in metadata for socket {sock}")
             start_ts = float(start_ts_raw)
-            model_provider, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
+            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
+            service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
 
             # Validate socket is responsive.
             try:
@@ -2685,8 +2769,10 @@ class SessionManager:
                 meta_system=0,
                 meta_log_off=meta_log_off,
                 model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
                 model=model,
                 reasoning_effort=reasoning_effort,
+                service_tier=service_tier,
                 tmux_session=tmux_session,
                 tmux_window=tmux_window,
             )
@@ -2695,8 +2781,10 @@ class SessionManager:
                 if not prev:
                     self._reset_log_caches(s, meta_log_off=meta_log_off)
                     s.model_provider = model_provider
+                    s.preferred_auth_method = preferred_auth_method
                     s.model = model
                     s.reasoning_effort = reasoning_effort
+                    s.service_tier = service_tier
                     self._sessions[session_id] = s
                 else:
                     prev.sock_path = s.sock_path
@@ -2714,8 +2802,10 @@ class SessionManager:
                         prev.log_path = s.log_path
                         self._reset_log_caches(prev, meta_log_off=meta_log_off)
                     prev.model_provider = model_provider
+                    prev.preferred_auth_method = preferred_auth_method
                     prev.model = model
                     prev.reasoning_effort = reasoning_effort
+                    prev.service_tier = service_tier
                     prev.tmux_session = tmux_session
                     prev.tmux_window = tmux_window
         if recent_cwd_dirty:
@@ -2939,8 +3029,14 @@ class SessionManager:
                         "files": list(files),
                         "git_branch": git_branch,
                         "model_provider": s.model_provider,
+                        "preferred_auth_method": s.preferred_auth_method,
+                        "provider_choice": _provider_choice_for_settings(
+                            model_provider=s.model_provider,
+                            preferred_auth_method=s.preferred_auth_method,
+                        ),
                         "model": s.model,
                         "reasoning_effort": s.reasoning_effort,
+                        "service_tier": s.service_tier,
                         "tmux_session": s.tmux_session,
                         "tmux_window": s.tmux_window,
                         "priority_offset": priority_offset,
@@ -3027,7 +3123,8 @@ class SessionManager:
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
         cwd = cwd_raw
-        model_provider, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
+        model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
+        service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
 
         with self._lock:
             s2 = self._sessions.get(session_id)
@@ -3045,8 +3142,10 @@ class SessionManager:
                     log_off = 0
                 self._reset_log_caches(s2, meta_log_off=log_off)
             s2.model_provider = model_provider
+            s2.preferred_auth_method = preferred_auth_method
             s2.model = model
             s2.reasoning_effort = reasoning_effort
+            s2.service_tier = service_tier
             s2.tmux_session = tmux_session
             s2.tmux_window = tmux_window
         if self._queue_len(session_id) > 0:
@@ -3393,8 +3492,11 @@ class SessionManager:
         args: list[str] | None = None,
         resume_session_id: str | None = None,
         worktree_branch: str | None = None,
+        model_provider: str | None = None,
+        preferred_auth_method: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        service_tier: str | None = None,
         create_in_tmux: bool = False,
     ) -> dict[str, Any]:
         cwd_path = _resolve_dir_target(cwd, field_name="cwd")
@@ -3424,6 +3526,12 @@ class SessionManager:
             codex_args.extend(["--model", model])
         if reasoning_effort is not None:
             codex_args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+        if model_provider is not None:
+            codex_args.extend(["-c", f'model_provider="{model_provider}"'])
+        if preferred_auth_method is not None:
+            codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+        if service_tier is not None:
+            codex_args.extend(["-c", f'service_tier="{service_tier}"'])
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
@@ -3445,16 +3553,25 @@ class SessionManager:
                 env.setdefault(k, v)
         env["CODEX_WEB_OWNER"] = "web"
         env.setdefault("CODEX_HOME", str(CODEX_HOME))
+        env.pop("CODEX_WEB_MODEL_PROVIDER", None)
+        env.pop("CODEX_WEB_PREFERRED_AUTH_METHOD", None)
         env.pop("CODEX_WEB_MODEL", None)
         env.pop("CODEX_WEB_REASONING_EFFORT", None)
+        env.pop("CODEX_WEB_SERVICE_TIER", None)
         env.pop("CODEX_WEB_TRANSPORT", None)
         env.pop("CODEX_WEB_TMUX_SESSION", None)
         env.pop("CODEX_WEB_TMUX_WINDOW", None)
         env.pop("CODEX_WEB_SPAWN_NONCE", None)
+        if model_provider is not None:
+            env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
+        if preferred_auth_method is not None:
+            env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
         if model is not None:
             env["CODEX_WEB_MODEL"] = model
         if reasoning_effort is not None:
             env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+        if service_tier is not None:
+            env["CODEX_WEB_SERVICE_TIER"] = service_tier
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
@@ -3473,10 +3590,16 @@ class SessionManager:
                 "CODEX_WEB_TMUX_WINDOW": tmux_window,
                 "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
             }
+            if model_provider is not None:
+                inline_env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
+            if preferred_auth_method is not None:
+                inline_env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
             if model is not None:
                 inline_env["CODEX_WEB_MODEL"] = model
             if reasoning_effort is not None:
                 inline_env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
+            if service_tier is not None:
+                inline_env["CODEX_WEB_SERVICE_TIER"] = service_tier
             codex_bin = _clean_optional_text(os.environ.get("CODEX_BIN"))
             if codex_bin is not None:
                 inline_env["CODEX_BIN"] = codex_bin
@@ -3825,8 +3948,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if isinstance(st_token, dict) or st_token is None:
                     token_val = st_token
                 model_provider = s.model_provider
+                preferred_auth_method = s.preferred_auth_method
                 model = s.model
                 reasoning_effort = s.reasoning_effort
+                service_tier = s.service_tier
                 if (model_provider is None or model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
                     log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path)
                     if model_provider is None:
@@ -3865,8 +3990,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "queue_len": MANAGER._queue_len(session_id),
                         "token": token_val,
                         "model_provider": model_provider,
+                        "preferred_auth_method": preferred_auth_method,
+                        "provider_choice": _provider_choice_for_settings(
+                            model_provider=model_provider,
+                            preferred_auth_method=preferred_auth_method,
+                        ),
                         "model": model,
                         "reasoning_effort": reasoning_effort,
+                        "service_tier": service_tier,
                         "tmux_session": s.tmux_session,
                         "tmux_window": s.tmux_window,
                         "git_branch": git_branch,
@@ -4618,12 +4749,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "cwd required", "field": "cwd"})
                     return
                 try:
+                    allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
+                    model_provider = _normalize_requested_model_provider(
+                        obj.get("model_provider"),
+                        allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+                    )
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
+                    preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
                     model = _normalize_requested_model(obj.get("model"))
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
                 try:
                     reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
+                    service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
@@ -4665,8 +4815,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         args=args_list,
                         resume_session_id=resume_session_id,
                         worktree_branch=worktree_branch,
+                        model_provider=model_provider,
+                        preferred_auth_method=preferred_auth_method,
                         model=model,
                         reasoning_effort=reasoning_effort,
+                        service_tier=service_tier,
                         create_in_tmux=create_in_tmux,
                     )
                 except ValueError as e:

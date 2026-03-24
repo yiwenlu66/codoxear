@@ -247,8 +247,11 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             result = SessionManager.spawn_web_session(
                 manager,
                 cwd=td,
+                model_provider="bytecat",
+                preferred_auth_method="apikey",
                 model="gpt-5.4",
                 reasoning_effort="xhigh",
+                service_tier="fast",
             )
 
         argv = popen_mock.call_args.args[0]
@@ -270,10 +273,19 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "gpt-5.4",
                 "-c",
                 'model_reasoning_effort="xhigh"',
+                "-c",
+                'model_provider="bytecat"',
+                "-c",
+                'preferred_auth_method="apikey"',
+                "-c",
+                'service_tier="fast"',
             ],
         )
+        self.assertEqual(env["CODEX_WEB_MODEL_PROVIDER"], "bytecat")
+        self.assertEqual(env["CODEX_WEB_PREFERRED_AUTH_METHOD"], "apikey")
         self.assertEqual(env["CODEX_WEB_MODEL"], "gpt-5.4")
         self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "xhigh")
+        self.assertEqual(env["CODEX_WEB_SERVICE_TIER"], "fast")
         self.assertEqual(result, {"broker_pid": 6543})
         self.assertEqual(thread_calls, ["start"])
 
@@ -289,7 +301,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 subprocess.CompletedProcess(["/usr/bin/tmux", "new-session"], 0, stdout="%8\n", stderr=""),
             ],
         ) as run_mock:
-            result = SessionManager.spawn_web_session(manager, cwd=td, model="gpt-5.4", create_in_tmux=True)
+            result = SessionManager.spawn_web_session(manager, cwd=td, model_provider="crs", preferred_auth_method="apikey", model="gpt-5.4", service_tier="fast", create_in_tmux=True)
 
         self.assertEqual(result, {"broker_pid": 7777, "tmux_session": "codoxear", "tmux_window": ANY})
         tmux_argv = run_mock.call_args_list[1].args[0]
@@ -298,7 +310,10 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_TRANSPORT=tmux", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
+        self.assertIn("CODEX_WEB_MODEL_PROVIDER=crs", shell_cmd)
+        self.assertIn("CODEX_WEB_PREFERRED_AUTH_METHOD=apikey", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)
+        self.assertIn("CODEX_WEB_SERVICE_TIER=fast", shell_cmd)
         self.assertIn("codoxear.broker", shell_cmd)
         wait_mock.assert_called_once()
 
