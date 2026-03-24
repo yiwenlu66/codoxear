@@ -147,7 +147,8 @@ SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
-HARNESS_IDLE_SECONDS = int(os.environ.get("CODEX_WEB_HARNESS_IDLE_SECONDS", "300"))
+HARNESS_DEFAULT_IDLE_MINUTES = 5
+HARNESS_DEFAULT_MAX_INJECTIONS = 10
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
 QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
 QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
@@ -214,6 +215,28 @@ def _render_harness_prompt(request: str | None) -> str:
     if not r:
         return base + "\n"
     return base + "\n\n---\n\nAdditional request from user: " + r + "\n"
+
+
+def _clean_harness_cooldown_minutes(raw: Any) -> int:
+    if raw is None:
+        return HARNESS_DEFAULT_IDLE_MINUTES
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError("harness cooldown_minutes must be an integer")
+    if raw < 1:
+        raise ValueError("harness cooldown_minutes must be at least 1")
+    return raw
+
+
+def _clean_harness_remaining_injections(raw: Any, *, allow_zero: bool) -> int:
+    if raw is None:
+        return HARNESS_DEFAULT_MAX_INJECTIONS
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError("harness remaining_injections must be an integer")
+    minimum = 0 if allow_zero else 1
+    if raw < minimum:
+        lower = "0" if allow_zero else "1"
+        raise ValueError(f"harness remaining_injections must be at least {lower}")
+    return raw
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _METRICS_LOCK = threading.Lock()
@@ -1861,7 +1884,14 @@ class SessionManager:
                 request = ""
             if not isinstance(request, str):
                 raise ValueError(f"invalid harness request for session {sid!r}")
-            cleaned[sid] = {"enabled": enabled, "request": request}
+            cooldown_minutes = _clean_harness_cooldown_minutes(v.get("cooldown_minutes"))
+            remaining_injections = _clean_harness_remaining_injections(v.get("remaining_injections"), allow_zero=True)
+            cleaned[sid] = {
+                "enabled": enabled,
+                "request": request,
+                "cooldown_minutes": cooldown_minutes,
+                "remaining_injections": remaining_injections,
+            }
         with self._lock:
             self._harness = cleaned
 
@@ -2468,9 +2498,24 @@ class SessionManager:
         request = cfg.get("request")
         if not isinstance(request, str):
             request = ""
-        return {"enabled": enabled, "request": request}
+        cooldown_minutes = _clean_harness_cooldown_minutes(cfg.get("cooldown_minutes"))
+        remaining_injections = _clean_harness_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
+        return {
+            "enabled": enabled,
+            "request": request,
+            "cooldown_minutes": cooldown_minutes,
+            "remaining_injections": remaining_injections,
+        }
 
-    def harness_set(self, session_id: str, *, enabled: bool | None = None, request: str | None = None) -> dict[str, Any]:
+    def harness_set(
+        self,
+        session_id: str,
+        *,
+        enabled: bool | None = None,
+        request: str | None = None,
+        cooldown_minutes: int | None = None,
+        remaining_injections: int | None = None,
+    ) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -2481,6 +2526,12 @@ class SessionManager:
                 cur["enabled"] = bool(enabled)
             if request is not None:
                 cur["request"] = str(request)
+            if cooldown_minutes is not None:
+                cur["cooldown_minutes"] = _clean_harness_cooldown_minutes(cooldown_minutes)
+            if remaining_injections is not None:
+                cur["remaining_injections"] = _clean_harness_remaining_injections(remaining_injections, allow_zero=True)
+            cur["cooldown_minutes"] = _clean_harness_cooldown_minutes(cur.get("cooldown_minutes"))
+            cur["remaining_injections"] = _clean_harness_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
             self._harness[session_id] = cur
             if enabled is not None and bool(enabled) is False:
                 self._harness_last_injected.pop(session_id, None)
@@ -2515,6 +2566,19 @@ class SessionManager:
             if not bool(cfg.get("enabled")):
                 continue
             try:
+                cooldown_minutes = _clean_harness_cooldown_minutes(cfg.get("cooldown_minutes"))
+                cooldown_seconds = float(cooldown_minutes * 60)
+                remaining_injections = _clean_harness_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
+                if remaining_injections <= 0:
+                    with self._lock:
+                        cur0 = self._harness.get(sid)
+                        cur = dict(cur0) if isinstance(cur0, dict) else {}
+                        cur["enabled"] = False
+                        cur["remaining_injections"] = 0
+                        self._harness[sid] = cur
+                        self._harness_last_injected.pop(sid, None)
+                    self._save_harness()
+                    continue
                 request = cfg.get("request")
                 if not isinstance(request, str):
                     request = ""
@@ -2525,7 +2589,7 @@ class SessionManager:
                 scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
                 with self._lock:
                     scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
-                if (last_inj and (now - last_inj) < float(HARNESS_IDLE_SECONDS)) or (scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS)):
+                if (last_inj and (now - last_inj) < cooldown_seconds) or (scope_last and (now - scope_last) < cooldown_seconds):
                     continue
                 st = self.get_state(sid)
                 if not isinstance(st, dict):
@@ -2542,16 +2606,25 @@ class SessionManager:
                 role, ts = last
                 if role != "assistant":
                     continue
-                if (now - float(ts)) < float(HARNESS_IDLE_SECONDS):
+                if (now - float(ts)) < cooldown_seconds:
                     continue
                 with self._lock:
                     scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
-                if scope_last and (now - scope_last) < float(HARNESS_IDLE_SECONDS):
+                if scope_last and (now - scope_last) < cooldown_seconds:
                     continue
                 self.send(sid, prompt)
                 with self._lock:
                     self._harness_last_injected[sid] = now
                     self._harness_last_injected_scope[scope_key] = now
+                    cur0 = self._harness.get(sid)
+                    cur = dict(cur0) if isinstance(cur0, dict) else {}
+                    next_remaining = max(0, remaining_injections - 1)
+                    cur["remaining_injections"] = next_remaining
+                    if next_remaining <= 0:
+                        cur["enabled"] = False
+                        self._harness_last_injected.pop(sid, None)
+                    self._harness[sid] = cur
+                self._save_harness()
             except Exception as e:
                 sys.stderr.write(f"error: harness session {sid} skipped: {type(e).__name__}: {e}\n")
                 traceback.print_exc(file=sys.stderr)
@@ -2925,6 +2998,12 @@ class SessionManager:
             for s in self._sessions.values():
                 cfg0 = self._harness.get(s.session_id)
                 h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
+                h_cooldown_minutes = _clean_harness_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else HARNESS_DEFAULT_IDLE_MINUTES
+                h_remaining_injections = (
+                    _clean_harness_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
+                    if isinstance(cfg0, dict)
+                    else HARNESS_DEFAULT_MAX_INJECTIONS
+                )
                 alias = self._aliases.get(s.session_id)
                 if not isinstance(alias, str):
                     alias = ""
@@ -3025,6 +3104,8 @@ class SessionManager:
                         "tools": int(s.meta_tools),
                         "system": int(s.meta_system),
                         "harness_enabled": h_enabled,
+                        "harness_cooldown_minutes": h_cooldown_minutes,
+                        "harness_remaining_injections": h_remaining_injections,
                         "alias": alias,
                         "files": list(files),
                         "git_branch": git_branch,
@@ -5153,6 +5234,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     raise ValueError("invalid json body (expected object)")
                 enabled_raw = obj.get("enabled", None)
                 request_raw = obj.get("request", None)
+                cooldown_minutes_raw = obj.get("cooldown_minutes", None)
+                remaining_injections_raw = obj.get("remaining_injections", None)
                 if "text" in obj:
                     _json_response(self, 400, {"error": "unknown field: text (use request)"})
                     return
@@ -5170,8 +5253,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     request = request_raw
                 else:
                     request = None
+                cooldown_minutes: int | None
+                if cooldown_minutes_raw is not None:
+                    try:
+                        cooldown_minutes = _clean_harness_cooldown_minutes(cooldown_minutes_raw)
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                else:
+                    cooldown_minutes = None
+                remaining_injections: int | None
+                if remaining_injections_raw is not None:
+                    try:
+                        remaining_injections = _clean_harness_remaining_injections(remaining_injections_raw, allow_zero=True)
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                else:
+                    remaining_injections = None
 
-                cfg = MANAGER.harness_set(session_id, enabled=enabled, request=request)
+                cfg = MANAGER.harness_set(
+                    session_id,
+                    enabled=enabled,
+                    request=request,
+                    cooldown_minutes=cooldown_minutes,
+                    remaining_injections=remaining_injections,
+                )
                 _json_response(self, 200, {"ok": True, **cfg})
                 return
 

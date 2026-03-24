@@ -1106,7 +1106,7 @@
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
               let harnessMenuOpen = false;
-              let harnessCfg = { enabled: false, request: "" };
+              let harnessCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
               let harnessSaveTimer = null;
               let editSessionId = null;
 
@@ -1170,6 +1170,16 @@
             el("label", {}, [
               el("input", { type: "checkbox", id: "harnessEnabled" }),
               el("span", { text: "Harness mode" }),
+			            ]),
+			          ]),
+			          el("div", { class: "harnessGrid" }, [
+			            el("div", {}, [
+			              el("div", { class: "label", text: "Cooldown time (minutes)" }),
+			              el("input", { id: "harnessCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Harness cooldown time in minutes" }),
+			            ]),
+			            el("div", {}, [
+			              el("div", { class: "label", text: "Number of injections" }),
+			              el("input", { id: "harnessRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Harness remaining injections" }),
 			            ]),
 			          ]),
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
@@ -1364,6 +1374,13 @@
   <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
+</ul>
+<div class="muted">Harness</div>
+<ul class="md">
+  <li>Harness is a per-session idle nudge. Open the Harness button in the top bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
+  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next harness prompt is injected.</li>
+  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each harness prompt decrements it, and harness turns itself off when it reaches zero.</li>
+  <li>Harness runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show a <b>harness</b> badge in the sidebar.</li>
 </ul>
 <div class="muted">Files</div>
 <ul class="md">
@@ -3104,6 +3121,20 @@
           const on = Boolean(s && s.harness_enabled);
           harnessBtn.disabled = !selected;
           harnessBtn.classList.toggle("active", Boolean(selected && on));
+          if (selected && s && Number.isInteger(s.harness_cooldown_minutes) && s.harness_cooldown_minutes >= 1) {
+            harnessCfg.cooldown_minutes = s.harness_cooldown_minutes;
+          }
+          if (selected && s && Number.isInteger(s.harness_remaining_injections) && s.harness_remaining_injections >= 0) {
+            harnessCfg.remaining_injections = s.harness_remaining_injections;
+          }
+          if (harnessMenuOpen) {
+            const cooldownEl = $("#harnessCooldownMinutes");
+            const remainingEl = $("#harnessRemainingInjections");
+            const enabledEl = $("#harnessEnabled");
+            if (cooldownEl) cooldownEl.value = String(harnessCfg.cooldown_minutes);
+            if (remainingEl) remainingEl.value = String(harnessCfg.remaining_injections);
+            if (enabledEl) enabledEl.checked = Boolean(selected && on);
+          }
           fileBtn.disabled = !selected;
           diagBtn.disabled = !selected;
         }
@@ -3115,10 +3146,21 @@
               if (!d || typeof d !== "object") throw new Error("invalid harness response");
               if (typeof d.enabled !== "boolean") throw new Error("invalid harness.enabled");
               if (typeof d.request !== "string") throw new Error("invalid harness.request");
-              harnessCfg = { enabled: d.enabled, request: d.request };
+              if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
+              if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
+              harnessCfg = {
+                enabled: d.enabled,
+                request: d.request,
+                cooldown_minutes: d.cooldown_minutes,
+                remaining_injections: d.remaining_injections,
+              };
              const enabledEl = $("#harnessEnabled");
+             const cooldownEl = $("#harnessCooldownMinutes");
+             const remainingEl = $("#harnessRemainingInjections");
              const requestEl = $("#harnessRequest");
              if (enabledEl) enabledEl.checked = harnessCfg.enabled;
+             if (cooldownEl) cooldownEl.value = String(harnessCfg.cooldown_minutes);
+             if (remainingEl) remainingEl.value = String(harnessCfg.remaining_injections);
              if (requestEl) requestEl.value = harnessCfg.request;
            }
 			        function scheduleHarnessSave() {
@@ -3128,7 +3170,15 @@
 			          harnessSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
                try {
-                 await api(`/api/sessions/${sid}/harness`, { method: "POST", body: { enabled: harnessCfg.enabled, request: harnessCfg.request } });
+                 await api(`/api/sessions/${sid}/harness`, {
+                   method: "POST",
+                   body: {
+                     enabled: harnessCfg.enabled,
+                     request: harnessCfg.request,
+                     cooldown_minutes: harnessCfg.cooldown_minutes,
+                     remaining_injections: harnessCfg.remaining_injections,
+                   },
+                 });
                  await refreshSessions();
                } catch (e) {
                  console.error("save harness failed", e);
@@ -3187,6 +3237,8 @@
 			        document.addEventListener("click", onDocClick);
 			        window.addEventListener("resize", onResize);
 			        const harnessEnabledEl = $("#harnessEnabled");
+			        const harnessCooldownEl = $("#harnessCooldownMinutes");
+			        const harnessRemainingEl = $("#harnessRemainingInjections");
 			        const harnessRequestEl = $("#harnessRequest");
 			        if (harnessEnabledEl)
 			          harnessEnabledEl.onchange = (e) => {
@@ -3197,6 +3249,28 @@
 			            updateHarnessBtnState();
 			            scheduleHarnessSave();
 			          };
+        if (harnessCooldownEl)
+          harnessCooldownEl.oninput = (e) => {
+            if (!selected) return;
+            const value = Number.parseInt(String(e.target.value ?? ""), 10);
+            if (!Number.isInteger(value) || value < 1) return;
+            harnessCfg.cooldown_minutes = value;
+            scheduleHarnessSave();
+          };
+        if (harnessRemainingEl)
+          harnessRemainingEl.oninput = (e) => {
+            if (!selected) return;
+            const value = Number.parseInt(String(e.target.value ?? ""), 10);
+            if (!Number.isInteger(value) || value < 0) return;
+            harnessCfg.remaining_injections = value;
+            const s = sessionIndex.get(selected);
+            if (s) {
+              s.harness_remaining_injections = value;
+              if (value <= 0) s.harness_enabled = false;
+            }
+            updateHarnessBtnState();
+            scheduleHarnessSave();
+          };
         if (harnessRequestEl)
           harnessRequestEl.oninput = (e) => {
             if (!selected) return;
@@ -5535,7 +5609,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             body.preferred_auth_method = providerSettings.preferred_auth_method;
             if (modelName) body.model = modelName;
             if (effortName) body.reasoning_effort = effortName;
-            body.service_tier = fast ? "fast" : "flex";
+            if (fast) body.service_tier = "fast";
             if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;

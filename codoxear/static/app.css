@@ -1135,6 +1135,12 @@ select {
 	        color: var(--muted);
 	        margin: 6px 0 8px 0;
 	      }
+	      .harnessMenu .harnessGrid {
+	        display: grid;
+	        grid-template-columns: repeat(2, minmax(0, 1fr));
+	        gap: 12px;
+	        margin-bottom: 6px;
+	      }
 	      .harnessMenu label {
 	        display: inline-flex;
 	        align-items: center;
@@ -1145,6 +1151,17 @@ select {
 	        width: 16px;
 	        height: 16px;
 	      }
+      .harnessMenu input[type="number"] {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid var(--border);
+        background: #ffffff;
+        color: var(--text);
+        padding: 10px 12px;
+        font-family: inherit;
+        font-size: 14px;
+        border-radius: 14px;
+      }
       .harnessMenu textarea {
         min-height: 160px;
         height: 160px;
@@ -1153,7 +1170,6 @@ select {
         border-radius: 14px;
         resize: vertical;
       }
-
       .modalBackdrop {
         display: none;
         position: fixed;
@@ -1541,13 +1557,34 @@ select {
       }
       @media (max-width: 700px) {
         .newSessionRunConfigRow {
-          grid-template-columns: minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
         }
         .newSessionOptionsRow {
-          grid-template-columns: minmax(0, 1fr);
+          grid-template-columns: minmax(0, 1fr) auto;
         }
         .newSessionOptionsRow #newSessionTmuxField {
           justify-content: flex-start;
+        }
+        .newSessionRunConfigRow .fieldLabel,
+        .newSessionOptionsRow .fieldLabel,
+        .harnessMenu .label {
+          font-size: 12px;
+        }
+        .newSessionRunConfigRow .checkField,
+        .newSessionOptionsRow .checkField {
+          font-size: 13px;
+        }
+        .newSessionRunConfigRow .dialogPickerBtn,
+        .newSessionOptionsRow .dialogPickerBtn,
+        .newSessionRunConfigRow input[type="text"],
+        .newSessionOptionsRow input[type="text"] {
+          min-height: 37px;
+          height: 37px;
+          font-size: 13px;
+        }
+        .newSessionRunConfigRow #newSessionFastField .checkField,
+        .newSessionOptionsRow #newSessionTmuxField .checkField {
+          min-height: 37px;
         }
       }
       @media (min-width: 881px) {
