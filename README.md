@@ -63,9 +63,9 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 6. (Optional) Enable Harness mode for a session:
 
-   - Click the Harness icon in the top bar, toggle it on, and edit the injected text.
+   - Click the Harness icon in the top bar, toggle it on, tune cooldown minutes and injection count, and edit the optional extra request.
    - Harness runs in the server process (not the browser tab), so it continues even if you close the web page.
-   - Settings are per session; enabled sessions show a `harness` badge in the sidebar.
+   - Settings are per session; each injection decrements the remaining count and harness turns itself off at zero. Enabled sessions show a `harness` badge in the sidebar.
 
 ## User stories
 
@@ -121,7 +121,6 @@ Set these in `.env` (or in the process environment):
 - `CODEX_BIN` (default `codex`)
 - `CODEX_WEB_COOKIE_TTL_SECONDS` (default `2592000`, 30 days)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
-- `CODEX_WEB_HARNESS_IDLE_SECONDS` (default `300`)
 - `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
