@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import codecs
 import fcntl
+import re
 import struct
 import termios
+
+
+_ESCAPE_ONLY_RE = re.compile(
+    r"(?:\\[\\'\"abfnrtv]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}|\\N\{[^}]+\}|\\[0-7]{1,3})+\Z"
+)
 
 
 def set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -25,9 +31,10 @@ def seq_bytes(raw: str) -> bytes:
         return b"\n"
     if t in ("CRLF",):
         return b"\r\n"
+    if not _ESCAPE_ONLY_RE.fullmatch(raw):
+        return raw.encode("utf-8")
     try:
-        decoded = codecs.decode(raw.encode("utf-8"), "unicode_escape")
-        return decoded.encode("utf-8")
+        decoded = codecs.decode(raw, "unicode_escape")
     except Exception:
-        return raw.encode("utf-8", errors="replace")
-
+        return raw.encode("utf-8")
+    return decoded.encode("utf-8")

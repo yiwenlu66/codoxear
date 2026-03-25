@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import codecs
 import json
 import os
 import pty
@@ -189,24 +188,8 @@ def _enter_seq_bytes() -> bytes:
 
 
 def _seq_bytes(raw: str) -> bytes:
-    t = raw.strip().upper()
-    if t in ("NONE", "EMPTY", "NOENTER", "NO_ENTER"):
-        return b""
-    if t in ("ESC", "ESCAPE"):
-        return b"\x1b"
-    if t in ("ENTER", "CR"):
-        return b"\r"
-    if t in ("LF",):
-        return b"\n"
-    if t in ("CRLF",):
-        return b"\r\n"
-    try:
-        # Accept escape-like strings from env vars, e.g. "\\r", "\\n", "\\x0d".
-        decoded = codecs.decode(raw.encode("utf-8"), "unicode_escape")
-        b = decoded.encode("utf-8")
-        return b if b else b"\r"
-    except Exception:
-        return b"\r"
+    b = _pty_util.seq_bytes(raw)
+    return b if b else b"\r"
 
 
 def _encode_enter() -> bytes:
