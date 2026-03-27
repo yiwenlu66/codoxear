@@ -1107,6 +1107,8 @@
                  let clickMetricPending = false;
               let harnessMenuOpen = false;
               let harnessCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
+              let harnessNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
+              let harnessNumberDirty = { cooldown_minutes: false, remaining_injections: false };
               let harnessSaveTimer = null;
               let editSessionId = null;
 
@@ -3116,23 +3118,75 @@
          }
 
 			        $("#refreshBtn").onclick = refreshSessions;
+        function parseHarnessDraftInt(name) {
+          const raw = String(harnessNumberDraft[name] ?? "").trim();
+          if (!raw) return null;
+          const minValue = name === "cooldown_minutes" ? 1 : 0;
+          const value = Number.parseInt(raw, 10);
+          if (!Number.isInteger(value) || value < minValue) return null;
+          return value;
+        }
+
+        function syncHarnessNumberDraftsFromCfg() {
+          if (!harnessNumberDirty.cooldown_minutes) harnessNumberDraft.cooldown_minutes = String(harnessCfg.cooldown_minutes);
+          if (!harnessNumberDirty.remaining_injections) harnessNumberDraft.remaining_injections = String(harnessCfg.remaining_injections);
+        }
+
+        function syncHarnessNumberInputs() {
+          const cooldownEl = $("#harnessCooldownMinutes");
+          const remainingEl = $("#harnessRemainingInjections");
+          if (cooldownEl) {
+            cooldownEl.value = harnessNumberDirty.cooldown_minutes
+              ? harnessNumberDraft.cooldown_minutes
+              : String(harnessCfg.cooldown_minutes);
+          }
+          if (remainingEl) {
+            remainingEl.value = harnessNumberDirty.remaining_injections
+              ? harnessNumberDraft.remaining_injections
+              : String(harnessCfg.remaining_injections);
+          }
+        }
+
+        function restoreHarnessNumberDraft(name) {
+          harnessNumberDirty[name] = false;
+          harnessNumberDraft[name] = String(harnessCfg[name]);
+          syncHarnessNumberInputs();
+        }
+
+        function finalizeHarnessNumberDraft(name) {
+          const value = parseHarnessDraftInt(name);
+          if (value === null || value !== harnessCfg[name]) return;
+          harnessNumberDirty[name] = false;
+          harnessNumberDraft[name] = String(harnessCfg[name]);
+        }
+
         function updateHarnessBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
           const on = Boolean(s && s.harness_enabled);
           harnessBtn.disabled = !selected;
           harnessBtn.classList.toggle("active", Boolean(selected && on));
-          if (selected && s && Number.isInteger(s.harness_cooldown_minutes) && s.harness_cooldown_minutes >= 1) {
+          if (
+            selected &&
+            s &&
+            !harnessNumberDirty.cooldown_minutes &&
+            Number.isInteger(s.harness_cooldown_minutes) &&
+            s.harness_cooldown_minutes >= 1
+          ) {
             harnessCfg.cooldown_minutes = s.harness_cooldown_minutes;
           }
-          if (selected && s && Number.isInteger(s.harness_remaining_injections) && s.harness_remaining_injections >= 0) {
+          if (
+            selected &&
+            s &&
+            !harnessNumberDirty.remaining_injections &&
+            Number.isInteger(s.harness_remaining_injections) &&
+            s.harness_remaining_injections >= 0
+          ) {
             harnessCfg.remaining_injections = s.harness_remaining_injections;
           }
+          syncHarnessNumberDraftsFromCfg();
           if (harnessMenuOpen) {
-            const cooldownEl = $("#harnessCooldownMinutes");
-            const remainingEl = $("#harnessRemainingInjections");
             const enabledEl = $("#harnessEnabled");
-            if (cooldownEl) cooldownEl.value = String(harnessCfg.cooldown_minutes);
-            if (remainingEl) remainingEl.value = String(harnessCfg.remaining_injections);
+            syncHarnessNumberInputs();
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
           fileBtn.disabled = !selected;
@@ -3154,13 +3208,13 @@
                 cooldown_minutes: d.cooldown_minutes,
                 remaining_injections: d.remaining_injections,
               };
+             harnessNumberDirty.cooldown_minutes = false;
+             harnessNumberDirty.remaining_injections = false;
+             syncHarnessNumberDraftsFromCfg();
              const enabledEl = $("#harnessEnabled");
-             const cooldownEl = $("#harnessCooldownMinutes");
-             const remainingEl = $("#harnessRemainingInjections");
              const requestEl = $("#harnessRequest");
              if (enabledEl) enabledEl.checked = harnessCfg.enabled;
-             if (cooldownEl) cooldownEl.value = String(harnessCfg.cooldown_minutes);
-             if (remainingEl) remainingEl.value = String(harnessCfg.remaining_injections);
+             syncHarnessNumberInputs();
              if (requestEl) requestEl.value = harnessCfg.request;
            }
 			        function scheduleHarnessSave() {
@@ -3170,7 +3224,7 @@
 			          harnessSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
                try {
-                 await api(`/api/sessions/${sid}/harness`, {
+                 const saved = await api(`/api/sessions/${sid}/harness`, {
                    method: "POST",
                    body: {
                      enabled: harnessCfg.enabled,
@@ -3179,6 +3233,20 @@
                      remaining_injections: harnessCfg.remaining_injections,
                    },
                  });
+                 if (!saved || typeof saved !== "object") throw new Error("invalid harness response");
+                 if (typeof saved.enabled !== "boolean") throw new Error("invalid harness.enabled");
+                 if (typeof saved.request !== "string") throw new Error("invalid harness.request");
+                 if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
+                 if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
+                 harnessCfg = {
+                   enabled: saved.enabled,
+                   request: saved.request,
+                   cooldown_minutes: saved.cooldown_minutes,
+                   remaining_injections: saved.remaining_injections,
+                 };
+                 finalizeHarnessNumberDraft("cooldown_minutes");
+                 finalizeHarnessNumberDraft("remaining_injections");
+                 syncHarnessNumberDraftsFromCfg();
                  await refreshSessions();
                } catch (e) {
                  console.error("save harness failed", e);
@@ -3252,16 +3320,25 @@
         if (harnessCooldownEl)
           harnessCooldownEl.oninput = (e) => {
             if (!selected) return;
-            const value = Number.parseInt(String(e.target.value ?? ""), 10);
-            if (!Number.isInteger(value) || value < 1) return;
+            harnessNumberDraft.cooldown_minutes = String(e.target.value ?? "");
+            harnessNumberDirty.cooldown_minutes = true;
+            const value = parseHarnessDraftInt("cooldown_minutes");
+            if (value === null) return;
             harnessCfg.cooldown_minutes = value;
             scheduleHarnessSave();
+          };
+        if (harnessCooldownEl)
+          harnessCooldownEl.onblur = () => {
+            if (parseHarnessDraftInt("cooldown_minutes") !== null) return;
+            restoreHarnessNumberDraft("cooldown_minutes");
           };
         if (harnessRemainingEl)
           harnessRemainingEl.oninput = (e) => {
             if (!selected) return;
-            const value = Number.parseInt(String(e.target.value ?? ""), 10);
-            if (!Number.isInteger(value) || value < 0) return;
+            harnessNumberDraft.remaining_injections = String(e.target.value ?? "");
+            harnessNumberDirty.remaining_injections = true;
+            const value = parseHarnessDraftInt("remaining_injections");
+            if (value === null) return;
             harnessCfg.remaining_injections = value;
             const s = sessionIndex.get(selected);
             if (s) {
@@ -3270,6 +3347,11 @@
             }
             updateHarnessBtnState();
             scheduleHarnessSave();
+          };
+        if (harnessRemainingEl)
+          harnessRemainingEl.onblur = () => {
+            if (parseHarnessDraftInt("remaining_injections") !== null) return;
+            restoreHarnessNumberDraft("remaining_injections");
           };
         if (harnessRequestEl)
           harnessRequestEl.oninput = (e) => {
