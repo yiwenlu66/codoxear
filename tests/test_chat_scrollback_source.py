@@ -22,7 +22,7 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_cached_session_selection_refreshes_init_page_state(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function selectSession(id) {")
-        end = source.index('$("#refreshBtn").onclick = refreshSessions;', start)
+        end = source.index("function updateHarnessBtnState() {", start)
         block = source[start:end]
         self.assertIn("await refreshInitPageState(sid, myGen);", block)
         self.assertIn("const data = await refreshInitPageState(sid, myGen, { rerender: true });", block)

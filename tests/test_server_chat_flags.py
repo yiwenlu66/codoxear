@@ -57,6 +57,23 @@ class TestServerChatFlags(unittest.TestCase):
         )
         self.assertEqual(meta["tool"], 2)
 
+    def test_assistant_message_carries_message_class(self) -> None:
+        events, _meta, _flags, _diag = _extract_chat_events(
+            [
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "phase": "final_answer",
+                        "content": [{"type": "output_text", "text": "done"}],
+                    },
+                }
+            ]
+        )
+        self.assertEqual(events[0]["message_class"], "final_response")
+        self.assertIsInstance(events[0]["message_id"], str)
+
 
 if __name__ == "__main__":
     unittest.main()

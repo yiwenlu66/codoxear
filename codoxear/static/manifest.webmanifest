@@ -1,0 +1,15 @@
+{
+  "name": "Codoxear",
+  "short_name": "Codoxear",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#e9eef5",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "static/codoxear-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

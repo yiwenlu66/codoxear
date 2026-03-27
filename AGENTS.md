@@ -47,6 +47,11 @@ This repo is a Linux-first companion UI for continuing Codex CLI TUI sessions on
 - Do not commit secrets: `.env`, `env`, keys, tokens, logs.
 - Do not commit runtime artifacts: `codex-homes/`, `socks/`, `root-repo/`, `server.log`, `hmac_secret`, `__pycache__/`.
 - Keep shared helpers in `codoxear/util.py` (avoid duplicating log-scan and app-dir logic across modules).
+- When a subsystem is semantically wrong, replace it instead of layering more patches onto the broken structure.
+- Prefer the smallest invariant-preserving model over incremental adaptation of an already confused implementation.
+- Do not let internal pipeline stages redefine user-facing semantics. Define the semantic invariant first, then make the implementation mechanically preserve it.
+- For queueing/streaming features, write down the exact replacement/commit boundary first (for example what counts as "queued", what counts as "playing", and what is still replaceable) before writing code.
+- If the user provides a simpler design that preserves the invariant more directly, prefer that design over a more elaborate agent-invented state machine.
 - Local dev:
   - Install: `python3 -m pip install -e .`
   - Run server: `codoxear-server` or `python3 -m codoxear.server`

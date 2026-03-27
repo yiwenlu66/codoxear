@@ -1170,6 +1170,29 @@ select {
         border-radius: 14px;
         resize: vertical;
       }
+      .voiceMenuRow {
+        margin-bottom: 8px;
+      }
+      .voiceMenuRow button {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .voiceToggleRow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .voiceStatusText {
+        margin: 4px 0 10px 0;
+        line-height: 1.4;
+      }
+      #announceBtn.active,
+      #notificationBtn.active {
+        background: rgba(29, 78, 216, 0.12);
+        border-color: rgba(29, 78, 216, 0.28);
+        color: var(--accent);
+      }
       .modalBackdrop {
         display: none;
         position: fixed;
@@ -1418,7 +1441,11 @@ select {
       .formDialog {
         border: 0;
         padding: 12px;
-        position: relative;
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        margin: 0;
         overflow: visible;
       }
       .formDialog[open] {

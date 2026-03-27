@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
 from typing import Any
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .voice_push import ClassifiedAssistantMessage
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
@@ -197,6 +199,11 @@ def _extract_chat_events(
                 return float(v)
         return None
 
+    def text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
+        ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
+        payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     for obj in objs:
         typ = obj.get("type")
         if typ == "event_msg":
@@ -252,7 +259,13 @@ def _extract_chat_events(
                             skip_next_assistant -= 1
                             continue
                         ets = event_ts(obj)
-                        ev2: dict[str, Any] = {"role": "assistant", "text": text}
+                        message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
+                        ev2: dict[str, Any] = {
+                            "role": "assistant",
+                            "text": text,
+                            "message_class": message_class,
+                            "message_id": text_message_id(message_class=message_class, text=text, ts=ets),
+                        }
                         if ets is not None:
                             ev2["ts"] = ets
                         events.append(ev2)
@@ -284,6 +297,60 @@ def _extract_chat_events(
         {"turn_start": turn_start, "turn_end": turn_end, "turn_aborted": turn_aborted},
         {"tool_names": sorted(tool_names), "last_tool": last_tool},
     )
+
+
+def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAssistantMessage]:
+    out: list[ClassifiedAssistantMessage] = []
+    seen: set[str] = set()
+
+    def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
+        ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
+        payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    for obj in objs:
+        if not isinstance(obj, dict):
+            continue
+        typ = obj.get("type")
+        message_class: str | None = None
+        text = ""
+        if typ == "event_msg":
+            payload = obj.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid event_msg payload")
+            if payload.get("type") != "agent_message":
+                continue
+            message = payload.get("message")
+            if not isinstance(message, str) or not message.strip():
+                continue
+            text = message
+            message_class = "final_response" if payload.get("phase") == "final_answer" else "narration"
+        elif typ == "response_item":
+            payload = obj.get("payload")
+            if not isinstance(payload, dict):
+                raise ValueError("invalid response_item payload")
+            if payload.get("type") != "message" or payload.get("role") != "assistant":
+                continue
+            content = payload.get("content")
+            if not isinstance(content, list):
+                raise ValueError("invalid assistant message content")
+            text_parts: list[str] = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                    text_parts.append(part["text"])
+            text = "".join(text_parts)
+            if not text.strip():
+                continue
+            message_class = "final_response" if (payload.get("phase") == "final_answer" or payload.get("end_turn") is True) else "narration"
+        else:
+            continue
+        ts = _event_ts(obj)
+        message_id = _text_message_id(message_class=message_class, text=text, ts=ts)
+        if message_id in seen:
+            continue
+        seen.add(message_id)
+        out.append(ClassifiedAssistantMessage(message_id=message_id, message_class=message_class, text=text, ts=ts))
+    return out
 
 
 def _read_chat_tail_snapshot(

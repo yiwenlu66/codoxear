@@ -1,5 +1,5 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260316.1";
+	      const UI_VERSION = "20260325.1";
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -229,6 +229,22 @@
             ? s.start_ts
             : 0;
         return ts ? `Session ${fmtTs(ts)}` : "Session";
+      }
+
+      function sessionIdFromHash() {
+        const raw = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+        const params = new URLSearchParams(raw);
+        const sid = params.get("session");
+        return sid && sid.trim() ? sid.trim() : "";
+      }
+
+      function setSessionHash(sessionId) {
+        const params = new URLSearchParams(window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "");
+        if (sessionId) params.set("session", sessionId);
+        else params.delete("session");
+        const next = params.toString();
+        const target = `${window.location.pathname}${window.location.search}${next ? `#${next}` : ""}`;
+        history.replaceState(null, "", target);
       }
 
       function sessionLaunchKind(s) {
@@ -915,6 +931,12 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
         if (name === "refresh")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v6h-6"/></svg>`;
+        if (name === "volume")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15 9a5 5 0 0 1 0 6"/><path d="M18.5 6.5a9 9 0 0 1 0 11"/></svg>`;
+        if (name === "bell")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17H5l2-2v-4a5 5 0 1 1 10 0v4l2 2h-4"/><path d="M10 17a2 2 0 0 0 4 0"/></svg>`;
+        if (name === "play")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
 	        if (name === "harness")
 	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
 	        if (name === "stop")
@@ -960,9 +982,11 @@
         if (name === "copy")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>`;
         if (name === "help")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/></svg>`;
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.35 9.25a2.85 2.85 0 1 1 5.3 1.4c-.55.88-1.46 1.34-2.15 1.83-.74.53-1.25 1.08-1.25 2.02"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
         if (name === "info")
-          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>`;
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 10.5v5"/><circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none"/></svg>`;
+        if (name === "settings")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.4 15a1 1 0 0 0 .2 1.1l.05.05a2 2 0 0 1-2.83 2.83l-.05-.05a1 1 0 0 0-1.1-.2 1 1 0 0 0-.6.91V20a2 2 0 1 1-4 0v-.08a1 1 0 0 0-.66-.94 1 1 0 0 0-1.08.23l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05a1 1 0 0 0 .2-1.1 1 1 0 0 0-.91-.6H4a2 2 0 1 1 0-4h.08a1 1 0 0 0 .94-.66 1 1 0 0 0-.23-1.08l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05a1 1 0 0 0 1.1.2 1 1 0 0 0 .6-.91V4a2 2 0 1 1 4 0v.08a1 1 0 0 0 .66.94 1 1 0 0 0 1.08-.23l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1 1 0 0 0-.2 1.1 1 1 0 0 0 .91.6H20a2 2 0 1 1 0 4h-.08a1 1 0 0 0-.94.66 1 1 0 0 0 .23 1.08z"/></svg>`;
         return "";
       }
 
@@ -1003,6 +1027,7 @@
         const sessionsWrap = el("div", { class: "sessions" });
          const sidebarFooter = el("footer", {}, [
           el("button", { id: "helpBtnSide", type: "button", title: "Help", "aria-label": "Help", html: iconSvg("help") + "Help" }),
+          el("button", { id: "settingsBtnSide", type: "button", title: "Settings", "aria-label": "Settings", html: iconSvg("settings") + "Settings" }),
           el("button", { id: "logoutBtnSide", type: "button", title: "Log out", "aria-label": "Log out", html: iconSvg("logout") + "Log out" }),
         ]);
         const main = el("div", { class: "main" });
@@ -1099,7 +1124,42 @@
         let newSessionDefaults = { model_provider: "openai", preferred_auth_method: "chatgpt", provider_choice: "chatgpt", model: null, model_providers: ["chatgpt", "openai-api"], reasoning_effort: "high", service_tier: "flex" };
         let latestSessions = [];
         let tmuxAvailable = false;
-        const recentEventKeys = [];
+        let voiceSaveTimer = null;
+        let voiceSettings = {
+          tts_enabled_for_narration: false,
+          tts_enabled_for_final_response: true,
+          tts_base_url: "https://api.openai.com/v1",
+          tts_api_key: "",
+          audio: { queue_depth: 0, segment_count: 0, last_error: "", stream_url: "/api/audio/live.m3u8" },
+          notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
+        };
+        let localAnnouncementEnabled = localStorage.getItem("codoxear.announcementEnabled") === "1";
+        let localNotificationEnabled = localStorage.getItem("codoxear.notificationEnabled") === "1";
+        const desktopNotificationTimers = new Map();
+        const deliveredDesktopNotificationIds = new Set();
+        let notificationFeedSinceTs = Date.now() / 1000;
+        const announcementClientId = (() => {
+          const key = "codoxear.announcementClientId";
+          const current = localStorage.getItem(key);
+          if (current) return current;
+          const next = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `ann-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+          localStorage.setItem(key, next);
+          return next;
+        })();
+        let announcementHeartbeatTimer = null;
+        let liveAudioRetryTimer = null;
+        let notificationState = {
+          desktop_supported: false,
+          push_supported: false,
+          permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission,
+          desktop_enabled: false,
+          endpoint: "",
+          notifications_enabled: false,
+          subscriptions: [],
+        };
+        let liveAudioStarted = false;
+        let swRegistration = null;
+         const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
          let lastAssistantKey = "";
@@ -1144,11 +1204,27 @@
           class: "icon-btn",
           title: "Harness mode",
           "aria-label": "Harness mode",
-            type: "button",
-            html: iconSvg("harness"),
-          });
-          harnessBtn.disabled = true;
-          harnessBtn.classList.toggle("active", false);
+          type: "button",
+          html: iconSvg("harness"),
+        });
+        harnessBtn.disabled = true;
+        harnessBtn.classList.toggle("active", false);
+        const announceBtn = el("button", {
+          id: "announceBtn",
+          class: "icon-btn",
+          title: "Voice announcements",
+          "aria-label": "Voice announcements",
+          type: "button",
+          html: iconSvg("volume"),
+        });
+        const notificationBtn = el("button", {
+          id: "notificationBtn",
+          class: "icon-btn",
+          title: "Notifications",
+          "aria-label": "Notifications",
+          type: "button",
+          html: iconSvg("bell"),
+        });
         const diagBtn = el("button", {
           id: "diagBtn",
           class: "icon-btn",
@@ -1187,6 +1263,8 @@
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
 			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
 			        ]);
+        const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
+        liveAudio.style.display = "none";
 
         const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
@@ -1225,7 +1303,8 @@
             el("div", { class: "title", html: `<img class="sidebarLogo" src="/static/codoxear-icon.png" alt="" />Codoxear` }),
             el("div", { class: "actions" }, [
               el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
-              el("button", { id: "refreshBtn", class: "icon-btn", title: "Refresh", "aria-label": "Refresh", html: iconSvg("refresh") }),
+              notificationBtn,
+              announceBtn,
             ]),
           ])
         );
@@ -1240,6 +1319,7 @@
         app.appendChild(backdrop);
         root.appendChild(app);
         root.appendChild(harnessMenu);
+        root.appendChild(liveAudio);
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
         const fileCloseBtn = el("button", {
@@ -1389,6 +1469,12 @@
   <li><b>View file</b> opens recent or changed files from the selected session, with diff, file, and preview modes where available.</li>
   <li>File paths mentioned in assistant messages become clickable when the server can resolve them.</li>
   <li><b>Attach file</b> adds local files or images to the current prompt.</li>
+</ul>
+<div class="muted">Announcements and notifications</div>
+<ul class="md">
+  <li><b>Announcement</b> is a per-browser toggle. It plays the shared server audio stream and announces every end-of-turn response. Narration announcements are optional in Settings.</li>
+  <li><b>Notification</b> is a per-browser toggle. On desktop it enables live browser notifications for final responses. On iPhone/iPad it can also enable Web Push when you use the installed Home Screen app over HTTPS.</li>
+  <li>If Announcement cannot be enabled yet, open <b>Settings</b> and fill in the OpenAI-compatible API base URL and API key used for summarization and speech.</li>
 </ul>`,
           }),
         ]);
@@ -1513,6 +1599,49 @@
         ]);
         root.appendChild(editViewer);
         editViewer.appendChild(editDependencyMenu);
+        const voiceSettingsBackdrop = el("div", { class: "modalBackdrop", id: "voiceSettingsBackdrop" });
+        const voiceSettingsCloseBtn = el("button", {
+          id: "voiceSettingsCloseBtn",
+          class: "icon-btn",
+          title: "Close",
+          "aria-label": "Close",
+          type: "button",
+          html: iconSvg("x"),
+        });
+        const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
+        const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
+        const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
+        const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
+          el("div", { class: "queueHeader" }, [
+            el("div", { class: "title", text: "Settings" }),
+            el("div", { class: "actions" }, [voiceSettingsCloseBtn]),
+          ]),
+          voiceSettingsStatus,
+          el("div", { class: "formBody" }, [
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "OpenAI-compatible API base URL" }),
+              voiceBaseUrlInput,
+              el("span", { class: "fieldHint", text: "Used for both summarization and speech." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
+              voiceApiKeyInput,
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                narrationSettingToggle,
+                el("span", { text: "Announce narration messages" }),
+              ]),
+            ]),
+          ]),
+          el("div", { class: "formActions" }, [
+            el("button", { id: "voiceSettingsCancelBtn", type: "button", text: "Cancel" }),
+            el("button", { id: "voiceSettingsSaveBtn", class: "primary", type: "button", text: "Save" }),
+          ]),
+        ]);
+        root.appendChild(voiceSettingsBackdrop);
+        root.appendChild(voiceSettingsViewer);
 
         const newSessionBackdrop = el("div", { class: "modalBackdrop", id: "newSessionBackdrop" });
         const newSessionCloseBtn = el("button", {
@@ -2428,6 +2557,7 @@
                    activeThreadId = null;
                    turnOpen = false;
                    localStorage.removeItem("codexweb.selected");
+                   setSessionHash("");
                    titleLabel.textContent = "No session selected";
                    setStatus({ running: false, queueLen: 0 });
                    setContext(null);
@@ -2653,6 +2783,7 @@
             pollTimer = null;
             pollKickPending = false;
             localStorage.removeItem("codexweb.selected");
+            setSessionHash("");
             titleLabel.textContent = "No session selected";
             setStatus({ running: false, queueLen: 0 });
             setTyping(false);
@@ -2925,6 +3056,7 @@
               pollKickPending = false;
               turnOpen = false;
               localStorage.removeItem("codexweb.selected");
+              setSessionHash("");
               titleLabel.textContent = "No session selected";
               setStatus({ running: false, queueLen: 0 });
               setTyping(false);
@@ -3062,6 +3194,7 @@
             resetChatRenderState();
             setAttachCount(0);
             localStorage.setItem("codexweb.selected", sid);
+            setSessionHash(sid);
             updateQueueBadge();
             setStatus({ running: false, queueLen: 0 });
             setContext(null);
@@ -3117,7 +3250,6 @@
            updateHarnessBtnState();
          }
 
-			        $("#refreshBtn").onclick = refreshSessions;
         function parseHarnessDraftInt(name) {
           const raw = String(harnessNumberDraft[name] ?? "").trim();
           if (!raw) return null;
@@ -3359,6 +3491,554 @@
             harnessCfg.request = String(e.target.value ?? "");
             scheduleHarnessSave();
           };
+
+        function voiceAnnouncementsEnabled() {
+          return !!localAnnouncementEnabled;
+        }
+
+        function notificationsEnabledLocally() {
+          return !!localNotificationEnabled;
+        }
+
+        function setAnnouncementEnabled(enabled) {
+          localAnnouncementEnabled = !!enabled;
+          if (localAnnouncementEnabled) localStorage.setItem("codoxear.announcementEnabled", "1");
+          else localStorage.removeItem("codoxear.announcementEnabled");
+          if (!localAnnouncementEnabled) {
+            stopAnnouncementHeartbeat();
+            try {
+              liveAudio.pause();
+            } catch (_error) {}
+            liveAudio.removeAttribute("src");
+            liveAudio.load();
+            liveAudioStarted = false;
+          } else {
+            startAnnouncementHeartbeat();
+          }
+          updateVoiceUi();
+        }
+
+        function setNotificationEnabledLocal(enabled) {
+          localNotificationEnabled = !!enabled;
+          if (localNotificationEnabled) localStorage.setItem("codoxear.notificationEnabled", "1");
+          else localStorage.removeItem("codoxear.notificationEnabled");
+          if (localNotificationEnabled) {
+            notificationFeedSinceTs = Date.now() / 1000;
+          }
+          updateVoiceUi();
+        }
+
+        function currentVoiceStreamUrl() {
+          const streamUrl = voiceSettings && voiceSettings.audio && typeof voiceSettings.audio.stream_url === "string" && voiceSettings.audio.stream_url
+            ? voiceSettings.audio.stream_url
+            : "/api/audio/live.m3u8";
+          return resolveAppUrl(streamUrl);
+        }
+
+        function hasAnnouncementCredentials() {
+          return Boolean(String(voiceSettings.tts_base_url || "").trim() && String(voiceSettings.tts_api_key || "").trim());
+        }
+
+        function browserSupportsLiveAudioPlayback() {
+          if (!liveAudio || typeof liveAudio.canPlayType !== "function") return false;
+          return ["application/vnd.apple.mpegurl", "audio/mpegurl"].some((kind) => {
+            const result = liveAudio.canPlayType(kind);
+            return result === "probably" || result === "maybe";
+          });
+        }
+
+        function liveAudioHasReadySegments() {
+          const audio = voiceSettings && voiceSettings.audio ? voiceSettings.audio : {};
+          return Number(audio.segment_count || 0) > 0;
+        }
+
+        async function sendAnnouncementHeartbeat(enabled) {
+          try {
+            await api("/api/audio/listener", {
+              method: "POST",
+              body: {
+                client_id: announcementClientId,
+                enabled: !!enabled,
+              },
+            });
+          } catch (e) {
+            console.error("announcement heartbeat failed", e);
+          }
+        }
+
+        function stopAnnouncementHeartbeat() {
+          if (announcementHeartbeatTimer) clearInterval(announcementHeartbeatTimer);
+          announcementHeartbeatTimer = null;
+          void sendAnnouncementHeartbeat(false);
+        }
+
+        function startAnnouncementHeartbeat() {
+          void sendAnnouncementHeartbeat(true);
+          if (announcementHeartbeatTimer) clearInterval(announcementHeartbeatTimer);
+          announcementHeartbeatTimer = setInterval(() => {
+            void sendAnnouncementHeartbeat(true);
+          }, 15000);
+        }
+
+        function scheduleLiveAudioRetry(delayMs = 1200, { resetSource = true } = {}) {
+          if (!localAnnouncementEnabled) return;
+          if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
+          liveAudioRetryTimer = setTimeout(async () => {
+            liveAudioRetryTimer = null;
+            try {
+              await startLiveAudioPlayback({ resetSource });
+            } catch (e) {
+              console.error("live audio retry failed", e);
+            }
+          }, delayMs);
+        }
+
+        async function maybeAutoStartLiveAudioFromGesture({ resetSource = false } = {}) {
+          if (!localAnnouncementEnabled) return;
+          if (!browserSupportsLiveAudioPlayback()) return;
+          if (!liveAudioHasReadySegments()) return;
+          try {
+            await startLiveAudioPlayback({ resetSource: resetSource || liveAudio.ended });
+          } catch (e) {
+            console.error("auto-start live audio failed", e);
+          }
+        }
+
+        function base64UrlToUint8Array(value) {
+          const raw = String(value || "");
+          const pad = "=".repeat((4 - (raw.length % 4 || 4)) % 4);
+          const base64 = (raw + pad).replace(/-/g, "+").replace(/_/g, "/");
+          const data = atob(base64);
+          const out = new Uint8Array(data.length);
+          for (let i = 0; i < data.length; i += 1) out[i] = data.charCodeAt(i);
+          return out;
+        }
+
+        function setDesktopNotificationsEnabled(enabled) {
+          if (enabled) localStorage.setItem("codoxear.desktopNotificationsEnabled", "1");
+          else localStorage.removeItem("codoxear.desktopNotificationsEnabled");
+          notificationState.desktop_enabled = !!enabled;
+        }
+
+        function pushNotificationsEnabledForCurrentDevice() {
+          return !!(
+            localNotificationEnabled &&
+            notificationState.push_supported &&
+            notificationState.permission === "granted" &&
+            notificationState.notifications_enabled &&
+            notificationState.endpoint
+          );
+        }
+
+        function activeNotificationTransport() {
+          if (!localNotificationEnabled) return "none";
+          if (pushNotificationsEnabledForCurrentDevice()) return "push";
+          if (
+            notificationState.desktop_supported &&
+            notificationState.permission === "granted" &&
+            notificationState.desktop_enabled
+          ) {
+            return "desktop";
+          }
+          return "none";
+        }
+
+        function desktopNotificationsEnabled() {
+          return activeNotificationTransport() === "desktop";
+        }
+
+        function isAppleMobileWebKit() {
+          const ua = navigator.userAgent || "";
+          return /iPhone|iPad|iPod/i.test(ua);
+        }
+
+        function showDesktopNotification({ messageId, title, body }) {
+          if (!desktopNotificationsEnabled()) return;
+          const id = String(messageId || "").trim();
+          if (id && deliveredDesktopNotificationIds.has(id)) return;
+          const safeTitle = String(title || "Session").trim() || "Session";
+          const safeBody = String(body || "").replace(/\s+/g, " ").trim();
+          if (!safeBody) return;
+          try {
+            new Notification(safeTitle, {
+              body: safeBody.length <= 180 ? safeBody : `${safeBody.slice(0, 179).trimEnd()}...`,
+              tag: id || `desktop:${Date.now()}`,
+            });
+            if (id) deliveredDesktopNotificationIds.add(id);
+          } catch (e) {
+            console.error("desktop notification failed", e);
+          }
+        }
+
+        async function pollNotificationFeed({ prime = false } = {}) {
+          if (!desktopNotificationsEnabled()) return;
+          let maxSeen = notificationFeedSinceTs;
+          try {
+            const data = await api(`/api/notifications/feed?since=${encodeURIComponent(notificationFeedSinceTs)}`);
+            const items = Array.isArray(data.items) ? data.items : [];
+            for (const item of items) {
+              const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
+              if (updatedTs > maxSeen) maxSeen = updatedTs;
+              if (prime) continue;
+              showDesktopNotification({
+                messageId: item && item.message_id,
+                title: item && item.session_display_name,
+                body: item && item.notification_text,
+              });
+            }
+          } catch (e) {
+            console.error("notification feed poll failed", e);
+            return;
+          }
+          notificationFeedSinceTs = maxSeen;
+        }
+
+        function maybeShowDesktopNotification(ev) {
+          if (!ev || ev.role !== "assistant" || ev.pending) return;
+          if (ev.message_class !== "final_response") return;
+          if (!desktopNotificationsEnabled()) return;
+          const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
+          if (messageId && !ev.notification_text) {
+            scheduleDesktopNotificationResolve(ev);
+            return;
+          }
+          const s = selected ? sessionIndex.get(selected) : null;
+          const title = s ? sessionDisplayName(s) : "Session";
+          const body = String(ev.notification_text || ev.text || "").replace(/\s+/g, " ").trim();
+          if (!body) return;
+          showDesktopNotification({ messageId, title, body });
+        }
+
+        function scheduleDesktopNotificationResolve(ev) {
+          const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
+          if (!messageId || desktopNotificationTimers.has(messageId)) return;
+          let attempts = 0;
+          const tick = async () => {
+            if (!desktopNotificationsEnabled()) {
+              desktopNotificationTimers.delete(messageId);
+              return;
+            }
+            attempts += 1;
+            try {
+              const data = await api(`/api/notifications/message?message_id=${encodeURIComponent(messageId)}`);
+              const text = String(data.notification_text || "").trim();
+              const summaryStatus = String(data.summary_status || "");
+              if (text && (summaryStatus === "sent" || summaryStatus === "skipped" || summaryStatus === "error")) {
+                desktopNotificationTimers.delete(messageId);
+                maybeShowDesktopNotification({ ...ev, notification_text: text });
+                return;
+              }
+            } catch (e) {
+              if (!(e && e.status === 404)) console.error("desktop notification resolve failed", e);
+            }
+            if (attempts >= 20) {
+              desktopNotificationTimers.delete(messageId);
+              return;
+            }
+            const nextTimer = setTimeout(() => {
+              desktopNotificationTimers.delete(messageId);
+              void tick();
+            }, 800);
+            desktopNotificationTimers.set(messageId, nextTimer);
+          };
+          const firstTimer = setTimeout(() => {
+            desktopNotificationTimers.delete(messageId);
+            void tick();
+          }, 800);
+          desktopNotificationTimers.set(messageId, firstTimer);
+        }
+
+        function updateVoiceUi() {
+          announceBtn.classList.toggle("active", voiceAnnouncementsEnabled());
+          announceBtn.title = voiceAnnouncementsEnabled() ? "Announcements on" : "Announcements off";
+          announceBtn.setAttribute("aria-label", announceBtn.title);
+          notificationBtn.classList.toggle("active", notificationsEnabledLocally());
+          const transport = activeNotificationTransport();
+          notificationBtn.title = notificationsEnabledLocally()
+            ? transport === "push"
+              ? "Notifications on (push)"
+              : transport === "desktop"
+                ? "Notifications on"
+                : "Notifications pending"
+            : "Notifications off";
+          notificationBtn.setAttribute("aria-label", notificationBtn.title);
+          if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
+          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
+          if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+          notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+        }
+
+        async function loadVoiceSettings() {
+          const data = await api("/api/settings/voice");
+          if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
+          voiceSettings = {
+            ...voiceSettings,
+            ...data,
+            audio: data && typeof data.audio === "object" && data.audio ? data.audio : voiceSettings.audio,
+            notifications: data && typeof data.notifications === "object" && data.notifications ? data.notifications : voiceSettings.notifications,
+          };
+          if (liveAudioStarted && liveAudio.src !== currentVoiceStreamUrl()) {
+            liveAudio.src = currentVoiceStreamUrl();
+          }
+          updateVoiceUi();
+          if (localAnnouncementEnabled && !liveAudioStarted && browserSupportsLiveAudioPlayback() && liveAudioHasReadySegments()) {
+            scheduleLiveAudioRetry(100, { resetSource: false });
+          }
+          return data;
+        }
+
+        async function saveVoiceSettings() {
+          const payload = {
+            tts_enabled_for_narration: !!voiceSettings.tts_enabled_for_narration,
+            tts_enabled_for_final_response: true,
+            tts_base_url: String(voiceBaseUrlInput.value || voiceSettings.tts_base_url || "").trim(),
+            tts_api_key: String(voiceApiKeyInput.value || "").trim(),
+          };
+          const data = await api("/api/settings/voice", { method: "POST", body: payload });
+          if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
+          voiceSettings = {
+            ...voiceSettings,
+            ...data,
+            audio: data && typeof data.audio === "object" && data.audio ? data.audio : voiceSettings.audio,
+            notifications: data && typeof data.notifications === "object" && data.notifications ? data.notifications : voiceSettings.notifications,
+          };
+          updateVoiceUi();
+          return data;
+        }
+
+        function scheduleVoiceSave() {
+          if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
+          voiceSaveTimer = setTimeout(async () => {
+            try {
+              await saveVoiceSettings();
+            } catch (e) {
+              console.error("save voice settings failed", e);
+              setToast(`voice settings error: ${e && e.message ? e.message : "unknown error"}`);
+              try {
+                await loadVoiceSettings();
+              } catch (_error) {}
+            }
+          }, 250);
+        }
+
+        async function ensureVoiceServiceWorker() {
+          if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
+            throw new Error("push notifications are not supported in this browser");
+          }
+          if (!swRegistration) {
+            swRegistration = await navigator.serviceWorker.register(resolveAppUrl("/service-worker.js"), { scope: resolveAppUrl("/") });
+          }
+          return swRegistration;
+        }
+
+        async function syncNotificationState(serverSnapshot) {
+          notificationState.desktop_supported = !!(window.isSecureContext && typeof Notification !== "undefined");
+          notificationState.push_supported = !!(notificationState.desktop_supported && "serviceWorker" in navigator && "PushManager" in window);
+          notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+          notificationState.desktop_enabled = localStorage.getItem("codoxear.desktopNotificationsEnabled") === "1";
+          let snapshot = serverSnapshot;
+          if (!snapshot) {
+            try {
+              snapshot = await api("/api/notifications/subscription");
+            } catch (e) {
+              if (!(e && e.status === 404)) throw e;
+            }
+          }
+          let endpoint = "";
+          if (notificationState.push_supported) {
+            try {
+              const reg = await ensureVoiceServiceWorker();
+              const sub = await reg.pushManager.getSubscription();
+              endpoint = sub && typeof sub.endpoint === "string" ? sub.endpoint : "";
+            } catch (e) {
+              console.error("load push subscription failed", e);
+            }
+          }
+          const subscriptions = snapshot && Array.isArray(snapshot.subscriptions) ? snapshot.subscriptions : [];
+          const current = endpoint ? subscriptions.find((item) => item && item.endpoint === endpoint) : null;
+          notificationState.endpoint = endpoint;
+          notificationState.subscriptions = subscriptions;
+          notificationState.notifications_enabled = !!(current && current.notifications_enabled);
+          updateVoiceUi();
+        }
+
+        async function enableNotificationsOnDevice() {
+          if (!notificationState.desktop_supported) {
+            throw new Error("notifications require HTTPS or localhost");
+          }
+          if (Notification.permission !== "granted") {
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+              throw new Error(`notification permission ${permission}`);
+            }
+          }
+          setDesktopNotificationsEnabled(true);
+          if (!notificationState.push_supported) {
+            await syncNotificationState();
+            return;
+          }
+          const reg = await ensureVoiceServiceWorker();
+          const publicKey = voiceSettings && voiceSettings.notifications ? voiceSettings.notifications.vapid_public_key : "";
+          if (!publicKey) throw new Error("missing VAPID public key");
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: base64UrlToUint8Array(publicKey),
+            });
+          }
+          const snapshot = await api("/api/notifications/subscription", {
+            method: "POST",
+            body: {
+              subscription: sub.toJSON(),
+              user_agent: navigator.userAgent,
+              device_label: "current-device",
+            },
+          });
+          await syncNotificationState(snapshot);
+        }
+
+        async function toggleCurrentDeviceNotifications(enabled) {
+          if (!notificationState.desktop_supported) {
+            throw new Error("notifications require HTTPS or localhost");
+          }
+          setDesktopNotificationsEnabled(enabled);
+          if (!notificationState.push_supported) {
+            await syncNotificationState();
+            return;
+          }
+          if (!notificationState.endpoint && enabled) {
+            await enableNotificationsOnDevice();
+            return;
+          }
+          if (!notificationState.endpoint) {
+            await syncNotificationState();
+            return;
+          }
+          const snapshot = await api("/api/notifications/subscription/toggle", {
+            method: "POST",
+            body: {
+              endpoint: notificationState.endpoint,
+              enabled: !!enabled,
+            },
+          });
+          await syncNotificationState(snapshot);
+        }
+
+        async function startLiveAudioPlayback({ resetSource = false } = {}) {
+          if (!browserSupportsLiveAudioPlayback()) {
+            throw new Error("this browser does not support native HLS audio playback; use Safari or an installed iOS PWA");
+          }
+          if (!liveAudioHasReadySegments()) {
+            throw new Error("no live audio segments are available yet; wait for the first announcement and try again");
+          }
+          const nextSrc = currentVoiceStreamUrl();
+          if (resetSource || liveAudio.currentSrc !== nextSrc) {
+            liveAudio.src = nextSrc;
+          }
+          await liveAudio.play();
+          liveAudioStarted = true;
+          updateVoiceUi();
+        }
+
+        function describeLiveAudioStartError(error) {
+          const message = error && error.message ? String(error.message) : "";
+          if (/unsupported/i.test(message)) {
+            if (!browserSupportsLiveAudioPlayback()) {
+              return "this browser does not support native HLS audio playback; use Safari or an installed iOS PWA";
+            }
+            if (!liveAudioHasReadySegments()) {
+              return "no live audio segments are available yet; wait for the first announcement and try again";
+            }
+          }
+          return message || "unknown error";
+        }
+
+        function showVoiceSettingsDialog() {
+          voiceSettingsBackdrop.style.display = "block";
+          voiceSettingsViewer.style.display = "flex";
+          updateVoiceUi();
+        }
+
+        function hideVoiceSettingsDialog() {
+          voiceSettingsBackdrop.style.display = "none";
+          voiceSettingsViewer.style.display = "none";
+          voiceSettingsStatus.textContent = "";
+        }
+
+        announceBtn.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = !voiceAnnouncementsEnabled();
+          if (next && !hasAnnouncementCredentials()) {
+            voiceSettingsStatus.textContent = "Set the OpenAI-compatible API base URL and API key before enabling announcements.";
+            showVoiceSettingsDialog();
+            return;
+          }
+          setAnnouncementEnabled(next);
+          if (!next) return;
+          try {
+            await maybeAutoStartLiveAudioFromGesture({ resetSource: true });
+          } catch (err) {
+            console.error("announceBtn auto-start failed", err);
+            setToast(`audio start error: ${describeLiveAudioStartError(err)}`);
+          }
+        };
+        notificationBtn.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const next = !notificationsEnabledLocally();
+          try {
+            if (next) {
+              setNotificationEnabledLocal(true);
+              await enableNotificationsOnDevice();
+            } else {
+              await toggleCurrentDeviceNotifications(false);
+              setNotificationEnabledLocal(false);
+            }
+          } catch (err) {
+            console.error("notification toggle failed", err);
+            setNotificationEnabledLocal(false);
+            setToast(`notification error: ${err && err.message ? err.message : "unknown error"}`);
+          }
+        };
+        liveAudio.addEventListener("error", () => {
+          liveAudioStarted = false;
+          updateVoiceUi();
+          scheduleLiveAudioRetry(1200, { resetSource: true });
+        });
+        liveAudio.addEventListener("playing", () => {
+          liveAudioStarted = true;
+          updateVoiceUi();
+        });
+        liveAudio.addEventListener("ended", () => {
+          liveAudioStarted = false;
+          updateVoiceUi();
+          scheduleLiveAudioRetry(500, { resetSource: true });
+        });
+        liveAudio.addEventListener("pause", () => {
+          liveAudioStarted = false;
+          updateVoiceUi();
+        });
+        narrationSettingToggle.onchange = (e) => {
+          voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
+          scheduleVoiceSave();
+        };
+        voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
+        $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
+        voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
+        $("#voiceSettingsSaveBtn").onclick = async () => {
+          try {
+            voiceSettingsStatus.textContent = "Saving...";
+            await saveVoiceSettings();
+            await syncNotificationState();
+            voiceSettingsStatus.textContent = "";
+            hideVoiceSettingsDialog();
+          } catch (e) {
+            console.error("save voice settings failed", e);
+            voiceSettingsStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
+          }
+        };
         function renderRecentCwdOptions() {
           const out = [];
           const seen = new Set();
@@ -5653,6 +6333,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           showHelpViewer();
         };
+        $("#settingsBtnSide").onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showVoiceSettingsDialog();
+        };
         helpCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -6145,10 +6830,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          if (localStorage.getItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
 
 	          try {
+              await loadVoiceSettings();
+              await syncNotificationState();
+              if (localAnnouncementEnabled) startAnnouncementHeartbeat();
+              if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
+              const hashed = sessionIdFromHash();
 	            const remembered = localStorage.getItem("codexweb.selected");
 	            const first = sessions && sessions.length ? sessions[0].session_id : null;
-	            const pick = remembered && sessionIndex.has(remembered) ? remembered : first;
+	            const pick = hashed && sessionIndex.has(hashed) ? hashed : remembered && sessionIndex.has(remembered) ? remembered : first;
 	            if (pick) selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {
@@ -6165,6 +6855,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            sessionsTimer = setInterval(async () => {
 	              try {
 	                await refreshSessions();
+                  await loadVoiceSettings();
+                  await syncNotificationState();
+                  if (notificationsEnabledLocally()) await pollNotificationFeed();
 	              } catch (e2) {
 	                if (e2 && e2.status === 401) {
 	                  if (sessionsTimer) clearInterval(sessionsTimer);
@@ -6175,6 +6868,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	                console.error("refreshSessions timer failed", e2);
 	              }
 	            }, 2500);
+              window.addEventListener("hashchange", async () => {
+                const sid = sessionIdFromHash();
+                if (!sid || sid === selected || !sessionIndex.has(sid)) return;
+                await selectSession(sid);
+              });
+              window.addEventListener("beforeunload", () => {
+                stopAnnouncementHeartbeat();
+              });
 	          }
 	        })();
       }

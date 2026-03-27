@@ -67,6 +67,50 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    - Harness runs in the server process (not the browser tab), so it continues even if you close the web page.
    - Settings are per session; each injection decrements the remaining count and harness turns itself off at zero. Enabled sessions show a `harness` badge in the sidebar.
 
+## Tailscale HTTPS
+
+If you want browser notifications or iOS Web Push, use HTTPS instead of plain `http://<host>:8743`.
+
+The simplest setup is Tailscale Serve on port `8443`:
+
+```sh
+tailscale serve --bg --yes --https=8443 http://127.0.0.1:8743
+```
+
+Then open Codoxear at:
+
+```text
+https://<device>.<tailnet>.ts.net:8443/
+```
+
+Example:
+
+```text
+https://yiwen-workstation.tail0de6f7.ts.net:8443/
+```
+
+Notes:
+
+- Browser notification APIs require a secure context (`https://...` or `http://localhost`).
+- iOS Web Push requires an installed Home Screen web app on HTTPS; a normal Safari tab is not enough.
+- Tailscale-issued HTTPS works for the `*.ts.net` name, not for a bare local hostname.
+
+If you run Codoxear as a user systemd service, you can attach Tailscale Serve to the same lifecycle with:
+
+```ini
+[Service]
+ExecStartPost=/usr/bin/tailscale serve --bg --yes --https=8443 http://127.0.0.1:8743
+ExecStopPost=-/usr/bin/tailscale serve --bg --yes --https=8443 off
+```
+
+Then reload and restart:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user restart codoxear-server.service
+tailscale serve status
+```
+
 ## User stories
 
 - Desktop Linux: start Codex in your GUI terminal emulator, then continue the same live TUI session on your phone or a laptop browser.

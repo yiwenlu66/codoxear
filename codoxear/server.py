@@ -41,6 +41,7 @@ from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
+from .voice_push import VoicePushCoordinator
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -121,6 +122,10 @@ HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
+VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
+PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
+DELIVERY_LEDGER_PATH = APP_DIR / "voice_delivery_ledger.json"
+VAPID_PRIVATE_KEY_PATH = APP_DIR / "webpush_vapid_private.pem"
 
 _DOTENV = (Path.cwd() / ".env").resolve()
 if _DOTENV.exists():
@@ -151,6 +156,7 @@ HARNESS_DEFAULT_IDLE_MINUTES = 5
 HARNESS_DEFAULT_MAX_INJECTIONS = 10
 HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
 QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
+VOICE_PUSH_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_VOICE_PUSH_SWEEP_SECONDS", "1.0"))
 QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
@@ -1679,6 +1685,10 @@ def _extract_chat_events(
     return _rollout_log._extract_chat_events(objs)
 
 
+def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[Any]:
+    return _rollout_log._extract_delivery_messages(objs)
+
+
 def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
     return _rollout_log._read_jsonl_tail(path, max_bytes)
 
@@ -1764,6 +1774,7 @@ class Session:
     chat_index_scan_bytes: int = 0
     chat_index_scan_complete: bool = False
     chat_index_log_off: int = 0
+    delivery_log_off: int = 0
     idle_cache_log_off: int = -1
     idle_cache_value: bool | None = None
     queue_idle_since: float | None = None
@@ -1800,11 +1811,21 @@ class SessionManager:
         self._load_queues()
         self._load_recent_cwds()
         self._backfill_recent_cwds_from_logs()
+        self._voice_push = VoicePushCoordinator(
+            app_dir=APP_DIR,
+            stop_event=self._stop,
+            settings_path=VOICE_SETTINGS_PATH,
+            subscriptions_path=PUSH_SUBSCRIPTIONS_PATH,
+            delivery_ledger_path=DELIVERY_LEDGER_PATH,
+            vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
+        )
         self._discover_existing(force=True)
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
         self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
         self._queue_thr.start()
+        self._voice_push_scan_thr = threading.Thread(target=self._voice_push_scan_loop, name="voice-push-scan", daemon=True)
+        self._voice_push_scan_thr.start()
 
     def stop(self) -> None:
         self._stop.set()
@@ -1819,6 +1840,7 @@ class SessionManager:
         s.chat_index_scan_bytes = 0
         s.chat_index_scan_complete = False
         s.chat_index_log_off = int(meta_log_off)
+        s.delivery_log_off = int(meta_log_off)
         s.idle_cache_log_off = -1
         s.idle_cache_value = None
         s.queue_idle_since = None
@@ -2537,6 +2559,81 @@ class SessionManager:
                 self._harness_last_injected.pop(session_id, None)
         self._save_harness()
         return self.harness_get(session_id)
+
+    def _session_display_name(self, session_id: str) -> str:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return "Session"
+            alias = self._aliases.get(session_id)
+            if isinstance(alias, str) and alias.strip():
+                return alias.strip()
+            cwd_name = Path(s.cwd).expanduser().name.strip()
+            return cwd_name or "Session"
+
+    def _observe_rollout_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
+        voice_push = getattr(self, "_voice_push", None)
+        if voice_push is None:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if s is not None:
+                    s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
+            return
+        messages = _extract_delivery_messages(objs)
+        if not messages:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if s is not None:
+                    s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
+            return
+        session_name = self._session_display_name(session_id)
+        voice_push.observe_messages(session_id=session_id, session_display_name=session_name, messages=messages)
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if s is not None:
+                s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
+
+    def _voice_push_scan_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self._voice_push_scan_sweep()
+            except Exception as e:
+                sys.stderr.write(f"error: voice-push scan failed: {type(e).__name__}: {e}\n")
+                traceback.print_exc(file=sys.stderr)
+                sys.stderr.flush()
+            self._stop.wait(VOICE_PUSH_SWEEP_SECONDS)
+
+    def _voice_push_scan_sweep(self) -> None:
+        self._discover_existing_if_stale()
+        self._prune_dead_sessions()
+        with self._lock:
+            session_ids = list(self._sessions.keys())
+        for sid in session_ids:
+            try:
+                self.refresh_session_meta(sid)
+            except Exception:
+                continue
+            with self._lock:
+                s = self._sessions.get(sid)
+                if s is None:
+                    continue
+                log_path = s.log_path
+                delivery_off = int(s.delivery_log_off)
+            if log_path is None or (not log_path.exists()):
+                continue
+            try:
+                size = int(log_path.stat().st_size)
+            except FileNotFoundError:
+                continue
+            off = 0 if size < delivery_off else int(delivery_off)
+            loops = 0
+            while off < size and loops < 16:
+                objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
+                if new_off <= off:
+                    break
+                self._observe_rollout_delta(sid, objs=objs, new_off=new_off)
+                off = new_off
+                loops += 1
 
     def _harness_loop(self) -> None:
         # Persist across browser disconnects: server is the scheduler.
@@ -3358,6 +3455,31 @@ class SessionManager:
             if latest_token is not None:
                 s.token = latest_token
 
+    def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        voice_push = getattr(self, "_voice_push", None)
+        if voice_push is None:
+            return list(events)
+        out: list[dict[str, Any]] = []
+        for ev in events:
+            if not isinstance(ev, dict):
+                out.append(ev)
+                continue
+            if ev.get("role") != "assistant" or ev.get("message_class") != "final_response":
+                out.append(ev)
+                continue
+            message_id = ev.get("message_id")
+            if not isinstance(message_id, str) or not message_id:
+                out.append(ev)
+                continue
+            notification_text = voice_push.notification_text_for_message(message_id)
+            if not notification_text:
+                out.append(ev)
+                continue
+            ev2 = dict(ev)
+            ev2["notification_text"] = notification_text
+            out.append(ev2)
+        return out
+
     def _ensure_chat_index(self, session_id: str, *, min_events: int, before: int) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
         with self._lock:
             s = self._sessions.get(session_id)
@@ -3465,7 +3587,7 @@ class SessionManager:
         b = max(0, int(before))
         end = max(0, n - b)
         start = max(0, end - max(20, int(min_events)))
-        page = events2[start:end]
+        page = self._attach_notification_texts(events2[start:end])
         has_older = (start > 0) or ((not scan_complete2) and bool(page))
         next_before = b + len(page) if has_older else 0
         return page, log_off2, has_older, next_before, token2
@@ -3491,6 +3613,7 @@ class SessionManager:
                 if reasoning_effort is not None:
                     s.reasoning_effort = reasoning_effort
                 s.idle_cache_log_off = -1
+        self._observe_rollout_delta(session_id, objs=objs, new_off=new_off)
 
     def idle_from_log(self, session_id: str) -> bool:
         with self._lock:
@@ -3878,6 +4001,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = "text/javascript; charset=utf-8"
         elif path.suffix == ".css":
             ctype = "text/css; charset=utf-8"
+        elif path.suffix == ".webmanifest":
+            ctype = "application/manifest+json; charset=utf-8"
         elif path.suffix == ".png":
             ctype = "image/png"
         elif path.suffix in (".jpg", ".jpeg"):
@@ -3925,6 +4050,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if path == "/favicon.ico":
                 self._send_static("favicon.png")
                 return
+            if path == "/manifest.webmanifest":
+                self._send_static("manifest.webmanifest")
+                return
+            if path == "/service-worker.js":
+                self._send_static("service-worker.js")
+                return
             if path == "/app.js":
                 self._send_static("app.js")
                 return
@@ -3946,6 +4077,87 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._unauthorized()
                     return
                 _json_response(self, 200, {"ok": True})
+                return
+
+            if path == "/api/settings/voice":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                _json_response(self, 200, {"ok": True, **MANAGER._voice_push.settings_snapshot()})
+                return
+
+            if path == "/api/notifications/subscription":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                _json_response(self, 200, {"ok": True, **MANAGER._voice_push.subscriptions_snapshot()})
+                return
+
+            if path == "/api/notifications/message":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                message_id = (qs.get("message_id") or [""])[0].strip()
+                if not message_id:
+                    _json_response(self, 400, {"error": "message_id required"})
+                    return
+                state = MANAGER._voice_push.notification_state_for_message(message_id)
+                if state is None:
+                    _json_response(self, 404, {"error": "unknown message"})
+                    return
+                _json_response(self, 200, {"ok": True, **state})
+                return
+
+            if path == "/api/notifications/feed":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                since_raw = (qs.get("since") or ["0"])[0].strip()
+                try:
+                    since_ts = float(since_raw or "0")
+                except ValueError:
+                    _json_response(self, 400, {"error": "invalid since"})
+                    return
+                items = MANAGER._voice_push.notification_feed_since(since_ts)
+                _json_response(self, 200, {"ok": True, "items": items})
+                return
+
+            if path == "/api/audio/live.m3u8":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = MANAGER._voice_push.playlist_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if path.startswith("/api/audio/segments/"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                segment_name = path.split("/api/audio/segments/", 1)[1]
+                try:
+                    segment_path = MANAGER._voice_push.segment_path(segment_name)
+                except FileNotFoundError:
+                    self.send_error(404)
+                    return
+                raw = segment_path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "video/mp2t")
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(raw)
                 return
 
             if path == "/api/sessions":
@@ -4812,6 +5024,101 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(b'{"ok":true}')
+                return
+
+            if path == "/api/settings/voice":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                try:
+                    payload = MANAGER._voice_push.set_settings(obj)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, **payload})
+                return
+
+            if path == "/api/notifications/subscription":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                try:
+                    payload = MANAGER._voice_push.upsert_subscription(
+                        subscription=obj.get("subscription"),
+                        user_agent=str(obj.get("user_agent") or ""),
+                        device_label=str(obj.get("device_label") or ""),
+                    )
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, **payload})
+                return
+
+            if path == "/api/notifications/subscription/toggle":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                endpoint = obj.get("endpoint")
+                enabled = obj.get("enabled")
+                if not isinstance(endpoint, str) or not endpoint.strip():
+                    _json_response(self, 400, {"error": "endpoint required"})
+                    return
+                if not isinstance(enabled, bool):
+                    _json_response(self, 400, {"error": "enabled must be a boolean"})
+                    return
+                try:
+                    payload = MANAGER._voice_push.toggle_subscription(endpoint=endpoint, enabled=enabled)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown subscription"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, **payload})
+                return
+
+            if path == "/api/audio/listener":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                client_id = obj.get("client_id")
+                enabled = obj.get("enabled")
+                if not isinstance(client_id, str) or not client_id.strip():
+                    _json_response(self, 400, {"error": "client_id required"})
+                    return
+                if not isinstance(enabled, bool):
+                    _json_response(self, 400, {"error": "enabled must be a boolean"})
+                    return
+                payload = MANAGER._voice_push.listener_heartbeat(client_id=client_id, enabled=enabled)
+                _json_response(self, 200, {"ok": True, **payload})
                 return
 
             if path == "/api/sessions":
