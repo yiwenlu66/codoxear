@@ -88,6 +88,34 @@ class TestDeliveryExtraction(unittest.TestCase):
         messages = _extract_delivery_messages(rows)
         self.assertEqual([item.message_class for item in messages], ["final_response", "final_response"])
 
+    def test_dedupes_adjacent_assistant_messages_with_same_text_but_different_timestamps(self) -> None:
+        rows = [
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "same final text"}],
+                },
+                "ts": 2.0,
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "same final text"}],
+                },
+                "ts": 2.2,
+            },
+        ]
+        messages = _extract_delivery_messages(rows)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].message_class, "final_response")
+        self.assertEqual(messages[0].text, "same final text")
+
 
 class TestVoicePushCoordinator(unittest.TestCase):
     def test_final_response_summarizes_and_enqueues_audio(self) -> None:

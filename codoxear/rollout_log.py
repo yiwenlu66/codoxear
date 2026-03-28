@@ -302,6 +302,7 @@ def _extract_chat_events(
 def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAssistantMessage]:
     out: list[ClassifiedAssistantMessage] = []
     seen: set[str] = set()
+    last_text_key: tuple[str, str] | None = None
 
     def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
         ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
@@ -345,10 +346,15 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         else:
             continue
         ts = _event_ts(obj)
+        normalized_text = " ".join(text.split())
+        text_key = (str(message_class), normalized_text)
+        if last_text_key == text_key:
+            continue
         message_id = _text_message_id(message_class=message_class, text=text, ts=ts)
         if message_id in seen:
             continue
         seen.add(message_id)
+        last_text_key = text_key
         out.append(ClassifiedAssistantMessage(message_id=message_id, message_class=message_class, text=text, ts=ts))
     return out
 
