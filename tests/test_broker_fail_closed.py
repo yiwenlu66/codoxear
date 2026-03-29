@@ -1,3 +1,4 @@
+import json
 import subprocess
 import tempfile
 import unittest
@@ -143,6 +144,28 @@ class TestBrokerFailClosed(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertNotIn("_stdin_to_pty", _FakeThread.started_targets)
+
+    def test_write_meta_tracks_resume_session_id(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=["resume", "resume-a"])
+        with tempfile.TemporaryDirectory() as td:
+            sock_path = Path(td) / "broker.sock"
+            log_path = Path(td) / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            log_path.write_text("", encoding="utf-8")
+            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
+            broker.state.session_id = "broker-1"
+            broker.state.cwd = td
+            broker.state.log_path = log_path
+            broker.state.resume_session_id = "resume-a"
+
+            broker._write_meta()
+            meta_path = sock_path.with_suffix(".json")
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            self.assertEqual(meta["resume_session_id"], "resume-a")
+
+            broker.state.resume_session_id = None
+            broker._write_meta()
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            self.assertIsNone(meta["resume_session_id"])
 
 
 if __name__ == "__main__":

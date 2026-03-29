@@ -79,6 +79,17 @@ def _now() -> float:
     return time.time()
 
 
+def _resume_session_id_from_args(args: list[str]) -> str | None:
+    for idx, token in enumerate(args):
+        if token != "resume":
+            continue
+        if (idx + 1) >= len(args):
+            return None
+        resume_id = str(args[idx + 1] or "").strip()
+        return resume_id or None
+    return None
+
+
 def _set_pdeathsig(sig: int) -> None:
     if not sys.platform.startswith("linux"):
         return
@@ -507,6 +518,7 @@ class State:
     last_rollout_path: Path | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
+    resume_session_id: str | None = None
 
 
 class Broker:
@@ -528,6 +540,8 @@ class Broker:
 
         self.codex_home = DEFAULT_CODEX_HOME
         self.sessions_dir = self.codex_home / "sessions"
+        resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
+        self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -777,8 +791,19 @@ class Broker:
                         st3.last_turn_activity_ts = 0.0
                         st3.last_interrupt_hint_ts = 0.0
 
+            def maybe_clear_resume_delivery_mute() -> None:
+                clear_meta = False
+                with self._lock:
+                    st3 = self.state
+                    if st3 and st3.resume_session_id and (not st3.busy) and (not st3.turn_open) and (not st3.pending_calls):
+                        st3.resume_session_id = None
+                        clear_meta = True
+                if clear_meta:
+                    self._write_meta()
+
             if new_off == off:
                 maybe_mark_idle()
+                maybe_clear_resume_delivery_mute()
                 maybe_drain_one_if_idle()
                 time.sleep(0.25)
                 continue
@@ -820,6 +845,7 @@ class Broker:
                         _apply_rollout_obj_to_state(st3, obj, now_ts=now_ts)
 
             maybe_mark_idle()
+            maybe_clear_resume_delivery_mute()
             maybe_drain_one_if_idle()
 
     def _write_meta(self) -> None:
@@ -836,6 +862,7 @@ class Broker:
             "start_ts": st.start_ts,
             "log_path": str(st.log_path) if st.log_path else None,
             "sock_path": str(st.sock_path),
+            "resume_session_id": st.resume_session_id,
             "model_provider": MODEL_PROVIDER_OVERRIDE or None,
             "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
             "model": MODEL_OVERRIDE or None,
@@ -1120,6 +1147,7 @@ class Broker:
             codex_home=self.codex_home,
             sessions_dir=self.sessions_dir,
             busy=False,
+            resume_session_id=self._resume_session_id,
         )
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st

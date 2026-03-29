@@ -1786,6 +1786,7 @@ class Session:
     transport: str | None = None
     tmux_session: str | None = None
     tmux_window: str | None = None
+    resume_session_id: str | None = None
 
 
 class SessionManager:
@@ -2579,8 +2580,11 @@ class SessionManager:
                 if s is not None:
                     s.delivery_log_off = max(int(s.delivery_log_off), int(new_off))
             return
+        with self._lock:
+            s0 = self._sessions.get(session_id)
+            resume_muted = bool(s0 and s0.resume_session_id)
         messages = _extract_delivery_messages(objs)
-        if not messages:
+        if (not messages) or resume_muted:
             with self._lock:
                 s = self._sessions.get(session_id)
                 if s is not None:
@@ -2898,6 +2902,7 @@ class SessionManager:
             if not isinstance(start_ts_raw, (int, float)):
                 raise ValueError(f"invalid start_ts in metadata for socket {sock}")
             start_ts = float(start_ts_raw)
+            resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
             model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
             service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
 
@@ -2945,6 +2950,7 @@ class SessionManager:
                 service_tier=service_tier,
                 tmux_session=tmux_session,
                 tmux_window=tmux_window,
+                resume_session_id=resume_session_id,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -2978,6 +2984,7 @@ class SessionManager:
                     prev.service_tier = service_tier
                     prev.tmux_session = tmux_session
                     prev.tmux_window = tmux_window
+                    prev.resume_session_id = resume_session_id
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -3301,6 +3308,7 @@ class SessionManager:
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
         cwd = cwd_raw
+        resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
         model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
         service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
 
@@ -3326,6 +3334,7 @@ class SessionManager:
             s2.service_tier = service_tier
             s2.tmux_session = tmux_session
             s2.tmux_window = tmux_window
+            s2.resume_session_id = resume_session_id
         if self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -3766,6 +3775,7 @@ class SessionManager:
         env.pop("CODEX_WEB_TMUX_SESSION", None)
         env.pop("CODEX_WEB_TMUX_WINDOW", None)
         env.pop("CODEX_WEB_SPAWN_NONCE", None)
+        env.pop("CODEX_WEB_RESUME_SESSION_ID", None)
         if model_provider is not None:
             env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
         if preferred_auth_method is not None:
@@ -3776,6 +3786,8 @@ class SessionManager:
             env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
         if service_tier is not None:
             env["CODEX_WEB_SERVICE_TIER"] = service_tier
+        if resume_session_id is not None:
+            env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
@@ -3794,6 +3806,8 @@ class SessionManager:
                 "CODEX_WEB_TMUX_WINDOW": tmux_window,
                 "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
             }
+            if resume_session_id is not None:
+                inline_env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
             if model_provider is not None:
                 inline_env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
             if preferred_auth_method is not None:

@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import ANY
 from unittest.mock import patch
 
+from codoxear.server import Session
 from codoxear.server import SessionManager
 from codoxear.server import _create_git_worktree
 from codoxear.server import _describe_session_cwd
@@ -168,6 +169,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             result = SessionManager.spawn_web_session(manager, cwd=td, args=["--search"])
 
         argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
         trust_override = f'projects={{ {json.dumps(str(Path(td).resolve()))} = {{ trust_level = "trusted" }} }}'
         self.assertEqual(
             argv,
@@ -209,6 +211,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             )
 
         argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
         trust_override = f'projects={{ {json.dumps(str(Path(td).resolve()))} = {{ trust_level = "trusted" }} }}'
         self.assertEqual(
             argv,
@@ -227,6 +230,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--search",
             ],
         )
+        self.assertEqual(env["CODEX_WEB_RESUME_SESSION_ID"], "resume-a")
         self.assertEqual(result, {"broker_pid": 4321})
         self.assertEqual(thread_calls, ["start"])
 
@@ -401,6 +405,135 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         with TemporaryDirectory() as td:
             with self.assertRaisesRegex(ValueError, "cwd is not inside a git worktree"):
                 SessionManager.spawn_web_session(manager, cwd=td, worktree_branch="feature/test-worktree")
+
+    def test_resume_catchup_suppresses_delivery_until_resume_marker_clears(self) -> None:
+        class _FakeVoicePush:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def observe_messages(self, *, session_id: str, session_display_name: str, messages: list[object]) -> None:
+                self.calls.append(
+                    {
+                        "session_id": session_id,
+                        "session_display_name": session_display_name,
+                        "messages": messages,
+                    }
+                )
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_path = root / "broker.sock"
+            sock_path.touch()
+            log_path = root / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            meta_path = sock_path.with_suffix(".json")
+
+            replay_row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "historical replay reply"}],
+                },
+                "ts": 1.0,
+            }
+            _write_jsonl(
+                log_path,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "thread-1",
+                            "cwd": str(root),
+                            "source": "cli",
+                        },
+                    },
+                    replay_row,
+                ],
+            )
+            meta_path.write_text(
+                json.dumps(
+                    {
+                        "session_id": "thread-1",
+                        "owner": "web",
+                        "broker_pid": 1,
+                        "codex_pid": 2,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": str(log_path),
+                        "sock_path": str(sock_path),
+                        "resume_session_id": "resume-old",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            manager._aliases = {}
+            manager._queues = {}
+            manager._voice_push = _FakeVoicePush()
+            manager._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
+            manager._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
+
+            session = Session(
+                session_id="broker-1",
+                thread_id="thread-1",
+                broker_pid=1,
+                codex_pid=2,
+                owned=True,
+                start_ts=100.0,
+                cwd=str(root),
+                log_path=log_path,
+                sock_path=sock_path,
+            )
+            manager._sessions[session.session_id] = session
+
+            manager.refresh_session_meta(session.session_id)
+            manager._observe_rollout_delta(session.session_id, objs=[replay_row], new_off=10)
+            self.assertEqual(manager._voice_push.calls, [])
+            self.assertEqual(session.delivery_log_off, 10)
+            self.assertEqual(session.resume_session_id, "resume-old")
+
+            fresh_row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [{"type": "output_text", "text": "fresh reply after resume"}],
+                },
+                "ts": 2.0,
+            }
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(fresh_row) + "\n")
+            meta_path.write_text(
+                json.dumps(
+                    {
+                        "session_id": "thread-1",
+                        "owner": "web",
+                        "broker_pid": 1,
+                        "codex_pid": 2,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": str(log_path),
+                        "sock_path": str(sock_path),
+                        "resume_session_id": None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager.refresh_session_meta(session.session_id)
+            manager._observe_rollout_delta(session.session_id, objs=[fresh_row], new_off=20)
+            self.assertIsNone(session.resume_session_id)
+            self.assertEqual(len(manager._voice_push.calls), 1)
+            delivered = manager._voice_push.calls[0]
+            self.assertEqual(delivered["session_id"], "broker-1")
+            messages = delivered["messages"]
+            self.assertEqual(len(messages), 1)
+            self.assertEqual(messages[0].text, "fresh reply after resume")
 
 
 if __name__ == "__main__":
