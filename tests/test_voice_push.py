@@ -117,6 +117,48 @@ class TestDeliveryExtraction(unittest.TestCase):
         self.assertEqual(messages[0].message_class, "final_response")
         self.assertEqual(messages[0].text, "same final text")
 
+    def test_dedupes_final_response_when_response_item_only_adds_memory_citation(self) -> None:
+        rows = [
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "agent_message",
+                    "phase": "final_answer",
+                    "message": "done",
+                },
+                "ts": 2.0,
+            },
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "phase": "final_answer",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": (
+                                "done\n\n"
+                                "<oai-mem-citation>\n"
+                                "<citation_entries>\n"
+                                "MEMORY.md:1-2|note=[demo]\n"
+                                "</citation_entries>\n"
+                                "<rollout_ids>\n"
+                                "019d1f15-1cc0-7181-853a-b7a0ceadf3c1\n"
+                                "</rollout_ids>\n"
+                                "</oai-mem-citation>\n"
+                            ),
+                        }
+                    ],
+                },
+                "ts": 2.001,
+            },
+        ]
+        messages = _extract_delivery_messages(rows)
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].message_class, "final_response")
+        self.assertEqual(messages[0].text, "done")
+
 
 class TestVoicePushCoordinator(unittest.TestCase):
     def test_final_response_summarizes_and_enqueues_audio(self) -> None:
@@ -222,6 +264,75 @@ class TestVoicePushCoordinator(unittest.TestCase):
             row = next(iter(coord._delivery_ledger.values()))
             self.assertEqual(row["summary_status"], "skipped")
             self.assertEqual(row["notification_text"], "Line one. Line two.")
+
+    def test_final_response_with_memory_citation_is_summarized_once(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _FakeClient()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": False,
+                    "tts_enabled_for_final_response": True,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.observe_messages(
+                session_id="sid-1",
+                session_display_name="Repo",
+                messages=_extract_delivery_messages(
+                    [
+                        {
+                            "type": "event_msg",
+                            "payload": {
+                                "type": "agent_message",
+                                "phase": "final_answer",
+                                "message": "Longer final answer body",
+                            },
+                            "ts": 4.0,
+                        },
+                        {
+                            "type": "response_item",
+                            "payload": {
+                                "type": "message",
+                                "role": "assistant",
+                                "phase": "final_answer",
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": (
+                                            "Longer final answer body\n\n"
+                                            "<oai-mem-citation>\n"
+                                            "<citation_entries>\n"
+                                            "MEMORY.md:1-2|note=[demo]\n"
+                                            "</citation_entries>\n"
+                                            "<rollout_ids>\n"
+                                            "019d1f15-1cc0-7181-853a-b7a0ceadf3c1\n"
+                                            "</rollout_ids>\n"
+                                            "</oai-mem-citation>\n"
+                                        ),
+                                    }
+                                ],
+                            },
+                            "ts": 4.001,
+                        },
+                    ]
+                ),
+            )
+            self.assertEqual(len(fake_client.summary_calls), 1)
+            with coord._lock:
+                self.assertEqual(len(coord._delivery_ledger), 1)
+                self.assertEqual(len(coord._queue), 1)
 
     def test_subscription_upsert_and_toggle_round_trip(self) -> None:
         with TemporaryDirectory() as td:

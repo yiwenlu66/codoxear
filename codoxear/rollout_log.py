@@ -4,11 +4,15 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from .voice_push import ClassifiedAssistantMessage
+
+
+_OAI_MEM_CITATION_TAIL_RE = re.compile(r"\s*<oai-mem-citation>\s*.*?</oai-mem-citation>\s*\Z", re.DOTALL)
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
@@ -33,6 +37,11 @@ def _event_ts(obj: dict[str, Any]) -> float | None:
         if v is not None:
             return float(v)
     return None
+
+
+def _strip_oai_mem_citation_tail(text: str) -> str:
+    # Delivery notifications should follow the assistant reply itself, not the appended memory-citation envelope.
+    return _OAI_MEM_CITATION_TAIL_RE.sub("", text)
 
 
 def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
@@ -344,6 +353,9 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
                 continue
             message_class = "final_response" if (payload.get("phase") == "final_answer" or payload.get("end_turn") is True) else "narration"
         else:
+            continue
+        text = _strip_oai_mem_citation_tail(text)
+        if not text.strip():
             continue
         ts = _event_ts(obj)
         normalized_text = " ".join(text.split())
