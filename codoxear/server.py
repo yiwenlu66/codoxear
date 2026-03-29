@@ -182,36 +182,36 @@ SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
-- Maintain three live lists: Deliverables, Next actions, Parked questions.
-- Default is to keep working in the same turn; do not yield while any Next actions remain.
+- Maintain four internal sections:
+  1. Deliverables
+     - The concrete outputs the agent owes the user by the end of the task.
+     - Stable unless the user changes the request.
+  2. Completed
+     - Verified facts already established while producing the Deliverables.
+  3. Next actions
+     - Ordered concrete steps from the current state toward the Deliverables.
+  4. Parked user decisions
+     - Decisions or inputs that only the user can provide.
 
-- Question handling:
-  - If blocked on a decision, write it to Parked questions (question, why it matters, what is blocked).
-  - Immediately continue with unblocked work; do not wait for an answer.
-  - Surface parked questions only when truly blocked on user-only input, preferably at the end as a compact list.
+- Working rules:
+  - Keep these sections internal. Surface them only when yielding is necessary.
+  - Default to continuing in the same turn.
+  - Before each action, reason until the approach, failure modes, and verification path are clear.
+  - Exploration should happen through reading, tracing, inspection, and reasoning.
+  - Avoid trial and error.
+  - Resolve crashes, bugs, and design mistakes yourself unless a true user decision is required.
+  - Use the strongest available verification.
+  - Do not repeat the same command, edit, or analysis without a concrete new reason.
 
-- Progress loop (repeat):
-  - Choose the highest-leverage unblocked action.
-  - Execute it.
-  - Produce evidence using the strongest available verification that matches the request (full tests/builds/real runs/logs over minimal checks).
-  - Update lists and continue.
-
-- Long-running work:
-  - If you start a long task, actively monitor it (poll status/output/logs), diagnose stalls, and either fix, restart, or reroute to other unblocked work.
-  - Never claim background monitoring without returning observed state.
-
-- Anti-repetition:
-  - Do not repeat the same command/edit/analysis unless you can name the new evidence you expect.
-  - If you detect a loop, change strategy: new hypothesis, new subsystem boundary, new tool, or new verification path.
-
-- Turn minimization:
-  - Avoid mid-flight questions, progress check-ins, and "want me to do X next" prompts.
-  - Yield only when all deliverables are evidenced complete, or every remaining action is blocked by user-only input, or the next step is irreversible/high-risk.
+- Yield only when:
+  - all Deliverables are finished and supported by Completed;
+  - the only remaining gap is a Parked user decision;
+  - or the next step is irreversible or high-risk and needs explicit user confirmation.
 
 - End-of-turn gate (only when yielding is necessary):
-  - Run an extensive clean-room adversarial review via a dedicated subagent.
-  - Prompt the subagent with: original user intent, project architectural constraints/invariants, deliverables, objective evidence, changed artifacts (no approach narrative).
-  - Apply findings before yielding (or surface a concrete blocker/risk).
+  - Run a clean-room adversarial review via a dedicated subagent.
+  - Give it: user intent, Deliverables, Completed, remaining Next actions, Parked user decisions, constraints, and changed artifacts.
+  - Apply findings before yielding, or surface the exact remaining user decision or risk.
 """
 
 
