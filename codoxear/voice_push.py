@@ -410,11 +410,22 @@ class MergedHLSStream:
             if not chunk_paths:
                 raise RuntimeError("ffmpeg produced no HLS segments")
             for chunk_path in chunk_paths:
+                try:
+                    duration = self._segment_duration_seconds(chunk_path)
+                except RuntimeError as e:
+                    if "invalid ffprobe duration: N/A" not in str(e):
+                        raise
+                    try:
+                        chunk_path.unlink()
+                    except FileNotFoundError:
+                        pass
+                    continue
                 seq, segment_name, segment_path = self._reserve_segment(f"{message_id[:12] or 'audio'}")
                 chunk_path.replace(segment_path)
-                duration = self._segment_duration_seconds(segment_path)
                 total_duration += duration
                 self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
+            if total_duration <= 0.0:
+                raise RuntimeError("ffmpeg produced no valid HLS segments")
         except subprocess.CalledProcessError as e:
             detail = e.stderr.decode("utf-8", errors="replace")
             raise RuntimeError(f"ffmpeg failed: {detail}") from e

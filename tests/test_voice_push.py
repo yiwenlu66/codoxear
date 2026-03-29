@@ -2,6 +2,7 @@ import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import subprocess
 from unittest.mock import patch
 from codoxear.rollout_log import _extract_delivery_messages
 from codoxear.voice_push import AnnouncementTask
@@ -619,6 +620,32 @@ class TestVoicePushCoordinator(unittest.TestCase):
             stream._store_segment(seq=1, segment_name="000001-a.ts", segment_path=Path(td) / "000001-a.ts", duration=27.2)
             playlist = stream.playlist_bytes().decode("utf-8")
             self.assertIn("#EXT-X-TARGETDURATION:28", playlist)
+
+    def test_append_audio_skips_invalid_na_segment_instead_of_crashing(self) -> None:
+        with TemporaryDirectory() as td:
+            stream = MergedHLSStream(root_dir=Path(td))
+            prefix = "abc123def456"
+
+            def fake_run(*args, **kwargs):
+                segdir = Path(td) / "segments"
+                (segdir / f"{prefix}-part-000.ts").write_bytes(b"good")
+                (segdir / f"{prefix}-part-001.ts").write_bytes(b"bad")
+                return subprocess.CompletedProcess(args[0], 0, b"", b"")
+
+            def fake_duration(path: Path) -> float:
+                if path.name.endswith("000.ts"):
+                    return 1.25
+                raise RuntimeError("invalid ffprobe duration: N/A")
+
+            with patch("codoxear.voice_push.shutil.which", return_value="/usr/bin/fake"), \
+                patch("codoxear.voice_push.subprocess.run", side_effect=fake_run), \
+                patch.object(stream, "_segment_duration_seconds", side_effect=fake_duration):
+                total = stream.append_audio(message_id=prefix, audio_bytes=b"fake-audio")
+
+            self.assertEqual(total, 1.25)
+            playlist = stream.playlist_bytes().decode("utf-8")
+            self.assertIn(".ts", playlist)
+            self.assertEqual(playlist.count("#EXTINF:"), 1)
 
 
 if __name__ == "__main__":
