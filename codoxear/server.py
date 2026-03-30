@@ -31,7 +31,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .agent_backend import get_agent_backend
+from .agent_backend import normalize_agent_backend
 from . import rollout_log as _rollout_log
+from .pi_log import pi_user_text as _pi_user_text
+from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
@@ -40,6 +44,7 @@ from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
+from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .voice_push import VoicePushCoordinator
 
@@ -148,7 +153,14 @@ else:
 CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 CODEX_CONFIG_PATH = CODEX_HOME / "config.toml"
 MODELS_CACHE_PATH = CODEX_HOME / "models_cache.json"
+PI_HOME = get_agent_backend("pi").home()
+PI_SESSIONS_DIR = get_agent_backend("pi").sessions_dir()
+PI_SETTINGS_PATH = PI_HOME / "agent" / "settings.json"
+PI_MODELS_PATH = PI_HOME / "agent" / "models.json"
+PI_AUTH_PATH = PI_HOME / "agent" / "auth.json"
+DEFAULT_AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex")
 SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
+SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -1217,6 +1229,14 @@ def _display_reasoning_effort(value: Any) -> str | None:
     return lowered if lowered in SUPPORTED_REASONING_EFFORTS else None
 
 
+def _display_pi_reasoning_effort(value: Any) -> str | None:
+    out = _clean_optional_text(value)
+    if out is None:
+        return None
+    lowered = out.lower()
+    return lowered if lowered in SUPPORTED_PI_REASONING_EFFORTS else None
+
+
 def _normalize_requested_reasoning_effort(value: Any) -> str | None:
     if value is None:
         return None
@@ -1227,6 +1247,19 @@ def _normalize_requested_reasoning_effort(value: Any) -> str | None:
         return None
     if out not in SUPPORTED_REASONING_EFFORTS:
         raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_REASONING_EFFORTS)}")
+    return out
+
+
+def _normalize_requested_pi_reasoning_effort(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("reasoning_effort must be a string")
+    out = value.strip().lower()
+    if not out:
+        return None
+    if out not in SUPPORTED_PI_REASONING_EFFORTS:
+        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_PI_REASONING_EFFORTS)}")
     return out
 
 
@@ -1351,25 +1384,30 @@ def _download_disposition(path_obj: Path) -> str:
     return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}"
 
 
-def _iter_session_logs() -> list[Path]:
-    return _iter_session_logs_impl(CODEX_SESSIONS_DIR)
+def _iter_session_logs(*, agent_backend: str = "codex") -> list[Path]:
+    backend_name = normalize_agent_backend(agent_backend)
+    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
+    return _iter_session_logs_impl(sessions_dir, agent_backend=backend_name)
 
 
-def _find_session_log_for_session_id(session_id: str) -> Path | None:
-    for p in _iter_session_logs():
-        if session_id in p.name:
-            return p
-    return None
+def _find_session_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
+    backend_name = normalize_agent_backend(agent_backend)
+    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
+    return _find_session_log_for_session_id_impl(sessions_dir, session_id, agent_backend=backend_name)
 
 
 def _find_new_session_log(
     *,
+    agent_backend: str = "codex",
     after_ts: float,
     preexisting: set[Path],
     timeout_s: float = 15.0,
 ) -> tuple[str, Path] | None:
+    backend_name = normalize_agent_backend(agent_backend)
+    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
     return _find_new_session_log_impl(
-        sessions_dir=CODEX_SESSIONS_DIR,
+        sessions_dir=sessions_dir,
+        agent_backend=backend_name,
         after_ts=after_ts,
         preexisting=preexisting,
         timeout_s=timeout_s,
@@ -1380,8 +1418,8 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 *
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
-def _discover_log_for_session_id(session_id: str) -> Path | None:
-    return _find_session_log_for_session_id(session_id)
+def _discover_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
+    return _find_session_log_for_session_id(session_id, agent_backend=agent_backend)
 
 def _session_id_from_rollout_path(log_path: Path) -> str | None:
     name = log_path.name
@@ -1389,17 +1427,19 @@ def _session_id_from_rollout_path(log_path: Path) -> str | None:
     return m[-1] if m else None
 
 
-def _read_session_meta(log_path: Path) -> dict[str, Any]:
-    with log_path.open("r", encoding="utf-8") as f:
-        first = f.readline().strip()
-    if not first:
-        raise ValueError(f"missing session_meta in {log_path}")
-    obj = json.loads(first)
-    if not isinstance(obj, dict) or obj.get("type") != "session_meta":
-        raise ValueError(f"invalid session_meta record in {log_path}")
-    payload = obj.get("payload")
-    if not isinstance(payload, dict):
-        raise ValueError(f"invalid session_meta payload in {log_path}")
+def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> dict[str, Any]:
+    if agent_backend is None:
+        try:
+            log_path.resolve().relative_to(PI_SESSIONS_DIR.resolve())
+            inferred = "pi"
+        except Exception:
+            inferred = "codex"
+        backend_name = inferred
+    else:
+        backend_name = normalize_agent_backend(agent_backend)
+    payload = _read_session_meta_payload_impl(log_path, agent_backend=backend_name, timeout_s=0.0)
+    if payload is None:
+        raise ValueError(f"missing session metadata in {log_path}")
     return payload
 
 
@@ -1412,8 +1452,11 @@ def _turn_context_run_settings(payload: Any) -> tuple[str | None, str | None]:
     )
 
 
-def _read_run_settings_from_log(log_path: Path) -> tuple[str | None, str | None, str | None]:
-    meta = _read_session_meta(log_path)
+def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex") -> tuple[str | None, str | None, str | None]:
+    backend_name = normalize_agent_backend(agent_backend)
+    if backend_name == "pi":
+        return _read_pi_run_settings(log_path)
+    meta = _read_session_meta(log_path, agent_backend="codex")
     model_provider = _clean_optional_text(meta.get("model_provider"))
     model = _clean_optional_text(meta.get("model"))
     reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
@@ -1542,9 +1585,108 @@ def _read_codex_launch_defaults() -> dict[str, Any]:
     return defaults
 
 
-def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
-    meta = _read_session_meta(log_path)
-    if _is_subagent_session_meta(meta):
+def _read_pi_launch_defaults() -> dict[str, Any]:
+    configured_provider: str | None = None
+    configured_model: str | None = None
+    configured_effort: str | None = "high"
+    provider_choices: list[str] = []
+    model_choices: list[str] = []
+
+    if PI_SETTINGS_PATH.exists():
+        data = json.loads(PI_SETTINGS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Pi settings in {PI_SETTINGS_PATH}")
+        configured_provider = _clean_optional_text(data.get("defaultProvider"))
+        configured_model = _clean_optional_text(data.get("defaultModel"))
+
+    if PI_MODELS_PATH.exists():
+        data = json.loads(PI_MODELS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Pi models config in {PI_MODELS_PATH}")
+        providers = data.get("providers")
+        if isinstance(providers, dict):
+            for key, value in providers.items():
+                if not isinstance(key, str):
+                    continue
+                name = key.strip()
+                if not name or name in provider_choices:
+                    continue
+                provider_choices.append(name)
+                if configured_provider is not None and name != configured_provider:
+                    continue
+                if not isinstance(value, dict):
+                    continue
+                models = value.get("models")
+                if not isinstance(models, list):
+                    continue
+                for row in models:
+                    if not isinstance(row, dict):
+                        continue
+                    model_id = _clean_optional_text(row.get("id"))
+                    if model_id is None or model_id in model_choices:
+                        continue
+                    model_choices.append(model_id)
+
+    if PI_AUTH_PATH.exists():
+        data = json.loads(PI_AUTH_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Pi auth config in {PI_AUTH_PATH}")
+        for key, value in data.items():
+            if not isinstance(key, str) or not key.strip():
+                continue
+            if not isinstance(value, dict):
+                continue
+            auth_type = _clean_optional_text(value.get("type"))
+            access = _clean_optional_text(value.get("access"))
+            refresh = _clean_optional_text(value.get("refresh"))
+            if auth_type != "oauth":
+                continue
+            if access is None and refresh is None:
+                continue
+            name = key.strip()
+            if name not in provider_choices:
+                provider_choices.append(name)
+
+    if configured_provider is not None and configured_provider not in provider_choices:
+        provider_choices.insert(0, configured_provider)
+    if configured_model is not None and configured_model not in model_choices:
+        model_choices.insert(0, configured_model)
+
+    return {
+        "agent_backend": "pi",
+        "model_provider": configured_provider,
+        "preferred_auth_method": None,
+        "provider_choice": configured_provider,
+        "provider_choices": provider_choices,
+        "model": configured_model,
+        "models": model_choices,
+        "reasoning_effort": configured_effort,
+        "reasoning_efforts": list(SUPPORTED_PI_REASONING_EFFORTS),
+        "service_tier": None,
+        "supports_fast": False,
+    }
+
+
+def _read_new_session_defaults() -> dict[str, Any]:
+    codex = _read_codex_launch_defaults()
+    codex["agent_backend"] = "codex"
+    codex["provider_choices"] = list(codex.get("model_providers") or [])
+    codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
+    codex["supports_fast"] = True
+    pi = _read_pi_launch_defaults()
+    return {
+        "default_backend": DEFAULT_AGENT_BACKEND,
+        "backends": {
+            "codex": codex,
+            "pi": pi,
+        },
+    }
+
+
+def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") -> dict[str, Any] | None:
+    backend_name = normalize_agent_backend(agent_backend)
+    meta = _read_session_meta(log_path, agent_backend=backend_name)
+    if backend_name == "codex" and _is_subagent_session_meta(meta):
         return None
     session_id = meta.get("id")
     cwd = meta.get("cwd")
@@ -1559,12 +1701,13 @@ def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
         return None
     except Exception:
         updated_ts = 0.0
-    git_info = meta.get("git")
     git_branch = ""
-    if isinstance(git_info, dict):
-        branch_raw = git_info.get("branch")
-        if isinstance(branch_raw, str):
-            git_branch = branch_raw
+    if backend_name == "codex":
+        git_info = meta.get("git")
+        if isinstance(git_info, dict):
+            branch_raw = git_info.get("branch")
+            if isinstance(branch_raw, str):
+                git_branch = branch_raw
     return {
         "session_id": session_id,
         "cwd": cwd,
@@ -1572,16 +1715,18 @@ def _resume_candidate_from_log(log_path: Path) -> dict[str, Any] | None:
         "updated_ts": updated_ts,
         "timestamp": meta.get("timestamp"),
         "git_branch": git_branch,
+        "agent_backend": backend_name,
     }
 
 
-def _list_resume_candidates_for_cwd(cwd: str, *, limit: int = 12) -> list[dict[str, Any]]:
+def _list_resume_candidates_for_cwd(cwd: str, *, agent_backend: str = "codex", limit: int = 12) -> list[dict[str, Any]]:
+    backend_name = normalize_agent_backend(agent_backend)
     cwd2 = str(Path(cwd).expanduser().resolve())
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for log_path in _iter_session_logs():
+    for log_path in _iter_session_logs(agent_backend=backend_name):
         try:
-            row = _resume_candidate_from_log(log_path)
+            row = _resume_candidate_from_log(log_path, agent_backend=backend_name)
         except Exception:
             continue
         if not isinstance(row, dict):
@@ -1648,14 +1793,19 @@ def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int 
                     obj = json.loads(raw.decode("utf-8"))
                 except Exception:
                     continue
-                if not isinstance(obj, dict) or obj.get("type") != "response_item":
+                if not isinstance(obj, dict):
                     continue
-                payload = obj.get("payload")
-                if not isinstance(payload, dict):
+                if obj.get("type") == "message":
+                    text = _pi_user_text(obj) or ""
+                elif obj.get("type") == "response_item":
+                    payload = obj.get("payload")
+                    if not isinstance(payload, dict):
+                        continue
+                    if payload.get("type") != "message" or payload.get("role") != "user":
+                        continue
+                    text = _user_message_text(payload)
+                else:
                     continue
-                if payload.get("type") != "message" or payload.get("role") != "user":
-                    continue
-                text = _user_message_text(payload)
                 if not text or _is_scaffold_user_text(text):
                     continue
                 return _resume_preview_from_text(text)
@@ -1756,6 +1906,7 @@ class Session:
     thread_id: str
     broker_pid: int
     codex_pid: int
+    agent_backend: str
     owned: bool
     start_ts: float
     cwd: str
@@ -1851,13 +2002,14 @@ class SessionManager:
         s.reasoning_effort = None
         s.service_tier = None
 
-    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None) -> tuple[str | None, str | None, str | None, str | None]:
+    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None, agent_backend: str) -> tuple[str | None, str | None, str | None, str | None]:
+        backend_name = normalize_agent_backend(agent_backend)
         model_provider = _clean_optional_text(meta.get("model_provider"))
         preferred_auth_method = _normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
         model = _clean_optional_text(meta.get("model"))
-        reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
+        reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if backend_name == "codex" else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
         if log_path is not None and log_path.exists():
-            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path)
+            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
             if log_provider is not None:
                 model_provider = log_provider
             if log_model is not None:
@@ -2859,6 +3011,7 @@ class SessionManager:
                 raise ValueError(f"invalid broker_pid in metadata for socket {sock}")
             codex_pid = int(codex_pid_raw)
             broker_pid = int(broker_pid_raw)
+            agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
 
@@ -2873,7 +3026,8 @@ class SessionManager:
                     raise ValueError(f"invalid log_path in metadata for socket {sock}")
                 log_path = Path(log_path_raw)
             if log_path is not None and log_path.exists():
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+                if agent_backend == "codex":
+                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
             else:
                 log_path = None
 
@@ -2903,8 +3057,12 @@ class SessionManager:
                 raise ValueError(f"invalid start_ts in metadata for socket {sock}")
             start_ts = float(start_ts_raw)
             resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
-            service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
+            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
+                meta=meta,
+                log_path=log_path,
+                agent_backend=agent_backend,
+            )
+            service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
 
             # Validate socket is responsive.
             try:
@@ -2930,6 +3088,7 @@ class SessionManager:
                 thread_id=thread_id,
                 broker_pid=broker_pid,
                 codex_pid=codex_pid,
+                agent_backend=agent_backend,
                 owned=owned,
                 transport=transport,
                 start_ts=float(start_ts),
@@ -2967,6 +3126,7 @@ class SessionManager:
                     prev.thread_id = s.thread_id
                     prev.broker_pid = s.broker_pid
                     prev.codex_pid = s.codex_pid
+                    prev.agent_backend = s.agent_backend
                     prev.owned = s.owned
                     prev.transport = s.transport
                     prev.start_ts = s.start_ts
@@ -3068,6 +3228,9 @@ class SessionManager:
                 off = new_off
                 loops += 1
 
+            if latest_token is None and s.token is None:
+                latest_token = _rollout_log._find_latest_token_update(lp)
+
             with self._lock:
                 s2 = self._sessions.get(sid)
                 if not s2:
@@ -3134,7 +3297,7 @@ class SessionManager:
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 if log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None):
                     try:
-                        log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path)
+                        log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path, agent_backend=s.agent_backend)
                     except (FileNotFoundError, ValueError):
                         log_provider = log_model = log_effort = None
                     if s.model_provider is None:
@@ -3194,6 +3357,7 @@ class SessionManager:
                         "thread_id": s.thread_id,
                         "pid": s.codex_pid,
                         "broker_pid": s.broker_pid,
+                        "agent_backend": s.agent_backend,
                         "owned": s.owned,
                         "transport": s.transport,
                         "cwd": s.cwd,
@@ -3238,14 +3402,19 @@ class SessionManager:
         out: list[dict[str, Any]] = []
         for it in items:
             sid = str(it["session_id"])
+            agent_backend = normalize_agent_backend(it.get("agent_backend"), default="codex")
             log_exists = bool(it.get("log_exists"))
             state_busy = bool(it.get("state_busy"))
             if not log_exists:
                 busy_out = False
             else:
-                # When a log exists, unify semantics with /messages:
-                # busy if broker says busy OR log-derived idle is false.
-                busy_out = state_busy or (not bool(self.idle_from_log(sid)))
+                idle_val = bool(self.idle_from_log(sid))
+                if agent_backend == "pi":
+                    busy_out = not idle_val
+                else:
+                    # When a log exists, unify semantics with /messages:
+                    # busy if broker says busy OR log-derived idle is false.
+                    busy_out = state_busy or (not idle_val)
             it2 = dict(it)
             it2.pop("log_exists", None)
             it2.pop("state_busy", None)
@@ -3290,6 +3459,7 @@ class SessionManager:
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
+        agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
         transport, tmux_session, tmux_window = self._session_transport(meta=meta)
         if "log_path" not in meta:
             raise ValueError(f"missing log_path in metadata for socket {sock}")
@@ -3302,21 +3472,27 @@ class SessionManager:
                 raise ValueError(f"invalid log_path in metadata for socket {sock}")
             log_path = Path(log_path_raw)
         if log_path is not None and log_path.exists():
-            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+            if agent_backend == "codex":
+                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
         cwd_raw = meta.get("cwd")
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
         cwd = cwd_raw
         resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-        model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(meta=meta, log_path=log_path)
-        service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
+        model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
+            meta=meta,
+            log_path=log_path,
+            agent_backend=agent_backend,
+        )
+        service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
 
         with self._lock:
             s2 = self._sessions.get(session_id)
             if not s2:
                 return
             s2.thread_id = thread_id
+            s2.agent_backend = agent_backend
             s2.cwd = str(cwd)
             s2.owned = bool(owned)
             s2.transport = transport
@@ -3703,6 +3879,7 @@ class SessionManager:
         *,
         cwd: str,
         args: list[str] | None = None,
+        agent_backend: str = "codex",
         resume_session_id: str | None = None,
         worktree_branch: str | None = None,
         model_provider: str | None = None,
@@ -3712,6 +3889,7 @@ class SessionManager:
         service_tier: str | None = None,
         create_in_tmux: bool = False,
     ) -> dict[str, Any]:
+        backend_name = normalize_agent_backend(agent_backend)
         cwd_path = _resolve_dir_target(cwd, field_name="cwd")
         if not cwd_path.exists():
             try:
@@ -3729,34 +3907,53 @@ class SessionManager:
             spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
-        # Web-owned sessions need a fully remote-safe mode that does not block on TUI confirmations.
-        codex_args = [
-            "-c",
-            _codex_trust_override_for_path(spawn_cwd),
-            "--dangerously-bypass-approvals-and-sandbox",
-        ]
-        if model is not None:
-            codex_args.extend(["--model", model])
-        if reasoning_effort is not None:
-            codex_args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
-        if model_provider is not None:
-            codex_args.extend(["-c", f'model_provider="{model_provider}"'])
-        if preferred_auth_method is not None:
-            codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
-        if service_tier is not None:
-            codex_args.extend(["-c", f'service_tier="{service_tier}"'])
+        codex_args: list[str] = []
+        resume_row: dict[str, Any] | None = None
+        if backend_name == "codex":
+            # Web-owned Codex sessions need a remote-safe mode that does not block on TUI confirmations.
+            codex_args = [
+                "-c",
+                _codex_trust_override_for_path(spawn_cwd),
+                "--dangerously-bypass-approvals-and-sandbox",
+            ]
+            if model is not None:
+                codex_args.extend(["--model", model])
+            if reasoning_effort is not None:
+                codex_args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
+            if model_provider is not None:
+                codex_args.extend(["-c", f'model_provider="{model_provider}"'])
+            if preferred_auth_method is not None:
+                codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
+            if service_tier is not None:
+                codex_args.extend(["-c", f'service_tier="{service_tier}"'])
+        else:
+            if preferred_auth_method is not None:
+                raise ValueError("preferred_auth_method is not supported for pi")
+            if service_tier is not None:
+                raise ValueError("service_tier is not supported for pi")
+            if model_provider is not None:
+                codex_args.extend(["--provider", model_provider])
+            if model is not None:
+                codex_args.extend(["--model", model])
+            if reasoning_effort is not None:
+                codex_args.extend(["--thinking", reasoning_effort])
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
                 raise ValueError("resume_session_id must be a non-empty string")
             found = False
-            for row in _list_resume_candidates_for_cwd(cwd3, limit=1000):
+            for row in _list_resume_candidates_for_cwd(cwd3, agent_backend=backend_name, limit=1000):
                 if row.get("session_id") == resume_id:
                     found = True
+                    resume_row = row
                     break
             if not found:
                 raise ValueError(f"resume session not found for cwd: {resume_id}")
-            codex_args.extend(["resume", resume_id])
+            if backend_name == "codex":
+                codex_args.extend(["resume", resume_id])
+            else:
+                resume_target = str(resume_row.get("log_path") or "").strip() if isinstance(resume_row, dict) else ""
+                codex_args.extend(["--session", resume_target or resume_id])
         codex_args.extend(args or [])
         argv.extend(codex_args)
 
@@ -3765,7 +3962,13 @@ class SessionManager:
             for k, v in _load_env_file(_DOTENV).items():
                 env.setdefault(k, v)
         env["CODEX_WEB_OWNER"] = "web"
-        env.setdefault("CODEX_HOME", str(CODEX_HOME))
+        env["CODEX_WEB_AGENT_BACKEND"] = backend_name
+        if backend_name == "codex":
+            env.setdefault("CODEX_HOME", str(CODEX_HOME))
+            env.pop("PI_HOME", None)
+        else:
+            env.setdefault("PI_HOME", str(PI_HOME))
+            env.pop("CODEX_HOME", None)
         env.pop("CODEX_WEB_MODEL_PROVIDER", None)
         env.pop("CODEX_WEB_PREFERRED_AUTH_METHOD", None)
         env.pop("CODEX_WEB_MODEL", None)
@@ -3776,6 +3979,7 @@ class SessionManager:
         env.pop("CODEX_WEB_TMUX_WINDOW", None)
         env.pop("CODEX_WEB_SPAWN_NONCE", None)
         env.pop("CODEX_WEB_RESUME_SESSION_ID", None)
+        env.pop("CODEX_WEB_RESUME_LOG_PATH", None)
         if model_provider is not None:
             env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
         if preferred_auth_method is not None:
@@ -3788,6 +3992,10 @@ class SessionManager:
             env["CODEX_WEB_SERVICE_TIER"] = service_tier
         if resume_session_id is not None:
             env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+            if backend_name == "pi" and isinstance(resume_row, dict):
+                resume_log_path = str(resume_row.get("log_path") or "").strip()
+                if resume_log_path:
+                    env["CODEX_WEB_RESUME_LOG_PATH"] = resume_log_path
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
@@ -3799,15 +4007,23 @@ class SessionManager:
             env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
             env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
             inline_env = {
-                "CODEX_HOME": str(env["CODEX_HOME"]),
                 "CODEX_WEB_OWNER": "web",
+                "CODEX_WEB_AGENT_BACKEND": backend_name,
                 "CODEX_WEB_TRANSPORT": "tmux",
                 "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
                 "CODEX_WEB_TMUX_WINDOW": tmux_window,
                 "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
             }
+            if backend_name == "codex":
+                inline_env["CODEX_HOME"] = str(env["CODEX_HOME"])
+            else:
+                inline_env["PI_HOME"] = str(env["PI_HOME"])
             if resume_session_id is not None:
                 inline_env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+                if backend_name == "pi" and isinstance(resume_row, dict):
+                    resume_log_path = str(resume_row.get("log_path") or "").strip()
+                    if resume_log_path:
+                        inline_env["CODEX_WEB_RESUME_LOG_PATH"] = resume_log_path
             if model_provider is not None:
                 inline_env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
             if preferred_auth_method is not None:
@@ -4181,7 +4397,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 t0 = time.perf_counter()
                 sessions = MANAGER.list_sessions()
                 recent_cwds = MANAGER.recent_cwds()
-                new_session_defaults = _read_codex_launch_defaults()
+                new_session_defaults = _read_new_session_defaults()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
                 _json_response(
@@ -4204,12 +4420,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 qs = urllib.parse.parse_qs(u.query)
                 cwd_raw = qs.get("cwd", [""])[0]
                 try:
+                    agent_backend = normalize_agent_backend(qs.get("agent_backend", [""])[0], default=DEFAULT_AGENT_BACKEND)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
                     cwd_path = _resolve_dir_target(str(cwd_raw), field_name="cwd")
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e), "field": "cwd"})
                     return
                 info = _describe_session_cwd(cwd_path)
-                rows = _list_resume_candidates_for_cwd(info["cwd"]) if info["exists"] else []
+                rows = _list_resume_candidates_for_cwd(info["cwd"], agent_backend=agent_backend) if info["exists"] else []
                 for row in rows:
                     sid = row.get("session_id")
                     log_path_raw = row.get("log_path")
@@ -4253,14 +4474,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 token_val: dict[str, Any] | None = None
                 st_token = state.get("token")
                 if isinstance(st_token, dict) or st_token is None:
-                    token_val = st_token
+                    token_val = st_token if isinstance(st_token, dict) else (s.token if isinstance(s.token, dict) else None)
                 model_provider = s.model_provider
                 preferred_auth_method = s.preferred_auth_method
                 model = s.model
                 reasoning_effort = s.reasoning_effort
                 service_tier = s.service_tier
                 if (model_provider is None or model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
-                    log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path)
+                    log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path, agent_backend=s.agent_backend)
                     if model_provider is None:
                         model_provider = log_provider
                     if model is None:
@@ -4279,12 +4500,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 blocked = sidebar_meta["dependency_session_id"] is not None
                 snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
+                broker_busy = bool(state.get("busy"))
+                busy_val = broker_busy
+                if s.log_path is not None and s.log_path.exists():
+                    idle_val = MANAGER.idle_from_log(session_id)
+                    if s.agent_backend == "pi":
+                        busy_val = not bool(idle_val)
+                    else:
+                        busy_val = broker_busy or (not bool(idle_val))
                 _json_response(
                     self,
                     200,
                     {
                         "session_id": s.session_id,
                         "thread_id": s.thread_id,
+                        "agent_backend": s.agent_backend,
                         "owned": bool(s.owned),
                         "transport": s.transport,
                         "cwd": s.cwd,
@@ -4293,7 +4523,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
                         "broker_pid": int(s.broker_pid),
                         "codex_pid": int(s.codex_pid),
-                        "busy": bool(state.get("busy")),
+                        "busy": bool(busy_val),
+                        "broker_busy": broker_busy,
                         "queue_len": MANAGER._queue_len(session_id),
                         "token": token_val,
                         "model_provider": model_provider,
@@ -4915,7 +5146,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
                 diag["idle_from_log_ms"] = round(dt_idle_ms, 3)
 
-                busy_val = bool(state_busy) or (not bool(idle_val))
+                if s.agent_backend == "pi":
+                    busy_val = not bool(idle_val)
+                else:
+                    busy_val = bool(state_busy) or (not bool(idle_val))
                 queue_val = MANAGER._queue_len(session_id)
 
                 token_val: dict[str, Any] | None = None
@@ -4923,7 +5157,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     state_token = state.get("token")
                     if not (isinstance(state_token, dict) or (state_token is None)):
                         raise ValueError("invalid token from broker state response")
-                    token_val = state_token
+                    token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
                 elif isinstance(token_update, dict):
                     token_val = token_update
                 diag["state_ms"] = round(dt_state_ms, 3)
@@ -5146,39 +5380,72 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 obj = json.loads(body_text)
                 if not isinstance(obj, dict):
                     raise ValueError("invalid json body (expected object)")
+                try:
+                    agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 cwd = obj.get("cwd")
                 if not isinstance(cwd, str) or not cwd.strip():
                     _json_response(self, 400, {"error": "cwd required", "field": "cwd"})
                     return
                 try:
-                    allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
-                    model_provider = _normalize_requested_model_provider(
-                        obj.get("model_provider"),
-                        allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
-                    )
+                    if agent_backend == "codex":
+                        allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
+                        model_provider = _normalize_requested_model_provider(
+                            obj.get("model_provider"),
+                            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+                        )
+                    else:
+                        pi_provider_choices = {
+                            str(value)
+                            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
+                            if isinstance(value, str) and value.strip()
+                        }
+                        model_provider = _normalize_requested_model_provider(
+                            obj.get("model_provider"),
+                            allowed=pi_provider_choices or None,
+                        )
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                try:
-                    preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
+                if agent_backend == "codex":
+                    try:
+                        preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                else:
+                    if obj.get("preferred_auth_method") not in (None, ""):
+                        _json_response(self, 400, {"error": "preferred_auth_method is not supported for pi"})
+                        return
+                    preferred_auth_method = None
                 try:
                     model = _normalize_requested_model(obj.get("model"))
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                try:
-                    reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
+                if agent_backend == "codex":
+                    try:
+                        reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    try:
+                        service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                else:
+                    try:
+                        reasoning_effort = _normalize_requested_pi_reasoning_effort(obj.get("reasoning_effort"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    if obj.get("service_tier") not in (None, ""):
+                        _json_response(self, 400, {"error": "service_tier is not supported for pi"})
+                        return
+                    service_tier = None
                 create_in_tmux_raw = obj.get("create_in_tmux")
                 if create_in_tmux_raw is None:
                     create_in_tmux = False
@@ -5215,6 +5482,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     res = MANAGER.spawn_web_session(
                         cwd=cwd,
                         args=args_list,
+                        agent_backend=agent_backend,
                         resume_session_id=resume_session_id,
                         worktree_branch=worktree_branch,
                         model_provider=model_provider,

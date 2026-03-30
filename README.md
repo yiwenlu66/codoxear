@@ -4,13 +4,18 @@
   <img src="codoxear/static/codoxear-icon.png" alt="Codoxear icon" width="140" />
 </p>
 
-Unofficial mobile handoff for Codex TUI sessions.
+Unofficial mobile handoff for local CLI agent sessions.
 
-Codoxear runs a small web server on your computer and exposes a phone-friendly UI for continuing the same live Codex TUI session from mobile. Your environment stays local (filesystem, tools, credentials). The phone is a view/controller.
+Codoxear runs a small web server on your computer and exposes a phone-friendly UI for continuing the same live CLI agent session from mobile. Your environment stays local (filesystem, tools, credentials). The phone is a view/controller.
+
+Currently supported agent backends:
+
+- Codex
+- Pi
 
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
-Not affiliated with OpenAI. "Codex" is referenced only for compatibility with the Codex CLI TUI.
+Not affiliated with OpenAI or the Pi Coding Agent project. "Codex" and "Pi" are referenced only for CLI compatibility.
 
 ## Platform support
 
@@ -43,9 +48,9 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
     - Default bind: `::` (IPv6, usually reachable on LAN)
     - Default port: `8743`
 
-3. Add a separate `codox` wrapper for brokered sessions (zsh/bash function, not an alias):
+3. Add separate wrappers for terminal-owned brokered sessions (zsh/bash function, not an alias):
 
-   Never wrap or replace `codex()` itself. Web-owned sessions launch `codex` internally, so wrapping `codex()` to call `codoxear-broker` can recurse back into the broker and create an unbounded session-spawn loop.
+   Never wrap or replace `codex()` or `pi()` themselves. Web-owned sessions launch the underlying CLI directly, so wrapping the original command to call `codoxear-broker` can recurse back into the broker and create an unbounded session-spawn loop.
 
    Add to `~/.zshrc` or `~/.bashrc`:
 
@@ -53,11 +58,15 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    codox() {
      codoxear-broker -- "$@"
    }
+
+   piox() {
+     CODEX_WEB_AGENT_BACKEND=pi codoxear-broker -- "$@"
+   }
    ```
 
    Restart your shell or `source` your rc file.
 
-4. Use `codox` instead of `codex` when you want the terminal session to be registered with Codoxear. Leave plain `codex` unwrapped.
+4. Use `codox` for terminal-owned Codex sessions and `piox` for terminal-owned Pi sessions when you want them registered with Codoxear. Leave plain `codex` and `pi` unwrapped.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
@@ -113,32 +122,32 @@ tailscale serve status
 
 ## User stories
 
-- Desktop Linux: start Codex in your GUI terminal emulator, then continue the same live TUI session on your phone or a laptop browser.
-- Headless Linux: start Codex inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
-- Web-owned sessions: start a new Codex session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
-- Web-owned tmux sessions: start a new Codex session from the Codoxear UI with `Create in tmux` enabled to run it inside tmux session `codoxear` for shell-side observability.
+- Desktop Linux: start Codex or Pi in your GUI terminal emulator, then continue the same live session on your phone or a laptop browser.
+- Headless Linux: start Codex or Pi inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
+- Web-owned sessions: start a new Codex or Pi session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
+- Web-owned tmux sessions: start a new Codex or Pi session from the Codoxear UI with `Create in tmux` enabled to run it inside tmux session `codoxear` for shell-side observability.
 
 ## Session ownership
 
 Codoxear shows three kinds of sessions:
 
-- Terminal-owned: sessions started from your local terminal via `codox` (the broker wrapper). They are marked `T` in the UI.
+- Terminal-owned: sessions started from your local terminal via `codox` or `piox` (the broker wrappers). They are marked `T` in the UI.
 - Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
 - Web-owned tmux: sessions started from the Codoxear UI with `Create in tmux` enabled. They are marked with the tmux split-pane icon in the UI and run under tmux session `codoxear`.
 
 The current UI offers Delete for all session kinds. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
-If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use `codox resume`. Use plain `codex` only for sessions that should stay outside Codoxear.
+If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly.
 
 ## Known limitations
 
-### No Default/Plan confirmation interaction from web UI
+### Codex confirmation prompts still need a terminal
 
 Codoxear cannot drive Codex confirmation prompts in `default` mode or `plan` mode from the browser UI.
 
 For full remote interaction, run Codex in YOLO mode so confirmations do not block on interactive terminal prompts.
 
-### /new may show as pending until first prompt
+### Codex `/new` may show as pending until first prompt
 
 Codex does not always materialize (open) the new `rollout-*.jsonl` file immediately after `/new`. Codoxear tracks the active rollout by scanning the Codex process tree for open rollout-log file descriptors, so the UI may show the session as pending until the first prompt is sent and the rollout file is created/opened.
 
@@ -161,8 +170,11 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_HOST` (default `::`)
 - `CODEX_WEB_PORT` (default `8743`)
 - `CODEX_WEB_URL_PREFIX` (default empty). Example: `/codoxear` serves the UI at `/codoxear/` and the API under `/codoxear/api/*`.
+- `CODEX_WEB_DEFAULT_AGENT_BACKEND` (default `codex`) - default backend tab for new web-owned sessions
 - `CODEX_HOME` (default `~/.codex`)
 - `CODEX_BIN` (default `codex`)
+- `PI_HOME` (default `~/.pi`)
+- `PI_BIN` (default `pi`)
 - `CODEX_WEB_COOKIE_TTL_SECONDS` (default `2592000`, 30 days)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
 - `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
@@ -178,6 +190,11 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 
 Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
+
+Backend-specific session logs live under the backend home:
+
+- Codex: `~/.codex/sessions/rollout-*.jsonl`
+- Pi: `~/.pi/agent/sessions/*.jsonl`
 
 ## License
 

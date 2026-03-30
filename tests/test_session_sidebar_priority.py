@@ -39,6 +39,7 @@ def _session(*, sid: str, start_ts: float, last_chat_ts: float | None = None, ow
         thread_id=sid,
         broker_pid=100,
         codex_pid=200,
+        agent_backend="codex",
         owned=owned,
         start_ts=start_ts,
         cwd=f"/tmp/{sid}",

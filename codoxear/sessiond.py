@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .agent_backend import get_agent_backend
+from .agent_backend import normalize_agent_backend
 from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
@@ -35,12 +37,10 @@ ROOT_REPO_DIR = APP_DIR / "root-repo"
 PENDING_DIR = APP_DIR / "pending"
 PROC_ROOT = Path("/proc")
 
-CODEX_BIN = os.environ.get("CODEX_BIN", "codex")
-_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
-if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
-    DEFAULT_CODEX_HOME = Path.home() / ".codex"
-else:
-    DEFAULT_CODEX_HOME = Path(_CODEX_HOME_ENV)
+AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
+BACKEND = get_agent_backend(AGENT_BACKEND)
+AGENT_BIN = BACKEND.cli_bin()
+DEFAULT_AGENT_HOME = BACKEND.home()
 DEFAULT_ROWS = int(os.environ.get("CODEX_WEB_TTY_ROWS", "40"))
 DEFAULT_COLS = int(os.environ.get("CODEX_WEB_TTY_COLS", "120"))
 ENTER_SEQ = os.environ.get("CODEX_WEB_ENTER_SEQ", "\r")
@@ -123,8 +123,8 @@ class Sessiond:
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self.state: State | None = None
-        self.codex_home = DEFAULT_CODEX_HOME
-        self.sessions_dir = self.codex_home / "sessions"
+        self.codex_home = DEFAULT_AGENT_HOME
+        self.sessions_dir = BACKEND.sessions_dir()
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -202,6 +202,7 @@ class Sessiond:
             "start_ts": float(st.start_ts),
             "log_path": str(st.log_path),
             "sock_path": str(st.sock_path),
+            "agent_backend": AGENT_BACKEND,
             "model_provider": MODEL_PROVIDER_OVERRIDE or None,
             "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
             "model": MODEL_OVERRIDE or None,
@@ -396,11 +397,11 @@ class Sessiond:
                 st0 = self.state
             pid = int(st0.codex_pid) if st0 else 0
             if pid > 0:
-                lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=pid, cwd=self.cwd)
+                lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=pid, agent_backend=AGENT_BACKEND, cwd=self.cwd)
             else:
                 lp = None
             if lp and lp.exists():
-                payload = _read_session_meta_payload(lp, timeout_s=0.0)
+                payload = _read_session_meta_payload(lp, agent_backend=AGENT_BACKEND, timeout_s=0.0)
                 sid = payload.get("id") if isinstance(payload, dict) else None
                 if not (isinstance(sid, str) and sid):
                     time.sleep(0.25)
@@ -442,19 +443,24 @@ class Sessiond:
                 os.environ.setdefault("TERM", "xterm-256color")
                 os.environ["COLUMNS"] = str(self.cols)
                 os.environ["LINES"] = str(self.rows)
-                os.chdir(str(ROOT_REPO_DIR))
-                forced = [
-                    "--no-alt-screen",
-                    "-c",
-                    "disable_response_storage=false",
-                    "-c",
-                    "disable_paste_burst=true",
-                    "-C",
-                    str(ROOT_REPO_DIR),
-                ]
-                if self.cwd:
-                    forced += ["--add-dir", self.cwd]
-                argv = [CODEX_BIN] + forced + self.codex_args
+                os.environ[BACKEND.home_env_var] = str(self.codex_home)
+                if AGENT_BACKEND == "codex":
+                    os.chdir(str(ROOT_REPO_DIR))
+                    forced = [
+                        "--no-alt-screen",
+                        "-c",
+                        "disable_response_storage=false",
+                        "-c",
+                        "disable_paste_burst=true",
+                        "-C",
+                        str(ROOT_REPO_DIR),
+                    ]
+                    if self.cwd:
+                        forced += ["--add-dir", self.cwd]
+                    argv = [AGENT_BIN] + forced + self.codex_args
+                else:
+                    os.chdir(self.cwd or str(ROOT_REPO_DIR))
+                    argv = [AGENT_BIN, *self.codex_args]
                 os.execvp(argv[0], argv)
             except Exception:
                 traceback.print_exc()

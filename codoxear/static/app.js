@@ -134,6 +134,34 @@
         return new URL(rel, appBaseUrl).toString();
       }
 
+      let newSessionBackend = "codex";
+      let newSessionDefaults = {
+        default_backend: "codex",
+        backends: {
+          codex: null,
+          pi: null,
+        },
+      };
+      let latestSessions = [];
+      const LAST_BACKEND_KEY = "codoxear.newSessionBackend";
+      function lastProviderKey(backend) {
+        return `codoxear.newSessionProvider.${normalizeAgentBackendName(backend)}`;
+      }
+      function loadRememberedBackendChoice() {
+        return normalizeAgentBackendName(localStorage.getItem(LAST_BACKEND_KEY) || "codex");
+      }
+      function rememberBackendChoice(backend) {
+        localStorage.setItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
+      }
+      function loadRememberedProviderChoice(backend) {
+        return String(localStorage.getItem(lastProviderKey(backend)) || "").trim();
+      }
+      function rememberProviderChoice(backend, provider) {
+        const value = String(provider || "").trim();
+        if (value) localStorage.setItem(lastProviderKey(backend), value);
+        else localStorage.removeItem(lastProviderKey(backend));
+      }
+
       async function api(path, { method = "GET", body, signal } = {}) {
         const t0 = performance.now();
         const opts = { method, headers: {}, signal };
@@ -259,6 +287,107 @@
         return kind === "web" ? "web" : "terminal";
       }
 
+      function normalizeAgentBackendName(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        if (raw === "pi") return "pi";
+        return "codex";
+      }
+
+      function agentBackendDisplayName(value) {
+        const backend = normalizeAgentBackendName(value);
+        return backend === "pi" ? "Pi" : "Codex";
+      }
+
+      function agentBackendLogoPath(value) {
+        const backend = normalizeAgentBackendName(value);
+        return resolveAppUrl(`/static/logos/${backend}.svg`);
+      }
+
+      function sessionAgentBackend(s) {
+        if (!s || typeof s !== "object") return "codex";
+        return normalizeAgentBackendName(s.agent_backend);
+      }
+
+      function legacyCodexLaunchDefaults(seed = {}) {
+        const raw = seed && typeof seed === "object" ? seed : {};
+        const modelProviders = Array.isArray(raw.model_providers) ? raw.model_providers.slice() : ["chatgpt", "openai-api"];
+        if (!modelProviders.includes("chatgpt")) modelProviders.unshift("chatgpt");
+        if (!modelProviders.includes("openai-api")) modelProviders.splice(Math.min(1, modelProviders.length), 0, "openai-api");
+        return {
+          agent_backend: "codex",
+          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : "openai",
+          preferred_auth_method: typeof raw.preferred_auth_method === "string" ? raw.preferred_auth_method : "chatgpt",
+          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : "chatgpt",
+          provider_choices: modelProviders,
+          model: typeof raw.model === "string" ? raw.model : null,
+          models: Array.isArray(raw.models) ? raw.models.slice() : [],
+          model_providers: modelProviders,
+          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
+          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["xhigh", "high", "medium", "low"],
+          service_tier: typeof raw.service_tier === "string" ? raw.service_tier : "flex",
+          supports_fast: raw.supports_fast !== false,
+        };
+      }
+
+      function emptyPiLaunchDefaults(seed = {}) {
+        const raw = seed && typeof seed === "object" ? seed : {};
+        const providerChoices = Array.isArray(raw.provider_choices) ? raw.provider_choices.slice() : [];
+        const modelChoices = Array.isArray(raw.models) ? raw.models.slice() : [];
+        return {
+          agent_backend: "pi",
+          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : null,
+          preferred_auth_method: null,
+          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : null,
+          provider_choices: providerChoices,
+          model: typeof raw.model === "string" ? raw.model : null,
+          models: modelChoices,
+          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
+          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["off", "minimal", "low", "medium", "high", "xhigh"],
+          service_tier: null,
+          supports_fast: false,
+        };
+      }
+
+      function defaultsForAgentBackend(backend) {
+        const normalized = normalizeAgentBackendName(backend);
+        const raw = newSessionDefaults && typeof newSessionDefaults === "object" ? newSessionDefaults : {};
+        if (raw.backends && typeof raw.backends === "object") {
+          const item = raw.backends[normalized];
+          if (item && typeof item === "object") {
+            return normalized === "pi" ? emptyPiLaunchDefaults(item) : legacyCodexLaunchDefaults(item);
+          }
+        }
+        return normalized === "pi" ? emptyPiLaunchDefaults() : legacyCodexLaunchDefaults(raw);
+      }
+
+      function providerChoicesForBackend(backend) {
+        const defaults = defaultsForAgentBackend(backend);
+        const out = [];
+        for (const value of Array.isArray(defaults.provider_choices) ? defaults.provider_choices : []) {
+          if (typeof value !== "string") continue;
+          const trimmed = value.trim();
+          if (!trimmed || out.includes(trimmed)) continue;
+          out.push(trimmed);
+        }
+        return out;
+      }
+
+      function reasoningChoicesForBackend(backend) {
+        const defaults = defaultsForAgentBackend(backend);
+        const out = [];
+        for (const value of Array.isArray(defaults.reasoning_efforts) ? defaults.reasoning_efforts : []) {
+          if (typeof value !== "string") continue;
+          const trimmed = value.trim().toLowerCase();
+          if (!trimmed || out.includes(trimmed)) continue;
+          out.push(trimmed);
+        }
+        return out;
+      }
+
+      function backendSupportsFast(backend) {
+        return !!defaultsForAgentBackend(backend).supports_fast;
+      }
+
       function sessionLaunchLabel(s) {
         const kind = sessionLaunchKind(s);
         if (kind === "web_tmux") return "web-owned tmux session";
@@ -269,8 +398,10 @@
         return !!(s && typeof s.service_tier === "string" && s.service_tier.trim().toLowerCase() === "fast");
       }
 
-      function providerChoiceToSettings(choice) {
+      function providerChoiceToSettings(choice, agentBackend = "codex") {
+        const backend = normalizeAgentBackendName(agentBackend);
         const value = String(choice || "").trim() || "chatgpt";
+        if (backend === "pi") return { model_provider: value || null, preferred_auth_method: null };
         if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
         if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
         return { model_provider: value, preferred_auth_method: "apikey" };
@@ -1118,11 +1249,17 @@
         let newSessionResumeLoadTimer = null;
         let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
         let newSessionCwdError = "";
+        newSessionBackend = "codex";
         let newSessionProvider = "chatgpt";
-        let newSessionProviderOptions = ["chatgpt", "openai-api"];
         let newSessionFast = false;
-        let newSessionDefaults = { model_provider: "openai", preferred_auth_method: "chatgpt", provider_choice: "chatgpt", model: null, model_providers: ["chatgpt", "openai-api"], reasoning_effort: "high", service_tier: "flex" };
-        let latestSessions = [];
+        newSessionDefaults = {
+          default_backend: "codex",
+          backends: {
+            codex: legacyCodexLaunchDefaults(),
+            pi: emptyPiLaunchDefaults(),
+          },
+        };
+        latestSessions = [];
         let tmuxAvailable = false;
         let voiceSaveTimer = null;
         let voiceSettings = {
@@ -1443,13 +1580,15 @@
 <ul class="md">
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
   <li>The dot on the title row shows state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
-  <li>The metadata line shows the owner icon first, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
-  <li>Click the conversation title in the top bar to rename or reprioritize it. <b>Details</b> shows the exact model, reasoning level, queue state, and token usage.</li>
+  <li>The metadata line shows the agent-backend icon first, then the session-type icon, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
+  <li>Click the conversation title in the top bar to rename or reprioritize it. <b>Details</b> shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>
 <div class="muted">New session</div>
 <ul class="md">
-  <li><b>New session</b> can start fresh or resume a matching conversation in the current working directory.</li>
-  <li>You can choose working directory, model, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
+  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b> and <b>Pi</b>.</li>
+  <li>You can choose working directory, provider, model, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>Codoxear remembers the last backend you used and the last provider choice for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
 <ul class="md">
@@ -1703,6 +1842,7 @@
           newSessionModelInput,
           newSessionModelMenu,
         ]);
+        const newSessionBackendTabs = el("div", { class: "agentBackendTabs", id: "newSessionBackendTabs" });
         const newSessionProviderBtn = el("button", {
           id: "newSessionProviderBtn",
           class: "filePickerBtn dialogPickerBtn sidePickerBtn",
@@ -1730,12 +1870,6 @@
           el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
           newSessionReasoningBtn,
         ]);
-        const newSessionReasoningOptions = [
-          ["xhigh", "xhigh"],
-          ["high", "high"],
-          ["medium", "medium"],
-          ["low", "low"],
-        ];
         const newSessionResumeBtn = el("button", {
           id: "newSessionResumeBtn",
           class: "filePickerBtn dialogPickerBtn sidePickerBtn",
@@ -1797,7 +1931,10 @@
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
         const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
-            el("div", { class: "title", text: "New session" }),
+            el("div", { class: "newSessionHeaderLead" }, [
+              el("div", { class: "title", text: "New session" }),
+              newSessionBackendTabs,
+            ]),
             el("div", { class: "actions" }, [newSessionCloseBtn]),
           ]),
           newSessionStatus,
@@ -2474,19 +2611,26 @@
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-          newSessionDefaults = data && typeof data.new_session_defaults === "object" && data.new_session_defaults ? data.new_session_defaults : {};
-          newSessionProviderOptions = Array.isArray(newSessionDefaults.model_providers)
-            ? newSessionDefaults.model_providers.filter((value, idx, arr) => typeof value === "string" && value.trim() && arr.indexOf(value) === idx)
-            : ["chatgpt", "openai-api"];
-          if (!newSessionProviderOptions.includes("chatgpt")) newSessionProviderOptions.unshift("chatgpt");
-          if (!newSessionProviderOptions.includes("openai-api")) newSessionProviderOptions.splice(1, 0, "openai-api");
+          newSessionDefaults =
+            data && typeof data.new_session_defaults === "object" && data.new_session_defaults
+              ? data.new_session_defaults
+              : {
+                  default_backend: "codex",
+                  backends: {
+                    codex: legacyCodexLaunchDefaults(),
+                    pi: emptyPiLaunchDefaults(),
+                  },
+                };
           tmuxAvailable = !!data.tmux_available;
           recentCwds = Array.isArray(data.recent_cwds)
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
           if (newSessionViewer.style.display === "flex") {
             syncNewSessionTmuxUi();
+            renderNewSessionBackendTabs();
             renderNewSessionProviderMenu();
+            renderNewSessionReasoningMenu();
+            syncNewSessionRunConfigUi();
           }
           fileRefCandidateCache.clear();
           const swipeActions = !useDesktopSessionActions();
@@ -2612,7 +2756,9 @@
                  s && s.model ? s.model : "default",
                  s && s.reasoning_effort ? s.reasoning_effort : "high",
                  sessionIsFast(s),
-                 !!(s && s.transport === "tmux")
+                 !!(s && s.transport === "tmux"),
+                 null,
+                 sessionAgentBackend(s)
                );
              };
              const delBtn = el("button", {
@@ -2640,6 +2786,13 @@
              ]);
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
 	             const metaItems = [
+	               el("img", {
+	                 class: "sessionBackendStatusIcon",
+	                 src: agentBackendLogoPath(sessionAgentBackend(s)),
+	                 alt: `${agentBackendDisplayName(sessionAgentBackend(s))} logo`,
+	                 width: "12",
+	                 height: "12",
+	               }),
 	               el("span", {
 	                 class: `ownerBadge ownerIconBadge ${s.transport === "tmux" ? "owner-tmux" : s.owned ? "owner-web" : "owner-terminal"}`,
 	                 html: iconSvg(sessionLaunchIcon(s)),
@@ -4258,9 +4411,34 @@
           syncNewSessionWorktreeUi();
         }
 
+        function renderNewSessionBackendTabs() {
+          newSessionBackendTabs.innerHTML = "";
+          for (const backend of ["codex", "pi"]) {
+            const active = newSessionBackend === backend;
+            const btn = el("button", {
+              class: `agentBackendTab${active ? " active" : ""}`,
+              type: "button",
+              title: agentBackendDisplayName(backend),
+              "aria-label": agentBackendDisplayName(backend),
+            }, [
+              el("img", {
+                class: "agentBackendTabLogo",
+                src: agentBackendLogoPath(backend),
+                alt: `${agentBackendDisplayName(backend)} logo`,
+                width: "20",
+                height: "20",
+              }),
+            ]);
+            btn.onclick = () => setNewSessionBackend(backend, { resetSelections: true });
+            newSessionBackendTabs.appendChild(btn);
+          }
+        }
+
         function renderNewSessionReasoningMenu() {
           newSessionReasoningMenu.innerHTML = "";
-          for (const [value, label] of newSessionReasoningOptions) {
+          const items = reasoningChoicesForBackend(newSessionBackend);
+          for (const value of items) {
+            const label = value;
             const btn = el("button", {
               class: "fileMenuItem" + (newSessionReasoningEffort === value ? " active" : ""),
               type: "button",
@@ -4276,15 +4454,66 @@
           }
         }
 
+        function syncNewSessionRunConfigUi() {
+          const defaults = defaultsForAgentBackend(newSessionBackend);
+          const supportsFast = !!defaults.supports_fast;
+          newSessionFastField.style.display = supportsFast ? "" : "none";
+          if (!supportsFast) setNewSessionFast(false);
+        }
+
+        function setNewSessionBackend(value, { resetSelections = false } = {}) {
+          const next = normalizeAgentBackendName(value);
+          const previous = newSessionBackend;
+          newSessionBackend = next;
+          rememberBackendChoice(next);
+          const defaults = defaultsForAgentBackend(next);
+          const providerChoices = providerChoicesForBackend(next);
+          const defaultProvider = typeof defaults.provider_choice === "string" ? defaults.provider_choice.trim() : "";
+          const rememberedProvider = loadRememberedProviderChoice(next);
+          if (resetSelections || previous !== next || !providerChoices.includes(newSessionProvider)) {
+            setNewSessionProvider((rememberedProvider && providerChoices.includes(rememberedProvider) ? rememberedProvider : "") || defaultProvider || providerChoices[0] || "");
+          } else {
+            setNewSessionProvider(newSessionProvider);
+          }
+          const modelDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
+          if (resetSelections || previous !== next) {
+            newSessionModelInput.value = modelDefault;
+          }
+          const reasoningChoices = reasoningChoicesForBackend(next);
+          const defaultEffort = typeof defaults.reasoning_effort === "string" ? defaults.reasoning_effort.trim().toLowerCase() : "";
+          if (resetSelections || previous !== next || !reasoningChoices.includes(newSessionReasoningEffort)) {
+            setNewSessionReasoningEffort(defaultEffort || reasoningChoices[0] || "high");
+          } else {
+            setNewSessionReasoningEffort(newSessionReasoningEffort);
+          }
+          if (resetSelections || previous !== next) {
+            setNewSessionFast(String(defaults.service_tier || "").trim().toLowerCase() === "fast");
+          }
+          syncNewSessionRunConfigUi();
+          renderNewSessionBackendTabs();
+          renderNewSessionProviderMenu();
+          renderNewSessionReasoningMenu();
+          renderNewSessionModelMenu();
+          scheduleNewSessionResumeLoad();
+        }
+
         function setNewSessionProvider(value) {
-          const next = String(value || "").trim() || "chatgpt";
-          newSessionProvider = newSessionProviderOptions.includes(next) ? next : "chatgpt";
-          setPickerButtonContent(newSessionProviderBtn, newSessionProvider);
+          const options = providerChoicesForBackend(newSessionBackend);
+          const fallback = String(defaultsForAgentBackend(newSessionBackend).provider_choice || "").trim();
+          const next = String(value || "").trim();
+          newSessionProvider = options.includes(next) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
+          rememberProviderChoice(newSessionBackend, newSessionProvider);
+          setPickerButtonContent(newSessionProviderBtn, newSessionProvider || "Default provider", "", !newSessionProvider);
         }
 
         function renderNewSessionProviderMenu() {
           newSessionProviderMenu.innerHTML = "";
-          for (const provider of newSessionProviderOptions) {
+          const items = providerChoicesForBackend(newSessionBackend);
+          if (!items.length) {
+            newSessionProviderMenu.appendChild(el("div", { class: "pickerEmpty", text: "No configured providers" }));
+            return;
+          }
+          for (const provider of items) {
             const btn = el("button", {
               class: "fileMenuItem" + (newSessionProvider === provider ? " active" : ""),
               type: "button",
@@ -4303,12 +4532,21 @@
         function sessionModelOptions() {
           const seen = new Set();
           const out = [];
-          const configured = typeof newSessionDefaults.model === "string" ? newSessionDefaults.model.trim() : "";
+          const defaults = defaultsForAgentBackend(newSessionBackend);
+          const configured = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (configured) {
             seen.add(configured);
             out.push(configured);
           }
+          for (const value of Array.isArray(defaults.models) ? defaults.models : []) {
+            if (typeof value !== "string") continue;
+            const model = value.trim();
+            if (!model || seen.has(model)) continue;
+            seen.add(model);
+            out.push(model);
+          }
           for (const item of latestSessions) {
+            if (sessionAgentBackend(item) !== newSessionBackend) continue;
             const model = typeof item.model === "string" ? item.model.trim() : "";
             if (!model || seen.has(model)) continue;
             seen.add(model);
@@ -4329,7 +4567,10 @@
         }
 
         function setNewSessionReasoningEffort(value) {
-          newSessionReasoningEffort = ["xhigh", "high", "medium", "low"].includes(value) ? value : "high";
+          const choices = reasoningChoicesForBackend(newSessionBackend);
+          const next = String(value || "").trim().toLowerCase();
+          const fallback = String(defaultsForAgentBackend(newSessionBackend).reasoning_effort || "").trim().toLowerCase();
+          newSessionReasoningEffort = choices.includes(next) ? next : (choices.includes(fallback) ? fallback : choices[0] || "high");
           setPickerButtonContent(newSessionReasoningBtn, newSessionReasoningEffort);
         }
 
@@ -4432,7 +4673,8 @@
           newSessionModelMenu.innerHTML = "";
           const items = filteredNewSessionModelOptions();
           const raw = String(newSessionModelInput.value || "").trim();
-          const configured = typeof newSessionDefaults.model === "string" ? newSessionDefaults.model.trim() : "";
+          const defaults = defaultsForAgentBackend(newSessionBackend);
+          const configured = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (newSessionModelMenuFocus < 0) {
             const selected = raw || configured;
             if (selected) {
@@ -4469,6 +4711,7 @@
         async function loadNewSessionResumeCandidates(cwd) {
           const raw = String(cwd || "").trim();
           const seq = ++newSessionResumeLoadSeq;
+          const backend = newSessionBackend;
           if (!raw) {
             setNewSessionCwdError("");
             newSessionResumeCandidates = [];
@@ -4479,7 +4722,7 @@
             return;
           }
           try {
-            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}`);
+            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}&agent_backend=${encodeURIComponent(backend)}`);
             if (seq !== newSessionResumeLoadSeq) return;
             newSessionCwdInfo = {
               exists: !!(res && res.exists),
@@ -4614,18 +4857,17 @@
         function openNewSessionDialog({ cwd = null, statusText = "" } = {}) {
           const cur = selected ? sessionIndex.get(selected) : null;
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
+          const rememberedBackend = loadRememberedBackendChoice();
+          const initialBackend = rememberedBackend || (cur ? sessionAgentBackend(cur) : normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend));
           newSessionStatus.textContent = String(statusText || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";
-          newSessionModelInput.value = typeof newSessionDefaults.model === "string" && newSessionDefaults.model.trim() ? newSessionDefaults.model.trim() : "";
+          newSessionModelInput.value = "";
           syncNewSessionNamePlaceholder();
           newSessionResumeCandidates = [];
           setNewSessionResumeSelection(null);
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
-          setNewSessionProvider(newSessionDefaults.provider_choice || "chatgpt");
-          setNewSessionReasoningEffort(newSessionDefaults.reasoning_effort || "high");
-          setNewSessionFast(String(newSessionDefaults.service_tier || "flex").toLowerCase() === "fast");
           newSessionTmuxToggle.checked = tmuxAvailable;
           newSessionWorktreeToggle.checked = false;
           newSessionWorktreeInput.value = "";
@@ -4639,9 +4881,7 @@
           newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           renderRecentCwdMenu();
-          renderNewSessionModelMenu();
-          renderNewSessionProviderMenu();
-          renderNewSessionReasoningMenu();
+          setNewSessionBackend(initialBackend, { resetSelections: true });
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
@@ -4929,6 +5169,7 @@
         };
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
+          const agentBackend = newSessionBackend;
           setNewSessionCwdError("");
           if (!cwd) {
             newSessionStatus.textContent = "";
@@ -4936,7 +5177,7 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
-          const providerChoice = String(newSessionProvider || "chatgpt").trim() || "chatgpt";
+          const providerChoice = String(newSessionProvider || "").trim();
           const model = String(newSessionModelInput.value || "").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
           const createInTmux = !!newSessionTmuxToggle.checked;
@@ -4953,7 +5194,7 @@
               newSessionStatus.textContent = "";
               setNewSessionCwdError(e.message);
             }
-          });
+          }, agentBackend);
           if (brokerPid) hideNewSessionDialog();
           else if (!cwdStartError) newSessionStatus.textContent = "Start failed.";
         };
@@ -6259,7 +6500,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               d && typeof d.updated_ts === "number" ? `${fmtTs(d.updated_ts)}${age(d.updated_ts) ? " (" + age(d.updated_ts) + ")" : ""}` : "-"
             );
             addRow("Broker PID", d && typeof d.broker_pid === "number" ? String(d.broker_pid) : "-");
-            addRow("Codex PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
+            addRow("Agent", d ? agentBackendDisplayName(d.agent_backend) : "-");
+            addRow("Agent PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
 	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
 	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
 	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
@@ -6356,27 +6598,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null) {
+        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
           }
           try {
+            const backend = normalizeAgentBackendName(agentBackend);
             const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
             const alias = String(sessionName || "").trim();
-            const providerName = String(providerChoice || "").trim() || "chatgpt";
-            const providerSettings = providerChoiceToSettings(providerName);
+            const providerName = String(providerChoice || "").trim();
+            const providerSettings = providerChoiceToSettings(providerName, backend);
             const modelName = String(model || "").trim();
             const effortName = String(reasoningEffort || "").trim().toLowerCase();
             setToast(modeLabel);
-            const body = { cwd: String(cwd) };
+            const body = { cwd: String(cwd), agent_backend: backend };
             if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
             if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
-            body.model_provider = providerSettings.model_provider;
-            body.preferred_auth_method = providerSettings.preferred_auth_method;
+            if (providerSettings.model_provider) body.model_provider = providerSettings.model_provider;
+            if (providerSettings.preferred_auth_method) body.preferred_auth_method = providerSettings.preferred_auth_method;
             if (modelName) body.model = modelName;
             if (effortName) body.reasoning_effort = effortName;
-            if (fast) body.service_tier = "fast";
+            if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
             if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
@@ -6400,7 +6643,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
               await new Promise((r) => setTimeout(r, 250));
             }
-            setToast(`${doneLabel} session will appear once Codex creates a rollout log`);
+            setToast(`${doneLabel} session will appear once the agent writes its session log`);
             return brokerPid;
           } catch (e) {
             const errLabel = resumeSessionId ? "resume" : worktreeBranch ? "worktree start" : "start";

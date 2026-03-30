@@ -17,6 +17,7 @@ class TestChatIndexDedup(unittest.TestCase):
             thread_id="broker-1",
             broker_pid=1,
             codex_pid=2,
+            agent_backend="codex",
             owned=False,
             start_ts=123.0,
             cwd="/tmp",
@@ -33,4 +34,3 @@ class TestChatIndexDedup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

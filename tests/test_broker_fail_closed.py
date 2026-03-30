@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from codoxear.broker import Broker
 from codoxear.broker import State
+from codoxear.agent_backend import get_agent_backend
 
 
 def _broker_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -166,6 +167,44 @@ class TestBrokerFailClosed(unittest.TestCase):
             broker._write_meta()
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self.assertIsNone(meta["resume_session_id"])
+
+    def test_pi_resume_run_seeds_log_path_before_first_write(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        captured: dict[str, object] = {}
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin):
+            log_path = Path(td) / "pi-resume.jsonl"
+            log_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp"}\n', encoding="utf-8")
+            expected_size = log_path.stat().st_size
+            with patch.dict("os.environ", {"CODEX_WEB_RESUME_SESSION_ID": "resume-a", "CODEX_WEB_RESUME_LOG_PATH": str(log_path)}, clear=False):
+                broker = Broker(cwd="/tmp", codex_args=["--session", str(log_path)])
+            broker.sessions_dir = log_path.parent
+
+            def _capture_write_meta() -> None:
+                st = broker.state
+                captured["session_id"] = st.session_id if st else None
+                captured["log_path"] = str(st.log_path) if st and st.log_path else None
+                captured["log_off"] = st.log_off if st else None
+
+            with patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")), patch(
+                "codoxear.broker._require_proc"
+            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.fork", return_value=(1234, 55)
+            ), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch(
+                "codoxear.broker.os.close"
+            ), patch.object(
+                broker, "_write_meta", side_effect=_capture_write_meta
+            ), patch(
+                "codoxear.broker.threading.Thread", _FakeThread
+            ):
+                broker.run()
+
+        self.assertEqual(captured["session_id"], "resume-a")
+        self.assertEqual(captured["log_path"], str(log_path))
+        self.assertEqual(captured["log_off"], expected_size)
 
 
 if __name__ == "__main__":

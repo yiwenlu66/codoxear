@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .pi_log import pi_assistant_thinking_count
+from .pi_log import pi_assistant_tool_use_count
+from .pi_log import pi_assistant_text
+from .pi_log import pi_assistant_is_final_turn_end
+from .pi_log import pi_message_role
+from .pi_log import pi_token_update
+from .pi_log import pi_user_text
 from .voice_push import ClassifiedAssistantMessage
 
 
@@ -64,6 +71,13 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
                 return _event_ts(obj)
         return None
 
+    if typ == "message":
+        if pi_user_text(obj):
+            return _event_ts(obj)
+        if pi_assistant_text(obj):
+            return _event_ts(obj)
+        return None
+
     if typ == "response_item":
         p = obj.get("payload")
         if not isinstance(p, dict):
@@ -97,6 +111,9 @@ def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     # Prefer the newest token_count in this batch.
     for obj in reversed(objs):
+        pi_token = pi_token_update(obj)
+        if pi_token is not None:
+            return pi_token
         if obj.get("type") != "event_msg":
             continue
         p = obj.get("payload")
@@ -123,6 +140,13 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
             "as_of": obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
         }
     return None
+
+
+def _pi_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
+    role = pi_message_role(obj)
+    if role == "toolResult":
+        return True
+    return (pi_assistant_thinking_count(obj) > 0) or (pi_assistant_tool_use_count(obj) > 0)
 
 
 def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
@@ -193,8 +217,6 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
-    skip_next_assistant = 0
-
     def event_ts(o: dict[str, Any]) -> float | None:
         ts = o.get("ts")
         if isinstance(ts, (int, float)):
@@ -215,6 +237,42 @@ def _extract_chat_events(
 
     for obj in objs:
         typ = obj.get("type")
+        if typ == "message":
+            user_text = pi_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                turn_start = True
+                ets = event_ts(obj)
+                evp: dict[str, Any] = {"role": "user", "text": user_text}
+                if ets is not None:
+                    evp["ts"] = ets
+                events.append(evp)
+                continue
+
+            assistant_text = pi_assistant_text(obj)
+            tool_count = pi_assistant_tool_use_count(obj)
+            thinking_count = pi_assistant_thinking_count(obj)
+            if thinking_count > 0:
+                total_thinking += thinking_count
+            if tool_count > 0:
+                total_tools += tool_count
+                tool_names.add("pi_tool")
+                last_tool = "pi_tool"
+            if isinstance(assistant_text, str) and assistant_text:
+                ets = event_ts(obj)
+                message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
+                if message_class == "final_response":
+                    turn_end = True
+                eva: dict[str, Any] = {
+                    "role": "assistant",
+                    "text": assistant_text,
+                    "message_class": message_class,
+                    "message_id": text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+                }
+                if ets is not None:
+                    eva["ts"] = ets
+                events.append(eva)
+            continue
+
         if typ == "event_msg":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -264,9 +322,6 @@ def _extract_chat_events(
                             out_text_parts.append(part["text"])
                     if out_text_parts:
                         text = "".join(out_text_parts)
-                        if skip_next_assistant > 0:
-                            skip_next_assistant -= 1
-                            continue
                         ets = event_ts(obj)
                         message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
                         ev2: dict[str, Any] = {
@@ -324,7 +379,12 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         typ = obj.get("type")
         message_class: str | None = None
         text = ""
-        if typ == "event_msg":
+        if typ == "message":
+            text = pi_assistant_text(obj) or ""
+            if not text.strip():
+                continue
+            message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
+        elif typ == "event_msg":
             payload = obj.get("payload")
             if not isinstance(payload, dict):
                 raise ValueError("invalid event_msg payload")
@@ -418,6 +478,8 @@ def _read_chat_events_from_tail(
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
+    if obj.get("type") == "message":
+        return bool(pi_assistant_text(obj))
     p = obj.get("payload")
     if not isinstance(p, dict):
         raise ValueError("invalid response_item payload")
@@ -447,6 +509,15 @@ def _analyze_log_chunk(
         sidebar_ts = _sidebar_conversation_ts(obj)
         if sidebar_ts is not None:
             last_chat_ts = sidebar_ts
+        if typ == "message":
+            if pi_user_text(obj):
+                d_th = 0
+                d_tools = 0
+                d_sys = 0
+                continue
+            d_th += pi_assistant_thinking_count(obj)
+            d_tools += pi_assistant_tool_use_count(obj)
+            continue
         if typ == "event_msg":
             p = obj.get("payload")
             if not isinstance(p, dict):
@@ -514,26 +585,25 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     saw_terminal_signal = False
     idle = True
 
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     while True:
         objs = _read_jsonl_tail(path, scan)
         saw_terminal_signal = False
         idle = True
         for obj in objs:
             typ = obj.get("type")
+            if typ == "message":
+                if pi_user_text(obj):
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+                if pi_assistant_text(obj):
+                    saw_terminal_signal = True
+                    idle = pi_assistant_is_final_turn_end(obj)
+                    continue
+                if _pi_message_keeps_turn_busy(obj):
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -562,7 +632,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if not isinstance(p, dict):
                     raise ValueError("invalid response_item payload")
                 pt = p.get("type")
-                if has_assistant_text(obj):
+                if _has_assistant_output_text(obj):
                     saw_terminal_signal = True
                     idle = (p.get("end_turn") is True)
                     continue
@@ -613,20 +683,6 @@ def _last_chat_role_ts_from_tail(
                 return float(v)
         return None
 
-    def has_assistant_text(obj: dict[str, Any]) -> bool:
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return False
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return True
-        return False
-
     scan = 256 * 1024
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(path, scan)
@@ -634,6 +690,13 @@ def _last_chat_role_ts_from_tail(
         last_assistant: tuple[int, float | None] | None = None
         for i, obj in enumerate(objs):
             typ = obj.get("type")
+            if typ == "message":
+                if pi_user_text(obj):
+                    last_user = (i, event_ts(obj))
+                    continue
+                if pi_assistant_text(obj) or _pi_message_keeps_turn_busy(obj):
+                    last_assistant = (i, event_ts(obj))
+                    continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -647,7 +710,7 @@ def _last_chat_role_ts_from_tail(
                     if isinstance(msg, str) and msg.strip():
                         last_assistant = (i, event_ts(obj))
                         continue
-            if typ == "response_item" and has_assistant_text(obj):
+            if typ == "response_item" and _has_assistant_output_text(obj):
                 last_assistant = (i, event_ts(obj))
 
         best: tuple[str, tuple[int, float | None]] | None = None
