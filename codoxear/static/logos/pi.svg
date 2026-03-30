@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+  <defs>
+    <linearGradient id="pi-stroke" x1="400" x2="400" y1="165" y2="635" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5b8f70"></stop>
+      <stop offset="1" stop-color="#1f3b2d"></stop>
+    </linearGradient>
+  </defs>
+  <path
+    d="M165.29 165.29 H517.36 V400 H400 V517.36 H282.65 V634.72 H165.29 Z M282.65 282.65 V400 H400 V282.65 Z"
+    fill="none"
+    stroke="url(#pi-stroke)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="64"
+  />
+  <path
+    d="M517.36 400 H634.72 V634.72 H517.36 Z"
+    fill="none"
+    stroke="url(#pi-stroke)"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="64"
+  />
+</svg>

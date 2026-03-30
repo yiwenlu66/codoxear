@@ -27,6 +27,7 @@ def _make_session(*, sid: str, thread_id: str, log_path: Path) -> Session:
         thread_id=thread_id,
         broker_pid=1,
         codex_pid=1,
+        agent_backend="codex",
         owned=False,
         start_ts=0.0,
         cwd="/tmp",

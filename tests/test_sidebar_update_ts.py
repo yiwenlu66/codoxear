@@ -16,6 +16,7 @@ class TestSidebarUpdateTimestamp(unittest.TestCase):
             thread_id="broker-1",
             broker_pid=1,
             codex_pid=2,
+            agent_backend="codex",
             owned=False,
             start_ts=100.0,
             cwd="/tmp",
@@ -41,6 +42,7 @@ class TestSidebarUpdateTimestamp(unittest.TestCase):
             thread_id="broker-1",
             broker_pid=1,
             codex_pid=2,
+            agent_backend="codex",
             owned=False,
             start_ts=100.0,
             cwd="/tmp",
@@ -61,4 +63,3 @@ class TestSidebarUpdateTimestamp(unittest.TestCase):
             new_off=11,
         )
         self.assertEqual(session.last_chat_ts, 130.0)
-

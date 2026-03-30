@@ -258,6 +258,76 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.busy)
         self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
+
+    def test_pi_tool_use_message_keeps_turn_busy(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run pwd"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": ""},
+                        {"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}},
+                    ],
+                },
+            },
+            now_ts=11.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+
+    def test_pi_final_message_clears_busy(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "run pwd"}]}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": ""},
+                        {"type": "toolCall", "id": "tool-1", "name": "bash", "arguments": {"command": "pwd"}},
+                    ],
+                },
+            },
+            now_ts=11.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "message",
+                "message": {
+                    "role": "toolResult",
+                    "toolCallId": "tool-1",
+                    "toolName": "bash",
+                    "content": [{"type": "text", "text": "/tmp\n"}],
+                    "isError": False,
+                },
+            },
+            now_ts=12.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "message", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}},
+            now_ts=13.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+        self.assertFalse(st.turn_has_completion_candidate)
+        self.assertEqual(st.pending_calls, set())
         self.assertFalse(_should_clear_busy_state(st, now_ts=15.0 + BUSY_QUIET_SECONDS + 60.0))
 
     def test_tool_call_reopens_turn_after_idle_clear(self) -> None:

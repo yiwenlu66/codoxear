@@ -106,6 +106,27 @@ class TestSessionResumeCandidates(unittest.TestCase):
             "Is it possible to extract something like the conversation title or at least the first user message?",
         )
 
+    def test_list_pi_resume_candidates_filters_same_cwd(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            same = root / "2026-03-08T01-00-00_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            other = root / "2026-03-08T02-00-00_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+            _write_jsonl(
+                same,
+                [
+                    {"type": "session", "id": "pi-a", "cwd": "/repo", "timestamp": "2026-03-08T01:00:00Z"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hello from pi"}]}},
+                ],
+            )
+            _write_jsonl(other, [{"type": "session", "id": "pi-b", "cwd": "/elsewhere", "timestamp": "2026-03-08T02:00:00Z"}])
+
+            with patch("codoxear.server._iter_session_logs", return_value=[same, other]):
+                rows = _list_resume_candidates_for_cwd("/repo", agent_backend="pi", limit=10)
+
+        self.assertEqual([row["session_id"] for row in rows], ["pi-a"])
+        self.assertEqual(rows[0]["agent_backend"], "pi")
+        self.assertEqual(rows[0]["log_path"], str(same))
+
 
 class TestSpawnWebSessionResume(unittest.TestCase):
     def test_spawn_web_session_creates_missing_cwd(self) -> None:
@@ -333,6 +354,97 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "resume session not found for cwd"):
                 SessionManager.spawn_web_session(manager, cwd=td, resume_session_id="missing")
 
+    def test_spawn_web_session_passes_pi_backend_to_broker(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 7654
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
+            "codoxear.server.subprocess.Popen", return_value=_Proc()
+        ) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(
+                manager,
+                cwd=td,
+                agent_backend="pi",
+                model_provider="macaron",
+                model="gpt-5.4",
+                reasoning_effort="medium",
+            )
+
+        argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "--provider",
+                "macaron",
+                "--model",
+                "gpt-5.4",
+                "--thinking",
+                "medium",
+            ],
+        )
+        self.assertEqual(env["CODEX_WEB_AGENT_BACKEND"], "pi")
+        self.assertEqual(env["PI_HOME"], str(Path.home() / ".pi"))
+        self.assertEqual(env["CODEX_WEB_MODEL_PROVIDER"], "macaron")
+        self.assertEqual(env["CODEX_WEB_MODEL"], "gpt-5.4")
+        self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "medium")
+        self.assertEqual(result, {"broker_pid": 7654})
+        self.assertEqual(thread_calls, ["start"])
+
+    def test_spawn_web_session_passes_pi_resume_log_path_to_broker(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 7655
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._list_resume_candidates_for_cwd", return_value=[{"session_id": "resume-a", "log_path": "/tmp/pi-resume.jsonl"}]), patch(
+            "codoxear.server._wait_or_raise", return_value=None
+        ), patch("codoxear.server.subprocess.Popen", return_value=_Proc()) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(
+                manager,
+                cwd=td,
+                agent_backend="pi",
+                resume_session_id="resume-a",
+            )
+
+        argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "--session",
+                "/tmp/pi-resume.jsonl",
+            ],
+        )
+        self.assertEqual(env["CODEX_WEB_RESUME_SESSION_ID"], "resume-a")
+        self.assertEqual(env["CODEX_WEB_RESUME_LOG_PATH"], "/tmp/pi-resume.jsonl")
+        self.assertEqual(result, {"broker_pid": 7655})
+        self.assertEqual(thread_calls, ["start"])
+
     def test_create_git_worktree_creates_new_checkout(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td) / "repo"
@@ -482,6 +594,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 thread_id="thread-1",
                 broker_pid=1,
                 codex_pid=2,
+                agent_backend="codex",
                 owned=True,
                 start_ts=100.0,
                 cwd=str(root),

@@ -3,6 +3,7 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from codoxear.util import proc_find_open_rollout_log, proc_open_rollout_logs
 
@@ -162,6 +163,31 @@ class TestBrokerProcRolloutDiscovery(unittest.TestCase):
                 cwd="/x",
                 ignored_paths={old},
             )
+            self.assertEqual(found, want)
+
+    def test_proc_finds_pi_session_log_open_in_descendant(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            proc_root = root / "proc"
+            pi_home = root / ".pi"
+            sessions = pi_home / "agent" / "sessions" / "--pi-work--"
+            want = sessions / "2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            other = sessions / "2026-02-04T00-00-03-22222222-2222-2222-2222-222222222222.jsonl"
+            _write_jsonl(want, [{"type": "session", "id": "want", "cwd": "/x", "timestamp": "2026-02-04T00:00:00Z"}])
+            _write_jsonl(other, [{"type": "session", "id": "other", "cwd": "/y", "timestamp": "2026-02-04T00:00:00Z"}])
+
+            _ensure_proc_pid(proc_root, "100")
+            _ensure_proc_pid(proc_root, "101")
+            _ensure_proc_pid(proc_root, "102")
+            (proc_root / "100" / "task" / "100" / "children").write_text("101 102\n", encoding="utf-8")
+            _link_fd(proc_root, "101", "3", other, flags_octal="0100001")
+            _link_fd(proc_root, "102", "4", want, flags_octal="0100001")
+
+            with patch.dict(os.environ, {"PI_HOME": str(pi_home)}, clear=False):
+                opened = proc_open_rollout_logs(proc_root, 100, agent_backend="pi")
+                self.assertIn(want, opened)
+                self.assertIn(other, opened)
+                found = proc_find_open_rollout_log(proc_root=proc_root, root_pid=100, agent_backend="pi", cwd="/x")
             self.assertEqual(found, want)
 
 

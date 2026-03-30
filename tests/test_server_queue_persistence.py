@@ -24,6 +24,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             thread_id="t1",
             broker_pid=1,
             codex_pid=1,
+            agent_backend="codex",
             owned=False,
             start_ts=0.0,
             cwd="/tmp",
