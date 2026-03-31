@@ -18,6 +18,8 @@ class _FakeClient:
 
     def summarize(self, **kwargs):
         self.summary_calls.append(kwargs)
+        if kwargs.get("target_words") == 15:
+            return "short narration summary"
         return "short final summary"
 
     def synthesize(self, **kwargs):
@@ -215,13 +217,73 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(len(fake_client.summary_calls), 1)
             self.assertEqual(len(fake_client.speech_calls), 1)
             self.assertEqual(len(fake_hls.append_calls), 1)
+            self.assertEqual(fake_client.summary_calls[0]["target_words"], 30)
             spoken = fake_client.speech_calls[0]["text"]
             self.assertEqual(spoken, "Turn summary from Repo. short final summary")
-            ledger = coord._delivery_ledger[task.message_id]
+            ledger = coord._delivery_ledger[task.source_message_ids[0]]
             self.assertEqual(ledger["notification_text"], "short final summary")
             self.assertEqual(ledger["summary_status"], "sent")
             self.assertEqual(ledger["narrated_status"], "sent")
             self.assertEqual(ledger["push_status"], "skipped")
+
+    def test_narration_is_summarized_on_dequeue_before_tts(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _FakeClient()
+            fake_hls = _FakeHLS()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord._hls = fake_hls  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": False,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.listener_heartbeat(client_id="listener-1", enabled=True)
+            message = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "Long and verbose narration body"}],
+                        },
+                        "ts": 4.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            with coord._lock:
+                task = coord._queue[0]
+            self.assertEqual(task.summary_word_target, 15)
+            self.assertEqual(task.spoken_text, "")
+            coord._process_task(task)
+            with coord._lock:
+                prepared = coord._prepared
+            self.assertIsNotNone(prepared)
+            assert prepared is not None
+            coord._append_prepared(prepared)
+            self.assertEqual(len(fake_client.summary_calls), 1)
+            self.assertEqual(fake_client.summary_calls[0]["target_words"], 15)
+            self.assertEqual(fake_client.summary_calls[0]["source_label"], "Narration updates")
+            self.assertEqual(len(fake_client.speech_calls), 1)
+            self.assertEqual(fake_client.speech_calls[0]["text"], "From Repo. short narration summary")
+            row = coord._delivery_ledger[message.message_id]
+            self.assertEqual(row["summary_status"], "sent")
+            self.assertEqual(row["summary_text"], "short narration summary")
+            self.assertEqual(row["narrated_status"], "sent")
 
     def test_notification_text_falls_back_to_raw_when_no_api_key(self) -> None:
         with TemporaryDirectory() as td:
@@ -384,7 +446,7 @@ class TestVoicePushCoordinator(unittest.TestCase):
         with patch("codoxear.voice_push.subprocess.check_output", return_value='{"Self":{"DNSName":"demo.tail.ts.net."}}'):
             self.assertEqual(_default_vapid_subject(), "https://demo.tail.ts.net")
 
-    def test_latest_message_replaces_pending_message_for_same_session(self) -> None:
+    def test_latest_narration_merges_pending_message_for_same_session(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()
             stop_event.set()
@@ -404,47 +466,48 @@ class TestVoicePushCoordinator(unittest.TestCase):
                     "tts_api_key": "test-key",
                 }
             )
-            coord.observe_messages(
-                session_id="sid-1",
-                session_display_name="Repo",
-                messages=_extract_delivery_messages(
-                    [
-                        {
-                            "type": "response_item",
-                            "payload": {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [{"type": "output_text", "text": "older narration"}],
-                            },
-                            "ts": 1.0,
-                        }
-                    ]
-                ),
-            )
-            coord.observe_messages(
-                session_id="sid-1",
-                session_display_name="Repo",
-                messages=_extract_delivery_messages(
-                    [
-                        {
-                            "type": "response_item",
-                            "payload": {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [{"type": "output_text", "text": "newer narration"}],
-                            },
-                            "ts": 2.0,
-                        }
-                    ]
-                ),
-            )
+            older = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "older narration"}],
+                        },
+                        "ts": 1.0,
+                    }
+                ]
+            )[0]
+            newer = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "newer narration"}],
+                        },
+                        "ts": 2.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[older])
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[newer])
             with coord._lock:
                 self.assertEqual(len(coord._queue), 1)
                 current = coord._queue[0]
-                self.assertIn("newer narration", current.spoken_text)
-                skipped = [row for row in coord._delivery_ledger.values() if row["preview_text"] == "older narration"][0]
-            self.assertEqual(skipped["narrated_status"], "skipped")
-            self.assertEqual(skipped["last_error"], "replaced by newer message")
+                self.assertEqual(current.message_class, "narration")
+                self.assertEqual(current.source_message_ids, (older.message_id, newer.message_id))
+                self.assertEqual(current.source_text, "older narration\n\nnewer narration")
+            older_row = coord._delivery_ledger[older.message_id]
+            newer_row = coord._delivery_ledger[newer.message_id]
+            self.assertEqual(older_row["summary_status"], "pending")
+            self.assertEqual(older_row["narrated_status"], "pending")
+            self.assertEqual(older_row["last_error"], "")
+            self.assertEqual(newer_row["summary_status"], "pending")
+            self.assertEqual(newer_row["narrated_status"], "pending")
+            self.assertEqual(newer_row["last_error"], "")
 
     def test_generating_message_is_protected_from_queue_eviction(self) -> None:
         with TemporaryDirectory() as td:
@@ -491,23 +554,20 @@ class TestVoicePushCoordinator(unittest.TestCase):
             with coord._lock:
                 old_task = coord._queue.pop(0)
                 coord._generating_task = old_task
-            coord.observe_messages(
-                session_id="sid-1",
-                session_display_name="Repo",
-                messages=_extract_delivery_messages(
-                    [
-                        {
-                            "type": "response_item",
-                            "payload": {
-                                "type": "message",
-                                "role": "assistant",
-                                "content": [{"type": "output_text", "text": "newer narration"}],
-                            },
-                            "ts": 2.0,
-                        }
-                    ]
-                ),
-            )
+            newer = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "newer narration"}],
+                        },
+                        "ts": 2.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[newer])
             coord._process_task(old_task)
             with coord._lock:
                 prepared = coord._prepared
@@ -517,11 +577,13 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(len(fake_hls.append_calls), 1)
             with coord._lock:
                 current = coord._queue[0]
-                self.assertIn("newer narration", current.spoken_text)
+                self.assertEqual(current.source_message_ids, (newer.message_id,))
+                self.assertEqual(current.source_text, "newer narration")
             old_row = [row for row in coord._delivery_ledger.values() if row["preview_text"] == "older narration"][0]
+            self.assertEqual(old_row["summary_status"], "sent")
             self.assertEqual(old_row["narrated_status"], "sent")
 
-    def test_older_final_response_is_dropped_before_enqueue_if_newer_message_arrives(self) -> None:
+    def test_queued_final_response_coexists_with_newer_narration(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()
             stop_event.set()
@@ -573,12 +635,13 @@ class TestVoicePushCoordinator(unittest.TestCase):
             coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[older])
             coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=newer)
             with coord._lock:
-                self.assertEqual(len(coord._queue), 1)
-                self.assertIn("newer narration", coord._queue[0].spoken_text)
+                self.assertEqual(len(coord._queue), 2)
+                self.assertEqual([task.message_class for task in coord._queue], ["final_response", "narration"])
+                self.assertEqual(coord._queue[1].source_text, "newer narration")
             old_row = coord._delivery_ledger[older.message_id]
             self.assertEqual(old_row["summary_status"], "sent")
-            self.assertEqual(old_row["narrated_status"], "skipped")
-            self.assertEqual(old_row["last_error"], "replaced by newer message")
+            self.assertEqual(old_row["narrated_status"], "pending")
+            self.assertEqual(old_row["last_error"], "")
 
     def test_queue_replacement_does_not_evict_generating_or_playing_items(self) -> None:
         with TemporaryDirectory() as td:
@@ -594,43 +657,55 @@ class TestVoicePushCoordinator(unittest.TestCase):
             )
             generating = AnnouncementTask(
                 message_id="gen-1",
+                source_message_ids=("gen-1",),
                 session_id="sid-1",
                 session_display_name="Repo",
                 message_class="narration",
-                spoken_text="From Repo. protected generating",
+                source_text="protected generating",
+                spoken_text="",
                 notification_text="",
                 voice="alloy",
                 ts=1.0,
+                summary_word_target=15,
             )
             playing = AnnouncementTask(
                 message_id="play-1",
+                source_message_ids=("play-1",),
                 session_id="sid-2",
                 session_display_name="Repo 2",
                 message_class="narration",
-                spoken_text="From Repo 2. protected playing",
+                source_text="protected playing",
+                spoken_text="",
                 notification_text="",
                 voice="ash",
                 ts=1.5,
+                summary_word_target=15,
             )
             queued_old = AnnouncementTask(
                 message_id="queue-1",
+                source_message_ids=("queue-1",),
                 session_id="sid-1",
                 session_display_name="Repo",
                 message_class="narration",
-                spoken_text="From Repo. old queued",
+                source_text="old queued",
+                spoken_text="",
                 notification_text="",
                 voice="alloy",
                 ts=2.0,
+                summary_word_target=15,
             )
             queued_new = AnnouncementTask(
                 message_id="queue-2",
+                source_message_ids=("queue-2",),
                 session_id="sid-1",
                 session_display_name="Repo",
                 message_class="narration",
-                spoken_text="From Repo. new queued",
+                source_text="new queued",
+                spoken_text="",
                 notification_text="",
                 voice="alloy",
                 ts=3.0,
+                summary_word_target=15,
             )
             now_ts = 10.0
             with coord._lock:
@@ -640,9 +715,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "session_id": task.session_id,
                         "session_display_name": task.session_display_name,
                         "message_class": task.message_class,
-                        "preview_text": task.spoken_text,
+                        "preview_text": task.source_text,
                         "summary_text": "",
-                        "summary_status": "skipped",
+                        "summary_status": "pending",
                         "narrated_status": "pending",
                         "push_status": "skipped",
                         "voice": task.voice,
@@ -653,17 +728,19 @@ class TestVoicePushCoordinator(unittest.TestCase):
                 coord._generating_task = generating
                 coord._playing_task = playing
                 coord._queue = [queued_old]
-                coord._replace_queued_session_tasks_locked(session_id="sid-1")
-                coord._queue.append(queued_new)
+                coord._enqueue_task_locked(queued_new)
             with coord._lock:
                 self.assertEqual(coord._generating_task.message_id, "gen-1")
                 self.assertEqual(coord._playing_task.message_id, "play-1")
-                self.assertEqual([task.message_id for task in coord._queue], ["queue-2"])
+                self.assertEqual(len(coord._queue), 1)
+                self.assertEqual(coord._queue[0].source_message_ids, ("queue-1", "queue-2"))
+                self.assertEqual(coord._queue[0].source_text, "old queued\n\nnew queued")
             old_row = coord._delivery_ledger["queue-1"]
-            self.assertEqual(old_row["narrated_status"], "skipped")
-            self.assertEqual(old_row["last_error"], "replaced by newer message")
+            self.assertEqual(old_row["summary_status"], "pending")
+            self.assertEqual(old_row["narrated_status"], "pending")
+            self.assertEqual(old_row["last_error"], "")
 
-    def test_mixed_batch_order_preserves_latest_same_session_message(self) -> None:
+    def test_mixed_batch_preserves_one_queue_slot_per_class(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()
             stop_event.set()
@@ -710,12 +787,13 @@ class TestVoicePushCoordinator(unittest.TestCase):
             )
             coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=mixed)
             with coord._lock:
-                self.assertEqual(len(coord._queue), 1)
-                self.assertIn("newer narration", coord._queue[0].spoken_text)
+                self.assertEqual(len(coord._queue), 2)
+                self.assertEqual([task.message_class for task in coord._queue], ["final_response", "narration"])
+                self.assertEqual(coord._queue[1].source_text, "newer narration")
             final_row = [row for row in coord._delivery_ledger.values() if row["message_class"] == "final_response"][0]
             self.assertEqual(final_row["summary_status"], "sent")
-            self.assertEqual(final_row["narrated_status"], "skipped")
-            self.assertEqual(final_row["last_error"], "replaced by newer message")
+            self.assertEqual(final_row["narrated_status"], "pending")
+            self.assertEqual(final_row["last_error"], "")
 
     def test_hls_segments_are_written_in_sequence_order(self) -> None:
         with TemporaryDirectory() as td:

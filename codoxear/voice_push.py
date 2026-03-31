@@ -208,13 +208,16 @@ class ClassifiedAssistantMessage:
 @dataclass(frozen=True)
 class AnnouncementTask:
     message_id: str
+    source_message_ids: tuple[str, ...]
     session_id: str
     session_display_name: str
     message_class: str
+    source_text: str
     spoken_text: str
     notification_text: str
     voice: str
     ts: float | None
+    summary_word_target: int | None
 
 
 @dataclass(frozen=True)
@@ -273,7 +276,29 @@ class OpenAICompatibleClient:
             detail = e.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"{route} failed with {e.code}: {detail}") from e
 
-    def summarize(self, *, base_url: str, api_key: str, model: str, session_name: str, text: str) -> str:
+    def summarize(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        session_name: str,
+        source_label: str,
+        text: str,
+        target_words: int,
+    ) -> str:
+        if int(target_words) <= 15:
+            system_content = (
+                "You write spoken mobile notifications. "
+                "Return one plain sentence of about 15 words. "
+                "Aim for roughly 12 to 18 words, no markdown, no quotes, no prefixes."
+            )
+        else:
+            system_content = (
+                "You write spoken mobile notifications. "
+                "Return one plain sentence of about 30 words. "
+                "Aim for roughly 24 to 36 words, no markdown, no quotes, no prefixes."
+            )
         obj = self._request_json(
             base_url=base_url,
             api_key=api_key,
@@ -285,15 +310,11 @@ class OpenAICompatibleClient:
                 "messages": [
                     {
                         "role": "system",
-                        "content": (
-                            "You write spoken mobile notifications. "
-                            "Return one plain sentence of about 30 words. "
-                            "Aim for roughly 24 to 36 words, no markdown, no quotes, no prefixes."
-                        ),
+                        "content": system_content,
                     },
                     {
                         "role": "user",
-                        "content": f"Session name: {session_name}\nFinal assistant response:\n{text}",
+                        "content": f"Session name: {session_name}\n{source_label}:\n{text}",
                     },
                 ],
             },
@@ -575,7 +596,7 @@ class VoicePushCoordinator:
         self._playing_task: AnnouncementTask | None = None
         self._playing_until_monotonic = 0.0
         self._observed_serial = 0
-        self._latest_observed_serial_by_session: dict[str, int] = {}
+        self._latest_observed_serial_by_slot: dict[tuple[str, str], int] = {}
         self._voice_settings = _clean_voice_settings({})
         self._subscriptions: dict[str, dict[str, Any]] = {}
         self._delivery_ledger: dict[str, dict[str, Any]] = {}
@@ -704,12 +725,14 @@ class VoicePushCoordinator:
             task: AnnouncementTask | None = None
             now_ts = float(time.time())
             observed_serial = 0
+            slot_key = (session_id, msg.message_class)
+            narration_enabled = bool(self._voice_settings.get("tts_enabled_for_narration"))
             with self._lock:
                 if msg.message_id in self._delivery_ledger:
                     continue
                 self._observed_serial += 1
                 observed_serial = self._observed_serial
-                self._latest_observed_serial_by_session[session_id] = observed_serial
+                self._latest_observed_serial_by_slot[slot_key] = observed_serial
                 self._delivery_ledger[msg.message_id] = {
                     "message_id": msg.message_id,
                     "session_id": session_id,
@@ -718,20 +741,14 @@ class VoicePushCoordinator:
                     "preview_text": _clip_text(msg.text, limit=160),
                     "notification_text": "",
                     "summary_text": "",
-                    "summary_status": "pending" if msg.message_class == "final_response" else "skipped",
-                    "narrated_status": "pending",
+                    "summary_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
+                    "narrated_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
                     "push_status": "pending" if msg.message_class == "final_response" else "skipped",
                     "voice": "",
                     "created_ts": now_ts,
                     "updated_ts": now_ts,
                     "last_error": "",
                 }
-                if msg.message_class != "final_response" and (not self._voice_settings.get("tts_enabled_for_narration")):
-                    row = self._delivery_ledger.get(msg.message_id)
-                    if isinstance(row, dict):
-                        row["narrated_status"] = "skipped"
-                        row["updated_ts"] = now_ts
-                        self._delivery_ledger[msg.message_id] = row
                 self._trim_locked()
             self._save_delivery_ledger()
             if msg.message_class == "final_response":
@@ -740,25 +757,27 @@ class VoicePushCoordinator:
                     session_id=session_id,
                     session_display_name=session_display_name,
                 )
-            elif self._voice_settings.get("tts_enabled_for_narration"):
+            elif narration_enabled:
                 task = AnnouncementTask(
                     message_id=msg.message_id,
+                    source_message_ids=(msg.message_id,),
                     session_id=session_id,
                     session_display_name=session_display_name,
                     message_class=msg.message_class,
-                    spoken_text=f"From {session_display_name}. {_compact_text(msg.text)}",
+                    source_text=_compact_text(msg.text),
+                    spoken_text="",
                     notification_text="",
                     voice=self._voice_for_session(session_id, session_display_name),
                     ts=msg.ts,
+                    summary_word_target=15,
                 )
             if task is None:
                 continue
             with self._lock:
-                if msg.message_class == "final_response" and self._latest_observed_serial_by_session.get(task.session_id) != observed_serial:
+                if msg.message_class == "final_response" and self._latest_observed_serial_by_slot.get(slot_key) != observed_serial:
                     self._mark_task_replaced_locked(task)
                 else:
-                    self._replace_queued_session_tasks_locked(session_id=task.session_id)
-                    self._queue.append(task)
+                    self._enqueue_task_locked(task)
                 self._trim_locked()
                 self._queue_ready.notify_all()
             self._save_delivery_ledger()
@@ -879,7 +898,7 @@ class VoicePushCoordinator:
             try:
                 self._process_task(task)
             except Exception as e:
-                self._set_ledger_error(task.message_id, str(e))
+                self._set_task_error(task, str(e))
                 self._hls.set_last_error(str(e))
             finally:
                 with self._lock:
@@ -889,13 +908,26 @@ class VoicePushCoordinator:
 
     def _process_task(self, task: AnnouncementTask) -> None:
         settings = self.settings_snapshot()
-        self._set_ledger_field(task.message_id, "voice", task.voice)
+        self._set_task_ledger_fields(task, {"voice": task.voice})
+        spoken_text = task.spoken_text
+        if task.summary_word_target is not None:
+            summary_text = self._client.summarize(
+                base_url=settings["tts_base_url"],
+                api_key=settings["tts_api_key"],
+                model=settings["summarization_model"],
+                session_name=task.session_display_name,
+                source_label="Narration updates",
+                text=task.source_text,
+                target_words=task.summary_word_target,
+            )
+            self._set_task_ledger_fields(task, {"summary_status": "sent", "summary_text": summary_text})
+            spoken_text = f"From {task.session_display_name}. {summary_text}"
         audio = self._client.synthesize(
             base_url=settings["tts_base_url"],
             api_key=settings["tts_api_key"],
             model=settings["tts_model"],
             voice=task.voice,
-            text=task.spoken_text,
+            text=spoken_text,
         )
         with self._lock:
             self._prepared = GeneratedAnnouncement(task=task, audio_bytes=audio)
@@ -908,7 +940,7 @@ class VoicePushCoordinator:
             self._playing_task = prepared.task
             self._playing_until_monotonic = time.monotonic() + max(0.2, float(duration))
             self._queue_ready.notify_all()
-        self._set_ledger_field(prepared.task.message_id, "narrated_status", "sent")
+        self._set_task_ledger_fields(prepared.task, {"narrated_status": "sent"})
 
     def _prepare_final_response(
         self,
@@ -928,7 +960,9 @@ class VoicePushCoordinator:
                     api_key=settings["tts_api_key"],
                     model=settings["summarization_model"],
                     session_name=session_display_name,
+                    source_label="Final assistant response",
                     text=message.text,
+                    target_words=30,
                 )
             except Exception as e:
                 self._set_ledger_fields(
@@ -982,13 +1016,16 @@ class VoicePushCoordinator:
         spoken_basis = summary_text or source_text
         return AnnouncementTask(
             message_id=message.message_id,
+            source_message_ids=(message.message_id,),
             session_id=session_id,
             session_display_name=session_display_name,
             message_class="final_response",
+            source_text=source_text,
             spoken_text=f"Turn summary from {session_display_name}. {spoken_basis}",
             notification_text=notification_text,
             voice=self._voice_for_session(session_id, session_display_name),
             ts=message.ts,
+            summary_word_target=None,
         )
 
     def _send_push_notifications(self, *, session_id: str, session_display_name: str, message_id: str, notification_text: str, timestamp: float | None) -> None:
@@ -1041,57 +1078,102 @@ class VoicePushCoordinator:
         return DEFAULT_VOICES[int(token[:8], 16) % len(DEFAULT_VOICES)]
 
     def _mark_task_replaced_locked(self, task: AnnouncementTask) -> None:
-        row = self._delivery_ledger.get(task.message_id)
-        if not isinstance(row, dict):
-            return
-        row["last_error"] = "replaced by newer message"
-        row["updated_ts"] = float(time.time())
-        row["narrated_status"] = "skipped"
-        if task.message_class == "final_response":
+        now_ts = float(time.time())
+        for message_id in dict.fromkeys(task.source_message_ids):
+            row = self._delivery_ledger.get(message_id)
+            if not isinstance(row, dict):
+                continue
+            row["last_error"] = "replaced by newer message"
+            row["updated_ts"] = now_ts
+            row["narrated_status"] = "skipped"
             if row.get("summary_status") == "pending":
                 row["summary_status"] = "skipped"
             if row.get("push_status") == "pending":
                 row["push_status"] = "skipped"
-        self._delivery_ledger[task.message_id] = row
+            self._delivery_ledger[message_id] = row
 
-    def _replace_queued_session_tasks_locked(self, *, session_id: str) -> None:
+    def _merge_narration_tasks_locked(self, older: AnnouncementTask, newer: AnnouncementTask) -> AnnouncementTask:
+        source_message_ids = tuple(dict.fromkeys((*older.source_message_ids, *newer.source_message_ids)))
+        parts = [part for part in (older.source_text, newer.source_text) if part]
+        return AnnouncementTask(
+            message_id=newer.message_id,
+            source_message_ids=source_message_ids,
+            session_id=newer.session_id,
+            session_display_name=newer.session_display_name,
+            message_class="narration",
+            source_text="\n\n".join(parts),
+            spoken_text="",
+            notification_text="",
+            voice=newer.voice,
+            ts=newer.ts if newer.ts is not None else older.ts,
+            summary_word_target=newer.summary_word_target,
+        )
+
+    def _enqueue_task_locked(self, new_task: AnnouncementTask) -> None:
         if not self._queue:
+            self._queue.append(new_task)
             return
         kept: list[AnnouncementTask] = []
-        for task in self._queue:
-            if task.session_id == session_id:
-                self._mark_task_replaced_locked(task)
+        insert_index: int | None = None
+        task_to_enqueue = new_task
+        for queued in self._queue:
+            same_slot = queued.session_id == new_task.session_id and queued.message_class == new_task.message_class
+            if not same_slot:
+                kept.append(queued)
                 continue
-            kept.append(task)
+            if insert_index is None:
+                insert_index = len(kept)
+            if new_task.message_class == "narration":
+                task_to_enqueue = self._merge_narration_tasks_locked(queued, task_to_enqueue)
+            else:
+                self._mark_task_replaced_locked(queued)
+        if insert_index is None:
+            kept.append(task_to_enqueue)
+        else:
+            kept.insert(insert_index, task_to_enqueue)
         self._queue = kept
 
-    def _set_ledger_error(self, message_id: str, error: str) -> None:
+    def _set_task_error(self, task: AnnouncementTask, error: str) -> None:
+        clipped_error = _clip_text(error, limit=400)
         with self._lock:
-            row = self._delivery_ledger.get(message_id)
-            if not isinstance(row, dict):
-                return
-            row["last_error"] = _clip_text(error, limit=400)
-            row["updated_ts"] = float(time.time())
-            row["narrated_status"] = "error"
-            if row.get("message_class") == "final_response":
+            now_ts = float(time.time())
+            for message_id in dict.fromkeys(task.source_message_ids):
+                row = self._delivery_ledger.get(message_id)
+                if not isinstance(row, dict):
+                    continue
+                row["last_error"] = clipped_error
+                row["updated_ts"] = now_ts
+                row["narrated_status"] = "error"
                 if row.get("summary_status") == "pending":
                     row["summary_status"] = "error"
                 if row.get("push_status") == "pending":
                     row["push_status"] = "error"
-            self._delivery_ledger[message_id] = row
+                self._delivery_ledger[message_id] = row
         self._save_delivery_ledger()
 
     def _set_ledger_field(self, message_id: str, key: str, value: Any) -> None:
         self._set_ledger_fields(message_id, {key: value})
 
+    def _set_task_ledger_fields(self, task: AnnouncementTask, patch: dict[str, Any]) -> None:
+        self._set_ledger_fields_many(task.source_message_ids, patch)
+
     def _set_ledger_fields(self, message_id: str, patch: dict[str, Any]) -> None:
+        self._set_ledger_fields_many((message_id,), patch)
+
+    def _set_ledger_fields_many(self, message_ids: tuple[str, ...], patch: dict[str, Any]) -> None:
         with self._lock:
-            row = self._delivery_ledger.get(message_id)
-            if not isinstance(row, dict):
-                return
-            row.update(patch)
-            row["updated_ts"] = float(time.time())
-            self._delivery_ledger[message_id] = row
+            now_ts = float(time.time())
+            dirty = False
+            for message_id in dict.fromkeys(message_ids):
+                row = self._delivery_ledger.get(message_id)
+                if not isinstance(row, dict):
+                    continue
+                row.update(patch)
+                row["updated_ts"] = now_ts
+                self._delivery_ledger[message_id] = row
+                dirty = True
+        if not dirty:
+            return
         self._save_delivery_ledger()
 
     def _mark_subscription_failure(self, *, record_id: str, error: str) -> None:
