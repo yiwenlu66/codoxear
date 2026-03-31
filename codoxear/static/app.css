@@ -1244,6 +1244,12 @@ select {
         flex-wrap: wrap;
         justify-content: flex-end;
       }
+      #fileEditBtn {
+        min-width: 38px;
+      }
+      #fileEditBtn.dirty {
+        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.12);
+      }
       .fileCandRow.hidden {
         display: none;
       }
@@ -1869,6 +1875,9 @@ select {
       }
       .sendChoiceActions button {
         flex: 1 1 auto;
+      }
+      .fileUnsavedDialog {
+        z-index: 90;
       }
 		      .backdrop {
 		        display: none;

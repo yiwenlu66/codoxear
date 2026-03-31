@@ -1084,6 +1084,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
         if (name === "download")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+        if (name === "save")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v6h8"/><path d="M9 20v-6h6v6"/></svg>`;
         if (name === "preview")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>`;
         if (name === "diff")
@@ -1502,6 +1504,14 @@
           "aria-label": "Toggle markdown preview",
           html: iconSvg("preview"),
         });
+        const fileEditBtn = el("button", {
+          id: "fileEditBtn",
+          class: "icon-btn",
+          type: "button",
+          title: "Edit file",
+          "aria-label": "Edit file",
+          html: iconSvg("edit"),
+        });
         const fileDownloadBtn = el("button", {
           id: "fileDownloadBtn",
           class: "icon-btn",
@@ -1515,7 +1525,7 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileDownloadBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileDownloadBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
           fileStatus,
@@ -1524,6 +1534,19 @@
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
+
+        const fileUnsavedBackdrop = el("div", { class: "modalBackdrop", id: "fileUnsavedBackdrop" });
+        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-label": "Unsaved file changes" }, [
+          el("div", { class: "title", text: "Unsaved changes" }),
+          el("div", { class: "muted", text: "Save this file before leaving the editor?" }),
+          el("div", { class: "sendChoiceActions" }, [
+            el("button", { class: "primary", id: "fileUnsavedSaveBtn", type: "button", text: "Save" }),
+            el("button", { id: "fileUnsavedDiscardBtn", type: "button", text: "Discard" }),
+            el("button", { id: "fileUnsavedCancelBtn", type: "button", text: "Cancel" }),
+          ]),
+        ]);
+        root.appendChild(fileUnsavedBackdrop);
+        root.appendChild(fileUnsavedDialog);
 
         const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
         const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
@@ -5202,7 +5225,12 @@
         let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
+        let fileViewerSessionId = "";
         let activeFilePath = "";
+        let activeFileKind = "";
+        let activeFileText = "";
+        let activeFileEditable = false;
+        let activeFileVersion = "";
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
@@ -5222,6 +5250,12 @@
         let fileEditor = null;
         let fileEditorKind = "";
         let fileEditorModels = [];
+        let fileEditorChangeDisposable = null;
+        let fileEditMode = false;
+        let fileDirty = false;
+        let fileSavePending = false;
+        let fileEditorProgrammaticChange = false;
+        let fileUnsavedResolver = null;
 
         function extToEditorLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
@@ -5244,6 +5278,13 @@
         }
 
         function disposeFileEditor() {
+          if (fileEditorChangeDisposable) {
+            try {
+              fileEditorChangeDisposable.dispose();
+            } catch (_) {}
+            fileEditorChangeDisposable = null;
+          }
+          fileEditorProgrammaticChange = false;
           fileDiff.innerHTML = "";
           for (const model of fileEditorModels) {
             try {
@@ -5258,6 +5299,76 @@
             fileEditor = null;
           }
           fileEditorKind = "";
+        }
+
+        function isFileViewerOpen() {
+          return fileViewer.style.display === "flex";
+        }
+
+        function activeFileCanEnterEditMode() {
+          if (!activeFilePath || fileSavePending) return false;
+          if (activeFileKind && activeFileKind !== "text") return false;
+          if (fileViewMode === "file") return Boolean(activeFileEditable);
+          return Boolean(activeFileEditable);
+        }
+
+        function syncFileEditorReadOnly() {
+          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
+          fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file") });
+        }
+
+        function updateFileEditButton() {
+          const canEdit = activeFileCanEnterEditMode();
+          fileEditBtn.disabled = !canEdit;
+          const saveStyle = fileEditMode || fileSavePending;
+          fileEditBtn.classList.toggle("active", saveStyle);
+          fileEditBtn.classList.toggle("primary", saveStyle);
+          fileEditBtn.classList.toggle("dirty", fileDirty);
+          if (fileSavePending) fileEditBtn.innerHTML = iconSvg("save");
+          else if (fileEditMode) fileEditBtn.innerHTML = iconSvg("save");
+          else fileEditBtn.innerHTML = iconSvg("edit");
+          fileEditBtn.title = fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
+          fileEditBtn.setAttribute("aria-label", fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
+        }
+
+        function setFileDirty(nextDirty) {
+          fileDirty = Boolean(nextDirty);
+          updateFileEditButton();
+        }
+
+        function resetActiveFileBufferState() {
+          activeFileKind = "";
+          activeFileText = "";
+          activeFileEditable = false;
+          activeFileVersion = "";
+          fileEditMode = false;
+          fileSavePending = false;
+          setFileDirty(false);
+        }
+
+        function getFileEditorText() {
+          if (fileEditorKind === "file" && fileEditor && typeof fileEditor.getModel === "function") {
+            const model = fileEditor.getModel();
+            if (model && typeof model.getValue === "function") return String(model.getValue());
+          }
+          return String(activeFileText || "");
+        }
+
+        function restoreFileEditorText(text) {
+          activeFileText = String(text || "");
+          if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.getModel !== "function") {
+            setFileDirty(false);
+            return;
+          }
+          const model = fileEditor.getModel();
+          if (!model || typeof model.setValue !== "function") {
+            setFileDirty(false);
+            return;
+          }
+          fileEditorProgrammaticChange = true;
+          model.setValue(activeFileText);
+          fileEditorProgrammaticChange = false;
+          setFileDirty(false);
         }
 
         function ensureMonaco() {
@@ -5354,7 +5465,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor = monaco.editor.create(host, {
               language: lang || "plaintext",
               value: String(text || ""),
-              readOnly: true,
+              readOnly: !(fileEditMode && activeFileEditable),
               theme: "codoxear-github-light",
               lineNumbers: "on",
               minimap: { enabled: false },
@@ -5369,11 +5480,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             });
             fileEditorKind = "file";
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);
+            fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
+              if (fileEditorProgrammaticChange) return;
+              setFileDirty(getFileEditorText() !== String(activeFileText || ""));
+            });
           } else {
             const model = fileEditor.getModel();
+            fileEditorProgrammaticChange = true;
             monaco.editor.setModelLanguage(model, lang || "plaintext");
             model.setValue(String(text || ""));
+            fileEditorProgrammaticChange = false;
           }
+          syncFileEditorReadOnly();
           const targetLine = normalizeLineNumber(lineNumber) || 1;
           fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           fileEditor.setPosition({ lineNumber: targetLine, column: 1 });
@@ -5464,10 +5582,112 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileDiff.innerHTML = "";
           const preview = el("div", {
             class: "md fileMarkdownPreview",
-            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: selected || "" }),
+            html: markdownPreviewHtml(String(text || ""), { filePath: rel, sessionId: fileViewerSessionId || selected || "" }),
           });
           fileDiff.appendChild(preview);
           void upgradeCandidateFileRefs(preview);
+        }
+
+        function setFileEditMode(nextMode) {
+          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && activeFileKind === "text" && activeFileEditable;
+          syncFileEditorReadOnly();
+          updateFileEditButton();
+        }
+
+        function discardActiveFileEdits() {
+          restoreFileEditorText(activeFileText);
+          setFileEditMode(false);
+        }
+
+        function hideFileUnsavedDialog(choice = "cancel") {
+          const resolve = fileUnsavedResolver;
+          fileUnsavedResolver = null;
+          fileUnsavedBackdrop.style.display = "none";
+          fileUnsavedDialog.style.display = "none";
+          if (resolve) resolve(choice);
+        }
+
+        function promptFileUnsavedChoice() {
+          if (!fileDirty) return Promise.resolve("discard");
+          if (fileUnsavedResolver) return Promise.resolve("cancel");
+          fileUnsavedBackdrop.style.display = "block";
+          fileUnsavedDialog.style.display = "flex";
+          return new Promise((resolve) => {
+            fileUnsavedResolver = resolve;
+          });
+        }
+
+        async function saveActiveFileEdits({ exitEditMode = true } = {}) {
+          if (!fileViewerSessionId || !activeFilePath || activeFileKind !== "text" || !activeFileEditable) return false;
+          if (!fileDirty) {
+            if (exitEditMode) setFileEditMode(false);
+            return true;
+          }
+          const text = getFileEditorText();
+          fileSavePending = true;
+          updateFileEditButton();
+          syncFileEditorReadOnly();
+          fileStatus.textContent = `Saving ${activeFilePath}...`;
+          try {
+            const res = await api(`/api/sessions/${fileViewerSessionId}/file/write`, {
+              method: "POST",
+              body: { path: activeFilePath, text, version: activeFileVersion },
+            });
+            activeFileText = text;
+            if (res && typeof res.version === "string") activeFileVersion = res.version;
+            if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
+            setFileDirty(false);
+            if (exitEditMode) setFileEditMode(false);
+            const size = res && typeof res.size === "number" ? res.size : text.length;
+            fileStatus.textContent = `${activeFilePath} - ${fmtBytes(size)}`;
+            return true;
+          } catch (e) {
+            if (e && e.status === 409) {
+              fileStatus.textContent = `${activeFilePath} - save conflict: changed on disk`;
+            } else {
+              fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
+            }
+            return false;
+          } finally {
+            fileSavePending = false;
+            syncFileEditorReadOnly();
+            updateFileEditButton();
+          }
+        }
+
+        async function maybeHandleUnsavedFileChanges() {
+          if (!fileDirty) return true;
+          const choice = await promptFileUnsavedChoice();
+          if (choice === "discard") {
+            discardActiveFileEdits();
+            return true;
+          }
+          if (choice === "save") return await saveActiveFileEdits({ exitEditMode: true });
+          return false;
+        }
+
+        async function openFilePathWithGuard(path, { line = null, mode = null } = {}) {
+          if (!(await maybeHandleUnsavedFileChanges())) return false;
+          setFilePath(path, { line });
+          if (mode) setFileViewMode(mode);
+          renderFilePickerMenu();
+          await openFilePath(path, { line });
+          return true;
+        }
+
+        async function setFileViewModeWithGuard(mode) {
+          const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
+          if (next === fileViewMode) return true;
+          if (!(await maybeHandleUnsavedFileChanges())) return false;
+          setFileViewMode(next);
+          renderFilePickerMenu();
+          await openFilePath(activeFilePath, { line: activeFileLine });
+          return true;
+        }
+
+        async function requestHideFileViewer() {
+          if (!(await maybeHandleUnsavedFileChanges())) return;
+          hideFileViewer();
         }
 
         function setFileViewMode(mode) {
@@ -5492,6 +5712,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileModePreviewBtn.disabled = !hasPath;
           fileDownloadBtn.disabled = !hasPath;
           fileModePreviewBtn.style.display = previewable ? "" : "none";
+          if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
+          syncFileEditorReadOnly();
+          updateFileEditButton();
         }
 
         function applyFileMenuState() {
@@ -5542,7 +5765,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function rememberOpenedFile(relPath, absPath = null) {
           const raw = String(relPath || "").trim();
-          const rel = sessionRelativePath(raw) || raw;
+          const sid = fileViewerSessionId || selected || "";
+          const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
           const current = fileEntryMap.get(rel);
           upsertFileEntry({
@@ -5551,7 +5775,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             deletions: current && current.changed ? current.deletions : null,
             changed: Boolean(current && current.changed),
           });
-          const s = selected ? sessionIndex.get(selected) : null;
+          const s = sid ? sessionIndex.get(sid) : null;
           if (!s) return;
           const files = listFromFilesField(s.files);
           const abs = typeof absPath === "string" && absPath.trim()
@@ -5655,12 +5879,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function requestSessionFileSearch(query) {
           const trimmed = String(query || "").trim();
-          if (!trimmed || !selected) {
+          const sid = fileViewerSessionId || selected || "";
+          if (!trimmed || !sid) {
             resetFileSearchState();
-            fileSearchSessionId = selected || "";
+            fileSearchSessionId = sid;
             return [];
           }
-          const sid = selected;
           if (fileSearchSessionId !== sid) {
             resetFileSearchState();
             fileSearchSessionId = sid;
@@ -5714,18 +5938,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function scheduleSessionFileSearch(query) {
           const trimmed = String(query || "").trim();
+          const sid = fileViewerSessionId || selected || "";
           if (fileSearchTimer) {
             clearTimeout(fileSearchTimer);
             fileSearchTimer = null;
           }
-          if (!trimmed || !selected) {
+          if (!trimmed || !sid) {
             resetFileSearchState();
-            fileSearchSessionId = selected || "";
+            fileSearchSessionId = sid;
             return;
           }
-          if (fileSearchSessionId !== (selected || "")) {
+          if (fileSearchSessionId !== sid) {
             resetFileSearchState();
-            fileSearchSessionId = selected || "";
+            fileSearchSessionId = sid;
           }
           if (fileSearchAbort) {
             try {
@@ -5851,15 +6076,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = () => {
-              setFilePath(path, { line: null });
               const selectedEntry = fileEntryMap.get(path);
-              if (selectedEntry && selectedEntry.changed) {
-                setFileViewMode("diff");
-              } else {
-                setFileViewMode(isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file");
-              }
-              renderFilePickerMenu();
-              void openFilePath(path, { line: null });
+              const mode = selectedEntry && selectedEntry.changed ? "diff" : isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file";
+              void openFilePathWithGuard(path, { line: null, mode });
             };
             filePickerMenu.appendChild(btn);
           }
@@ -5931,8 +6150,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        function sessionRelativePath(rawPath) {
-          const s = selected ? sessionIndex.get(selected) : null;
+        function sessionRelativePath(rawPath, sidOverride = null) {
+          const sid = typeof sidOverride === "string" && sidOverride ? sidOverride : selected;
+          const s = sid ? sessionIndex.get(sid) : null;
           if (!s || !s.cwd) return null;
           const abs = stripPathLocationSuffix(rawPath);
           const cwd = String(s.cwd || "").replace(/\/+$/, "");
@@ -5945,9 +6165,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function refreshFileCandidates() {
           fileCandidateList = [];
           fileEntryMap = new Map();
-          if (!selected) return;
+          const sid = fileViewerSessionId || selected || "";
+          if (!sid) return;
           try {
-            const res = await api(`/api/sessions/${selected}/git/changed_files`);
+            const res = await api(`/api/sessions/${sid}/git/changed_files`);
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
             const changedEntries = entriesIn
               .filter((entry) => entry && typeof entry.path === "string" && String(entry.path).trim())
@@ -5965,9 +6186,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               deletions: null,
               changed: false,
             }));
-            const s = selected ? sessionIndex.get(selected) : null;
+            const s = sid ? sessionIndex.get(sid) : null;
             const manualEntries = listFromFilesField(s && s.files)
-              .map((abs) => sessionRelativePath(abs))
+              .map((abs) => sessionRelativePath(abs, sid))
               .filter((rel) => typeof rel === "string" && rel && rel !== ".")
               .map((path) => ({ path, additions: null, deletions: null, changed: false }));
             const merged = [];
@@ -5987,11 +6208,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
+          if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
-          if (fileSearchSessionId !== (selected || "")) {
+          fileViewerSessionId = selected || "";
+          if (fileSearchSessionId !== fileViewerSessionId) {
             resetFileSearchState();
-            fileSearchSessionId = selected || "";
+            fileSearchSessionId = fileViewerSessionId;
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
@@ -6013,19 +6236,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
+          hideFileUnsavedDialog();
           disposeFileEditor();
+          resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
           fileDiff.style.display = "block";
           closeFilePickerMenu({ restoreInput: true });
           resetFileSearchState();
-          fileSearchSessionId = selected || "";
+          fileSearchSessionId = "";
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
+          fileViewerSessionId = "";
           activeFileLine = null;
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
-          if (!selected) return;
+          if (!fileViewerSessionId) return;
           const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
@@ -6035,6 +6261,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           fileStatus.textContent = "Loading...";
           disposeFileEditor();
+          resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
           fileDiff.style.display = "block";
@@ -6042,9 +6269,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
             if (viewMode === "diff") {
-              const res = await api(`/api/sessions/${selected}/git/file_versions?path=${encodeURIComponent(rel)}`);
+              const res = await api(`/api/sessions/${fileViewerSessionId}/git/file_versions?path=${encodeURIComponent(rel)}`);
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
+              activeFileKind = "text";
+              activeFileText = currentText;
+              activeFileEditable = Boolean(res && res.current_exists);
               if (!res.base_exists && !res.current_exists) {
                 disposeFileEditor();
                 fileStatus.textContent = `${rel} - no diff`;
@@ -6054,9 +6284,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
-              const res = await api(`/api/sessions/${selected}/file/read?path=${encodeURIComponent(rel)}`);
+              const res = await api(`/api/sessions/${fileViewerSessionId}/file/read?path=${encodeURIComponent(rel)}`);
               if (!res || typeof res.kind !== "string") throw new Error("invalid response");
               if (res.kind === "image") {
+                activeFileKind = "image";
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
                 fileDiff.style.display = "none";
                 fileImage.src = resolveAppUrl(res.image_url);
@@ -6066,19 +6297,29 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
               } else {
                 if (typeof res.text !== "string") throw new Error("invalid response");
+                activeFileKind = "text";
+                activeFileText = res.text;
+                activeFileEditable = Boolean(res.editable);
+                activeFileVersion = typeof res.version === "string" ? res.version : "";
                 if (viewMode === "preview" && isMarkdownPreviewable(rel)) {
                   renderMarkdownPreview(rel, res.text);
                 } else {
                   await renderMonacoFile(rel, res.text, activeFileLine);
                 }
                 const size = typeof res.size === "number" ? res.size : res.text.length;
-                fileStatus.textContent = viewMode === "preview" && isMarkdownPreviewable(rel) ? `${rel} - preview - ${fmtBytes(size)}` : `${rel} - ${fmtBytes(size)}`;
+                const statusParts = [rel];
+                if (viewMode === "preview" && isMarkdownPreviewable(rel)) statusParts.push("preview");
+                if (!activeFileEditable) statusParts.push("read-only");
+                statusParts.push(fmtBytes(size));
+                fileStatus.textContent = statusParts.join(" - ");
               }
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
             }
+            updateFileEditButton();
             renderFilePickerMenu();
             localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
+            resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
         }
@@ -6107,9 +6348,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileMenuOpen = true;
           applyFileMenuState();
           const query = String(filePickerInput.value || "").trim();
-          if (!query || !selected) {
+          if (!query || !(fileViewerSessionId || selected)) {
             resetFileSearchState();
-            fileSearchSessionId = selected || "";
+            fileSearchSessionId = fileViewerSessionId || selected || "";
             renderFilePickerMenu();
             applyFileMenuState();
             return;
@@ -6143,11 +6384,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const active = entries && entries.length ? entries[fileMenuFocus >= 0 ? fileMenuFocus : filePickerSearchActive ? 0 : -1] : null;
             if (!active) return;
             e.preventDefault();
-            setFilePath(active.path, { line: null });
-            if (active.changed) setFileViewMode("diff");
-            else setFileViewMode(isMarkdownPreviewable(active.path) && fileNonDiffMode === "preview" ? "preview" : "file");
-            renderFilePickerMenu();
-            void openFilePath(active.path, { line: null });
+            const mode = active.changed ? "diff" : isMarkdownPreviewable(active.path) && fileNonDiffMode === "preview" ? "preview" : "file";
+            void openFilePathWithGuard(active.path, { line: null, mode });
             return;
           }
           if (e.key === "Escape" && fileMenuOpen) {
@@ -6163,23 +6401,34 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileModeDiffBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          setFileViewMode(fileViewMode === "diff" ? fileNonDiffMode : "diff");
-          renderFilePickerMenu();
-          void openFilePath(activeFilePath, { line: activeFileLine });
+          void setFileViewModeWithGuard(fileViewMode === "diff" ? fileNonDiffMode : "diff");
         };
         fileModePreviewBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
           if (!isMarkdownPreviewable(activeFilePath)) return;
-          setFileViewMode(fileViewMode === "preview" ? "file" : "preview");
-          renderFilePickerMenu();
-          void openFilePath(activeFilePath, { line: activeFileLine });
+          void setFileViewModeWithGuard(fileViewMode === "preview" ? "file" : "preview");
+        };
+        fileEditBtn.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (fileSavePending) return;
+          if (fileEditMode) {
+            await saveActiveFileEdits({ exitEditMode: true });
+            return;
+          }
+          if (fileViewMode !== "file") {
+            const changed = await setFileViewModeWithGuard("file");
+            if (!changed) return;
+          }
+          if (!activeFileEditable || activeFileKind !== "text") return;
+          setFileEditMode(true);
         };
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!selected || !activeFilePath) return;
-          const url = resolveAppUrl(`/api/sessions/${selected}/file/download?path=${encodeURIComponent(activeFilePath)}`);
+          if (!fileViewerSessionId || !activeFilePath) return;
+          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}`);
           const link = document.createElement("a");
           link.href = url;
           link.rel = "noopener";
@@ -6191,9 +6440,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          hideFileViewer();
+          void requestHideFileViewer();
         };
-        fileBackdrop.onclick = () => hideFileViewer();
+        fileBackdrop.onclick = () => void requestHideFileViewer();
+        $("#fileUnsavedSaveBtn").onclick = () => hideFileUnsavedDialog("save");
+        $("#fileUnsavedDiscardBtn").onclick = () => hideFileUnsavedDialog("discard");
+        $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
+        fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
         async function openFileReference(ref) {
           if (!ref || typeof ref.path !== "string") return;
           const rawPath = String(ref.path || "").trim();
@@ -6292,7 +6545,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         });
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
-          if (fileViewer.style.display === "flex") hideFileViewer();
+          if (fileUnsavedDialog.style.display === "flex") {
+            hideFileUnsavedDialog("cancel");
+            return;
+          }
+          if (fileViewer.style.display === "flex") {
+            e.preventDefault();
+            void requestHideFileViewer();
+            return;
+          }
           if (sendChoice.style.display === "flex") hideSendChoice();
           if (queueViewer.style.display === "flex") hideQueueViewer();
           if (helpViewer.style.display === "flex") hideHelpViewer();

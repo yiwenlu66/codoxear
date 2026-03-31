@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,8 +6,11 @@ from pathlib import Path
 from codoxear.server import _download_disposition
 from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_openable_file
+from codoxear.server import _read_text_file_for_client
+from codoxear.server import _read_text_file_for_write
 from codoxear.server import _read_text_or_image
 from codoxear.server import _read_downloadable_file
+from codoxear.server import _write_text_file_atomic
 
 
 class TestInspectOpenableFile(unittest.TestCase):
@@ -70,6 +74,46 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertIsNone(image_ctype)
             self.assertEqual(size, 6)
             self.assertEqual(raw, b"hello\n")
+
+    def test_text_file_for_client_marks_utf8_as_editable(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.md"
+            raw = b"hello\n"
+            path.write_bytes(raw)
+            text, size, editable, version = _read_text_file_for_client(path, max_bytes=1024)
+            self.assertEqual(text, "hello\n")
+            self.assertEqual(size, len(raw))
+            self.assertTrue(editable)
+            self.assertEqual(version, hashlib.sha256(raw).hexdigest())
+
+    def test_text_file_for_client_marks_invalid_utf8_as_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.txt"
+            raw = b"broken:\xff\n"
+            path.write_bytes(raw)
+            text, size, editable, version = _read_text_file_for_client(path, max_bytes=1024)
+            self.assertEqual(size, len(raw))
+            self.assertFalse(editable)
+            self.assertIn("broken:", text)
+            self.assertIn("\ufffd", text)
+            self.assertEqual(version, hashlib.sha256(raw).hexdigest())
+
+    def test_text_file_for_write_rejects_invalid_utf8(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.txt"
+            path.write_bytes(b"broken:\xff\n")
+            with self.assertRaisesRegex(ValueError, "utf-8 text"):
+                _read_text_file_for_write(path, max_bytes=1024)
+
+    def test_write_text_file_atomic_updates_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.py"
+            path.write_text("print('old')\n", encoding="utf-8")
+            size, version = _write_text_file_atomic(path, text="print('new')\n")
+            raw = b"print('new')\n"
+            self.assertEqual(path.read_text(encoding="utf-8"), "print('new')\n")
+            self.assertEqual(size, len(raw))
+            self.assertEqual(version, hashlib.sha256(raw).hexdigest())
 
     def test_binary_file_is_downloadable(self) -> None:
         with tempfile.TemporaryDirectory() as td:

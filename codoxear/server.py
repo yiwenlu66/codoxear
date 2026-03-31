@@ -691,6 +691,68 @@ def _read_text_file_strict(path: Path, *, max_bytes: int) -> tuple[str, int]:
     return text, size
 
 
+def _file_content_version(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _decode_text_for_client(raw: bytes) -> tuple[str, bool]:
+    try:
+        return raw.decode("utf-8"), True
+    except UnicodeDecodeError:
+        return raw.decode("utf-8", errors="replace"), False
+
+
+def _read_text_file_for_client(path: Path, *, max_bytes: int) -> tuple[str, int, bool, str]:
+    st = path.stat()
+    size = int(st.st_size)
+    if size > max_bytes:
+        raise ValueError(f"file too large (max {max_bytes} bytes)")
+    data = path.read_bytes()
+    if b"\x00" in data:
+        raise ValueError("binary file not supported")
+    text, editable = _decode_text_for_client(data)
+    return text, size, editable, _file_content_version(data)
+
+
+def _read_text_file_for_write(path: Path, *, max_bytes: int) -> tuple[str, int, str]:
+    st = path.stat()
+    size = int(st.st_size)
+    if size > max_bytes:
+        raise ValueError(f"file too large (max {max_bytes} bytes)")
+    data = path.read_bytes()
+    if b"\x00" in data:
+        raise ValueError("binary file not supported")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError("file is not editable as utf-8 text") from e
+    return text, size, _file_content_version(data)
+
+
+def _write_text_file_atomic(path: Path, *, text: str) -> tuple[int, str]:
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+    if path.is_symlink():
+        raise ValueError("symlink file not supported")
+    data = text.encode("utf-8")
+    size = len(data)
+    if size > FILE_READ_MAX_BYTES:
+        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
+    st = path.stat()
+    tmp = path.with_name(f".{path.name}.codoxear-tmp-{secrets.token_hex(6)}")
+    try:
+        tmp.write_bytes(data)
+        os.chmod(tmp, st.st_mode & 0o777)
+        os.replace(tmp, path)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+    return size, _file_content_version(data)
+
+
 def _resolve_under(base: Path, rel: str) -> Path:
     if not isinstance(rel, str) or not rel.strip():
         raise ValueError("path required")
@@ -4626,9 +4688,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
-                assert raw is not None
-                text = raw.decode("utf-8", errors="replace")
-                _json_response(self, 200, {"ok": True, "kind": "text", "path": str(p), "rel": str(rel), "size": int(size), "text": text})
+                text, _size2, editable, version = _read_text_file_for_client(p, max_bytes=FILE_READ_MAX_BYTES)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "kind": "text",
+                        "path": str(p),
+                        "rel": str(rel),
+                        "size": int(size),
+                        "text": text,
+                        "editable": bool(editable),
+                        "version": version,
+                    },
+                )
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/search"):
@@ -5625,6 +5699,79 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Expires", "0")
                 self.end_headers()
                 self.wfile.write(raw)
+                return
+
+            session_id = _match_session_route(path, "file", "write")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                path_raw = obj.get("path")
+                if not isinstance(path_raw, str) or not path_raw.strip():
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                text_raw = obj.get("text")
+                if not isinstance(text_raw, str):
+                    _json_response(self, 400, {"error": "text must be a string"})
+                    return
+                version_raw = obj.get("version")
+                if not isinstance(version_raw, str) or not version_raw.strip():
+                    _json_response(self, 400, {"error": "version required"})
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                p = _resolve_session_path(base, path_raw)
+                try:
+                    _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                if current_version != version_raw:
+                    _json_response(
+                        self,
+                        409,
+                        {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
+                    )
+                    return
+                try:
+                    size, next_version = _write_text_file_atomic(p, text=text_raw)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                try:
+                    MANAGER.files_add(session_id, str(p))
+                except KeyError:
+                    pass
+                _json_response(
+                    self,
+                    200,
+                    {"ok": True, "path": str(p), "rel": str(path_raw), "size": int(size), "version": next_version, "editable": True},
+                )
                 return
 
             session_id = _match_session_route(path, "delete")
