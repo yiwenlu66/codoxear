@@ -4054,10 +4054,6 @@ class SessionManager:
             env["CODEX_WEB_SERVICE_TIER"] = service_tier
         if resume_session_id is not None:
             env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
-            if backend_name == "pi" and isinstance(resume_row, dict):
-                resume_log_path = str(resume_row.get("log_path") or "").strip()
-                if resume_log_path:
-                    env["CODEX_WEB_RESUME_LOG_PATH"] = resume_log_path
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
@@ -4082,10 +4078,6 @@ class SessionManager:
                 inline_env["PI_HOME"] = str(env["PI_HOME"])
             if resume_session_id is not None:
                 inline_env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
-                if backend_name == "pi" and isinstance(resume_row, dict):
-                    resume_log_path = str(resume_row.get("log_path") or "").strip()
-                    if resume_log_path:
-                        inline_env["CODEX_WEB_RESUME_LOG_PATH"] = resume_log_path
             if model_provider is not None:
                 inline_env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
             if preferred_auth_method is not None:

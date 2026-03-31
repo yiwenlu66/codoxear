@@ -97,6 +97,53 @@ class TestSessionLogClassification(unittest.TestCase):
             self.assertEqual(sid, "want")
             self.assertEqual(lp, want)
 
+    def test_find_new_pi_session_log_can_exclude_other_candidates(self) -> None:
+        with TemporaryDirectory() as td:
+            sessions = Path(td)
+            root = sessions / "--pi-work--"
+            root.mkdir(parents=True, exist_ok=True)
+
+            other = root / "2026-02-04T00-00-01-ffffffff-ffff-ffff-ffff-ffffffffffff.jsonl"
+            want = root / "2026-02-04T00-00-02-11111111-1111-1111-1111-111111111111.jsonl"
+            _write_jsonl(other, [{"type": "session", "id": "other", "cwd": "/x", "timestamp": "2026-02-04T00:00:00Z"}])
+            _write_jsonl(want, [{"type": "session", "id": "want", "cwd": "/x", "timestamp": "2026-02-04T00:00:00Z"}])
+
+            t0 = time.time()
+            os.utime(other, (t0 + 10, t0 + 10))
+            os.utime(want, (t0 + 20, t0 + 20))
+
+            found = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="pi",
+                cwd="/x",
+                after_ts=0.0,
+                preexisting=set(),
+                exclude_paths={other},
+                timeout_s=0.0,
+            )
+            self.assertEqual(found, ("want", want))
+
+    def test_find_new_pi_session_log_requires_unique_match(self) -> None:
+        with TemporaryDirectory() as td:
+            sessions = Path(td)
+            root = sessions / "--pi-work--"
+            root.mkdir(parents=True, exist_ok=True)
+
+            a = root / "2026-02-04T00-00-01-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            b = root / "2026-02-04T00-00-02-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+            _write_jsonl(a, [{"type": "session", "id": "a", "cwd": "/x", "timestamp": "2026-02-04T00:00:00Z"}])
+            _write_jsonl(b, [{"type": "session", "id": "b", "cwd": "/x", "timestamp": "2026-02-04T00:00:00Z"}])
+
+            found = find_new_session_log(
+                sessions_dir=sessions,
+                agent_backend="pi",
+                cwd="/x",
+                after_ts=0.0,
+                preexisting=set(),
+                timeout_s=0.0,
+            )
+            self.assertIsNone(found)
+
 
 if __name__ == "__main__":
     unittest.main()

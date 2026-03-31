@@ -6,7 +6,7 @@ from codoxear.broker import (
     BUSY_QUIET_SECONDS,
     State,
     _apply_rollout_obj_to_state,
-    _maybe_detach_on_new_session_hint,
+    _maybe_detach_on_session_switch_trigger,
     _should_clear_busy_state,
     _update_busy_from_pty_text,
 )
@@ -24,30 +24,74 @@ def _state() -> State:
 
 
 class TestBrokerBusyState(unittest.TestCase):
-    def test_new_session_hint_detaches_rollout(self) -> None:
+    def test_codex_detach_trigger_detaches_rollout(self) -> None:
         st = _state()
         st.log_path = Path("/tmp/sessions/rollout-old.jsonl")
         st.session_id = "old"
-        ok = _maybe_detach_on_new_session_hint(
+        ok = _maybe_detach_on_session_switch_trigger(
             st=st,
             tail="",
             cleaned="To continue this session, run codex resume ...\n",
+            agent_backend="codex",
         )
         self.assertTrue(ok)
         self.assertIsNone(st.log_path)
         self.assertIsNone(st.session_id)
         self.assertTrue(len(st.ignored_rollout_paths) >= 1)
 
-    def test_new_session_hint_matches_across_chunk_boundary(self) -> None:
+    def test_codex_detach_trigger_matches_across_chunk_boundary(self) -> None:
         st = _state()
         st.log_path = Path("/tmp/sessions/rollout-old.jsonl")
         st.session_id = "old"
-        ok = _maybe_detach_on_new_session_hint(
+        ok = _maybe_detach_on_session_switch_trigger(
             st=st,
             tail="To continue this session, r",
             cleaned="un codex resume ...\n",
+            agent_backend="codex",
         )
         self.assertTrue(ok)
+
+    def test_pi_status_text_does_not_detach_rollout(self) -> None:
+        st = _state()
+        st.log_path = Path("/tmp/sessions/pi-old.jsonl")
+        st.session_id = "old"
+        ok = _maybe_detach_on_session_switch_trigger(
+            st=st,
+            tail="",
+            cleaned="New session started\n",
+            agent_backend="pi",
+        )
+        self.assertFalse(ok)
+        self.assertEqual(st.log_path, Path("/tmp/sessions/pi-old.jsonl"))
+        self.assertEqual(st.session_id, "old")
+
+    def test_pi_resumed_status_text_does_not_detach_across_chunk_boundary(self) -> None:
+        st = _state()
+        st.log_path = Path("/tmp/sessions/pi-old.jsonl")
+        st.session_id = "old"
+        ok = _maybe_detach_on_session_switch_trigger(
+            st=st,
+            tail="Resumed sess",
+            cleaned="ion abc123\n",
+            agent_backend="pi",
+        )
+        self.assertFalse(ok)
+        self.assertEqual(st.log_path, Path("/tmp/sessions/pi-old.jsonl"))
+        self.assertEqual(st.session_id, "old")
+
+    def test_detach_trigger_ignores_non_matching_backend_text(self) -> None:
+        st = _state()
+        st.log_path = Path("/tmp/sessions/pi-old.jsonl")
+        st.session_id = "old"
+        ok = _maybe_detach_on_session_switch_trigger(
+            st=st,
+            tail="",
+            cleaned="New session started\n",
+            agent_backend="codex",
+        )
+        self.assertFalse(ok)
+        self.assertEqual(st.log_path, Path("/tmp/sessions/pi-old.jsonl"))
+        self.assertEqual(st.session_id, "old")
 
     def test_user_message_starts_turn_and_resets_pending_calls(self) -> None:
         st = _state()

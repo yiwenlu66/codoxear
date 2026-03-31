@@ -404,7 +404,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertEqual(result, {"broker_pid": 7654})
         self.assertEqual(thread_calls, ["start"])
 
-    def test_spawn_web_session_passes_pi_resume_log_path_to_broker(self) -> None:
+    def test_spawn_web_session_uses_pi_session_arg_without_resume_log_env(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         thread_calls: list[str] = []
 
@@ -441,7 +441,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             ],
         )
         self.assertEqual(env["CODEX_WEB_RESUME_SESSION_ID"], "resume-a")
-        self.assertEqual(env["CODEX_WEB_RESUME_LOG_PATH"], "/tmp/pi-resume.jsonl")
+        self.assertNotIn("CODEX_WEB_RESUME_LOG_PATH", env)
         self.assertEqual(result, {"broker_pid": 7655})
         self.assertEqual(thread_calls, ["start"])
 

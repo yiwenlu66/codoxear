@@ -16,7 +16,9 @@ import time
 import traceback
 import tty
 import shlex
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,11 +32,12 @@ from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_us
 from codoxear.pi_log import pi_message_role as _pi_message_role
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
-from codoxear.pi_log import read_pi_log_cwd as _read_pi_log_cwd
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
+from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
+from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
@@ -99,9 +102,14 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
                 return None
             if resume_id.endswith(".jsonl"):
                 try:
-                    return _read_session_meta_payload(Path(resume_id), agent_backend="pi", timeout_s=0.0).get("id")  # type: ignore[union-attr]
+                    payload = _read_session_meta_payload(Path(resume_id), agent_backend="pi", timeout_s=0.0)
                 except Exception:
-                    return resume_id
+                    return None
+                if isinstance(payload, dict):
+                    sid = payload.get("id")
+                    if isinstance(sid, str) and sid:
+                        return sid
+                return None
             return resume_id
         return None
     for idx, token in enumerate(args):
@@ -112,6 +120,81 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
         resume_id = str(args[idx + 1] or "").strip()
         return resume_id or None
     return None
+
+
+def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions_dir: Path) -> Path | None:
+    if normalize_agent_backend(agent_backend) != "pi":
+        return None
+    for idx, token in enumerate(args):
+        if token != "--session":
+            continue
+        if (idx + 1) >= len(args):
+            return None
+        raw = str(args[idx + 1] or "").strip()
+        if (not raw) or (not raw.endswith(".jsonl")):
+            return None
+        path = Path(raw).expanduser()
+        try:
+            resolved = path.resolve()
+        except Exception:
+            resolved = path
+        try:
+            resolved.relative_to(sessions_dir.resolve())
+        except Exception:
+            return None
+        return resolved
+    return None
+
+
+def _pi_session_dir_name(cwd: str) -> str:
+    return f"--{cwd.lstrip('/\\\\').replace('/', '-').replace('\\\\', '-').replace(':', '-')}--"
+
+
+def _pi_session_dir_from_args(*, args: list[str], cwd: str, sessions_dir: Path) -> Path | None:
+    for idx, token in enumerate(args):
+        if token == "--no-session":
+            return None
+        if token != "--session-dir":
+            continue
+        if (idx + 1) >= len(args):
+            return None
+        raw = str(args[idx + 1] or "").strip()
+        if not raw:
+            return None
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = (Path(cwd) / path).resolve()
+        return path
+    return sessions_dir / _pi_session_dir_name(cwd)
+
+
+def _pi_new_session_log_path(*, cwd: str, sessions_dir: Path) -> Path:
+    session_dir = sessions_dir / _pi_session_dir_name(cwd)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    filename = f"{timestamp.replace(':', '-').replace('.', '-')}_{uuid.uuid4()}.jsonl"
+    return session_dir / filename
+
+
+def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path) -> list[str]:
+    if AGENT_BACKEND != "pi":
+        return list(args)
+    out = list(args)
+    session_dir = _pi_session_dir_from_args(args=out, cwd=cwd, sessions_dir=sessions_dir)
+    if session_dir is None:
+        return out
+    for token in out:
+        if token == "--session":
+            return out
+    if session_dir == sessions_dir / _pi_session_dir_name(cwd):
+        log_path = _pi_new_session_log_path(cwd=cwd, sessions_dir=sessions_dir)
+    else:
+        session_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        filename = f"{timestamp.replace(':', '-').replace('.', '-')}_{uuid.uuid4()}.jsonl"
+        log_path = session_dir / filename
+    out.extend(["--session", str(log_path)])
+    return out
 
 
 def _set_pdeathsig(sig: int) -> None:
@@ -274,49 +357,6 @@ def _paths_match(a: Path, b: Path) -> bool:
             return str(a) == str(b)
 
 
-def _path_is_excluded(path: Path, excluded_paths: set[Path] | None) -> bool:
-    if not excluded_paths:
-        return False
-    for candidate in excluded_paths:
-        if _paths_match(path, candidate):
-            return True
-    return False
-
-
-def _find_recent_pi_session_log(
-    *,
-    sessions_dir: Path,
-    cwd: str,
-    after_ts: float,
-    exclude_paths: set[Path] | None = None,
-) -> Path | None:
-    if not isinstance(cwd, str) or not cwd:
-        return None
-    if not sessions_dir.exists():
-        return None
-    cands: list[tuple[float, Path]] = []
-    for path in sessions_dir.rglob("*.jsonl"):
-        try:
-            mt = float(path.stat().st_mtime)
-        except FileNotFoundError:
-            continue
-        except Exception:
-            continue
-        if mt < float(after_ts) - 2.0:
-            continue
-        cands.append((mt, path))
-    if not cands:
-        return None
-    cands.sort(key=lambda item: item[0], reverse=True)
-    for _mt, path in cands:
-        if _path_is_excluded(path, exclude_paths):
-            continue
-        path_cwd = _read_pi_log_cwd(path)
-        if isinstance(path_cwd, str) and path_cwd == cwd:
-            return path
-    return None
-
-
 def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | None = None) -> set[Path]:
     out: set[Path] = set()
     if not sock_dir.exists():
@@ -346,12 +386,10 @@ def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | No
     return out
 
 
-def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -> bool:
-    # Codex TUI prints this line when closing a thread on /new and similar flows.
-    # The line can be split across PTY reads and may include ANSI escape sequences.
-    phrase = "To continue this session, run "
-    if not _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase=phrase):
-        return False
+_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}
+
+
+def _detach_current_session_binding(st: "State") -> None:
     for p in (st.log_path, st.last_rollout_path, st.last_detected_rollout_path):
         if p is not None:
             st.ignored_rollout_paths.add(p)
@@ -360,7 +398,20 @@ def _maybe_detach_on_new_session_hint(*, st: "State", tail: str, cleaned: str) -
     st.log_off = 0
     st.last_rollout_path = None
     st.last_detected_rollout_path = None
-    st.new_session_hint_tail = ""
+    st.detach_trigger_tail = ""
+
+
+def _detach_trigger_seen(*, agent_backend: str, tail: str, cleaned: str) -> bool:
+    for phrase in _DETACH_TRIGGER_PHRASES.get(agent_backend, ()):
+        if _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase=phrase):
+            return True
+    return False
+
+
+def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: str, agent_backend: str) -> bool:
+    if not _detach_trigger_seen(agent_backend=agent_backend, tail=tail, cleaned=cleaned):
+        return False
+    _detach_current_session_binding(st)
     return True
 
 
@@ -638,25 +689,27 @@ class State:
     turn_has_completion_candidate: bool = False
     interrupt_hint_tail: str = ""
     interrupt_hint_tail_max: int = INTERRUPT_HINT_TAIL_MAX
-    new_session_hint_tail: str = ""
-    new_session_hint_tail_max: int = 8192
+    detach_trigger_tail: str = ""
+    detach_trigger_tail_max: int = 8192
     token: dict[str, Any] | None = None
     last_rollout_path: Path | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
+    known_rollout_paths: set[Path] = field(default_factory=set)
     resume_session_id: str | None = None
 
 
 class Broker:
     def __init__(self, *, cwd: str, codex_args: list[str]) -> None:
         self.cwd = cwd
+        base_args = _ensure_pi_session_arg(args=codex_args, cwd=self.cwd, sessions_dir=BACKEND.sessions_dir())
         # Headless web sessions need different defaults for robust injection and log discovery.
         # These flags are only for the interactive Codex CLI.
         if OWNER_TAG == "web" and AGENT_BACKEND == "codex":
             forced = ["-c", "disable_response_storage=false", "-c", "disable_paste_burst=true"]
-            self.codex_args = forced + codex_args
+            self.codex_args = forced + base_args
         else:
-            self.codex_args = codex_args
+            self.codex_args = base_args
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self.state: State | None = None
@@ -668,8 +721,6 @@ class Broker:
         self.sessions_dir = BACKEND.sessions_dir()
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
-        resume_log_env = str(os.environ.get("CODEX_WEB_RESUME_LOG_PATH") or "").strip()
-        self._resume_log_path = Path(resume_log_env).expanduser() if resume_log_env else None
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -703,15 +754,13 @@ class Broker:
                     st = self.state
                     if not st:
                         return
-                    need = (st.log_path is None) or (not st.log_path.exists())
+                    current_log_path = st.log_path
+                    need = (current_log_path is None) or (not current_log_path.exists())
                     root_pid = int(st.codex_pid)
-                    start_ts = float(st.start_ts)
                     sock_path = st.sock_path
-                if not need:
-                    time.sleep(0.25)
-                    continue
-                if root_pid > 0:
+                    known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
+                if root_pid > 0:
                     lp = _proc_find_open_rollout_log(
                         proc_root=PROC_ROOT,
                         root_pid=root_pid,
@@ -720,21 +769,28 @@ class Broker:
                         ignored_paths=ignored_paths,
                     )
                     if lp and lp.exists():
-                        self._maybe_register_or_switch_rollout(log_path=lp)
-                        time.sleep(0.25)
-                        continue
-                    if AGENT_BACKEND == "pi":
-                        claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
-                        fallback = _find_recent_pi_session_log(
-                            sessions_dir=self.sessions_dir,
-                            cwd=self.cwd,
-                            after_ts=start_ts,
-                            exclude_paths=claimed_paths | ignored_paths,
-                        )
-                        if fallback and fallback.exists():
-                            self._maybe_register_or_switch_rollout(log_path=fallback)
+                        if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                            self._maybe_register_or_switch_rollout(log_path=lp)
                             time.sleep(0.25)
                             continue
+                    if AGENT_BACKEND == "pi":
+                        claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
+                        discovered = _find_new_session_log(
+                            sessions_dir=self.sessions_dir,
+                            agent_backend="pi",
+                            cwd=self.cwd,
+                            after_ts=0.0,
+                            preexisting=known_paths,
+                            exclude_paths=claimed_paths | ignored_paths,
+                            timeout_s=0.0,
+                        )
+                        if discovered is not None:
+                            _sid, lp = discovered
+                            if lp.exists():
+                                if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                                    self._maybe_register_or_switch_rollout(log_path=lp)
+                                    time.sleep(0.25)
+                                    continue
                     # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
@@ -852,9 +908,9 @@ class Broker:
                             st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
                             _update_busy_from_pty_text(st2, s, now_ts=_now())
                             cleaned = _strip_ansi(s)
-                            tail = st2.new_session_hint_tail
-                            st2.new_session_hint_tail = (tail + cleaned)[-st2.new_session_hint_tail_max :]
-                            if _maybe_detach_on_new_session_hint(st=st2, tail=tail, cleaned=cleaned):
+                            tail = st2.detach_trigger_tail
+                            st2.detach_trigger_tail = (tail + cleaned)[-st2.detach_trigger_tail_max :]
+                            if _maybe_detach_on_session_switch_trigger(st=st2, tail=tail, cleaned=cleaned, agent_backend=AGENT_BACKEND):
                                 self._write_meta()
             except OSError:
                 break
@@ -1223,6 +1279,7 @@ class Broker:
             prev_lp = st.log_path
             st.session_id = sid
             st.log_path = lp
+            st.known_rollout_paths.add(lp)
             try:
                 st.log_off = int(lp.stat().st_size)
             except Exception:
@@ -1301,26 +1358,13 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
-        if AGENT_BACKEND == "pi" and self._resume_log_path is not None and self._resume_log_path.exists():
-            st.log_path = self._resume_log_path
-            st.last_rollout_path = self._resume_log_path
-            st.last_detected_rollout_path = self._resume_log_path
-            if isinstance(self._resume_session_id, str) and self._resume_session_id:
-                st.session_id = self._resume_session_id
-            else:
-                try:
-                    payload = _read_session_meta_payload(self._resume_log_path, agent_backend="pi", timeout_s=0.0)
-                    sid = payload.get("id") if isinstance(payload, dict) else None
-                    if isinstance(sid, str) and sid:
-                        st.session_id = sid
-                except Exception:
-                    pass
-            try:
-                st.log_off = int(self._resume_log_path.stat().st_size)
-            except Exception:
-                st.log_off = 0
+        if AGENT_BACKEND == "pi":
+            st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
+        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
+        if declared_log_path is not None and declared_log_path.exists():
+            self._maybe_register_or_switch_rollout(log_path=declared_log_path)
 
         def _sigwinch(_signo: int, _frame: Any) -> None:
             try:

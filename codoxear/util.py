@@ -86,6 +86,23 @@ def _is_pi_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> 
     return True
 
 
+def _paths_match(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except Exception:
+        try:
+            return a.absolute() == b.absolute()
+        except Exception:
+            return str(a) == str(b)
+
+
+def _path_in_set(path: Path, paths: set[Path]) -> bool:
+    for candidate in paths:
+        if _paths_match(path, candidate):
+            return True
+    return False
+
+
 def _read_session_meta_payload_once(log_path: Path, *, max_bytes: int) -> dict[str, Any] | None:
     try:
         with log_path.open("rb") as f:
@@ -210,6 +227,7 @@ def find_new_session_log(
     cwd: str | None = None,
     after_ts: float,
     preexisting: set[Path],
+    exclude_paths: set[Path] | None = None,
     timeout_s: float,
 ) -> tuple[str, Path] | None:
     backend_name = normalize_agent_backend(agent_backend)
@@ -217,9 +235,12 @@ def find_new_session_log(
         if not isinstance(cwd, str) or (not cwd.strip()):
             raise ValueError("cwd must be a non-empty string when provided")
     deadline = now() + float(timeout_s)
-    while now() < deadline:
+    while True:
+        matches: list[tuple[str, Path]] = []
         for p in iter_session_logs(sessions_dir, agent_backend=backend_name):
-            if p in preexisting:
+            if _path_in_set(p, preexisting):
+                continue
+            if exclude_paths and _path_in_set(p, exclude_paths):
                 continue
             try:
                 if p.stat().st_mtime < after_ts - 2:
@@ -240,9 +261,12 @@ def find_new_session_log(
             else:
                 sid = payload.get("id")
             if isinstance(sid, str) and sid:
-                return sid, p
+                matches.append((sid, p))
+        if len(matches) == 1:
+            return matches[0]
+        if now() >= deadline:
+            return None
         time.sleep(0.2)
-    return None
 
 
 def _macos_children(pid: int) -> list[int]:

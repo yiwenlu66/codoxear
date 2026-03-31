@@ -52,6 +52,46 @@ class _FakeThread:
 
 
 class TestBrokerFailClosed(unittest.TestCase):
+    def test_pi_broker_injects_explicit_session_path_for_new_sessions(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp/pi-work", codex_args=["--model", "gpt-5.4"])
+
+        self.assertEqual(broker.codex_args[:2], ["--model", "gpt-5.4"])
+        self.assertEqual(broker.codex_args[-2], "--session")
+        session_path = Path(broker.codex_args[-1])
+        self.assertTrue(str(session_path).startswith(str(Path(td) / "agent" / "sessions" / "--tmp-pi-work--")))
+        self.assertIsNone(broker._resume_session_id)
+
+    def test_pi_discover_log_watcher_switches_when_new_log_appears_while_current_exists(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            current = Path(td) / "current.jsonl"
+            current.write_text('{"type":"session","id":"current","cwd":"/tmp"}\n', encoding="utf-8")
+            new = Path(td) / "new.jsonl"
+            new.write_text('{"type":"session","id":"new","cwd":"/tmp"}\n', encoding="utf-8")
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
+            broker.state.log_path = current
+            broker.state.known_rollout_paths = {current}
+            broker.state.sock_path = Path(td) / "broker.sock"
+            seen: list[Path] = []
+
+            def _capture_switch(*, log_path: Path) -> None:
+                seen.append(log_path)
+                broker._stop.set()
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=new), patch.object(
+                broker, "_maybe_register_or_switch_rollout", side_effect=_capture_switch
+            ), patch("codoxear.broker.time.sleep", side_effect=lambda _seconds: None):
+                broker._discover_log_watcher()
+
+        self.assertEqual(seen, [new])
+
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
         try:
@@ -168,15 +208,16 @@ class TestBrokerFailClosed(unittest.TestCase):
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self.assertIsNone(meta["resume_session_id"])
 
-    def test_pi_resume_run_seeds_log_path_before_first_write(self) -> None:
+    def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
         captured: dict[str, object] = {}
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin):
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
+            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        ):
             log_path = Path(td) / "pi-resume.jsonl"
             log_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp"}\n', encoding="utf-8")
             expected_size = log_path.stat().st_size
-            with patch.dict("os.environ", {"CODEX_WEB_RESUME_SESSION_ID": "resume-a", "CODEX_WEB_RESUME_LOG_PATH": str(log_path)}, clear=False):
-                broker = Broker(cwd="/tmp", codex_args=["--session", str(log_path)])
+            broker = Broker(cwd="/tmp", codex_args=["--session", str(log_path)])
             broker.sessions_dir = log_path.parent
 
             def _capture_write_meta() -> None:
@@ -185,9 +226,7 @@ class TestBrokerFailClosed(unittest.TestCase):
                 captured["log_path"] = str(st.log_path) if st and st.log_path else None
                 captured["log_off"] = st.log_off if st else None
 
-            with patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")), patch(
-                "codoxear.broker._require_proc"
-            ), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+            with patch("codoxear.broker._require_proc"), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
                 "codoxear.broker.pty.fork", return_value=(1234, 55)
             ), patch("codoxear.broker._set_winsize"), patch(
                 "codoxear.broker.signal.signal"
