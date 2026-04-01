@@ -5231,6 +5231,7 @@
         let activeFileText = "";
         let activeFileEditable = false;
         let activeFileVersion = "";
+        let activeFileDraft = false;
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
@@ -5341,6 +5342,7 @@
           activeFileText = "";
           activeFileEditable = false;
           activeFileVersion = "";
+          activeFileDraft = false;
           fileEditMode = false;
           fileSavePending = false;
           setFileDirty(false);
@@ -5619,7 +5621,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (!fileViewerSessionId || !activeFilePath || activeFileKind !== "text" || !activeFileEditable) return false;
-          if (!fileDirty) {
+          if (!fileDirty && !activeFileDraft) {
             if (exitEditMode) setFileEditMode(false);
             return true;
           }
@@ -5629,21 +5631,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           syncFileEditorReadOnly();
           fileStatus.textContent = `Saving ${activeFilePath}...`;
           try {
+            const saveBody = activeFileDraft
+              ? { path: activeFilePath, text, create: true }
+              : { path: activeFilePath, text, version: activeFileVersion };
             const res = await api(`/api/sessions/${fileViewerSessionId}/file/write`, {
               method: "POST",
-              body: { path: activeFilePath, text, version: activeFileVersion },
+              body: saveBody,
             });
             activeFileText = text;
             if (res && typeof res.version === "string") activeFileVersion = res.version;
             if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
+            activeFileDraft = false;
+            applyFileMode();
             setFileDirty(false);
             if (exitEditMode) setFileEditMode(false);
             const size = res && typeof res.size === "number" ? res.size : text.length;
             fileStatus.textContent = `${activeFilePath} - ${fmtBytes(size)}`;
+            rememberOpenedFile(activeFilePath, res && typeof res.path === "string" ? res.path : null);
+            renderFilePickerMenu();
             return true;
           } catch (e) {
             if (e && e.status === 409) {
-              fileStatus.textContent = `${activeFilePath} - save conflict: changed on disk`;
+              fileStatus.textContent = `${activeFilePath} - save conflict: ${e && e.message ? e.message : "conflict"}`;
             } else {
               fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
             }
@@ -5675,9 +5684,37 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return true;
         }
 
+        async function openDraftFilePathWithGuard(path) {
+          const rel = normalizeDraftFilePath(path);
+          if (!rel) {
+            fileStatus.textContent = "Choose a valid relative file path.";
+            return false;
+          }
+          if (!(await maybeHandleUnsavedFileChanges())) return false;
+          try {
+            const inspect = await inspectSessionFilePath(rel);
+            if (inspect && inspect.exists) {
+              if (inspect.kind === "directory") {
+                fileStatus.textContent = `${rel} - path is a directory`;
+                return false;
+              }
+              return await openFilePathWithGuard(rel, { line: null, mode: "file" });
+            }
+          } catch (e) {
+            fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            return false;
+          }
+          setFileViewMode("file");
+          setFilePath(rel, { line: null });
+          renderFilePickerMenu();
+          await openDraftFilePath(rel, { line: null });
+          return true;
+        }
+
         async function setFileViewModeWithGuard(mode) {
           const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
           if (next === fileViewMode) return true;
+          if (activeFileDraft && next !== "file") return false;
           if (!(await maybeHandleUnsavedFileChanges())) return false;
           setFileViewMode(next);
           renderFilePickerMenu();
@@ -5703,14 +5740,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function applyFileMode() {
           const hasPath = Boolean(activeFilePath);
+          const canToggleMode = hasPath && !activeFileDraft;
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
-          const previewable = isMarkdownPreviewable(activeFilePath);
+          const previewable = !activeFileDraft && isMarkdownPreviewable(activeFilePath);
           fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
           fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
-          fileModeDiffBtn.disabled = !hasPath;
-          fileModePreviewBtn.disabled = !hasPath;
-          fileDownloadBtn.disabled = !hasPath;
+          fileModeDiffBtn.disabled = !canToggleMode;
+          fileModePreviewBtn.disabled = !canToggleMode;
+          fileDownloadBtn.disabled = !hasPath || activeFileDraft;
           fileModePreviewBtn.style.display = previewable ? "" : "none";
           if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
           syncFileEditorReadOnly();
@@ -5746,6 +5784,54 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileMenuOpen = false;
           applyFileMenuState();
           applyFileMode();
+        }
+
+        async function inspectSessionFilePath(path) {
+          const sid = fileViewerSessionId || selected || "";
+          if (!sid) throw new Error("select a session first");
+          try {
+            const res = await api("/api/files/inspect", {
+              method: "POST",
+              body: { session_id: sid, path },
+            });
+            return { exists: true, ...res };
+          } catch (e) {
+            if (e && e.status === 404) return { exists: false };
+            throw e;
+          }
+        }
+
+        async function openDraftFilePath(path, { line = null } = {}) {
+          if (!fileViewerSessionId) return;
+          const rel = normalizeDraftFilePath(path);
+          if (!rel) {
+            fileStatus.textContent = "Choose a valid relative file path.";
+            return;
+          }
+          activeFilePath = rel;
+          activeFileLine = normalizeLineNumber(line);
+          fileStatus.textContent = "Preparing new file...";
+          disposeFileEditor();
+          resetActiveFileBufferState();
+          fileImage.removeAttribute("src");
+          fileImage.style.display = "none";
+          fileDiff.style.display = "block";
+          try {
+            if (fileViewMode !== "file") setFileViewMode("file");
+            activeFileDraft = true;
+            activeFileKind = "text";
+            activeFileText = "";
+            activeFileEditable = true;
+            activeFileVersion = "";
+            applyFileMode();
+            await renderMonacoFile(rel, "", activeFileLine);
+            setFileEditMode(true);
+            fileStatus.textContent = `${rel} - new file`;
+            renderFilePickerMenu();
+          } catch (e) {
+            resetActiveFileBufferState();
+            fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+          }
         }
 
         function upsertFileEntry(entry) {
@@ -5854,6 +5940,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             changed: Boolean(entry.changed),
             added: fileEntryMap.has(path),
             score,
+          };
+        }
+
+        function normalizeDraftFilePath(raw) {
+          let path = String(raw || "").trim().replace(/\\/g, "/");
+          path = path.replace(/^(?:\.\/)+/, "");
+          if (!path || path === "." || path.startsWith("/") || path.endsWith("/") || path.includes("\x00")) return "";
+          const parts = path.split("/");
+          if (!parts.length) return "";
+          for (const part of parts) {
+            if (!part || part === "." || part === "..") return "";
+          }
+          return parts.join("/");
+        }
+
+        function draftFileEntry(path) {
+          return {
+            path,
+            additions: null,
+            deletions: null,
+            changed: false,
+            added: false,
+            score: 0,
+            createNew: true,
           };
         }
 
@@ -5982,7 +6092,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function visibleFilePickerEntries() {
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
-          if (!query) return fileCandidateList.map((path) => pickerEntryForPath(path));
+          if (!query) {
+            const entries = fileCandidateList.map((path) => pickerEntryForPath(path));
+            if (activeFileDraft && activeFilePath && !entries.some((entry) => entry.path === activeFilePath)) {
+              entries.unshift(draftFileEntry(activeFilePath));
+            }
+            return entries;
+          }
           if (fileSearchPendingQuery === query) return null;
           if (fileSearchErrorQuery === query) return [];
           if (fileSearchLoadedQuery !== query) return null;
@@ -6002,7 +6118,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             out.push(pickerEntryForPath(path, { score }));
           }
           out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
-          return out.slice(0, 120);
+          const limited = out.slice(0, 120);
+          const draftPath = normalizeDraftFilePath(query);
+          if (draftPath && !limited.some((entry) => entry.path === draftPath)) {
+            limited.unshift(draftFileEntry(draftPath));
+          }
+          return limited;
         }
 
         async function getKnownFileRefCandidates() {
@@ -6037,15 +6158,40 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return resolved;
         }
 
+        function appendDraftFileMenuItem(path, idx, active) {
+          const btn = el("button", {
+            id: `filePickerOption-${idx}`,
+            class: "fileMenuItem fileMenuCreate" + (active ? " active" : ""),
+            type: "button",
+            role: "option",
+            "aria-selected": active ? "true" : "false",
+            title: path,
+          });
+          btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
+          btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
+          btn.onmousedown = (e) => e.preventDefault();
+          btn.onclick = () => {
+            void openDraftFilePathWithGuard(path);
+          };
+          filePickerMenu.appendChild(btn);
+        }
+
         function renderFilePickerMenu() {
           filePickerMenu.innerHTML = "";
           const entries = visibleFilePickerEntries();
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
+          const draftPath = normalizeDraftFilePath(query);
           if (entries === null) {
+            if (draftPath) appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
-            return [];
+            return draftPath ? [draftFileEntry(draftPath)] : [];
           }
           if (!entries.length) {
+            if (draftPath) {
+              appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
+              filePickerInput.setAttribute("aria-activedescendant", "filePickerOption-0");
+              return [draftFileEntry(draftPath)];
+            }
             const emptyText = query
               ? fileSearchErrorQuery === query
                 ? fileSearchError || "Unable to search files"
@@ -6061,21 +6207,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
-              class: "fileMenuItem" + (active ? " active" : ""),
+              class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
               type: "button",
               role: "option",
               "aria-selected": active ? "true" : "false",
               title: path,
             });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
-            if (entry.changed) {
+            if (entry.createNew) {
+              btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
+              btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
+            } else if (entry.changed) {
+              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
               const stat = el("span", { class: "fileMenuStat changed" });
               stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
               stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
               btn.appendChild(stat);
+            } else {
+              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
             }
             btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = () => {
+              if (entry.createNew) {
+                void openDraftFilePathWithGuard(path);
+                return;
+              }
               const selectedEntry = fileEntryMap.get(path);
               const mode = selectedEntry && selectedEntry.changed ? "diff" : isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file";
               void openFilePathWithGuard(path, { line: null, mode });
@@ -6384,6 +6539,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const active = entries && entries.length ? entries[fileMenuFocus >= 0 ? fileMenuFocus : filePickerSearchActive ? 0 : -1] : null;
             if (!active) return;
             e.preventDefault();
+            if (active.createNew) {
+              void openDraftFilePathWithGuard(active.path);
+              return;
+            }
             const mode = active.changed ? "diff" : isMarkdownPreviewable(active.path) && fileNonDiffMode === "preview" ? "preview" : "file";
             void openFilePathWithGuard(active.path, { line: null, mode });
             return;

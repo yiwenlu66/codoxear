@@ -753,6 +753,39 @@ def _write_text_file_atomic(path: Path, *, text: str) -> tuple[int, str]:
     return size, _file_content_version(data)
 
 
+def _write_new_text_file_atomic(path: Path, *, text: str) -> tuple[int, str]:
+    if not isinstance(text, str):
+        raise ValueError("text must be a string")
+    if path.is_symlink():
+        raise ValueError("symlink file not supported")
+    parent = path.parent
+    if not parent.exists():
+        raise FileNotFoundError("parent directory not found")
+    if not parent.is_dir():
+        raise ValueError("parent path is not a directory")
+    if parent.is_symlink():
+        raise ValueError("symlink parent directory not supported")
+    if path.exists():
+        raise FileExistsError("file already exists")
+    data = text.encode("utf-8")
+    size = len(data)
+    if size > FILE_READ_MAX_BYTES:
+        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
+    tmp = path.with_name(f".{path.name}.codoxear-tmp-{secrets.token_hex(6)}")
+    try:
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.link(str(tmp), str(path))
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+    return size, _file_content_version(data)
+
+
 def _resolve_under(base: Path, rel: str) -> Path:
     if not isinstance(rel, str) or not rel.strip():
         raise ValueError("path required")
@@ -5713,8 +5746,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(text_raw, str):
                     _json_response(self, 400, {"error": "text must be a string"})
                     return
+                create_raw = obj.get("create")
+                create = create_raw if isinstance(create_raw, bool) else False
                 version_raw = obj.get("version")
-                if not isinstance(version_raw, str) or not version_raw.strip():
+                if not create and (not isinstance(version_raw, str) or not version_raw.strip()):
                     _json_response(self, 400, {"error": "version required"})
                     return
                 MANAGER.refresh_session_meta(session_id)
@@ -5725,36 +5760,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_session_path(base, path_raw)
-                try:
-                    _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                if current_version != version_raw:
-                    _json_response(
-                        self,
-                        409,
-                        {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
-                    )
-                    return
-                try:
-                    size, next_version = _write_text_file_atomic(p, text=text_raw)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
+                if create:
+                    try:
+                        p = _resolve_under(base, path_raw)
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    try:
+                        size, next_version = _write_new_text_file_atomic(p, text=text_raw)
+                    except FileExistsError:
+                        payload: dict[str, Any] = {"error": "file already exists", "conflict": True, "path": str(p)}
+                        if p.is_file():
+                            try:
+                                _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
+                                payload["version"] = current_version
+                            except (FileNotFoundError, PermissionError, ValueError):
+                                pass
+                        _json_response(self, 409, payload)
+                        return
+                    except FileNotFoundError as e:
+                        _json_response(self, 404, {"error": str(e)})
+                        return
+                    except PermissionError as e:
+                        _json_response(self, 403, {"error": str(e)})
+                        return
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                else:
+                    p = _resolve_session_path(base, path_raw)
+                    try:
+                        _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
+                    except FileNotFoundError as e:
+                        _json_response(self, 404, {"error": str(e)})
+                        return
+                    except PermissionError as e:
+                        _json_response(self, 403, {"error": str(e)})
+                        return
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    if current_version != version_raw:
+                        _json_response(
+                            self,
+                            409,
+                            {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
+                        )
+                        return
+                    try:
+                        size, next_version = _write_text_file_atomic(p, text=text_raw)
+                    except FileNotFoundError as e:
+                        _json_response(self, 404, {"error": str(e)})
+                        return
+                    except PermissionError as e:
+                        _json_response(self, 403, {"error": str(e)})
+                        return
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:

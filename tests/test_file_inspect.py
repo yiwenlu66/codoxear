@@ -10,6 +10,7 @@ from codoxear.server import _read_text_file_for_client
 from codoxear.server import _read_text_file_for_write
 from codoxear.server import _read_text_or_image
 from codoxear.server import _read_downloadable_file
+from codoxear.server import _write_new_text_file_atomic
 from codoxear.server import _write_text_file_atomic
 
 
@@ -114,6 +115,28 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), "print('new')\n")
             self.assertEqual(size, len(raw))
             self.assertEqual(version, hashlib.sha256(raw).hexdigest())
+
+    def test_write_new_text_file_atomic_creates_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.py"
+            size, version = _write_new_text_file_atomic(path, text="print('new')\n")
+            raw = b"print('new')\n"
+            self.assertEqual(path.read_text(encoding="utf-8"), "print('new')\n")
+            self.assertEqual(size, len(raw))
+            self.assertEqual(version, hashlib.sha256(raw).hexdigest())
+
+    def test_write_new_text_file_atomic_rejects_existing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.py"
+            path.write_text("print('old')\n", encoding="utf-8")
+            with self.assertRaisesRegex(FileExistsError, "already exists"):
+                _write_new_text_file_atomic(path, text="print('new')\n")
+
+    def test_write_new_text_file_atomic_rejects_missing_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "nested" / "note.py"
+            with self.assertRaisesRegex(FileNotFoundError, "parent directory not found"):
+                _write_new_text_file_atomic(path, text="print('new')\n")
 
     def test_binary_file_is_downloadable(self) -> None:
         with tempfile.TemporaryDirectory() as td:
