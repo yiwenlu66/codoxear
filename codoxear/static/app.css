@@ -1334,12 +1334,21 @@ select {
       .fileMenuItem.active {
         background: rgba(37, 99, 235, 0.08);
       }
+      .fileMenuCreate {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 3px;
+      }
       .fileMenuPath {
         flex: 1 1 auto;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      .fileMenuHint {
+        font-size: 12px;
+        color: var(--muted);
       }
       .fileMenuStat {
         flex: 0 0 auto;
