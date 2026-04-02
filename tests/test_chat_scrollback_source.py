@@ -26,6 +26,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("await refreshInitPageState(sid, myGen);", block)
         self.assertIn("const data = await refreshInitPageState(sid, myGen, { rerender: true });", block)
+        self.assertIn("if (cached && !cacheMatchesSession(cached, s0)) clearCache(sid);", block)
+        self.assertIn("cacheMatchesSession(cached, s0)", block)
 
     def test_scroll_listener_triggers_older_autoload_at_top(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -53,6 +55,33 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("const viewportTop = chat.scrollTop + 1;", block)
         self.assertIn("const removable = Math.min(extra, firstVisible);", block)
         self.assertIn("for (const row of rows.slice(0, removable)) row.remove();", block)
+
+    def test_cache_metadata_tracks_thread_identity(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("return `codexweb.cache.v5.${sid}`;", source)
+        start = source.index("function setCacheMeta(")
+        end = source.index("function cacheMatchesSession(", start)
+        block = source[start:end]
+        self.assertIn("threadId", block)
+        self.assertIn("cache.events = [];", block)
+        self.assertIn("cache.offset = 0;", block)
+
+    def test_refresh_init_rerenders_when_thread_or_log_identity_changes(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function refreshInitPageState(")
+        end = source.index("async function jumpToLatest()", start)
+        block = source[start:end]
+        self.assertIn("const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;", block)
+        self.assertIn("if (rerender || identityChanged) {", block)
+        self.assertIn("else replaceCacheEvents(sid, []);", block)
+
+    def test_pending_log_transition_clears_cached_messages(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function pollMessages(")
+        end = source.index("async function pollLoop()", start)
+        block = source[start:end]
+        self.assertIn("setCacheMeta(sid, { threadId: activeThreadId, logPath: null, offset: 0, olderBefore: 0, hasOlder: false });", block)
+        self.assertIn("replaceCacheEvents(sid, []);", block)
 
 
 if __name__ == "__main__":

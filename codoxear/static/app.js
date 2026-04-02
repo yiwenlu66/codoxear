@@ -2148,7 +2148,7 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v4.${sid}`;
+          return `codexweb.cache.v5.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
@@ -2206,6 +2206,7 @@
             }
             if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
             const cache = {
+              thread_id: typeof obj.thread_id === "string" ? obj.thread_id : null,
               log_path: typeof obj.log_path === "string" ? obj.log_path : null,
               offset: Number(obj.offset) || 0,
               older_before: Number(obj.older_before) || 0,
@@ -2233,6 +2234,7 @@
             return;
           }
           const payload = {
+            thread_id: typeof cache.thread_id === "string" ? cache.thread_id : null,
             log_path: cache.log_path || null,
             offset: Number(cache.offset) || 0,
             older_before: Number(cache.older_before) || 0,
@@ -2257,16 +2259,40 @@
           cacheSaveTimers.set(sid, t);
         }
 
-        function setCacheMeta(sid, { logPath, offset: off, olderBefore, hasOlder } = {}) {
+        function setCacheMeta(sid, { threadId, logPath, offset: off, olderBefore, hasOlder } = {}) {
           if (!sid) return;
           const cache =
-            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+            getCache(sid) || { thread_id: null, log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+          const nextThreadId =
+            threadId === undefined ? (typeof cache.thread_id === "string" ? cache.thread_id : null) : threadId || null;
+          const nextLogPath =
+            logPath === undefined ? (typeof cache.log_path === "string" ? cache.log_path : null) : logPath || null;
+          const identityChanged =
+            (typeof cache.thread_id === "string" ? cache.thread_id : null) !== nextThreadId ||
+            (typeof cache.log_path === "string" ? cache.log_path : null) !== nextLogPath;
+          if (identityChanged) {
+            cache.events = [];
+            cache.offset = 0;
+            cache.older_before = 0;
+            cache.has_older = false;
+          }
+          if (threadId !== undefined) cache.thread_id = nextThreadId;
           if (logPath !== undefined) cache.log_path = logPath || null;
           if (typeof off === "number" && Number.isFinite(off)) cache.offset = off;
           if (typeof olderBefore === "number" && Number.isFinite(olderBefore)) cache.older_before = olderBefore;
           if (typeof hasOlder === "boolean") cache.has_older = hasOlder;
           cacheBySession.set(sid, cache);
           scheduleCacheSave(sid);
+        }
+
+        function cacheMatchesSession(cache, session) {
+          if (!cache || !session) return false;
+          const cacheThreadId = typeof cache.thread_id === "string" ? cache.thread_id : null;
+          const cacheLogPath = typeof cache.log_path === "string" ? cache.log_path : null;
+          const sessionThreadId = typeof session.thread_id === "string" ? session.thread_id : null;
+          const sessionLogPath = typeof session.log_path === "string" ? session.log_path : null;
+          if (cacheThreadId !== sessionThreadId) return false;
+          return cacheLogPath === sessionLogPath;
         }
 
         function replaceCacheEvents(sid, events) {
@@ -3154,6 +3180,8 @@
 	              turnOpen = false;
 	              setOlderState({ hasMore: false, isLoading: false });
 	              olderBefore = 0;
+                setCacheMeta(sid, { threadId: activeThreadId, logPath: null, offset: 0, olderBefore: 0, hasOlder: false });
+                replaceCacheEvents(sid, []);
 	              setStatus({ running: Boolean(nowBusy), queueLen: data.queue_len });
 	              setContext(data.token);
 	              setTyping(Boolean(nowBusy));
@@ -3179,6 +3207,7 @@
                 olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
                 setCacheMeta(sid, {
+                  threadId: activeThreadId,
                   logPath: activeLogPath,
                   offset,
                   olderBefore,
@@ -3201,7 +3230,7 @@
              }
 	
 		            offset = data.offset;
-              setCacheMeta(sid, { logPath: activeLogPath || lp || null, offset });
+              setCacheMeta(sid, { threadId: tid || activeThreadId, logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
@@ -3308,13 +3337,14 @@
           const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
           const nextOlderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
           const nextHasOlder = Boolean(data.has_older);
-          const logChanged = Boolean(nextLogPath && activeLogPath && nextLogPath !== activeLogPath);
+          const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;
 
-          if (nextLogPath) activeLogPath = nextLogPath;
-          if (nextThreadId) activeThreadId = nextThreadId;
+          activeLogPath = nextLogPath;
+          activeThreadId = nextThreadId;
           olderBefore = nextOlderBefore;
           setOlderState({ hasMore: nextHasOlder, isLoading: false });
           setCacheMeta(sid, {
+            threadId: activeThreadId,
             logPath: activeLogPath,
             olderBefore,
             hasOlder: nextHasOlder,
@@ -3330,14 +3360,16 @@
           setContext(data.token);
           setTyping(Boolean(turnOpen || nowBusy));
 
-          if (rerender || logChanged) {
+          if (rerender || identityChanged) {
             offset = Number(data.offset) || 0;
             resetChatRenderState();
             const evs = Array.isArray(data.events) ? data.events : [];
             if (evs.length) startInitialRender(evs);
+            else replaceCacheEvents(sid, []);
             olderBefore = nextOlderBefore;
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             setCacheMeta(sid, {
+              threadId: activeThreadId,
               logPath: activeLogPath,
               offset,
               olderBefore,
@@ -3399,13 +3431,16 @@
 			          const s0 = sessionIndex.get(sid);
 			          if (s0 && s0.token) setContext(s0.token);
                 const cached = getCache(sid);
+                if (cached && !cacheMatchesSession(cached, s0)) clearCache(sid);
                 const hasCached = Boolean(
                   cached &&
+                    cacheMatchesSession(cached, s0) &&
                     Array.isArray(cached.events) &&
                     cached.events.length &&
                     Number(cached.offset) > 0
                 );
                 if (hasCached) {
+                  activeThreadId = typeof cached.thread_id === "string" ? cached.thread_id : null;
                   activeLogPath = typeof cached.log_path === "string" ? cached.log_path : null;
                   offset = Number(cached.offset) || 0;
                   olderBefore = Number(cached.older_before) || 0;
