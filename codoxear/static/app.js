@@ -3799,6 +3799,7 @@
         function pushNotificationsEnabledForCurrentDevice() {
           return !!(
             localNotificationEnabled &&
+            notificationDeviceClass() === "mobile" &&
             notificationState.push_supported &&
             notificationState.permission === "granted" &&
             notificationState.notifications_enabled &&
@@ -3806,9 +3807,22 @@
           );
         }
 
+        function isMobileNotificationDevice() {
+          const ua = navigator.userAgent || "";
+          if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+          if (/Macintosh/i.test(ua) && Number(navigator.maxTouchPoints || 0) > 1) return true;
+          return false;
+        }
+
+        function notificationDeviceClass() {
+          return isMobileNotificationDevice() ? "mobile" : "desktop";
+        }
+
         function activeNotificationTransport() {
           if (!localNotificationEnabled) return "none";
-          if (pushNotificationsEnabledForCurrentDevice()) return "push";
+          if (notificationDeviceClass() === "mobile") {
+            return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";
+          }
           if (
             notificationState.desktop_supported &&
             notificationState.permission === "granted" &&
@@ -3821,11 +3835,6 @@
 
         function desktopNotificationsEnabled() {
           return activeNotificationTransport() === "desktop";
-        }
-
-        function isAppleMobileWebKit() {
-          const ua = navigator.userAgent || "";
-          return /iPhone|iPad|iPod/i.test(ua);
         }
 
         function showDesktopNotification({ messageId, title, body }) {
@@ -4021,7 +4030,7 @@
             }
           }
           let endpoint = "";
-          if (notificationState.push_supported) {
+          if (notificationDeviceClass() === "mobile" && notificationState.push_supported) {
             try {
               const reg = await ensureVoiceServiceWorker();
               const sub = await reg.pushManager.getSubscription();
@@ -4048,10 +4057,13 @@
               throw new Error(`notification permission ${permission}`);
             }
           }
-          setDesktopNotificationsEnabled(true);
-          if (!notificationState.push_supported) {
+          if (notificationDeviceClass() === "desktop") {
+            setDesktopNotificationsEnabled(true);
             await syncNotificationState();
             return;
+          }
+          if (!notificationState.push_supported) {
+            throw new Error("mobile notifications require web push in an installed HTTPS web app");
           }
           const reg = await ensureVoiceServiceWorker();
           const publicKey = voiceSettings && voiceSettings.notifications ? voiceSettings.notifications.vapid_public_key : "";
@@ -4069,6 +4081,7 @@
               subscription: sub.toJSON(),
               user_agent: navigator.userAgent,
               device_label: "current-device",
+              device_class: notificationDeviceClass(),
             },
           });
           await syncNotificationState(snapshot);
@@ -4078,10 +4091,13 @@
           if (!notificationState.desktop_supported) {
             throw new Error("notifications require HTTPS or localhost");
           }
-          setDesktopNotificationsEnabled(enabled);
-          if (!notificationState.push_supported) {
+          if (notificationDeviceClass() === "desktop") {
+            setDesktopNotificationsEnabled(enabled);
             await syncNotificationState();
             return;
+          }
+          if (!notificationState.push_supported) {
+            throw new Error("mobile notifications require web push in an installed HTTPS web app");
           }
           if (!notificationState.endpoint && enabled) {
             await enableNotificationsOnDevice();
@@ -4163,7 +4179,8 @@
         notificationBtn.onclick = async (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const next = !notificationsEnabledLocally();
+          const pending = notificationsEnabledLocally() && activeNotificationTransport() === "none";
+          const next = pending ? true : !notificationsEnabledLocally();
           try {
             if (next) {
               setNotificationEnabledLocal(true);

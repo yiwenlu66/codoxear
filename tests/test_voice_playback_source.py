@@ -37,14 +37,21 @@ class TestVoicePlaybackSource(unittest.TestCase):
         self.assertIn("await maybeAutoStartLiveAudioFromGesture({ resetSource: true });", source)
         self.assertIn("announceBtn auto-start failed", source)
 
-    def test_desktop_notifications_and_push_are_tracked_separately(self) -> None:
+    def test_notification_transport_is_split_between_desktop_and_mobile(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("desktop_supported", source)
         self.assertIn("push_supported", source)
+        self.assertIn("function isMobileNotificationDevice()", source)
+        self.assertIn("function notificationDeviceClass()", source)
         self.assertIn("function pushNotificationsEnabledForCurrentDevice()", source)
+        self.assertIn('if (notificationDeviceClass() === "mobile") {', source)
+        self.assertIn('return pushNotificationsEnabledForCurrentDevice() ? "push" : "none";', source)
         self.assertIn('return activeNotificationTransport() === "desktop";', source)
         self.assertIn('notification error: ${err && err.message ? err.message : "unknown error"}', source)
         self.assertIn("notifications require HTTPS or localhost", source)
+        self.assertIn("mobile notifications require web push in an installed HTTPS web app", source)
+        self.assertIn('if (notificationDeviceClass() === "desktop") {', source)
+        self.assertIn('device_class: notificationDeviceClass()', source)
         self.assertIn("maybeShowDesktopNotification(ev)", source)
         self.assertIn("scheduleDesktopNotificationResolve(ev)", source)
         self.assertIn("/api/notifications/message?message_id=", source)

@@ -5408,6 +5408,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         subscription=obj.get("subscription"),
                         user_agent=str(obj.get("user_agent") or ""),
                         device_label=str(obj.get("device_label") or ""),
+                        device_class=str(obj.get("device_class") or ""),
                     )
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})

@@ -131,6 +131,20 @@ def _clean_subscription(raw: Any) -> dict[str, Any]:
     return {"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}}
 
 
+def _device_class_from_user_agent(raw: Any) -> str:
+    ua = str(raw or "").strip().lower()
+    if "mobile" in ua or "android" in ua or "iphone" in ua or "ipad" in ua or "ipod" in ua:
+        return "mobile"
+    return "desktop"
+
+
+def _clean_device_class(raw: Any, *, user_agent: str) -> str:
+    value = str(raw or "").strip().lower()
+    if value in {"mobile", "desktop"}:
+        return value
+    return _device_class_from_user_agent(user_agent)
+
+
 def _clean_subscription_record(raw: Any) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
@@ -147,6 +161,7 @@ def _clean_subscription_record(raw: Any) -> dict[str, Any] | None:
     last_error = str(raw.get("last_error") or "").strip()
     user_agent = str(raw.get("user_agent") or "").strip()
     device_label = str(raw.get("device_label") or "").strip()
+    device_class = _clean_device_class(raw.get("device_class"), user_agent=user_agent)
     return {
         "id": _subscription_id(subscription),
         "subscription": subscription,
@@ -158,6 +173,7 @@ def _clean_subscription_record(raw: Any) -> dict[str, Any] | None:
         "last_error": last_error,
         "user_agent": user_agent,
         "device_label": device_label,
+        "device_class": device_class,
     }
 
 
@@ -218,6 +234,7 @@ class AnnouncementTask:
     voice: str
     ts: float | None
     summary_word_target: int | None
+    listener_epoch: int
 
 
 @dataclass(frozen=True)
@@ -503,6 +520,19 @@ class MergedHLSStream:
         self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
         return True
 
+    def reset(self) -> None:
+        with self._lock:
+            old_paths = [Path(item["path"]) for item in self._segments]
+            self._segments = []
+            self._last_error = ""
+            self._last_append_ts = 0.0
+            self._rewrite_playlist()
+        for path in old_paths:
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
     def _reserve_segment(self, prefix: str) -> tuple[int, str, Path]:
         with self._lock:
             seq = self._next_seq
@@ -595,6 +625,7 @@ class VoicePushCoordinator:
         self._prepared: GeneratedAnnouncement | None = None
         self._playing_task: AnnouncementTask | None = None
         self._playing_until_monotonic = 0.0
+        self._listener_epoch = 0
         self._observed_serial = 0
         self._latest_observed_serial_by_slot: dict[tuple[str, str], int] = {}
         self._voice_settings = _clean_voice_settings({})
@@ -615,8 +646,12 @@ class VoicePushCoordinator:
         with self._lock:
             settings = dict(self._voice_settings)
             queue_depth = len(self._queue)
-            enabled_devices = sum(1 for item in self._subscriptions.values() if item.get("notifications_enabled"))
-            total_devices = len(self._subscriptions)
+            enabled_devices = sum(
+                1
+                for item in self._subscriptions.values()
+                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
+            )
+            total_devices = sum(1 for item in self._subscriptions.values() if item.get("device_class") == "mobile")
             active_listener_count = self._active_listener_count_locked(now_ts=time.time())
         audio_state = self._hls.snapshot()
         return {
@@ -639,14 +674,34 @@ class VoicePushCoordinator:
         if not cid:
             raise ValueError("client_id required")
         now_ts = time.time()
+        dropped_tasks: list[AnnouncementTask] = []
+        should_reset_hls = False
         with self._lock:
             self._prune_listeners_locked(now_ts=now_ts)
+            previous_count = len(self._listeners)
             if enabled:
                 self._listeners[cid] = now_ts
             else:
                 self._listeners.pop(cid, None)
             count = self._active_listener_count_locked(now_ts=now_ts)
+            if previous_count > 0 and count == 0:
+                self._listener_epoch += 1
+                dropped_tasks.extend(self._queue)
+                self._queue = []
+                if self._prepared is not None:
+                    dropped_tasks.append(self._prepared.task)
+                    self._prepared = None
+                if self._generating_task is not None:
+                    dropped_tasks.append(self._generating_task)
+                    self._generating_task = None
+                self._playing_task = None
+                self._playing_until_monotonic = 0.0
+                should_reset_hls = True
             self._queue_ready.notify_all()
+        if dropped_tasks:
+            self._mark_tasks_skipped_no_listener(dropped_tasks)
+        if should_reset_hls:
+            self._hls.reset()
         return {"active_listener_count": count}
 
     def set_settings(self, raw: Any) -> dict[str, Any]:
@@ -664,6 +719,7 @@ class VoicePushCoordinator:
                     "id": record["id"],
                     "endpoint": record["subscription"]["endpoint"],
                     "notifications_enabled": bool(record.get("notifications_enabled")),
+                    "device_class": str(record.get("device_class") or "desktop"),
                     "created_ts": record.get("created_ts"),
                     "updated_ts": record.get("updated_ts"),
                     "last_success_ts": record.get("last_success_ts"),
@@ -677,23 +733,33 @@ class VoicePushCoordinator:
         items.sort(key=lambda item: float(item.get("updated_ts") or 0.0), reverse=True)
         return {"vapid_public_key": self._vapid_public_key, "subscriptions": items}
 
-    def upsert_subscription(self, *, subscription: Any, user_agent: str, device_label: str | None = None) -> dict[str, Any]:
+    def upsert_subscription(
+        self,
+        *,
+        subscription: Any,
+        user_agent: str,
+        device_label: str | None = None,
+        device_class: str | None = None,
+    ) -> dict[str, Any]:
         cleaned = _clean_subscription(subscription)
         now_ts = float(time.time())
         sid = _subscription_id(cleaned)
+        user_agent_clean = str(user_agent or "").strip()
+        device_class_clean = _clean_device_class(device_class, user_agent=user_agent_clean)
         with self._lock:
             current = dict(self._subscriptions.get(sid) or {})
             record = {
                 "id": sid,
                 "subscription": cleaned,
-                "notifications_enabled": bool(current.get("notifications_enabled", True)),
+                "notifications_enabled": True,
                 "created_ts": float(current.get("created_ts", now_ts)),
                 "updated_ts": now_ts,
                 "last_success_ts": current.get("last_success_ts"),
                 "last_failure_ts": current.get("last_failure_ts"),
                 "last_error": str(current.get("last_error") or "").strip(),
-                "user_agent": str(user_agent or "").strip(),
+                "user_agent": user_agent_clean,
                 "device_label": str(device_label or "").strip(),
+                "device_class": device_class_clean,
             }
             self._subscriptions[sid] = record
         self._save_subscriptions()
@@ -727,12 +793,16 @@ class VoicePushCoordinator:
             observed_serial = 0
             slot_key = (session_id, msg.message_class)
             narration_enabled = bool(self._voice_settings.get("tts_enabled_for_narration"))
+            listener_epoch = 0
+            listener_count = 0
             with self._lock:
                 if msg.message_id in self._delivery_ledger:
                     continue
                 self._observed_serial += 1
                 observed_serial = self._observed_serial
                 self._latest_observed_serial_by_slot[slot_key] = observed_serial
+                listener_epoch = self._listener_epoch
+                listener_count = self._active_listener_count_locked(now_ts=now_ts)
                 self._delivery_ledger[msg.message_id] = {
                     "message_id": msg.message_id,
                     "session_id": session_id,
@@ -756,6 +826,7 @@ class VoicePushCoordinator:
                     message=msg,
                     session_id=session_id,
                     session_display_name=session_display_name,
+                    listener_epoch=listener_epoch,
                 )
             elif narration_enabled:
                 task = AnnouncementTask(
@@ -770,16 +841,29 @@ class VoicePushCoordinator:
                     voice=self._voice_for_session(session_id, session_display_name),
                     ts=msg.ts,
                     summary_word_target=15,
+                    listener_epoch=listener_epoch,
                 )
             if task is None:
                 continue
+            if listener_count <= 0:
+                self._mark_tasks_skipped_no_listener([task])
+                continue
             with self._lock:
-                if msg.message_class == "final_response" and self._latest_observed_serial_by_slot.get(slot_key) != observed_serial:
+                current_listener_count = self._active_listener_count_locked(now_ts=time.time())
+                if current_listener_count <= 0 or task.listener_epoch != self._listener_epoch:
+                    drop_for_listener = True
+                else:
+                    drop_for_listener = False
+                if drop_for_listener:
+                    pass
+                elif msg.message_class == "final_response" and self._latest_observed_serial_by_slot.get(slot_key) != observed_serial:
                     self._mark_task_replaced_locked(task)
                 else:
                     self._enqueue_task_locked(task)
                 self._trim_locked()
                 self._queue_ready.notify_all()
+            if drop_for_listener:
+                self._mark_tasks_skipped_no_listener([task])
             self._save_delivery_ledger()
 
     def playlist_bytes(self) -> bytes:
@@ -866,6 +950,7 @@ class VoicePushCoordinator:
             action = ""
             task: AnnouncementTask | None = None
             prepared: GeneratedAnnouncement | None = None
+            stale_task: AnnouncementTask | None = None
             with self._lock:
                 while not self._stop.is_set():
                     now_wall = time.time()
@@ -874,11 +959,21 @@ class VoicePushCoordinator:
                     if self._playing_task is not None and now_mono >= self._playing_until_monotonic:
                         self._playing_task = None
                         self._playing_until_monotonic = 0.0
-                    if listener_count > 0 and self._prepared is not None and self._playing_task is None:
+                    if (
+                        listener_count > 0
+                        and self._prepared is not None
+                        and self._prepared.task.listener_epoch == self._listener_epoch
+                        and self._playing_task is None
+                    ):
                         prepared = self._prepared
                         self._prepared = None
                         action = "append"
                         break
+                    if listener_count > 0 and self._prepared is not None and self._prepared.task.listener_epoch != self._listener_epoch:
+                        stale_task = self._prepared.task
+                        self._prepared = None
+                        self._queue_ready.notify_all()
+                        continue
                     if listener_count > 0 and self._generating_task is None and self._prepared is None and self._queue:
                         task = self._queue.pop(0)
                         self._generating_task = task
@@ -892,6 +987,9 @@ class VoicePushCoordinator:
                     return
             if action == "append" and prepared is not None:
                 self._append_prepared(prepared)
+                continue
+            if stale_task is not None:
+                self._mark_tasks_skipped_no_listener([stale_task])
                 continue
             if action != "generate" or task is None:
                 continue
@@ -922,6 +1020,15 @@ class VoicePushCoordinator:
             )
             self._set_task_ledger_fields(task, {"summary_status": "sent", "summary_text": summary_text})
             spoken_text = f"From {task.session_display_name}. {summary_text}"
+        with self._lock:
+            if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+                stale = True
+            else:
+                stale = False
+            self._queue_ready.notify_all()
+        if stale:
+            self._mark_tasks_skipped_no_listener([task])
+            return
         audio = self._client.synthesize(
             base_url=settings["tts_base_url"],
             api_key=settings["tts_api_key"],
@@ -930,10 +1037,26 @@ class VoicePushCoordinator:
             text=spoken_text,
         )
         with self._lock:
-            self._prepared = GeneratedAnnouncement(task=task, audio_bytes=audio)
-            self._queue_ready.notify_all()
+            if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+                self._queue_ready.notify_all()
+                stale = True
+            else:
+                self._prepared = GeneratedAnnouncement(task=task, audio_bytes=audio)
+                self._queue_ready.notify_all()
+                stale = False
+        if stale:
+            self._mark_tasks_skipped_no_listener([task])
+            return
 
     def _append_prepared(self, prepared: GeneratedAnnouncement) -> None:
+        with self._lock:
+            if prepared.task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+                stale = True
+            else:
+                stale = False
+        if stale:
+            self._mark_tasks_skipped_no_listener([prepared.task])
+            return
         duration = self._hls.append_audio(message_id=prepared.task.message_id, audio_bytes=prepared.audio_bytes)
         self._hls.set_last_error("")
         with self._lock:
@@ -948,6 +1071,7 @@ class VoicePushCoordinator:
         message: ClassifiedAssistantMessage,
         session_id: str,
         session_display_name: str,
+        listener_epoch: int,
     ) -> AnnouncementTask | None:
         source_text = _compact_text(message.text)
         settings = self.settings_snapshot()
@@ -1026,11 +1150,16 @@ class VoicePushCoordinator:
             voice=self._voice_for_session(session_id, session_display_name),
             ts=message.ts,
             summary_word_target=None,
+            listener_epoch=listener_epoch,
         )
 
     def _send_push_notifications(self, *, session_id: str, session_display_name: str, message_id: str, notification_text: str, timestamp: float | None) -> None:
         with self._lock:
-            subscriptions = [dict(item) for item in self._subscriptions.values() if item.get("notifications_enabled")]
+            subscriptions = [
+                dict(item)
+                for item in self._subscriptions.values()
+                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
+            ]
         if not subscriptions:
             self._set_ledger_field(message_id, "push_status", "skipped")
             return
@@ -1107,6 +1236,7 @@ class VoicePushCoordinator:
             voice=newer.voice,
             ts=newer.ts if newer.ts is not None else older.ts,
             summary_word_target=newer.summary_word_target,
+            listener_epoch=newer.listener_epoch,
         )
 
     def _enqueue_task_locked(self, new_task: AnnouncementTask) -> None:
@@ -1150,6 +1280,25 @@ class VoicePushCoordinator:
                     row["push_status"] = "error"
                 self._delivery_ledger[message_id] = row
         self._save_delivery_ledger()
+
+    def _mark_tasks_skipped_no_listener(self, tasks: list[AnnouncementTask]) -> None:
+        with self._lock:
+            now_ts = float(time.time())
+            dirty = False
+            for task in tasks:
+                for message_id in dict.fromkeys(task.source_message_ids):
+                    row = self._delivery_ledger.get(message_id)
+                    if not isinstance(row, dict):
+                        continue
+                    row["narrated_status"] = "skipped"
+                    row["last_error"] = "no active listener"
+                    row["updated_ts"] = now_ts
+                    if row.get("summary_status") == "pending":
+                        row["summary_status"] = "skipped"
+                    self._delivery_ledger[message_id] = row
+                    dirty = True
+        if dirty:
+            self._save_delivery_ledger()
 
     def _set_ledger_field(self, message_id: str, key: str, value: Any) -> None:
         self._set_ledger_fields(message_id, {key: value})
