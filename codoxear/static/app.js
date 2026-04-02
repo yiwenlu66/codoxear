@@ -1,5 +1,7 @@
 	      const $ = (q) => document.querySelector(q);
-	      const UI_VERSION = "20260325.1";
+	      const UI_VERSION = String(window.CODOXEAR_ASSET_VERSION || "dev");
+	      let latestUiVersion = UI_VERSION;
+	      let uiReloadPending = false;
 	      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
@@ -188,6 +190,15 @@
         }
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
         return obj;
+      }
+
+      function maybeReloadForUpdatedUi(nextVersion) {
+        const next = String(nextVersion || "").trim();
+        if (!next || uiReloadPending || next === latestUiVersion) return false;
+        latestUiVersion = next;
+        uiReloadPending = true;
+        window.location.reload();
+        return true;
       }
 
       function fmtTs(ts) {
@@ -2633,6 +2644,7 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
+          if (maybeReloadForUpdatedUi(data && data.app_version)) return latestSessions;
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
           newSessionDefaults =
             data && typeof data.new_session_defaults === "object" && data.new_session_defaults
@@ -5496,6 +5508,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               overviewRulerBorder: false,
               stickyScroll: { enabled: false },
               automaticLayout: true,
+              quickSuggestions: false,
+              suggestOnTriggerCharacters: false,
+              acceptSuggestionOnEnter: "off",
+              inlineSuggest: { enabled: false },
+              parameterHints: { enabled: false },
+              snippetSuggestions: "none",
+              tabCompletion: "off",
+              wordBasedSuggestions: "off",
             });
             fileEditorKind = "file";
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);

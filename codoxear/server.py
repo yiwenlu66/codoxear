@@ -116,6 +116,8 @@ def _strip_url_prefix(prefix: str, path: str) -> str | None:
 
 APP_DIR = _default_app_dir()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
+STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
@@ -4300,6 +4302,33 @@ class SessionManager:
 MANAGER = SessionManager()
 
 
+def _static_asset_version(static_dir: Path = STATIC_DIR) -> str:
+    base = static_dir.resolve()
+    digest = hashlib.sha256()
+    for rel in STATIC_ASSET_VERSION_FILES:
+        path = (base / rel).resolve()
+        if not str(path).startswith(str(base)):
+            raise ValueError(f"static asset escaped static dir: {path}")
+        if not path.is_file():
+            continue
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:12]
+
+
+def _read_static_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    if path.suffix != ".html":
+        return data
+    placeholder = STATIC_ASSET_VERSION_PLACEHOLDER.encode("ascii")
+    if placeholder not in data:
+        return data
+    version = _static_asset_version(path.parent).encode("ascii")
+    return data.replace(placeholder, version)
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "codoxear/0.1"
 
@@ -4311,7 +4340,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not path.exists() or not path.is_file():
             self.send_error(404)
             return
-        data = path.read_bytes()
+        data = _read_static_bytes(path)
         if path.suffix == ".html":
             ctype = "text/html; charset=utf-8"
         elif path.suffix == ".js":
@@ -4491,6 +4520,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self,
                     200,
                     {
+                        "app_version": _static_asset_version(),
                         "sessions": sessions,
                         "recent_cwds": recent_cwds,
                         "new_session_defaults": new_session_defaults,
