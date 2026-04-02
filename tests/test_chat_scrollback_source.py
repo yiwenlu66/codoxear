@@ -11,6 +11,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function jumpToLatest() {")
         end = source.index("async function selectSession(id) {", start)
         block = source[start:end]
+        self.assertIn("invalidateOlderLoad();", block)
         self.assertIn("await refreshInitPageState(sid, gen, { rerender: true });", block)
         self.assertIn("kickPoll(0);", block)
 
@@ -34,27 +35,41 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index('chat.addEventListener("scroll", () => {')
         end = source.index('chat.addEventListener(\n          "wheel"', start)
         block = source[start:end]
-        self.assertIn("if (cur <= 1 && d <= 0) maybeAutoLoadOlder();", block)
+        self.assertIn("if (loadingOlder && cur > OLDER_CANCEL_PX) invalidateOlderLoad();", block)
+        self.assertIn("if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();", block)
 
     def test_prepending_older_events_keeps_view_near_top_boundary(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function prependOlderEvents(allEvents) {")
+        start = source.index("function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {")
         end = source.index("async function loadOlderMessages", start)
         block = source[start:end]
-        self.assertIn("trimRenderedRowsBeforeViewport();", block)
+        self.assertIn("const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;", block)
+        self.assertIn("trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
         self.assertIn("rebuildDecorations({ preserveScroll: false });", block)
+        self.assertIn("chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);", block)
         self.assertIn("chat.scrollTop = 1;", block)
         self.assertNotIn("chat.scrollTop = oldTop + (chat.scrollHeight - oldH);", block)
         self.assertNotIn("trimRenderedRows({ fromTop: false });", block)
 
     def test_viewport_tail_trim_only_removes_rows_before_visible_band(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function trimRenderedRowsBeforeViewport() {")
+        start = source.index("function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {")
         end = source.index("function makeRow(ev, { ts, pending }) {", start)
         block = source[start:end]
+        self.assertIn("const allowedRows = Number.isFinite(Number(maxRows))", block)
         self.assertIn("const viewportTop = chat.scrollTop + 1;", block)
         self.assertIn("const removable = Math.min(extra, firstVisible);", block)
         self.assertIn("for (const row of rows.slice(0, removable)) row.remove();", block)
+
+    def test_load_older_messages_uses_abortable_request_and_auto_preserve_mode(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function loadOlderMessages({ auto = false } = {}) {")
+        end = source.index("function maybeAutoLoadOlder()", start)
+        block = source[start:end]
+        self.assertIn("const ctl = new AbortController();", block)
+        self.assertIn("signal: ctl.signal,", block)
+        self.assertIn("if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;", block)
+        self.assertIn("if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });", block)
 
     def test_cache_metadata_tracks_thread_identity(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

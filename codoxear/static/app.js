@@ -1208,12 +1208,17 @@
         const OLDER_PAGE_LIMIT = 60;
         const CACHE_LIMIT = 40;
         const CHAT_DOM_WINDOW = 260;
+        const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
+        const OLDER_TOP_TRIGGER_PX = 1;
+        const OLDER_CANCEL_PX = 48;
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
         let olderBefore = 0;
         let hasOlder = false;
         let loadingOlder = false;
+        let olderLoadRequestId = 0;
+        let olderLoadController = null;
         let olderAutoTriggerAt = 0;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
@@ -2101,12 +2106,26 @@
 	          ctxChip.textContent = p === null ? "Ctx" : `Ctx ${p}%`;
 	          ctxChip.title = `Context: ${used}/${ctx} tokens (baseline ${lastToken.baseline}).`;
 	        }
-	        ctxChip.onclick = () => {
-	          if (!lastToken) return;
-	          setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
-	        };
+        ctxChip.onclick = () => {
+          if (!lastToken) return;
+          setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
+        };
+
+        function invalidateOlderLoad() {
+          if (!loadingOlder && !olderLoadController) return;
+          olderLoadRequestId += 1;
+          if (olderLoadController) {
+            const ctl = olderLoadController;
+            olderLoadController = null;
+            try {
+              ctl.abort();
+            } catch {}
+          }
+          if (loadingOlder) setOlderState({ hasMore: hasOlder, isLoading: false });
+        }
 
         function resetChatRenderState() {
+          invalidateOlderLoad();
           autoScroll = true;
           pendingUser.length = 0;
           sending = false;
@@ -2487,10 +2506,22 @@
           }
         }
 
-        function trimRenderedRowsBeforeViewport() {
+        function firstVisibleMessageRow() {
           const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-          if (rows.length <= CHAT_DOM_WINDOW) return;
-          const extra = rows.length - CHAT_DOM_WINDOW;
+          const viewportTop = chat.scrollTop + 1;
+          for (const row of rows) {
+            if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
+          }
+          return rows.length ? rows[rows.length - 1] : null;
+        }
+
+        function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const allowedRows = Number.isFinite(Number(maxRows))
+            ? Math.max(CHAT_DOM_WINDOW, Math.floor(Number(maxRows)))
+            : CHAT_DOM_WINDOW;
+          if (rows.length <= allowedRows) return;
+          const extra = rows.length - allowedRows;
           const viewportTop = chat.scrollTop + 1;
           let firstVisible = 0;
           while (firstVisible < rows.length) {
@@ -3045,25 +3076,34 @@
           else if (!ev.pending && ev.role === "assistant") lastAssistantKey = assistantTextKey(ev) || "";
         }
 
-        function prependOlderEvents(allEvents) {
+        function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
           const msgs = [];
           for (const ev of allEvents) {
             if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
             msgs.push(ev);
           }
           if (!msgs.length) return;
+          autoScroll = false;
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
             frag.appendChild(makeRow(ev, { ts, pending: false }).row);
           }
+          const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
+          const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
           const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
-          chat.scrollTop = 1;
-          trimRenderedRowsBeforeViewport();
+          if (!preserveViewport) chat.scrollTop = 1;
+          trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
           rebuildDecorations({ preserveScroll: false });
-          chat.scrollTop = 1;
+          if (preserveViewport && anchorRow && anchorRow.isConnected) {
+            chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);
+          } else {
+            chat.scrollTop = 1;
+          }
+          lastScrollTop = chat.scrollTop;
+          syncJumpButton();
         }
 
         async function loadOlderMessages({ auto = false } = {}) {
@@ -3075,24 +3115,34 @@
           }
           const sid = selected;
           const gen = pollGen;
+          const reqId = olderLoadRequestId + 1;
+          olderLoadRequestId = reqId;
+          const ctl = new AbortController();
+          olderLoadController = ctl;
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
             const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`);
-            if (selected !== sid || pollGen !== gen) return;
+            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`, {
+              signal: ctl.signal,
+            });
+            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             const evs = Array.isArray(data.events) ? data.events : [];
-            if (evs.length) prependOlderEvents(evs);
-            olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
-            setOlderState({ hasMore: Boolean(data.has_older), isLoading: false });
-            setCacheMeta(sid, { olderBefore, hasOlder: Boolean(data.has_older) });
+            const nextBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
+            const nextHasOlder = Boolean(data.has_older);
+            setOlderState({ hasMore: nextHasOlder, isLoading: false });
+            if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
+            olderBefore = nextBefore;
+            setCacheMeta(sid, { olderBefore, hasOlder: nextHasOlder });
           } catch {
-            if (selected !== sid || pollGen !== gen) return;
+            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             setOlderState({ hasMore: hasOlder, isLoading: false });
+          } finally {
+            if (olderLoadController === ctl) olderLoadController = null;
           }
         }
 
         function maybeAutoLoadOlder() {
-          if (chat.scrollTop > 1) return;
+          if (chat.scrollTop > OLDER_TOP_TRIGGER_PX) return;
           void loadOlderMessages({ auto: true });
         }
 
@@ -3383,6 +3433,7 @@
           if (!selected) return;
           const sid = selected;
           const gen = pollGen;
+          invalidateOlderLoad();
           autoScroll = true;
           try {
             await refreshInitPageState(sid, gen, { rerender: true });
@@ -7179,7 +7230,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          lastScrollTop = cur;
 	          if (d < 0) autoScroll = false;
           else if (isNearBottom()) autoScroll = true;
-          if (cur <= 1 && d <= 0) maybeAutoLoadOlder();
+          if (loadingOlder && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
+          if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();
           syncJumpButton();
         });
         chat.addEventListener(
