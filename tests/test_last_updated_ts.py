@@ -117,6 +117,32 @@ class TestLastConversationTimestamp(unittest.TestCase):
             )
             self.assertIsNone(_last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024))
 
+    def test_scans_backward_past_large_trailing_payloads(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout-2026-02-05T00-00-00-dddddddd-dddd-dddd-dddd-dddddddddddd.jsonl"
+            t0 = time.time()
+            user_ts = t0 - 20
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "main", "source": "cli"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}, "ts": user_ts},
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "name": "tool",
+                            "arguments": {"blob": "x" * (400 * 1024)},
+                        },
+                        "ts": t0 - 10,
+                    },
+                    {"type": "response_item", "payload": {"type": "reasoning"}, "ts": t0 - 5},
+                ],
+            )
+
+            ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
+            self.assertAlmostEqual(ts or 0.0, user_ts, places=3)
+
 
 if __name__ == "__main__":
     unittest.main()

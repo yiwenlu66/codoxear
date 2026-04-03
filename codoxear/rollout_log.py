@@ -7,6 +7,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from typing import Iterator
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from .pi_log import pi_assistant_thinking_count
@@ -173,6 +174,46 @@ def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             continue
     return out
+
+
+def _iter_jsonl_objects_reverse(path: Path, *, block_bytes: int = 64 * 1024) -> Iterator[dict[str, Any]]:
+    if block_bytes <= 0:
+        raise ValueError("block_bytes must be positive")
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        offset = f.tell()
+        carry = b""
+        while offset > 0:
+            read_size = min(block_bytes, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            data = chunk + carry
+            parts = data.split(b"\n")
+            if offset > 0:
+                carry = parts[0]
+                parts = parts[1:]
+            else:
+                carry = b""
+            for raw_line in reversed(parts):
+                line = raw_line.rstrip(b"\r")
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    yield obj
+        if carry:
+            line = carry.rstrip(b"\r")
+            if line:
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    return
+                if isinstance(obj, dict):
+                    yield obj
 
 
 def _find_latest_token_update(log_path: Path, max_scan_bytes: int = 32 * 1024 * 1024) -> dict[str, Any] | None:
@@ -554,25 +595,16 @@ def _analyze_log_chunk(
 def _last_conversation_ts_from_tail(
     log_path: Path,
     *,
-    max_scan_bytes: int,
+    max_scan_bytes: int | None = None,
 ) -> float | None:
-    scan = 256 * 1024
-    while True:
-        objs = _read_jsonl_tail(log_path, scan)
-        last_idx: int | None = None
-        last_ts: float | None = None
-        for i, obj in enumerate(objs):
-            ts = _sidebar_conversation_ts(obj)
-            if ts is not None:
-                last_idx = i
-                last_ts = ts
-                continue
-
-        if last_idx is not None:
-            return last_ts
-        if scan >= max_scan_bytes:
-            return None
-        scan *= 2
+    # Keep the argument for compatibility with older callers, but recover the
+    # last conversation timestamp exactly by scanning JSONL records backward.
+    _ = max_scan_bytes
+    for obj in _iter_jsonl_objects_reverse(log_path):
+        ts = _sidebar_conversation_ts(obj)
+        if ts is not None:
+            return ts
+    return None
 
 
 def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) -> bool | None:

@@ -2,6 +2,7 @@ import threading
 import time
 import unittest
 import tempfile
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -189,6 +190,70 @@ class TestSessionSidebarPriority(unittest.TestCase):
                 rows = mgr.list_sessions()
 
         self.assertEqual(rows[0]["updated_ts"], 123.0)
+
+    def test_list_sessions_backfills_updated_ts_from_large_preexisting_log(self) -> None:
+        mgr = _make_manager()
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout-2026-03-17T00-00-00-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee.jsonl"
+            now = time.time()
+            user_ts = now - 30
+            log_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"type": "session_meta", "payload": {"id": "current", "source": "cli"}}),
+                        json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "real turn"}, "ts": user_ts}),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {
+                                    "type": "function_call",
+                                    "name": "tool",
+                                    "arguments": {"blob": "x" * (400 * 1024)},
+                                },
+                                "ts": now - 20,
+                            }
+                        ),
+                        json.dumps({"type": "response_item", "payload": {"type": "reasoning"}, "ts": now - 10}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            current = _session(sid="current", start_ts=10.0, last_chat_ts=None)
+            current.log_path = log_path
+            mgr._sessions = {current.session_id: current}
+
+            rows = mgr.list_sessions()
+
+        self.assertAlmostEqual(rows[0]["updated_ts"], user_ts, places=3)
+
+    def test_list_sessions_scans_preexisting_history_only_once(self) -> None:
+        mgr = _make_manager()
+        mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout-2026-03-17T00-00-00-ffffffff-ffff-ffff-ffff-ffffffffffff.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"type": "session_meta", "payload": {"id": "current", "source": "cli"}}),
+                        json.dumps({"type": "event_msg", "payload": {"type": "agent_reasoning"}, "ts": time.time()}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            current = _session(sid="current", start_ts=123.0, last_chat_ts=None)
+            current.log_path = log_path
+            mgr._sessions = {current.session_id: current}
+
+            with patch("codoxear.server._last_conversation_ts_from_tail", return_value=None) as backfill:
+                rows1 = mgr.list_sessions()
+                rows2 = mgr.list_sessions()
+
+        self.assertEqual(backfill.call_count, 1)
+        self.assertEqual(rows1[0]["updated_ts"], 123.0)
+        self.assertEqual(rows2[0]["updated_ts"], 123.0)
 
     def test_recent_cwds_include_backfilled_history_and_live_sessions(self) -> None:
         mgr = _make_manager()
