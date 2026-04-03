@@ -1409,6 +1409,71 @@ select {
         white-space: normal;
         overflow-wrap: anywhere;
       }
+      .fileTouchToolbar {
+        display: none;
+        position: absolute;
+        left: 14px;
+        right: 14px;
+        bottom: calc(14px + env(safe-area-inset-bottom));
+        z-index: 6;
+        gap: 10px;
+        flex-direction: row;
+        align-items: flex-end;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+      .fileTouchActions {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        margin-left: auto;
+        pointer-events: auto;
+      }
+      .fileTouchDpad {
+        display: none;
+        grid-template-columns: repeat(3, 34px);
+        grid-template-rows: repeat(2, 34px);
+        gap: 6px;
+        align-items: center;
+        justify-items: center;
+        pointer-events: auto;
+      }
+      .fileTouchSpacer {
+        width: 34px;
+        height: 34px;
+      }
+      .fileTouchBtn {
+        width: 34px;
+        height: 34px;
+        min-height: 34px;
+        border-radius: 999px;
+        border: 0;
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--text);
+        padding: 0;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+        appearance: none;
+        -webkit-appearance: none;
+        touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .fileTouchBtn.active {
+        background: rgba(29, 78, 216, 0.14);
+        color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.28);
+      }
+      .filePasteDialog {
+        z-index: 90;
+      }
+      .filePasteInput {
+        min-height: 120px;
+        max-height: min(42vh, 320px);
+        resize: vertical;
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      }
       .inlineFileLink {
         color: var(--accent);
         text-decoration: underline;
@@ -2025,6 +2090,11 @@ select {
           transform: none;
           border-radius: 0;
           padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+        }
+        .fileTouchToolbar {
+          left: 10px;
+          right: 10px;
+          bottom: calc(10px + env(safe-area-inset-bottom));
         }
         .fileViewerHeader {
           align-items: flex-start;

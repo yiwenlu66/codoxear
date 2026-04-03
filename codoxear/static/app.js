@@ -1093,6 +1093,12 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>`;
         if (name === "down")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>`;
+        if (name === "up")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>`;
+        if (name === "left")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5"/><path d="M12 5 5 12l7 7"/></svg>`;
+        if (name === "right")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>`;
         if (name === "download")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
         if (name === "save")
@@ -1125,6 +1131,10 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
         if (name === "copy")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>`;
+        if (name === "paste")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6"/><path d="M10 2h4a1 1 0 0 1 1 1v2H9V3a1 1 0 0 1 1-1Z"/><rect x="6" y="5" width="12" height="16" rx="2"/><path d="m12 10 0 7"/><path d="m9.5 14.5 2.5 2.5 2.5-2.5"/></svg>`;
+        if (name === "select")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h4"/><path d="M20 9V5h-4"/><path d="M4 15v4h4"/><path d="M20 15v4h-4"/><path d="M8 5H6a2 2 0 0 0-2 2v2"/><path d="M16 5h2a2 2 0 0 1 2 2v2"/><path d="M8 19H6a2 2 0 0 1-2-2v-2"/><path d="M16 19h2a2 2 0 0 0 2-2v-2"/></svg>`;
         if (name === "help")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.35 9.25a2.85 2.85 0 1 1 5.3 1.4c-.55.88-1.46 1.34-2.15 1.83-.74.53-1.25 1.08-1.25 2.02"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>`;
         if (name === "info")
@@ -1536,6 +1546,79 @@
           "aria-label": "Download file",
           html: iconSvg("download"),
         });
+        const fileTouchSelectBtn = el("button", {
+          id: "fileTouchSelectBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Select",
+          "aria-label": "Select",
+          html: iconSvg("select"),
+        });
+        const fileTouchCopyBtn = el("button", {
+          id: "fileTouchCopyBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Copy selection",
+          "aria-label": "Copy selection",
+          html: iconSvg("copy"),
+        });
+        const fileTouchPasteBtn = el("button", {
+          id: "fileTouchPasteBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Paste",
+          "aria-label": "Paste",
+          html: iconSvg("paste"),
+        });
+        const fileTouchUpBtn = el("button", {
+          id: "fileTouchUpBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Select up",
+          "aria-label": "Select up",
+          html: iconSvg("up"),
+        });
+        const fileTouchLeftBtn = el("button", {
+          id: "fileTouchLeftBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Select left",
+          "aria-label": "Select left",
+          html: iconSvg("left"),
+        });
+        const fileTouchDownBtn = el("button", {
+          id: "fileTouchDownBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Select down",
+          "aria-label": "Select down",
+          html: iconSvg("down"),
+        });
+        const fileTouchRightBtn = el("button", {
+          id: "fileTouchRightBtn",
+          class: "icon-btn fileTouchBtn",
+          type: "button",
+          title: "Select right",
+          "aria-label": "Select right",
+          html: iconSvg("right"),
+        });
+        const fileTouchDpad = el("div", { id: "fileTouchDpad", class: "fileTouchDpad" }, [
+          el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
+          fileTouchUpBtn,
+          el("span", { class: "fileTouchSpacer", "aria-hidden": "true" }),
+          fileTouchLeftBtn,
+          fileTouchDownBtn,
+          fileTouchRightBtn,
+        ]);
+        const fileTouchActions = el("div", { id: "fileTouchActions", class: "fileTouchActions" }, [
+          fileTouchSelectBtn,
+          fileTouchCopyBtn,
+          fileTouchPasteBtn,
+        ]);
+        const fileTouchToolbar = el("div", { id: "fileTouchToolbar", class: "fileTouchToolbar" }, [
+          fileTouchDpad,
+          fileTouchActions,
+        ]);
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
@@ -1547,6 +1630,7 @@
           fileStatus,
           fileDiff,
           fileImage,
+          fileTouchToolbar,
         ]);
         root.appendChild(fileBackdrop);
         root.appendChild(fileViewer);
@@ -1563,6 +1647,27 @@
         ]);
         root.appendChild(fileUnsavedBackdrop);
         root.appendChild(fileUnsavedDialog);
+        const filePasteBackdrop = el("div", { class: "modalBackdrop", id: "filePasteBackdrop" });
+        const filePasteInput = el("textarea", {
+          id: "filePasteInput",
+          class: "filePasteInput",
+          placeholder: "Paste text here",
+          spellcheck: "false",
+          autocapitalize: "off",
+          autocomplete: "off",
+          autocorrect: "off",
+        });
+        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-label": "Paste into file" }, [
+          el("div", { class: "title", text: "Paste into file" }),
+          el("div", { class: "muted", text: "Long-press in this box to use the browser paste menu, then insert into the editor." }),
+          filePasteInput,
+          el("div", { class: "sendChoiceActions" }, [
+            el("button", { class: "primary", id: "filePasteInsertBtn", type: "button", text: "Insert" }),
+            el("button", { id: "filePasteCancelBtn", type: "button", text: "Cancel" }),
+          ]),
+        ]);
+        root.appendChild(filePasteBackdrop);
+        root.appendChild(filePasteDialog);
 
         const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
         const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
@@ -2677,6 +2782,11 @@
             window.matchMedia &&
               window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 881px)").matches
           );
+        }
+
+        function useTouchFileEditorControls() {
+          if (!window.matchMedia) return false;
+          return Boolean(window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches);
         }
 
         function setSidebarOpen(open) {
@@ -5373,6 +5483,10 @@
         let fileSavePending = false;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedResolver = null;
+        let fileTouchSelectMode = false;
+        let fileTouchSelectAnchor = null;
+        let fileTouchSelectHead = null;
+        let fileTouchSelectGoalColumn = null;
         let fileSessionSelections = new Map();
 
         function currentFileSessionId() {
@@ -5457,6 +5571,7 @@
           resetFilePickerInput();
           renderFilePickerMenu();
           fileStatus.textContent = "Type to search files.";
+          updateFileTouchToolbar();
           return true;
         }
 
@@ -5502,6 +5617,10 @@
             fileEditor = null;
           }
           fileEditorKind = "";
+          fileTouchSelectMode = false;
+          fileTouchSelectAnchor = null;
+          fileTouchSelectHead = null;
+          fileTouchSelectGoalColumn = null;
         }
 
         function isFileViewerOpen() {
@@ -5520,6 +5639,305 @@
           fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file") });
         }
 
+        function getActiveFileCodeEditor() {
+          if (fileEditorKind === "diff" && fileEditor && typeof fileEditor.getModifiedEditor === "function") {
+            return fileEditor.getModifiedEditor();
+          }
+          if (fileEditorKind === "file" && fileEditor) return fileEditor;
+          return null;
+        }
+
+        function syncFileDiffSelectionMode() {
+          if (fileEditorKind !== "diff" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
+          const hideOpts = fileTouchSelectMode
+            ? { enabled: false }
+            : {
+                enabled: true,
+                contextLineCount: 4,
+                minimumLineCount: 1,
+                revealLineCount: 2,
+              };
+          fileEditor.updateOptions({ hideUnchangedRegions: hideOpts });
+        }
+
+        function focusActiveFileCodeEditor() {
+          const editor = getActiveFileCodeEditor();
+          if (editor && typeof editor.focus === "function") editor.focus();
+          return editor;
+        }
+
+        function normalizeFileEditorPosition(editor, pos) {
+          if (!editor || !pos) return null;
+          const model = typeof editor.getModel === "function" ? editor.getModel() : null;
+          if (!model) return null;
+          const lineCount = Math.max(1, Number(model.getLineCount && model.getLineCount()) || 1);
+          const lineNumber = Math.max(1, Math.min(lineCount, Number(pos.lineNumber) || 1));
+          const lineMaxColumn = Math.max(1, Number(model.getLineMaxColumn && model.getLineMaxColumn(lineNumber)) || 1);
+          const column = Math.max(1, Math.min(lineMaxColumn, Number(pos.column) || 1));
+          return { lineNumber, column };
+        }
+
+        function applyFileEditorSelection(editor, cursor, anchor = null) {
+          if (!editor || !monacoNs || !monacoNs.Selection) return;
+          const nextCursor = normalizeFileEditorPosition(editor, cursor);
+          if (!nextCursor) return;
+          const nextAnchor = anchor ? normalizeFileEditorPosition(editor, anchor) : null;
+          const selection = nextAnchor
+            ? new monacoNs.Selection(nextAnchor.lineNumber, nextAnchor.column, nextCursor.lineNumber, nextCursor.column)
+            : new monacoNs.Selection(nextCursor.lineNumber, nextCursor.column, nextCursor.lineNumber, nextCursor.column);
+          if (typeof editor.setSelection === "function") editor.setSelection(selection);
+          if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);
+          if (typeof editor.revealPositionInCenterIfOutsideViewport === "function") editor.revealPositionInCenterIfOutsideViewport(nextCursor);
+          else if (typeof editor.revealPositionInCenter === "function") editor.revealPositionInCenter(nextCursor);
+        }
+
+        function isCollapsedFileSelection(selection) {
+          return !selection || (
+            selection.startLineNumber === selection.endLineNumber &&
+            selection.startColumn === selection.endColumn
+          );
+        }
+
+        function getActiveFileSelectionText() {
+          const editor = getActiveFileCodeEditor();
+          if (!editor || typeof editor.getSelection !== "function" || typeof editor.getModel !== "function") return "";
+          const selection = editor.getSelection();
+          if (isCollapsedFileSelection(selection)) return "";
+          const model = editor.getModel();
+          if (!model || typeof model.getValueInRange !== "function") return "";
+          return String(model.getValueInRange(selection) || "");
+        }
+
+        function isFileTouchToolbarActive() {
+          return Boolean(
+            useTouchFileEditorControls() &&
+            isFileViewerOpen() &&
+            activeFileKind === "text" &&
+            fileViewMode !== "preview" &&
+            getActiveFileCodeEditor()
+          );
+        }
+
+        function updateFileTouchToolbar() {
+          if (!isFileTouchToolbarActive()) {
+            fileTouchToolbar.style.display = "none";
+            fileTouchDpad.style.display = "none";
+            fileTouchCopyBtn.style.display = "none";
+            fileTouchPasteBtn.style.display = "none";
+            return;
+          }
+          const canPaste = fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending;
+          const hasSelection = Boolean(getActiveFileSelectionText());
+          fileTouchSelectBtn.classList.toggle("active", fileTouchSelectMode);
+          fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";
+          fileTouchCopyBtn.style.display = hasSelection ? "" : "none";
+          fileTouchPasteBtn.style.display = canPaste ? "" : "none";
+          fileTouchActions.style.display = "flex";
+          fileTouchToolbar.style.display = "flex";
+        }
+
+        function resetFileTouchSelectionState({ collapse = false } = {}) {
+          const editor = collapse ? getActiveFileCodeEditor() : null;
+          const cursor = editor ? normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) : null;
+          fileTouchSelectMode = false;
+          fileTouchSelectAnchor = null;
+          fileTouchSelectHead = null;
+          fileTouchSelectGoalColumn = null;
+          if (editor && cursor) applyFileEditorSelection(editor, cursor, null);
+          syncFileEditorReadOnly();
+          syncFileDiffSelectionMode();
+          updateFileTouchToolbar();
+        }
+
+        function toggleFileTouchSelectionMode() {
+          if (fileTouchSelectMode) {
+            resetFileTouchSelectionState({ collapse: true });
+            focusActiveFileCodeEditor();
+            return;
+          }
+          const editor = getActiveFileCodeEditor();
+          if (!editor) return;
+          const cursor = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
+          fileTouchSelectMode = true;
+          fileTouchSelectAnchor = { ...cursor };
+          fileTouchSelectHead = { ...cursor };
+          fileTouchSelectGoalColumn = cursor.column;
+          applyFileEditorSelection(editor, cursor, cursor);
+          syncFileEditorReadOnly();
+          syncFileDiffSelectionMode();
+          updateFileTouchToolbar();
+          focusActiveFileCodeEditor();
+        }
+
+        function moveFileTouchSelection(direction) {
+          if (!fileTouchSelectMode) return;
+          const editor = getActiveFileCodeEditor();
+          if (!editor || typeof editor.trigger !== "function") {
+            setToast("selection move unavailable");
+            return;
+          }
+          const args =
+            direction === "left"
+              ? { to: "left", by: "character", value: 1, select: true }
+              : direction === "right"
+                ? { to: "right", by: "character", value: 1, select: true }
+                : direction === "up"
+                  ? { to: "up", by: "wrappedLine", value: 1, select: true }
+                  : direction === "down"
+                    ? { to: "down", by: "wrappedLine", value: 1, select: true }
+                    : null;
+          if (!args) return;
+          try {
+            editor.trigger("file-touch-select", "cursorMove", args);
+            const pos = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition());
+            if (pos) {
+              fileTouchSelectHead = { ...pos };
+              fileTouchSelectGoalColumn = pos.column;
+            }
+            focusActiveFileCodeEditor();
+            updateFileTouchToolbar();
+          } catch (e) {
+            setToast(`selection move error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+        }
+
+        function bindFileTouchPress(button, handler) {
+          if (!button || typeof handler !== "function") return;
+          let suppressClickUntil = 0;
+          let sawPointerTouchAt = 0;
+          const run = (e) => {
+            if (e) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+            suppressClickUntil = Date.now() + 700;
+            handler();
+          };
+          button.addEventListener("pointerdown", (e) => {
+            if (e && e.pointerType === "touch") sawPointerTouchAt = Date.now();
+            run(e);
+          });
+          button.addEventListener(
+            "touchstart",
+            (e) => {
+              if (Date.now() - sawPointerTouchAt < 700) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+              run(e);
+            },
+            { passive: false }
+          );
+          button.addEventListener("click", (e) => {
+            if (Date.now() < suppressClickUntil) {
+              e.preventDefault();
+              e.stopPropagation();
+              return;
+            }
+            run(e);
+          });
+        }
+
+        function deleteActiveFileSelection() {
+          const editor = getActiveFileCodeEditor();
+          if (!editor || !monacoNs || typeof editor.executeEdits !== "function" || typeof editor.getSelection !== "function") return false;
+          const selection = editor.getSelection();
+          if (isCollapsedFileSelection(selection)) return false;
+          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+          editor.executeEdits("file-touch-delete", [{ range: selection, text: "", forceMoveMarkers: true }]);
+          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+          resetFileTouchSelectionState({ collapse: true });
+          setFileDirty(getFileEditorText() !== String(activeFileText || ""));
+          focusActiveFileCodeEditor();
+          return true;
+        }
+
+        async function copyActiveFileSelection() {
+          const text = getActiveFileSelectionText();
+          if (!text) {
+            setToast("nothing selected");
+            return;
+          }
+          try {
+            await copyToClipboard(text);
+            resetFileTouchSelectionState({ collapse: true });
+            setToast("selection copied");
+          } catch (e) {
+            setToast(`copy error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+          focusActiveFileCodeEditor();
+        }
+
+        function hideFilePasteDialog() {
+          filePasteBackdrop.style.display = "none";
+          filePasteDialog.style.display = "none";
+          filePasteInput.value = "";
+        }
+
+        async function showFilePasteDialog() {
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && activeFileKind === "text" && !fileSavePending)) return;
+          if (
+            window.isSecureContext &&
+            navigator.clipboard &&
+            typeof navigator.clipboard.readText === "function"
+          ) {
+            try {
+              const text = await navigator.clipboard.readText();
+              if (text) {
+                if (insertIntoActiveFileEditor(text)) {
+                  setToast("pasted");
+                  focusActiveFileCodeEditor();
+                  return;
+                }
+              }
+            } catch (_) {}
+          }
+          filePasteInput.value = "";
+          filePasteBackdrop.style.display = "block";
+          filePasteDialog.style.display = "flex";
+          setTimeout(() => filePasteInput.focus({ preventScroll: true }), 0);
+        }
+
+        function positionAfterInsertedText(start, text) {
+          const value = String(text || "");
+          if (!value) return { lineNumber: start.lineNumber, column: start.column };
+          const parts = value.replace(/\r\n?/g, "\n").split("\n");
+          if (parts.length === 1) {
+            return { lineNumber: start.lineNumber, column: start.column + parts[0].length };
+          }
+          return { lineNumber: start.lineNumber + parts.length - 1, column: parts[parts.length - 1].length + 1 };
+        }
+
+        function insertIntoActiveFileEditor(text) {
+          const editor = getActiveFileCodeEditor();
+          if (!editor || !monacoNs || typeof editor.executeEdits !== "function") return false;
+          const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
+          const selection = editor.getSelection && editor.getSelection();
+          const range = selection && !isCollapsedFileSelection(selection)
+            ? {
+                startLineNumber: selection.startLineNumber,
+                startColumn: selection.startColumn,
+                endLineNumber: selection.endLineNumber,
+                endColumn: selection.endColumn,
+              }
+            : {
+                startLineNumber: current.lineNumber,
+                startColumn: current.column,
+                endLineNumber: current.lineNumber,
+                endColumn: current.column,
+              };
+          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+          editor.executeEdits("file-touch-paste", [{ range, text: String(text || ""), forceMoveMarkers: true }]);
+          const nextCursor = positionAfterInsertedText({ lineNumber: range.startLineNumber, column: range.startColumn }, text);
+          resetFileTouchSelectionState();
+          applyFileEditorSelection(editor, nextCursor, null);
+          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
+          setFileDirty(getFileEditorText() !== String(activeFileText || ""));
+          focusActiveFileCodeEditor();
+          return true;
+        }
+
         function updateFileEditButton() {
           const canEdit = activeFileCanEnterEditMode();
           fileEditBtn.disabled = !canEdit;
@@ -5532,11 +5950,13 @@
           else fileEditBtn.innerHTML = iconSvg("edit");
           fileEditBtn.title = fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
           fileEditBtn.setAttribute("aria-label", fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
+          updateFileTouchToolbar();
         }
 
         function setFileDirty(nextDirty) {
           fileDirty = Boolean(nextDirty);
           updateFileEditButton();
+          updateFileTouchToolbar();
         }
 
         function resetActiveFileBufferState() {
@@ -5547,6 +5967,7 @@
           activeFileDraft = false;
           fileEditMode = false;
           fileSavePending = false;
+          resetFileTouchSelectionState();
           setFileDirty(false);
         }
 
@@ -5719,6 +6140,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           }, 60);
+          updateFileTouchToolbar();
         }
 
         async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null) {
@@ -5787,6 +6209,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           }, 60);
+          updateFileTouchToolbar();
         }
 
         function renderMarkdownPreview(rel, text) {
@@ -5798,6 +6221,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           });
           fileDiff.appendChild(preview);
           void upgradeCandidateFileRefs(preview);
+          updateFileTouchToolbar();
         }
 
         function setFileEditMode(nextMode) {
@@ -5960,6 +6384,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileModePreviewBtn.disabled = !canToggleMode;
           fileDownloadBtn.disabled = !hasPath || activeFileDraft;
           fileModePreviewBtn.style.display = previewable ? "" : "none";
+          if (fileViewMode !== "file") hideFilePasteDialog();
           if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
           syncFileEditorReadOnly();
           updateFileEditButton();
@@ -6037,6 +6462,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             await renderMonacoFile(rel, "", activeFileLine);
             setFileEditMode(true);
             fileStatus.textContent = `${rel} - new file`;
+            rememberActiveFileSelection();
             renderFilePickerMenu();
           } catch (e) {
             resetActiveFileBufferState();
@@ -6575,6 +7001,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          updateFileTouchToolbar();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = selected || "";
           if (fileSearchSessionId !== fileViewerSessionId) {
@@ -6609,6 +7036,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
         function hideFileViewer() {
           hideFileUnsavedDialog();
+          hideFilePasteDialog();
           rememberActiveFileSelection();
           resetFileViewerPanel();
           closeFilePickerMenu({ restoreInput: true });
@@ -6618,6 +7046,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileViewer.style.display = "none";
           fileViewerSessionId = "";
           activeFileLine = null;
+          updateFileTouchToolbar();
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
           if (!fileViewerSessionId) return;
@@ -6690,6 +7119,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+            updateFileTouchToolbar();
           }
         }
         fileBtn.onclick = (e) => {
@@ -6814,6 +7244,31 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           link.click();
           link.remove();
         };
+        bindFileTouchPress(fileTouchSelectBtn, () => {
+          toggleFileTouchSelectionMode();
+        });
+        bindFileTouchPress(fileTouchCopyBtn, () => {
+          void copyActiveFileSelection();
+        });
+        bindFileTouchPress(fileTouchPasteBtn, () => {
+          void showFilePasteDialog();
+        });
+        bindFileTouchPress(fileTouchUpBtn, () => {
+          focusActiveFileCodeEditor();
+          moveFileTouchSelection("up");
+        });
+        bindFileTouchPress(fileTouchLeftBtn, () => {
+          focusActiveFileCodeEditor();
+          moveFileTouchSelection("left");
+        });
+        bindFileTouchPress(fileTouchDownBtn, () => {
+          focusActiveFileCodeEditor();
+          moveFileTouchSelection("down");
+        });
+        bindFileTouchPress(fileTouchRightBtn, () => {
+          focusActiveFileCodeEditor();
+          moveFileTouchSelection("right");
+        });
         fileCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -6824,6 +7279,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#fileUnsavedDiscardBtn").onclick = () => hideFileUnsavedDialog("discard");
         $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
         fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");
+        $("#filePasteInsertBtn").onclick = () => {
+          if (insertIntoActiveFileEditor(filePasteInput.value)) {
+            hideFilePasteDialog();
+            setToast("text inserted");
+          }
+        };
+        $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog();
+        filePasteBackdrop.onclick = () => hideFilePasteDialog();
         async function openFileReference(ref) {
           if (!ref || typeof ref.path !== "string") return;
           const rawPath = String(ref.path || "").trim();
@@ -6920,8 +7383,50 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             applyDialogMenus();
           }
         });
+        function handleFileTouchSelectionKeydown(e) {
+          if (!fileTouchSelectMode || !isFileTouchToolbarActive()) return;
+          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+          const target = e.target instanceof HTMLElement ? e.target : null;
+          if (target && isTextEntryElement(target) && !target.classList.contains("inputarea")) return;
+          if (target && !target.closest("#fileViewer")) return;
+          const key = String(e.key || "").toLowerCase();
+          if (key === "escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            resetFileTouchSelectionState({ collapse: true });
+            return;
+          }
+          if ((key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (deleteActiveFileSelection()) return;
+            return;
+          }
+          const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
+          if (!direction) {
+            const blocksEdit =
+              key === "enter" ||
+              key === "backspace" ||
+              key === "delete" ||
+              key === "tab" ||
+              key === " " ||
+              (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
+            if (!blocksEdit) return;
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          moveFileTouchSelection(direction);
+        }
+        document.addEventListener("keydown", handleFileTouchSelectionKeydown, true);
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
+          if (filePasteDialog.style.display === "flex") {
+            hideFilePasteDialog();
+            return;
+          }
           if (fileUnsavedDialog.style.display === "flex") {
             hideFileUnsavedDialog("cancel");
             return;
