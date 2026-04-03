@@ -3522,6 +3522,7 @@
            kickPoll(900);
            if (isMobile()) setSidebarOpen(false);
            updateHarnessBtnState();
+           if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
          }
 
         function parseHarnessDraftInt(name) {
@@ -5372,6 +5373,92 @@
         let fileSavePending = false;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedResolver = null;
+        let fileSessionSelections = new Map();
+
+        function currentFileSessionId() {
+          return String(fileViewerSessionId || selected || "").trim();
+        }
+
+        function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
+          const sid = String(sessionId || "").trim();
+          const path = String(activeFilePath || "").trim();
+          if (!sid || !path) return;
+          fileSessionSelections.set(sid, {
+            path,
+            line: activeFileLine == null ? null : activeFileLine,
+          });
+        }
+
+        function historyFileSelectionForSession(sessionId) {
+          const sid = String(sessionId || "").trim();
+          if (!sid) return { path: "", line: null };
+          const s = sessionIndex.get(sid);
+          if (!s) return { path: "", line: null };
+          for (const abs of listFromFilesField(s.files)) {
+            const rel = sessionRelativePath(abs, sid);
+            if (typeof rel === "string" && rel && rel !== ".") {
+              return { path: rel, line: null };
+            }
+          }
+          return { path: "", line: null };
+        }
+
+        function preferredFileSelectionForSession(sessionId) {
+          const sid = String(sessionId || "").trim();
+          if (!sid) return { path: "", line: null };
+          const remembered = fileSessionSelections.get(sid);
+          const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path.trim() : "";
+          if (rememberedPath) {
+            return {
+              path: rememberedPath,
+              line: normalizeLineNumber(remembered.line),
+            };
+          }
+          return historyFileSelectionForSession(sid);
+        }
+
+        function resetFileViewerPanel() {
+          disposeFileEditor();
+          resetActiveFileBufferState();
+          fileImage.removeAttribute("src");
+          fileImage.style.display = "none";
+          fileDiff.style.display = "block";
+        }
+
+        async function ensureCurrentFileViewerSession() {
+          if (!isFileViewerOpen()) return true;
+          const sid = String(selected || "").trim();
+          if (!sid) return false;
+          if (fileViewerSessionId === sid) return true;
+          if (!(await maybeHandleUnsavedFileChanges())) return false;
+          rememberActiveFileSelection(fileViewerSessionId);
+          fileViewerSessionId = sid;
+          if (fileSearchSessionId !== fileViewerSessionId) {
+            resetFileSearchState();
+            fileSearchSessionId = fileViewerSessionId;
+          }
+          await refreshFileCandidates();
+          const preferred = preferredFileSelectionForSession(sid);
+          if (preferred.path) {
+            setFilePath(preferred.path, { line: preferred.line });
+            await openFilePath(preferred.path, { line: preferred.line });
+            return true;
+          }
+          const first = fileCandidateList.length ? fileCandidateList[0] : "";
+          if (first) {
+            setFileViewMode("diff");
+            setFilePath(first, { line: null });
+            await openFilePath(first, { line: null });
+            return true;
+          }
+          resetFileViewerPanel();
+          activeFilePath = "";
+          activeFileLine = null;
+          resetFilePickerInput();
+          renderFilePickerMenu();
+          fileStatus.textContent = "Type to search files.";
+          return true;
+        }
 
         function extToEditorLang(p) {
           const ext = String(p || "").split(".").pop().toLowerCase();
@@ -6482,13 +6569,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
           } catch (e) {}
           renderFilePickerMenu();
-          setFilePath(activeFilePath || fileCandidateList[0] || "", { line: activeFileLine });
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = selected || "";
           if (fileSearchSessionId !== fileViewerSessionId) {
             resetFileSearchState();
@@ -6497,10 +6584,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
           await refreshFileCandidates();
-          const preferred = String(path || "").trim() || activeFilePath || localStorage.getItem("codexweb.filePath") || "";
+          const explicitPath = String(path || "").trim();
+          const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
+          const preferred = explicitPath || preferredSelection.path;
+          const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
           if (preferred) {
-            setFilePath(preferred, { line });
-            void openFilePath(preferred, { line });
+            setFilePath(preferred, { line: preferredLine });
+            void openFilePath(preferred, { line: preferredLine });
             return;
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
@@ -6510,16 +6600,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void openFilePath(first, { line: null });
             return;
           }
+          resetFileViewerPanel();
+          activeFilePath = "";
+          activeFileLine = null;
           resetFilePickerInput();
+          renderFilePickerMenu();
           fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
           hideFileUnsavedDialog();
-          disposeFileEditor();
-          resetActiveFileBufferState();
-          fileImage.removeAttribute("src");
-          fileImage.style.display = "none";
-          fileDiff.style.display = "block";
+          rememberActiveFileSelection();
+          resetFileViewerPanel();
           closeFilePickerMenu({ restoreInput: true });
           resetFileSearchState();
           fileSearchSessionId = "";
@@ -6593,9 +6684,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
             }
+            rememberActiveFileSelection();
             updateFileEditButton();
             renderFilePickerMenu();
-            localStorage.setItem("codexweb.filePath", rel);
           } catch (e) {
             resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
@@ -6606,20 +6697,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           void showFileViewer();
         };
-        filePickerInput.onfocus = () => {
+        filePickerInput.onfocus = async () => {
+          if (!(await ensureCurrentFileViewerSession())) return;
           resetFilePickerInput();
           renderFilePickerMenu();
           fileMenuOpen = true;
           applyFileMenuState();
         };
-        filePickerInput.onclick = (e) => {
+        filePickerInput.onclick = async (e) => {
           e.stopPropagation();
+          if (!(await ensureCurrentFileViewerSession())) return;
           resetFilePickerInput();
           renderFilePickerMenu();
           fileMenuOpen = true;
           applyFileMenuState();
         };
-        filePickerInput.oninput = () => {
+        filePickerInput.oninput = async () => {
+          if (!(await ensureCurrentFileViewerSession())) return;
           filePickerSearchActive = true;
           fileMenuFocus = -1;
           renderFilePickerMenu();
@@ -6643,7 +6737,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             closeFilePickerMenu({ restoreInput: true });
           });
         };
-        filePickerInput.onkeydown = (e) => {
+        filePickerInput.onkeydown = async (e) => {
+          if (!(await ensureCurrentFileViewerSession())) return;
           const entries = renderFilePickerMenu();
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             if (!entries || !entries.length) return;

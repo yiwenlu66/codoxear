@@ -2444,7 +2444,9 @@ class SessionManager:
         for sid, arr in obj.items():
             if not isinstance(sid, str) or not sid:
                 continue
-            key = sid if (sid.startswith("cwd:") or sid.startswith("sid:")) else f"sid:{sid}"
+            if sid.startswith("cwd:"):
+                continue
+            key = sid if sid.startswith("sid:") else f"sid:{sid}"
             if not isinstance(arr, list):
                 continue
             out: list[str] = []
@@ -2667,19 +2669,7 @@ class SessionManager:
         s = self._sessions.get(session_id)
         if not s:
             raise KeyError("unknown session")
-        cwd_key: str | None = None
-        cwd_raw = s.cwd if isinstance(s.cwd, str) else ""
-        if cwd_raw and cwd_raw != "?":
-            try:
-                cwd_norm = str(Path(cwd_raw).expanduser().resolve())
-            except Exception:
-                cwd_norm = cwd_raw.strip()
-            if cwd_norm:
-                cwd_key = f"cwd:{cwd_norm}"
         sid_key = f"sid:{session_id}"
-        if cwd_key:
-            legacy = [sid_key, session_id]
-            return cwd_key, legacy, s
         return sid_key, [session_id], s
 
     def files_get(self, session_id: str) -> list[str]:
@@ -2732,30 +2722,14 @@ class SessionManager:
     def files_clear(self, session_id: str) -> None:
         dirty = False
         with self._lock:
-            key, legacy_keys, s = self._files_key_for_session(session_id)
+            key, legacy_keys, _s = self._files_key_for_session(session_id)
             for lk in legacy_keys:
                 if lk in self._files:
                     self._files.pop(lk, None)
                     dirty = True
-            if key.startswith("cwd:"):
-                keep = False
-                for other in self._sessions.values():
-                    if other.session_id == s.session_id:
-                        continue
-                    try:
-                        other_key, _legacy, _s2 = self._files_key_for_session(other.session_id)
-                    except KeyError:
-                        continue
-                    if other_key == key:
-                        keep = True
-                        break
-                if not keep and key in self._files:
-                    self._files.pop(key, None)
-                    dirty = True
-            else:
-                if key in self._files:
-                    self._files.pop(key, None)
-                    dirty = True
+            if key in self._files:
+                self._files.pop(key, None)
+                dirty = True
         if dirty:
             self._save_files()
 
