@@ -1980,7 +1980,7 @@ def _analyze_log_chunk(
 def _last_conversation_ts_from_tail(
     log_path: Path,
     *,
-    max_scan_bytes: int,
+    max_scan_bytes: int | None = None,
 ) -> float | None:
     return _rollout_log._last_conversation_ts_from_tail(log_path, max_scan_bytes=max_scan_bytes)
 
@@ -2014,6 +2014,7 @@ class Session:
     token: dict[str, Any] | None = None
     last_turn_id: str | None = None
     last_chat_ts: float | None = None
+    last_chat_history_scanned: bool = False
     meta_thinking: int = 0
     meta_tools: int = 0
     meta_system: int = 0
@@ -2084,6 +2085,7 @@ class SessionManager:
         s.meta_tools = 0
         s.meta_system = 0
         s.last_chat_ts = None
+        s.last_chat_history_scanned = False
         s.meta_log_off = int(meta_log_off)
         s.chat_index_events = []
         s.chat_index_scan_bytes = 0
@@ -3275,8 +3277,10 @@ class SessionManager:
                 continue
             sz = int(lp.stat().st_size)
             off = int(s.meta_log_off)
+            reset_last_chat = False
             if sz < off:
                 off = 0
+                reset_last_chat = True
 
             total_th = 0
             total_tools = 0
@@ -3306,6 +3310,9 @@ class SessionManager:
                 s2 = self._sessions.get(sid)
                 if not s2:
                     continue
+                if reset_last_chat:
+                    s2.last_chat_ts = None
+                    s2.last_chat_history_scanned = False
                 if latest_chat_ts is not None:
                     s2.last_chat_ts = latest_chat_ts if s2.last_chat_ts is None else max(s2.last_chat_ts, latest_chat_ts)
                 if latest_token is not None:
@@ -3377,8 +3384,10 @@ class SessionManager:
                         s.model = log_model
                     if s.reasoning_effort is None:
                         s.reasoning_effort = log_effort
-                if s.last_chat_ts is None and log_exists and s.log_path is not None:
-                    conv_ts = _last_conversation_ts_from_tail(s.log_path, max_scan_bytes=256 * 1024)
+                if s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned):
+                    # Discovery seeds offsets at EOF, so recover preexisting chat history once.
+                    conv_ts = _last_conversation_ts_from_tail(s.log_path)
+                    s.last_chat_history_scanned = True
                     if isinstance(conv_ts, (int, float)):
                         s.last_chat_ts = float(conv_ts)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
