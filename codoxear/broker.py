@@ -147,7 +147,8 @@ def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions
 
 
 def _pi_session_dir_name(cwd: str) -> str:
-    return f"--{cwd.lstrip('/\\\\').replace('/', '-').replace('\\\\', '-').replace(':', '-')}--"
+    cleaned = cwd.lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
+    return f"--{cleaned}--"
 
 
 def _pi_session_dir_from_args(*, args: list[str], cwd: str, sessions_dir: Path) -> Path | None:
