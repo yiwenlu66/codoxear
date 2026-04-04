@@ -5483,6 +5483,8 @@
         let fileSavePending = false;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedResolver = null;
+        let fileOpenRequestId = 0;
+        let fileOpenAbortController = null;
         let fileTouchSelectMode = false;
         let fileTouchSelectAnchor = null;
         let fileTouchSelectHead = null;
@@ -5491,6 +5493,47 @@
 
         function currentFileSessionId() {
           return String(fileViewerSessionId || selected || "").trim();
+        }
+
+        function cancelPendingFileOpen() {
+          fileOpenRequestId += 1;
+          if (!fileOpenAbortController) return;
+          try {
+            fileOpenAbortController.abort();
+          } catch (_) {}
+          fileOpenAbortController = null;
+        }
+
+        function beginFileOpenRequest(nextPath = null, { line = undefined } = {}) {
+          cancelPendingFileOpen();
+          const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
+          activeFilePath = rel;
+          activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          if (controller) fileOpenAbortController = controller;
+          return {
+            requestId: fileOpenRequestId,
+            sessionId: currentFileSessionId(),
+            path: rel,
+            line: activeFileLine,
+            signal: controller ? controller.signal : null,
+          };
+        }
+
+        function isCurrentFileOpenRequest(request) {
+          if (!request) return false;
+          return (
+            request.requestId === fileOpenRequestId &&
+            request.sessionId === currentFileSessionId() &&
+            request.path === String(activeFilePath || "").trim()
+          );
+        }
+
+        function finalizeFileOpenRequest(request) {
+          if (!request || !fileOpenAbortController) return;
+          if (fileOpenAbortController.signal !== request.signal) return;
+          if (!isCurrentFileOpenRequest(request)) return;
+          fileOpenAbortController = null;
         }
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
@@ -5545,6 +5588,7 @@
           if (!sid) return false;
           if (fileViewerSessionId === sid) return true;
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          cancelPendingFileOpen();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = sid;
           if (fileSearchSessionId !== fileViewerSessionId) {
@@ -6081,8 +6125,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "") {
+        async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
           const monaco = await ensureMonaco();
+          if (request && !isCurrentFileOpenRequest(request)) return false;
           const host = fileDiff;
           const lang = langOverride || extToEditorLang(rel);
           if (fileEditorKind !== "file") {
@@ -6132,19 +6177,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditor.layout();
           requestAnimationFrame(() => {
             if (!fileEditor) return;
+            if (request && !isCurrentFileOpenRequest(request)) return;
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           });
           setTimeout(() => {
             if (!fileEditor) return;
+            if (request && !isCurrentFileOpenRequest(request)) return;
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           }, 60);
           updateFileTouchToolbar();
+          return true;
         }
 
-        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null) {
+        async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
           const monaco = await ensureMonaco();
+          if (request && !isCurrentFileOpenRequest(request)) return false;
           const host = fileDiff;
           const lang = extToEditorLang(rel);
           disposeFileEditor();
@@ -6201,15 +6250,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEditor.layout();
           requestAnimationFrame(() => {
             if (!fileEditor) return;
+            if (request && !isCurrentFileOpenRequest(request)) return;
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           });
           setTimeout(() => {
             if (!fileEditor) return;
+            if (request && !isCurrentFileOpenRequest(request)) return;
             fileEditor.layout();
             applyEditorLineFocus(targetLine);
           }, 60);
           updateFileTouchToolbar();
+          return true;
         }
 
         function renderMarkdownPreview(rel, text) {
@@ -6438,13 +6490,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function openDraftFilePath(path, { line = null } = {}) {
           if (!fileViewerSessionId) return;
+          const request = beginFileOpenRequest(path, { line });
           const rel = normalizeDraftFilePath(path);
           if (!rel) {
             fileStatus.textContent = "Choose a valid relative file path.";
+            finalizeFileOpenRequest(request);
             return;
           }
-          activeFilePath = rel;
-          activeFileLine = normalizeLineNumber(line);
           fileStatus.textContent = "Preparing new file...";
           disposeFileEditor();
           resetActiveFileBufferState();
@@ -6459,14 +6511,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             activeFileEditable = true;
             activeFileVersion = "";
             applyFileMode();
-            await renderMonacoFile(rel, "", activeFileLine);
+            const rendered = await renderMonacoFile(rel, "", request.line, "", request);
+            if (!rendered || !isCurrentFileOpenRequest(request)) return;
             setFileEditMode(true);
             fileStatus.textContent = `${rel} - new file`;
             rememberActiveFileSelection();
             renderFilePickerMenu();
           } catch (e) {
+            if (e && e.name === "AbortError") return;
+            if (!isCurrentFileOpenRequest(request)) return;
             resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
+          } finally {
+            finalizeFileOpenRequest(request);
           }
         }
 
@@ -6999,6 +7056,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
+          cancelPendingFileOpen();
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
           updateFileTouchToolbar();
@@ -7035,6 +7093,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
+          cancelPendingFileOpen();
           hideFileUnsavedDialog();
           hideFilePasteDialog();
           rememberActiveFileSelection();
@@ -7049,14 +7108,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileTouchToolbar();
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
-          if (!fileViewerSessionId) return;
-          const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
+          if (!fileViewerSessionId) return false;
+          const request = beginFileOpenRequest(nextPath, { line });
+          const rel = request.path;
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
-            return;
+            finalizeFileOpenRequest(request);
+            return false;
           }
-          activeFilePath = rel;
-          activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           fileStatus.textContent = "Loading...";
           disposeFileEditor();
           resetActiveFileBufferState();
@@ -7067,7 +7126,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
             if (viewMode === "diff") {
-              const res = await api(`/api/sessions/${fileViewerSessionId}/git/file_versions?path=${encodeURIComponent(rel)}`);
+              const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}`, {
+                signal: request.signal,
+              });
+              if (!isCurrentFileOpenRequest(request)) return false;
               const baseText = res && typeof res.base_text === "string" ? res.base_text : "";
               const currentText = res && typeof res.current_text === "string" ? res.current_text : "";
               activeFileKind = "text";
@@ -7077,12 +7139,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 disposeFileEditor();
                 fileStatus.textContent = `${rel} - no diff`;
               } else {
-                await renderMonacoDiff(rel, baseText, currentText, activeFileLine);
+                const rendered = await renderMonacoDiff(rel, baseText, currentText, request.line, request);
+                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 fileStatus.textContent = `${rel} - diff`;
               }
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
-              const res = await api(`/api/sessions/${fileViewerSessionId}/file/read?path=${encodeURIComponent(rel)}`);
+              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}`, {
+                signal: request.signal,
+              });
+              if (!isCurrentFileOpenRequest(request)) return false;
               if (!res || typeof res.kind !== "string") throw new Error("invalid response");
               if (res.kind === "image") {
                 activeFileKind = "image";
@@ -7102,7 +7168,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (viewMode === "preview" && isMarkdownPreviewable(rel)) {
                   renderMarkdownPreview(rel, res.text);
                 } else {
-                  await renderMonacoFile(rel, res.text, activeFileLine);
+                  const rendered = await renderMonacoFile(rel, res.text, request.line, "", request);
+                  if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 }
                 const size = typeof res.size === "number" ? res.size : res.text.length;
                 const statusParts = [rel];
@@ -7116,10 +7183,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             rememberActiveFileSelection();
             updateFileEditButton();
             renderFilePickerMenu();
+            return true;
           } catch (e) {
+            if (e && e.name === "AbortError") return false;
+            if (!isCurrentFileOpenRequest(request)) return false;
             resetActiveFileBufferState();
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
             updateFileTouchToolbar();
+            return false;
+          } finally {
+            finalizeFileOpenRequest(request);
           }
         }
         fileBtn.onclick = (e) => {
