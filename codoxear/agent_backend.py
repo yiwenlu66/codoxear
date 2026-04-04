@@ -54,6 +54,20 @@ _BACKENDS: dict[str, AgentBackend] = {
 }
 
 
+def infer_agent_backend_from_cli_bin(value: object) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    token = raw.split()[0]
+    name = Path(token).name.lower()
+    stem = Path(name).stem.lower()
+    if stem in {"pi", "piox"}:
+        return "pi"
+    if stem.startswith("codex"):
+        return "codex"
+    return None
+
+
 def normalize_agent_backend(value: object, *, default: str = "codex") -> str:
     raw = str(value or "").strip().lower()
     if not raw:
@@ -68,6 +82,17 @@ def get_agent_backend(value: object, *, default: str = "codex") -> AgentBackend:
     return _BACKENDS[normalize_agent_backend(value, default=default)]
 
 
+def resolve_agent_backend(value: object, *, env: dict[str, str] | None = None, default: str = "codex") -> str:
+    raw = str(value or "").strip()
+    if raw:
+        return normalize_agent_backend(raw, default=default)
+    env_map = os.environ if env is None else env
+    inferred = infer_agent_backend_from_cli_bin(env_map.get(CODEX_BACKEND.bin_env_var))
+    if inferred is not None:
+        return inferred
+    return normalize_agent_backend(default, default=default)
+
+
 def infer_agent_backend_from_log_path(path: Path) -> str | None:
     name = path.name
     if name.startswith("rollout-") and name.endswith(".jsonl"):
@@ -76,4 +101,3 @@ def infer_agent_backend_from_log_path(path: Path) -> str | None:
     if "/.pi/agent/sessions/" in path_text and name.endswith(".jsonl"):
         return "pi"
     return None
-

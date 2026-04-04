@@ -20,6 +20,7 @@ from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .agent_backend import resolve_agent_backend
 from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
@@ -37,7 +38,7 @@ ROOT_REPO_DIR = APP_DIR / "root-repo"
 PENDING_DIR = APP_DIR / "pending"
 PROC_ROOT = Path("/proc")
 
-AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
+AGENT_BACKEND = resolve_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), env=os.environ, default="codex")
 BACKEND = get_agent_backend(AGENT_BACKEND)
 AGENT_BIN = BACKEND.cli_bin()
 DEFAULT_AGENT_HOME = BACKEND.home()
@@ -217,7 +218,7 @@ class Sessiond:
             return
         meta = {
             "session_id": st.session_id,
-            "backend": "codex",
+            "backend": AGENT_BACKEND,
             "owner": OWNER_TAG if OWNER_TAG else None,
             "broker_pid": os.getpid(),
             "sessiond_pid": os.getpid(),

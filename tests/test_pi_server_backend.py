@@ -322,6 +322,51 @@ class TestPiBackendRouting(unittest.TestCase):
                 self.assertEqual(session.backend, "pi")
                 self.assertIsNone(session.session_path)
 
+    def test_discover_existing_recovers_pi_backend_from_open_pi_log_when_sidecar_says_codex(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock_dir = Path(td)
+            sock = sock_dir / "pi-session.sock"
+            sock.touch()
+            session_path = sock_dir / "pi-session.jsonl"
+            session_path.write_text('{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n', encoding="utf-8")
+            meta_path = sock_dir / "pi-session.json"
+            meta_path.write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "codex",
+                        "agent_backend": "codex",
+                        "owner": "",
+                        "broker_pid": os.getpid(),
+                        "codex_pid": os.getpid(),
+                        "cwd": "/tmp/pi-cwd",
+                        "start_ts": 123.0,
+                        "log_path": None,
+                        "sock_path": str(sock),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("codoxear.server.SOCK_DIR", sock_dir), \
+                 patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0}), \
+                 patch("codoxear.server._pid_alive", return_value=True), \
+                 patch("codoxear.server._proc_find_open_rollout_log", return_value=session_path):
+                mgr._discover_existing(force=True)
+
+            session = mgr.get_session("pi-session")
+            self.assertIsNotNone(session)
+            assert session is not None
+            self.assertEqual(session.backend, "pi")
+            self.assertEqual(session.agent_backend, "pi")
+            self.assertEqual(session.session_path, session_path)
+
+            persisted = json.loads(meta_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["backend"], "pi")
+            self.assertEqual(persisted["agent_backend"], "pi")
+            self.assertEqual(persisted["session_path"], str(session_path))
+
     def test_list_sessions_includes_pi_sidecar_without_session_path(self) -> None:
         """A pi sidecar without session_path is valid (PTY-wrapped piox)."""
         mgr = _make_manager()
