@@ -3878,7 +3878,6 @@ class SessionManager:
                 if reasoning_effort is not None:
                     s.reasoning_effort = reasoning_effort
                 s.idle_cache_log_off = -1
-        self._observe_rollout_delta(session_id, objs=objs, new_off=new_off)
 
     def idle_from_log(self, session_id: str) -> bool:
         with self._lock:
@@ -5212,7 +5211,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
                     return
 
-                if init and offset == 0:
+                if offset == 0:
                     limit_q = qs.get("limit")
                     if limit_q is None:
                         limit = 80
@@ -5230,7 +5229,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     dt_index_ms = (time.perf_counter() - t0_index) * 1000.0
                     meta_delta = {"thinking": 0, "tool": 0, "system": 0}
                     flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
-                    diag = {"tool_names": [], "last_tool": None, "init_index_ms": round(dt_index_ms, 3)}
+                    diag_key = "init_index_ms" if init else "bootstrap_index_ms"
+                    diag = {"tool_names": [], "last_tool": None, diag_key: round(dt_index_ms, 3)}
                 else:
                     has_older = False
                     next_before = 0

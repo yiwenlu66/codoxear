@@ -150,6 +150,21 @@ def _pi_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
     return (pi_assistant_thinking_count(obj) > 0) or (pi_assistant_tool_use_count(obj) > 0)
 
 
+def _parse_jsonl_line(raw_line: bytes | str) -> dict[str, Any] | None:
+    if isinstance(raw_line, bytes):
+        try:
+            line = raw_line.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    else:
+        line = raw_line
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
 def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
     with path.open("rb") as f:
         f.seek(0, os.SEEK_END)
@@ -167,12 +182,9 @@ def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
 
     out: list[dict[str, Any]] = []
     for line in data.splitlines():
-        try:
-            obj = json.loads(line)
-            if isinstance(obj, dict):
-                out.append(obj)
-        except json.JSONDecodeError:
-            continue
+        obj = _parse_jsonl_line(line)
+        if obj is not None:
+            out.append(obj)
     return out
 
 
@@ -199,20 +211,14 @@ def _iter_jsonl_objects_reverse(path: Path, *, block_bytes: int = 64 * 1024) -> 
                 line = raw_line.rstrip(b"\r")
                 if not line:
                     continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(obj, dict):
+                obj = _parse_jsonl_line(line)
+                if obj is not None:
                     yield obj
         if carry:
             line = carry.rstrip(b"\r")
             if line:
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    return
-                if isinstance(obj, dict):
+                obj = _parse_jsonl_line(line)
+                if obj is not None:
                     yield obj
 
 
