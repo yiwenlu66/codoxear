@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m unittest tests.test_pi_broker tests.test_pi_rpc tests.test_pi_server_backend tests.test_pi_continue_ui tests.test_pi_fixtures tests.test_session_resume -v)",
+      "Bash(python -m unittest tests.test_pi_fixtures tests.test_pi_broker -v)",
+      "Bash(python:*)",
+      "Bash(/tmp/ui_exploration_summary.md:*)",
+      "Read(//tmp/**)",
+      "Bash(python3 -m pytest tests/ -x -q)",
+      "Bash(pi --version)",
+      "Bash(pi --mode rpc --help)",
+      "Bash(pi --help)",
+      "Bash(CODEX_BIN=pi codoxear-broker -- --help)",
+      "Bash(python3:*)",
+      "Bash(rtk proxy:*)",
+      "Bash(find ~ -name 2026-03-29T08-34-45* -type f)",
+      "Bash(find /Users/huapeixuan/.codex -name *.jsonl -type f)",
+      "Bash(find /Users/huapeixuan/.claude -name *.jsonl -type f)",
+      "Bash(find /Users/huapeixuan -path */pi-sessions/* -name *.jsonl -type f)",
+      "Bash(netstat -anp tcp)",
+      "Bash(lsof -nP -iTCP -sTCP:LISTEN)",
+      "mcp__plugin_playwright_playwright__browser_navigate"
+    ]
+  }
+}

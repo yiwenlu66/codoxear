@@ -14,6 +14,7 @@ dependencies = ["Pillow>=9.0", "py-vapid>=1.9.2", "pywebpush>=2.3.0"]
 [project.scripts]
 codoxear-server = "codoxear.server:main"
 codoxear-broker = "codoxear.broker:main"
+codoxear-pi-broker = "codoxear.pi_broker:main"
 
 [tool.setuptools]
 packages = ["codoxear"]

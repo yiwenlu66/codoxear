@@ -117,6 +117,59 @@ class TestBrokerFailClosed(unittest.TestCase):
 
         teardown.assert_called_once_with()
 
+    def test_discover_log_watcher_switches_rollout_after_resume(self) -> None:
+        broker = Broker(cwd="/repo", codex_args=[])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            old_log = root / "rollout-2026-03-30T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            new_log = root / "rollout-2026-03-30T10-05-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+            old_log.write_text('{"type":"session_meta","payload":{"id":"thread-old","cwd":"/repo","source":"cli"}}\n', encoding="utf-8")
+            new_log.write_text('{"type":"session_meta","payload":{"id":"thread-new","cwd":"/repo","source":"cli"}}\n', encoding="utf-8")
+
+            broker.state = _broker_state(codex_pid=1234, sock_path=root / "broker.sock")
+            broker.state.log_path = old_log
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=new_log) as find_log, patch.object(
+                broker, "_maybe_register_or_switch_rollout"
+            ) as switch_log, patch("codoxear.broker.time.sleep", side_effect=lambda _secs: broker._stop.set()):
+                broker._discover_log_watcher()
+
+        find_log.assert_called_once()
+        self.assertEqual(find_log.call_args.kwargs["ignored_paths"], {old_log})
+        switch_log.assert_called_once_with(log_path=new_log)
+
+    def test_discover_log_watcher_does_not_flip_back_to_old_rollout(self) -> None:
+        broker = Broker(cwd="/repo", codex_args=[])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            old_log = root / "rollout-2026-03-30T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            new_log = root / "rollout-2026-03-30T10-05-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb.jsonl"
+            old_log.write_text('{"type":"session_meta","payload":{"id":"thread-old","cwd":"/repo","source":"cli"}}\n', encoding="utf-8")
+            new_log.write_text('{"type":"session_meta","payload":{"id":"thread-new","cwd":"/repo","source":"cli"}}\n', encoding="utf-8")
+
+            broker.sessions_dir = root
+            broker.state = _broker_state(codex_pid=1234, sock_path=root / "broker.sock")
+            broker.state.log_path = old_log
+            broker.state.last_rollout_path = old_log
+
+            seen_ignored_paths: list[set[Path]] = []
+
+            def _fake_find_open_rollout_log(**kwargs):
+                ignored = set(kwargs["ignored_paths"])
+                seen_ignored_paths.append(ignored)
+                if len(seen_ignored_paths) == 1:
+                    return new_log
+                broker._stop.set()
+                return None
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", side_effect=_fake_find_open_rollout_log), patch(
+                "codoxear.broker.time.sleep", return_value=None
+            ), patch("codoxear.broker.os.waitpid", return_value=(0, 0)), patch.object(broker, "_write_meta"):
+                broker._discover_log_watcher()
+
+        self.assertEqual({p.resolve() for p in seen_ignored_paths[0]}, {old_log.resolve()})
+        self.assertEqual({p.resolve() for p in seen_ignored_paths[1]}, {old_log.resolve(), new_log.resolve()})
+
     def test_sock_server_accept_failure_triggers_teardown(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         with tempfile.TemporaryDirectory() as td:
@@ -207,6 +260,23 @@ class TestBrokerFailClosed(unittest.TestCase):
             broker._write_meta()
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self.assertIsNone(meta["resume_session_id"])
+
+    def test_write_meta_uses_agent_backend_for_backend_field(self) -> None:
+        with patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
+            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        ):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            with tempfile.TemporaryDirectory() as td:
+                sock_path = Path(td) / "broker.sock"
+                broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
+                broker.state.session_id = "pi-broker-1"
+
+                broker._write_meta()
+
+                meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+
+        self.assertEqual(meta["backend"], "pi")
+        self.assertEqual(meta["agent_backend"], "pi")
 
     def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)

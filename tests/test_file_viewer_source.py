@@ -9,33 +9,46 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
 
-def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function useTouchFileEditorControls() {")
-    end = source.index("function setSidebarOpen(open) {", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const queryMatches = {json.dumps(query_matches)};
-        const ctx = {{
-          window: {{
-            matchMedia: (query) => ({{ matches: Boolean(queryMatches[query]) }}),
-          }},
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_useTouchFileEditorControls = useTouchFileEditorControls;\n")}, ctx);
-        process.stdout.write(JSON.stringify(ctx.__test_useTouchFileEditorControls()));
-        """
-    )
+def render_js(template: str, **replacements: str) -> str:
+    rendered = textwrap.dedent(template)
+    for key, value in replacements.items():
+        rendered = rendered.replace(f"__{key}__", value)
+    return rendered
+
+
+def run_node_json(script: str):
     proc = subprocess.run(
-        ["node", "-e", js],
+        ["node", "-e", script],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
     return json.loads(proc.stdout)
+
+
+def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function useTouchFileEditorControls() {")
+    end = source.index("function setSidebarOpen(open) {", start)
+    snippet = source[start:end]
+    js = render_js(
+        """
+        const vm = require("vm");
+        const queryMatches = __QUERY_MATCHES__;
+        const ctx = {
+          window: {
+            matchMedia: (query) => ({ matches: Boolean(queryMatches[query]) }),
+          },
+        };
+        vm.createContext(ctx);
+        vm.runInContext(__SNIPPET__, ctx);
+        process.stdout.write(JSON.stringify(ctx.__test_useTouchFileEditorControls()));
+        """,
+        QUERY_MATCHES=json.dumps(query_matches),
+        SNIPPET=json.dumps(snippet + "\nglobalThis.__test_useTouchFileEditorControls = useTouchFileEditorControls;\n"),
+    )
+    return run_node_json(js)
 
 
 def eval_file_open_request_sequence() -> dict:
@@ -43,31 +56,31 @@ def eval_file_open_request_sequence() -> dict:
     start = source.index("let fileOpenRequestId = 0;")
     end = source.index("function rememberActiveFileSelection(", start)
     snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
+    js = render_js(
+        """
         const vm = require("vm");
-        class AbortController {{
-          constructor() {{
-            this.signal = {{ aborted: false }};
-          }}
-          abort() {{
+        class AbortController {
+          constructor() {
+            this.signal = { aborted: false };
+          }
+          abort() {
             this.signal.aborted = true;
-          }}
-        }}
-        const ctx = {{
+          }
+        }
+        const ctx = {
           activeFilePath: "old.txt",
           activeFileLine: 1,
           fileViewerSessionId: "sid-1",
           selected: "",
           AbortController,
           normalizeLineNumber: (value) => value == null ? null : Number(value),
-        }};
+        };
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId };\n")}, ctx);
-        const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
+        vm.runInContext(__SNIPPET__, ctx);
+        const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", { line: 3 });
         const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
-        const second = ctx.__test_file_open.beginFileOpenRequest("second.txt", {{ line: 8 }});
-        const result = {{
+        const second = ctx.__test_file_open.beginFileOpenRequest("second.txt", { line: 8 });
+        const result = {
           currentSessionId: ctx.__test_file_open.currentFileSessionId(),
           firstCurrent,
           firstSignalAborted: Boolean(first.signal && first.signal.aborted),
@@ -75,20 +88,129 @@ def eval_file_open_request_sequence() -> dict:
           secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
           activeFilePath: ctx.activeFilePath,
           activeFileLine: ctx.activeFileLine,
-        }};
+        };
         ctx.__test_file_open.cancelPendingFileOpen();
         result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
         process.stdout.write(JSON.stringify(result));
+        """,
+        SNIPPET=json.dumps(
+            snippet
+            + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId };\n"
+        ),
+    )
+    return run_node_json(js)
+
+
+def eval_refresh_file_candidates_race() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("async function refreshFileCandidates() {")
+    end = source.index("async function showFileViewer(", start)
+    snippet = source[start:end]
+    js = render_js(
         """
+        const vm = require("vm");
+        const pending = new Map();
+        const ctx = {
+          Map,
+          Set,
+          fileCandidateList: [],
+          fileEntryMap: new Map(),
+          fileViewerSessionId: "sid-a",
+          selected: "",
+          sessionIndex: new Map([
+            ["sid-a", { files: [] }],
+            ["sid-b", { files: [] }],
+          ]),
+          listFromFilesField: (value) => Array.isArray(value) ? value : [],
+          sessionRelativePath: () => null,
+          collectMessageFileRefs: () => [],
+          renderFilePickerMenu: () => {},
+          currentFileSessionId: () => String(ctx.fileViewerSessionId || ctx.selected || "").trim(),
+          api: (url) => {
+            const parts = String(url).split("/");
+            const sid = parts.length > 3 ? parts[3] : "";
+            return new Promise((resolve) => pending.set(sid, resolve));
+          },
+        };
+        vm.createContext(ctx);
+        vm.runInContext(__SNIPPET__, ctx);
+        (async () => {
+          const first = ctx.__test_refresh.refreshFileCandidates();
+          ctx.fileViewerSessionId = "sid-b";
+          const second = ctx.__test_refresh.refreshFileCandidates();
+          pending.get("sid-b")({ entries: [{ path: "b.txt" }] });
+          await second;
+          pending.get("sid-a")({ entries: [{ path: "a.txt" }] });
+          await first;
+          process.stdout.write(JSON.stringify({
+            paths: ctx.fileCandidateList,
+            hasA: ctx.fileEntryMap.has("a.txt"),
+            hasB: ctx.fileEntryMap.has("b.txt"),
+          }));
+        })().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """,
+        SNIPPET=json.dumps(snippet + "\nglobalThis.__test_refresh = { refreshFileCandidates };\n"),
     )
-    proc = subprocess.run(
-        ["node", "-e", js],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
+    return run_node_json(js)
+
+
+def eval_open_draft_file_session_race() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("async function openDraftFilePathWithGuard(path) {")
+    end = source.index("async function setFileViewModeWithGuard(", start)
+    snippet = source[start:end]
+    js = render_js(
+        """
+        const vm = require("vm");
+        let resolveInspect;
+        const setViewCalls = [];
+        const setPathCalls = [];
+        const openDraftCalls = [];
+        const ctx = {
+          fileViewerSessionId: "sid-a",
+          selected: "sid-a",
+          fileStatus: { textContent: "" },
+          normalizeDraftFilePath: (value) => String(value || "").trim(),
+          maybeHandleUnsavedFileChanges: async () => true,
+          inspectSessionFilePath: () => new Promise((resolve) => {
+            resolveInspect = resolve;
+          }),
+          openFilePathWithGuard: async () => false,
+          setFileViewMode: (mode) => setViewCalls.push(mode),
+          setFilePath: (path, options) => setPathCalls.push({ path, options }),
+          renderFilePickerMenu: () => {},
+          openDraftFilePath: async (path, options) => {
+            openDraftCalls.push({ path, options });
+          },
+          currentFileSessionId: () => String(ctx.fileViewerSessionId || ctx.selected || "").trim(),
+        };
+        vm.createContext(ctx);
+        vm.runInContext(__SNIPPET__, ctx);
+        (async () => {
+          const pending = ctx.__test_draft.openDraftFilePathWithGuard("draft.txt");
+          await new Promise((resolve) => setImmediate(resolve));
+          ctx.fileViewerSessionId = "sid-b";
+          ctx.selected = "sid-b";
+          resolveInspect({ exists: false });
+          const returned = await pending;
+          process.stdout.write(JSON.stringify({
+            returned,
+            setViewCalls,
+            setPathCalls,
+            openDraftCalls,
+            statusText: ctx.fileStatus.textContent,
+          }));
+        })().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """,
+        SNIPPET=json.dumps(snippet + "\nglobalThis.__test_draft = { openDraftFilePathWithGuard };\n"),
     )
-    return json.loads(proc.stdout)
+    return run_node_json(js)
 
 
 class TestFileViewerSource(unittest.TestCase):
@@ -117,6 +239,19 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertEqual(result["activeFilePath"], "second.txt")
         self.assertEqual(result["activeFileLine"], 8)
         self.assertFalse(result["secondAfterCancel"])
+
+    def test_refresh_file_candidates_ignores_stale_session_results(self) -> None:
+        result = eval_refresh_file_candidates_race()
+        self.assertEqual(result["paths"], ["b.txt"])
+        self.assertFalse(result["hasA"])
+        self.assertTrue(result["hasB"])
+
+    def test_open_draft_file_guard_ignores_stale_inspect_results(self) -> None:
+        result = eval_open_draft_file_session_race()
+        self.assertFalse(result["returned"])
+        self.assertEqual(result["setViewCalls"], [])
+        self.assertEqual(result["setPathCalls"], [])
+        self.assertEqual(result["openDraftCalls"], [])
 
     def test_touch_file_editor_controls_target_touch_capabilities(self) -> None:
         self.assertTrue(eval_use_touch_file_editor_controls({"(pointer: coarse)": True, "(hover: none)": False}))
@@ -174,7 +309,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('button.addEventListener("pointerdown"', source)
         self.assertIn('"touchstart"', source)
         self.assertIn("let sawPointerTouchAt = 0;", source)
-        self.assertIn("if (e && e.pointerType === \"touch\") sawPointerTouchAt = Date.now();", source)
+        self.assertIn('if (e && e.pointerType === "touch") sawPointerTouchAt = Date.now();', source)
         self.assertIn("if (Date.now() - sawPointerTouchAt < 700)", source)
         self.assertIn('touch-action: none;', APP_CSS.read_text(encoding="utf-8"))
         self.assertIn('const blocksEdit =', source)
@@ -200,11 +335,11 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
-        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
+        self.assertIn('async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null)', source)
+        self.assertIn('async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)', source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("cancelPendingFileOpen();\n          fileBackdrop.style.display = \"block\";", source)
-        self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
+        self.assertIn('cancelPendingFileOpen();\n          fileBackdrop.style.display = "block";', source)
+        self.assertIn('cancelPendingFileOpen();\n          hideFileUnsavedDialog();', source)
 
     def test_touch_paste_tries_direct_clipboard_before_bridge(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

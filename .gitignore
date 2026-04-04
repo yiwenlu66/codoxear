@@ -19,3 +19,7 @@ root-repo/
 codex-homes/
 socks/
 generated_imgs/
+# CocoIndex Code (ccc)
+/.cocoindex_code/
+/openclaw-main
+/.playwright-cli

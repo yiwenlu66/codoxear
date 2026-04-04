@@ -179,7 +179,14 @@
           obj = JSON.parse(txt);
         } catch (e) {
           console.error("api: invalid json response", { path, url, method, txt });
-          throw e;
+          throw Object.assign(new Error(`invalid json response (${res.status})`), {
+            status: res.status,
+            path,
+            url,
+            method,
+            responseText: txt,
+            cause: e,
+          });
         }
         const dt = performance.now() - t0;
         const rawPath = String(path ?? "");
@@ -190,6 +197,23 @@
         }
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
         return obj;
+      }
+
+      async function fetchSessionUiState(sid) {
+        if (!sid) return { requests: [] };
+        const s = latestSessions.find((item) => item && item.session_id === sid) || null;
+        if (s && sessionAgentBackend(s) !== "pi") return { requests: [] };
+        try {
+          return await api(`/api/sessions/${sid}/ui_state`);
+        } catch (e) {
+          if (e && (e.status === 400 || e.status === 404)) return { requests: [] };
+          throw e;
+        }
+      }
+
+      async function submitSessionUiResponse(sid, payload) {
+        if (!sid) throw new Error("session required");
+        return api(`/api/sessions/${sid}/ui_response`, { method: "POST", body: payload || {} });
       }
 
       function maybeReloadForUpdatedUi(nextVersion) {
@@ -203,6 +227,7 @@
 
       function fmtTs(ts) {
         try {
+          if (!isDisplayableEpochTs(ts)) return "";
           const d = new Date(ts * 1000);
           const y = String(d.getFullYear()).padStart(4, "0");
           const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -213,6 +238,12 @@
         } catch {
           return String(ts);
         }
+      }
+
+      function isDisplayableEpochTs(ts) {
+        const value = Number(ts);
+        // Pi delta polls can synthesize monotonic ordering values from file offsets.
+        return Number.isFinite(value) && value >= 946684800 && value <= 4102444800;
       }
 
       function fmtBytes(n) {
@@ -260,6 +291,8 @@
         if (!s || typeof s !== "object") return "";
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
         if (alias) return alias;
+        const firstMsg = typeof s.first_user_message === "string" ? s.first_user_message.trim() : "";
+        if (firstMsg) return firstMsg;
         const cwdName = baseName(s.cwd);
         if (cwdName) return cwdName;
         const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
@@ -405,6 +438,33 @@
         return kind === "web" ? "web-owned session" : "terminal-owned session";
       }
 
+      function sessionDeleteTargetLabel(s) {
+        const name = sessionDisplayName(s);
+        const sid = shortSessionId(s && s.session_id);
+        if (name && sid) return `"${name}" (${sid})`;
+        if (name) return `"${name}"`;
+        if (sid) return sid;
+        return "";
+      }
+
+      function deleteSessionConfirmText(s) {
+        const kind = sessionLaunchKind(s);
+        const target = sessionDeleteTargetLabel(s);
+        const targetText = target ? ` ${target}` : "";
+        if (kind === "terminal") {
+          return `Delete this terminal-owned session${targetText}? This will also stop the corresponding terminal session.`;
+        }
+        if (kind === "web_tmux") {
+          return `Delete this web-owned tmux session${targetText}? This will stop the tmux-backed session and remove it from Codoxear.`;
+        }
+        return `Delete this web-owned session${targetText}? This will stop it and remove it from Codoxear.`;
+      }
+
+      function syncPiViewToggle() {
+        // Some builds still call this hook after refreshing sessions.
+        // Keep it defined even when the Pi-specific view toggle UI is absent.
+      }
+
       function sessionIsFast(s) {
         return !!(s && typeof s.service_tier === "string" && s.service_tier.trim().toLowerCase() === "fast");
       }
@@ -416,6 +476,14 @@
         if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
         if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
         return { model_provider: value, preferred_auth_method: "apikey" };
+      }
+
+      function backendDisplayName(backend) {
+        return String(backend || "").trim().toLowerCase() === "pi" ? "Pi" : "Codex";
+      }
+
+      function sessionBackend(s) {
+        return s && String(s.backend || "").trim().toLowerCase() === "pi" ? "pi" : "codex";
       }
 
       function sessionProviderChoice(s) {
@@ -567,6 +635,7 @@
         if (!parsed) return null;
         const path = parsed.path;
         if (!path) return null;
+        if (path.endsWith(":") && !/^[A-Za-z]:$/.test(path)) return null;
         if (path.includes("://") || path.startsWith("mailto:")) return null;
         if (path.startsWith("//")) return null;
         const looksAbsolute = path.startsWith("/");
@@ -1149,17 +1218,18 @@
         root.innerHTML = "";
         const err = el("div", { class: "err" });
         const wrap = el("div", { class: "loginWrap" });
+        const loginForm = el("form", { id: "loginForm", class: "row2" }, [
+          el("input", { type: "password", id: "pw", placeholder: "Password" }),
+          el("button", { class: "primary", id: "loginBtn", type: "submit", text: "Login" }),
+          err,
+        ]);
         const box = el("div", { class: "login" }, [
           el("h1", { text: "Codoxear login" }),
-          el("div", { class: "row2" }, [
-            el("input", { type: "password", id: "pw", placeholder: "Password" }),
-            el("button", { class: "primary", id: "loginBtn", text: "Login" }),
-            err,
-          ]),
+          loginForm,
         ]);
         wrap.appendChild(box);
         root.appendChild(wrap);
-        $("#loginBtn").onclick = async () => {
+        const submitLogin = async () => {
           err.textContent = "";
           const pw = $("#pw").value;
           try {
@@ -1168,6 +1238,10 @@
           } catch (e) {
             err.textContent = e.obj?.error || e.message;
           }
+        };
+        $("#loginForm").onsubmit = async (e) => {
+          e.preventDefault();
+          await submitLogin();
         };
       }
 
@@ -1209,6 +1283,56 @@
         chat.appendChild(chatInner);
         chatWrap.appendChild(chat);
         chatWrap.appendChild(jumpBtn);
+
+        const todoDockHost = el("div", { class: "todoDockHost", id: "todoDockHost" });
+        const todoDockPanel = el("div", { class: "todoDockPanel", id: "todoDockPanel" });
+        const todoDockProgress = el("span", { class: "todoDockProgress", id: "todoDockProgress", text: "Todo snapshot" });
+        const todoDockCounts = el("span", { class: "todoDockCounts", id: "todoDockCounts", text: "0/0" });
+        const todoDockChevron = el("span", { class: "todoDockChevron", id: "todoDockChevron", text: "Show" });
+        const todoDockSummary = el("button", {
+          class: "todoDockSummary",
+          id: "todoDockSummary",
+          type: "button",
+          "aria-label": "Latest Todos",
+          "aria-expanded": "false",
+        }, [
+          el("span", { class: "todoDockSummaryMain" }, [
+            el("span", { class: "todoDockBadge", text: "Todos" }),
+            todoDockProgress,
+          ]),
+          el("span", { class: "todoDockSummaryMeta" }, [todoDockCounts, todoDockChevron]),
+        ]);
+        const todoDockBody = el("div", { class: "todoDockBody", id: "todoDockBody" });
+        todoDockPanel.appendChild(todoDockSummary);
+        todoDockPanel.appendChild(todoDockBody);
+        todoDockHost.appendChild(todoDockPanel);
+
+        function directChatRows() {
+          return Array.from(chatInner.children).filter(
+            (node) => node && node.classList && node.classList.contains("msg-row")
+          );
+        }
+
+        function firstDirectChatRow() {
+          for (const node of chatInner.children) {
+            if (node && node.classList && node.classList.contains("msg-row")) return node;
+          }
+          return null;
+        }
+
+        // Safe insertBefore: if the anchor was detached (e.g. by
+        // resetChatRenderState clearing innerHTML), re-attach it first.
+        // If the anchor belongs to some nested container, ignore it
+        // instead of moving it out of that subtree.
+        function safeInsertBefore(parent, node, anchor) {
+          if (anchor && !anchor.parentNode) {
+            parent.appendChild(anchor);
+          } else if (anchor && anchor.parentNode !== parent) {
+            anchor = null;
+          }
+          parent.insertBefore(node, anchor);
+        }
+
         const composer = el("div", { class: "composer" });
 
 	        let selected = null;
@@ -1242,10 +1366,13 @@
 	         let openSwipeContent = null;
 	         let openSwipeSessionId = null;
 	         let openSwipeTargetX = 0;
-	         let swipeRefreshDeferred = false;
-	        const cacheBySession = new Map();
+	        let swipeRefreshDeferred = false;
+        const cacheBySession = new Map();
         const cacheLoaded = new Set();
         const cacheSaveTimers = new Map();
+	        const uiStateBySession = new Map();
+	        const uiResponsePendingBySession = new Map();
+	        const uiResponseDraftBySession = new Map();
 	        let sessionIndex = new Map(); // session_id -> session info
         let recentCwds = [];
 	        let sending = false;
@@ -1258,6 +1385,7 @@
 			    let lastScrollTop = 0;
 				    let lastToken = null;
 				    let typingRow = null;
+        let lastKnownTool = null;
         let attachBadgeEl = null;
         let queueBadgeEl = null;
         const fileRefValidationCache = new Map();
@@ -1273,8 +1401,10 @@
         let newSessionResumeMenuOpen = false;
         let newSessionResumeCandidates = [];
         let newSessionResumeSelection = null;
+        let newSessionPiMode = "new";
         let newSessionResumeLoadSeq = 0;
         let newSessionResumeLoadTimer = null;
+        let newSessionResumeLoadError = "";
         let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
         let newSessionCwdError = "";
         newSessionBackend = "codex";
@@ -1300,6 +1430,7 @@
         };
         let localAnnouncementEnabled = localStorage.getItem("codoxear.announcementEnabled") === "1";
         let localNotificationEnabled = localStorage.getItem("codoxear.notificationEnabled") === "1";
+        let localEnterToSend = localStorage.getItem("codoxear.enterToSend") === "1";
         const desktopNotificationTimers = new Map();
         const deliveredDesktopNotificationIds = new Set();
         let notificationFeedSinceTs = Date.now() / 1000;
@@ -1344,8 +1475,8 @@
               if (!selected) return;
               openEditSession(selected);
             };
-				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
-				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
+		        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
+		        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
         const interruptBtn = el("button", {
           id: "interruptBtn",
@@ -1431,7 +1562,7 @@
         const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
         liveAudio.style.display = "none";
 
-        const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
+        const topMeta = el("div", { class: "topMeta" }, [statusChip, ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
         const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
         const topbar = el("div", { class: "topbar" }, [
@@ -1478,6 +1609,7 @@
         main.appendChild(topbar);
         main.appendChild(toast);
         main.appendChild(chatWrap);
+        main.appendChild(todoDockHost);
         main.appendChild(composer);
         app.appendChild(sidebar);
         app.appendChild(main);
@@ -1895,6 +2027,7 @@
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const enterToSendSettingToggle = el("input", { id: "enterToSendSettingToggle", type: "checkbox" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Settings" }),
@@ -1915,6 +2048,12 @@
               el("label", { class: "voiceToggleRow" }, [
                 narrationSettingToggle,
                 el("span", { text: "Announce narration messages" }),
+              ]),
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                enterToSendSettingToggle,
+                el("span", { text: "Press Enter to send" }),
               ]),
             ]),
           ]),
@@ -2023,6 +2162,27 @@
           "aria-expanded": "false",
         });
         const newSessionResumeMenu = el("div", { id: "newSessionResumeMenu", class: "filePickerMenu dialogPickerMenu" });
+        const newSessionPiModeButtons = new Map();
+        const newSessionPiModeChips = el("div", { class: "choiceChips", id: "newSessionPiModeChips" });
+        for (const [value, label] of [["new", "New"], ["continue", "Continue"]]) {
+          const btn = el("button", {
+            type: "button",
+            class: "choiceChip",
+            "data-pi-mode": value,
+            text: label,
+          });
+          newSessionPiModeButtons.set(value, btn);
+          newSessionPiModeChips.appendChild(btn);
+        }
+        const newSessionPiModeField = el("label", { class: "field", id: "newSessionPiModeField" }, [
+          el("span", { class: "fieldLabel", text: "Session mode" }),
+          newSessionPiModeChips,
+        ]);
+        const newSessionResumeFieldLabel = el("span", { class: "fieldLabel", text: "Resume conversation" });
+        const newSessionResumeField = el("label", { class: "field" }, [
+          newSessionResumeFieldLabel,
+          newSessionResumeBtn,
+        ]);
         const newSessionTmuxToggle = el("input", {
           id: "newSessionTmuxToggle",
           type: "checkbox",
@@ -2103,10 +2263,8 @@
               ]),
               newSessionFastField,
             ]),
-            el("label", { class: "field" }, [
-              el("span", { class: "fieldLabel", text: "Resume conversation" }),
-              newSessionResumeBtn,
-            ]),
+            newSessionPiModeField,
+            newSessionResumeField,
             newSessionProviderTmuxRow,
             newSessionWorktreeField,
           ]),
@@ -2167,6 +2325,9 @@
         }
 
         let currentQueueLen = 0;
+        let todoDockSnapshot = null;
+        let todoDockExpanded = false;
+        let todoDockDiagnosticsSeq = 0;
         function setStatus({ running, queueLen }) {
           const q = Math.max(0, Number(queueLen) || 0);
           const mobile = isMobile();
@@ -2216,6 +2377,155 @@
           setToast(`ctx ${lastToken.used}/${lastToken.ctx} (${lastToken.pct ?? "?"}% left)`);
         };
 
+        function normalizeTodoDockSnapshot(snapshot) {
+          const snap = snapshot && typeof snapshot === "object" ? snapshot : null;
+          if (!snap || snap.available !== true) return null;
+          const out = {
+            available: true,
+            error: false,
+            progress_text: typeof snap.progress_text === "string" ? snap.progress_text : "",
+            counts: snap.counts && typeof snap.counts === "object" ? snap.counts : {},
+            items: Array.isArray(snap.items) ? snap.items : [],
+          };
+          if (typeof snap.ts === "number" && Number.isFinite(snap.ts)) out.ts = snap.ts;
+          return out;
+        }
+
+        function latestTodoSnapshotFromEvents(events) {
+          const list = Array.isArray(events) ? events : [];
+          for (let i = list.length - 1; i >= 0; i -= 1) {
+            const ev = list[i];
+            if (!ev || ev.type !== "todo_snapshot") continue;
+            const snap = normalizeTodoDockSnapshot({
+              available: true,
+              error: false,
+              progress_text: ev.progress_text || "",
+              counts: ev.counts || {},
+              items: Array.isArray(ev.items) ? ev.items : [],
+              ts: typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : undefined,
+            });
+            if (snap) return snap;
+          }
+          return null;
+        }
+
+        function resolveTodoDockSnapshot(events, diagnosticsSnapshot) {
+          return latestTodoSnapshotFromEvents(events) || normalizeTodoDockSnapshot(diagnosticsSnapshot);
+        }
+
+        function updateTodoDockJumpOffset() {
+          // Keep the jump button anchored while still clearing any older offset state.
+          chatWrap.classList.remove("todoDockExpanded");
+          chatWrap.style.removeProperty("--todoDockJumpOffset");
+        }
+
+        function renderTodoDockBody(snapshot) {
+          todoDockBody.innerHTML = "";
+          const snap = snapshot && typeof snapshot === "object" ? snapshot : null;
+          if (!snap) return;
+          const items = Array.isArray(snap.items) ? snap.items : [];
+          const list = el("div", { class: "todoSnapshotList" });
+          if (!items.length) {
+            list.appendChild(el("div", { class: "detailsSectionEmpty", text: "No todo items in latest snapshot" }));
+          }
+          for (const item of items) {
+            const row = el("div", { class: "todoSnapshotItem" });
+            const head = el("div", { class: "todoSnapshotHead" });
+            head.appendChild(el("div", { class: "todoSnapshotTitle", text: String(item && item.title ? item.title : "Untitled todo") }));
+            head.appendChild(el("span", { class: "todoStatusChip", text: String(item && item.status ? item.status : "not-started") }));
+            row.appendChild(head);
+            if (item && item.description) {
+              row.appendChild(el("div", { class: "todoSnapshotDescription", text: String(item.description) }));
+            }
+            list.appendChild(row);
+          }
+          todoDockBody.appendChild(list);
+        }
+
+        function syncTodoDock() {
+          const snap = todoDockSnapshot && typeof todoDockSnapshot === "object" ? todoDockSnapshot : null;
+          const visible = Boolean(selected && snap);
+          todoDockHost.style.display = visible ? "block" : "none";
+          if (!visible) {
+            todoDockExpanded = false;
+            todoDockPanel.classList.remove("expanded");
+            todoDockSummary.setAttribute("aria-expanded", "false");
+            todoDockBody.innerHTML = "";
+            updateTodoDockJumpOffset();
+            return;
+          }
+          const counts = snap.counts && typeof snap.counts === "object" ? snap.counts : {};
+          const total = Math.max(0, Number(counts.total) || 0);
+          const completed = Math.max(0, Number(counts.completed) || 0);
+          todoDockProgress.textContent = snap.progress_text || "Todo snapshot";
+          todoDockCounts.textContent = `${completed}/${total}`;
+          todoDockChevron.textContent = todoDockExpanded ? "Hide" : "Show";
+          todoDockPanel.classList.toggle("expanded", todoDockExpanded);
+          todoDockSummary.setAttribute("aria-expanded", todoDockExpanded ? "true" : "false");
+          renderTodoDockBody(snap);
+          updateTodoDockJumpOffset();
+        }
+
+        function setTodoDockExpanded(next) {
+          todoDockExpanded = Boolean(next && todoDockSnapshot && selected);
+          syncTodoDock();
+        }
+
+        function setTodoDockSnapshot(snapshot, { preserveExpanded = true } = {}) {
+          todoDockSnapshot = snapshot && typeof snapshot === "object" ? snapshot : null;
+          if (!todoDockSnapshot) {
+            todoDockExpanded = false;
+          } else if (!preserveExpanded) {
+            todoDockExpanded = false;
+          }
+          syncTodoDock();
+        }
+
+        function maybeAdoptTodoDockSnapshot(snapshot) {
+          const next = snapshot && typeof snapshot === "object" ? snapshot : null;
+          if (!next) return false;
+          const currentTs = todoDockSnapshot && typeof todoDockSnapshot.ts === "number" && Number.isFinite(todoDockSnapshot.ts)
+            ? todoDockSnapshot.ts
+            : -Infinity;
+          const nextTs = typeof next.ts === "number" && Number.isFinite(next.ts) ? next.ts : -Infinity;
+          if (!todoDockSnapshot || nextTs >= currentTs) {
+            setTodoDockSnapshot(next);
+            return true;
+          }
+          return false;
+        }
+
+        async function hydrateTodoDockFromDiagnostics(sid) {
+          if (!sid || sid !== selected || todoDockSnapshot) return;
+          const reqSeq = ++todoDockDiagnosticsSeq;
+          try {
+            const d = await api(`/api/sessions/${sid}/diagnostics`);
+            if (sid !== selected || reqSeq !== todoDockDiagnosticsSeq || todoDockSnapshot) return;
+            const snap = resolveTodoDockSnapshot([], d && d.todo_snapshot ? d.todo_snapshot : null);
+            if (snap) setTodoDockSnapshot(snap, { preserveExpanded: true });
+          } catch (_) {
+            // ignore fallback failures; inline todo history still remains available
+          }
+        }
+
+        function refreshTodoDockFromEvents(events, { replace = false, allowDiagnostics = false, sid = selected } = {}) {
+          const snap = latestTodoSnapshotFromEvents(events);
+          if (snap) {
+            if (replace) setTodoDockSnapshot(snap, { preserveExpanded: true });
+            else maybeAdoptTodoDockSnapshot(snap);
+            return;
+          }
+          if (replace) setTodoDockSnapshot(null, { preserveExpanded: false });
+          if (allowDiagnostics && sid) void hydrateTodoDockFromDiagnostics(sid);
+        }
+
+        todoDockSummary.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setTodoDockExpanded(!todoDockExpanded);
+        };
+        window.addEventListener("resize", updateTodoDockJumpOffset);
+
         function invalidateOlderLoad() {
           if (!loadingOlder && !olderLoadController) return;
           olderLoadRequestId += 1;
@@ -2232,6 +2542,7 @@
         function resetChatRenderState() {
           invalidateOlderLoad();
           autoScroll = true;
+          setTodoDockSnapshot(null, { preserveExpanded: false });
           pendingUser.length = 0;
           sending = false;
           localEchoSeq = 0;
@@ -2271,16 +2582,85 @@
           return OLDER_PAGE_LIMIT;
         }
 
+        function buildMessagesUrl(sid, { offset = 0, init = false, limit = null, before = 0 } = {}) {
+          const params = new URLSearchParams();
+          params.set("offset", String(Math.max(0, Number(offset) || 0)));
+          if (init) params.set("init", "1");
+          if (typeof limit === "number" && Number.isFinite(limit)) params.set("limit", String(limit));
+          if (typeof before === "number" && Number.isFinite(before) && before > 0) params.set("before", String(before));
+          return `/api/sessions/${sid}/messages?${params.toString()}`;
+        }
+
         function cacheStorageKey(sid) {
           return `codexweb.cache.v5.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
-          if (typeof ev.text !== "string" || !ev.text.trim()) return null;
-          const out = { role: ev.role, text: ev.text };
-          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
-          return out;
+          if (!ev) return null;
+          if (ev.role === "user" || ev.role === "assistant") {
+            if (typeof ev.text !== "string" || !ev.text.trim()) return null;
+            const out = { role: ev.role, text: ev.text };
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "reasoning" && typeof ev.text === "string") {
+            const out = { type: "reasoning", text: ev.text };
+            if (typeof ev.summary === "string" && ev.summary) out.summary = ev.summary;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "tool_result" && typeof ev.name === "string") {
+            const text = typeof ev.text === "string" ? ev.text : "";
+            const out = { type: "tool_result", name: ev.name, text };
+            if (ev.is_error === true) out.is_error = true;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "tool" && typeof ev.name === "string") {
+            const out = { type: "tool", name: ev.name };
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "subagent") {
+            const out = { type: "subagent", agent: ev.agent || "subagent", output: ev.output || null, task: ev.task || null };
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "todo_snapshot") {
+            const out = {
+              type: "todo_snapshot",
+              progress_text: ev.progress_text || "",
+              counts: ev.counts || null,
+              items: Array.isArray(ev.items) ? ev.items : [],
+              operation: ev.operation || null,
+              text: ev.text || "",
+            };
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          if (ev.type === "ask_user") {
+            const hasAllowFreeform = Object.prototype.hasOwnProperty.call(ev, "allow_freeform")
+              || Object.prototype.hasOwnProperty.call(ev, "allowFreeform");
+            const hasAllowMultiple = Object.prototype.hasOwnProperty.call(ev, "allow_multiple")
+              || Object.prototype.hasOwnProperty.call(ev, "allowMultiple");
+            const out = {
+              type: "ask_user",
+              tool_call_id: typeof ev.tool_call_id === "string" ? ev.tool_call_id : null,
+              question: typeof ev.question === "string" ? ev.question : "",
+              context: typeof ev.context === "string" ? ev.context : "",
+              options: normalizeAskUserOptions(ev.options),
+              allow_freeform: hasAllowFreeform ? (ev.allow_freeform === true || ev.allowFreeform === true) : true,
+              allow_multiple: hasAllowMultiple ? (ev.allow_multiple === true || ev.allowMultiple === true) : false,
+              resolved: Boolean(ev.resolved),
+            };
+            if (typeof ev.answer === "string") out.answer = ev.answer;
+            else if (Array.isArray(ev.answer)) out.answer = ev.answer.filter((item) => typeof item === "string");
+            if (ev.cancelled === true) out.cancelled = true;
+            if (ev.was_custom === true) out.was_custom = true;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
+          return null;
         }
 
         function assistantTextKey(ev) {
@@ -2429,7 +2809,7 @@
             if (!norm) continue;
             const prev = out.length ? out[out.length - 1] : null;
             if (isAdjacentAssistantDuplicate(prev, norm)) continue;
-            out.push(norm);
+            upsertAskUserCacheEvent(out, norm);
           }
           if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
           cache.events = out;
@@ -2447,8 +2827,7 @@
             const norm = normalizeCacheEvent(ev);
             if (!norm) continue;
             if (isAdjacentAssistantDuplicate(prev, norm)) continue;
-            list.push(norm);
-            prev = norm;
+            prev = upsertAskUserCacheEvent(list, norm);
           }
           if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
           cache.events = list;
@@ -2461,7 +2840,443 @@
           cacheBySession.delete(sid);
           cacheLoaded.delete(sid);
           cacheSaveTimers.delete(sid);
+          uiStateBySession.delete(sid);
+          uiResponsePendingBySession.delete(sid);
+          uiResponseDraftBySession.delete(sid);
           localStorage.removeItem(cacheStorageKey(sid));
+        }
+
+        function uiStateRequestsForSession(sid) {
+          const data = sid ? uiStateBySession.get(sid) : null;
+          return data && Array.isArray(data.requests) ? data.requests : [];
+        }
+
+        function askUserRequestId(ev) {
+          if (!ev || typeof ev !== "object") return "";
+          const raw = typeof ev.tool_call_id === "string" ? ev.tool_call_id : typeof ev.id === "string" ? ev.id : "";
+          return raw.trim();
+        }
+
+        function askUserPendingResponseMap(sid, { create = false } = {}) {
+          if (!sid) return null;
+          const existing = uiResponsePendingBySession.get(sid);
+          if (existing || !create) return existing || null;
+          const next = new Map();
+          uiResponsePendingBySession.set(sid, next);
+          return next;
+        }
+
+        function askUserDraftMap(sid, { create = false } = {}) {
+          if (!sid) return null;
+          const existing = uiResponseDraftBySession.get(sid);
+          if (existing || !create) return existing || null;
+          const next = new Map();
+          uiResponseDraftBySession.set(sid, next);
+          return next;
+        }
+
+        function rememberPendingUiResponse(sid, requestId, payload) {
+          if (!sid || !requestId) return;
+          const store = askUserPendingResponseMap(sid, { create: true });
+          if (!store) return;
+          store.set(requestId, payload || {});
+        }
+
+        function rememberAskUserDraft(sid, requestId, payload) {
+          if (!sid || !requestId) return;
+          const store = askUserDraftMap(sid, { create: true });
+          if (!store) return;
+          store.set(requestId, payload || {});
+        }
+
+        function forgetPendingUiResponse(sid, requestId) {
+          if (!sid || !requestId) return;
+          const store = askUserPendingResponseMap(sid);
+          if (!store) return;
+          store.delete(requestId);
+          if (!store.size) uiResponsePendingBySession.delete(sid);
+        }
+
+        function forgetAskUserDraft(sid, requestId) {
+          if (!sid || !requestId) return;
+          const store = askUserDraftMap(sid);
+          if (!store) return;
+          store.delete(requestId);
+          if (!store.size) uiResponseDraftBySession.delete(sid);
+        }
+
+        function askUserBooleanFlag(source, snakeKey, camelKey, defaultValue = false) {
+          if (!source || typeof source !== "object") return defaultValue;
+          const hasSnake = Object.prototype.hasOwnProperty.call(source, snakeKey);
+          const hasCamel = Object.prototype.hasOwnProperty.call(source, camelKey);
+          if (!hasSnake && !hasCamel) return defaultValue;
+          const raw = hasSnake ? source[snakeKey] : source[camelKey];
+          return raw === true;
+        }
+
+        function normalizedAskUserAnswerValues(answer) {
+          const rawValues = typeof answer === "string" ? [answer] : Array.isArray(answer) ? answer : [];
+          const normalized = [];
+          const seen = new Set();
+          for (const item of rawValues) {
+            if (typeof item !== "string") continue;
+            const value = item.trim();
+            if (!value || seen.has(value)) continue;
+            seen.add(value);
+            normalized.push(value);
+          }
+          return normalized;
+        }
+
+        function normalizedAskUserAnswer(answer) {
+          return normalizedAskUserAnswerValues(answer).join(", ");
+        }
+
+        function normalizeAskUserOptions(rawOptions) {
+          if (!Array.isArray(rawOptions)) return [];
+          const normalized = [];
+          for (const item of rawOptions) {
+            if (typeof item === "string") {
+              const title = item.trim();
+              if (!title) continue;
+              normalized.push({ title, description: "" });
+              continue;
+            }
+            if (!item || typeof item !== "object") continue;
+            const title = typeof item.title === "string" ? item.title.trim() : "";
+            const description = typeof item.description === "string" ? item.description.trim() : "";
+            if (!title) continue;
+            normalized.push({ title, description });
+          }
+          return normalized;
+        }
+
+        function askUserHasPromptMetadata(ev) {
+          if (!ev || typeof ev !== "object") return false;
+          if (typeof ev.question === "string" && ev.question.trim()) return true;
+          if (typeof ev.context === "string" && ev.context.trim()) return true;
+          return normalizeAskUserOptions(ev.options).length > 0;
+        }
+
+        function mergeAskUserEventUpdate(existingEv, nextEv) {
+          if (!nextEv || nextEv.type !== "ask_user") return nextEv;
+          if (!existingEv || existingEv.type !== "ask_user") return nextEv;
+          if (askUserRequestId(existingEv) !== askUserRequestId(nextEv)) return nextEv;
+          const merged = { ...existingEv, ...nextEv };
+          if (askUserHasPromptMetadata(nextEv)) return merged;
+          merged.question = typeof existingEv.question === "string" ? existingEv.question : "";
+          merged.context = typeof existingEv.context === "string" ? existingEv.context : "";
+          merged.options = normalizeAskUserOptions(existingEv.options);
+          merged.allow_freeform = askUserBooleanFlag(existingEv, "allow_freeform", "allowFreeform", true);
+          merged.allow_multiple = askUserBooleanFlag(existingEv, "allow_multiple", "allowMultiple");
+          if (typeof existingEv.timeout_ms === "number" && !Number.isFinite(Number(nextEv.timeout_ms))) {
+            merged.timeout_ms = existingEv.timeout_ms;
+          }
+          return merged;
+        }
+
+        function upsertAskUserCacheEvent(list, ev) {
+          if (!Array.isArray(list)) return ev;
+          if (!ev || ev.type !== "ask_user") {
+            list.push(ev);
+            return ev;
+          }
+          const requestId = askUserRequestId(ev);
+          if (!requestId) {
+            list.push(ev);
+            return ev;
+          }
+          const idx = list.findIndex((item) => item && item.type === "ask_user" && askUserRequestId(item) === requestId);
+          if (idx < 0) {
+            list.push(ev);
+            return ev;
+          }
+          const merged = mergeAskUserEventUpdate(list[idx], ev);
+          list[idx] = merged;
+          return merged;
+        }
+
+        function isAskUserUiRequest(source) {
+          if (!source || typeof source !== "object") return false;
+          const interactionKind = typeof source.interaction_kind === "string"
+            ? source.interaction_kind
+            : typeof source.interactionKind === "string"
+              ? source.interactionKind
+              : "";
+          if (interactionKind === "ask_user") return true;
+          const toolName = typeof source.tool_name === "string"
+            ? source.tool_name
+            : typeof source.toolName === "string"
+              ? source.toolName
+              : "";
+          return toolName === "ask_user";
+        }
+
+        function askUserDraftState(sid, requestId, ev) {
+          const stored = sid && requestId ? askUserDraftMap(sid)?.get(requestId) : null;
+          if (stored && typeof stored === "object") {
+            return {
+              selected: normalizedAskUserAnswerValues(stored.selected),
+              freeform: typeof stored.freeform === "string" ? stored.freeform : "",
+            };
+          }
+          const options = new Set(normalizeAskUserOptions(ev && ev.options).map((option) => option.title));
+          const answerValues = normalizedAskUserAnswerValues(ev && ev.answer);
+          return {
+            selected: answerValues.filter((value) => options.has(value)),
+            freeform: answerValues.find((value) => !options.has(value)) || "",
+          };
+        }
+
+        function buildAskUserSubmissionPayload(ev, draft) {
+          const requestId = askUserRequestId(ev);
+          if (!requestId) return null;
+          const allowMultiple = askUserBooleanFlag(ev, "allow_multiple", "allowMultiple");
+          const selected = normalizedAskUserAnswerValues(draft && draft.selected);
+          const freeform = typeof (draft && draft.freeform) === "string" ? draft.freeform.trim() : "";
+          const values = selected.slice();
+          if (freeform && !values.includes(freeform)) values.push(freeform);
+          if (allowMultiple) return values.length ? { id: requestId, value: values } : null;
+          const value = freeform || values[0] || "";
+          return value ? { id: requestId, value } : null;
+        }
+
+        function syntheticAskUserEventForRequest(req, sid) {
+          if (!isAskUserUiRequest(req)) return null;
+          const title = typeof req.title === "string" ? req.title.trim() : "";
+          const message = typeof req.message === "string" ? req.message.trim() : "";
+          const question = typeof req.question === "string" && req.question.trim() ? req.question.trim() : message || title || "Choose an option";
+          const context = typeof req.context === "string" && req.context.trim() ? req.context.trim() : title && title !== question ? title : "";
+          return {
+            type: "ask_user",
+            tool_call_id: typeof req.id === "string" ? req.id : null,
+            question,
+            context,
+            options: normalizeAskUserOptions(req.options),
+            allow_freeform: askUserBooleanFlag(req, "allow_freeform", "allowFreeform", true),
+            allow_multiple: askUserBooleanFlag(req, "allow_multiple", "allowMultiple"),
+            resolved: false,
+            sid,
+            live_only: true,
+          };
+        }
+
+        function syntheticAskUserEventForPendingResponse(requestId, pending, sid) {
+          if (!isAskUserUiRequest(pending)) return null;
+          const allowMultiple = askUserBooleanFlag(pending, "allow_multiple", "allowMultiple");
+          const answerValues = normalizedAskUserAnswerValues(pending && pending.value);
+          return {
+            type: "ask_user",
+            tool_call_id: requestId,
+            question: typeof pending.question === "string" ? pending.question : "Choose an option",
+            context: typeof pending.context === "string" ? pending.context : "",
+            options: normalizeAskUserOptions(pending.options),
+            allow_freeform: askUserBooleanFlag(pending, "allow_freeform", "allowFreeform", true),
+            allow_multiple: allowMultiple,
+            resolved: true,
+            answer: allowMultiple ? answerValues : answerValues[0],
+            cancelled: pending.cancelled === true,
+            resolved_awaiting_log: true,
+            sid,
+            live_only: true,
+          };
+        }
+
+        function findAskUserRowById(requestId) {
+          if (!requestId) return null;
+          return Array.from(chatInner.querySelectorAll(".ask-user-row")).find((row) => row.dataset.askUserId === requestId) || null;
+        }
+
+        function clearResolvedAskUserPendingResponses(events, sid = selected) {
+          if (!sid || !Array.isArray(events)) return;
+          const seen = new Set();
+          for (const ev of events) {
+            if (!ev || ev.type !== "ask_user" || !ev.resolved) continue;
+            const requestId = askUserRequestId(ev);
+            if (!requestId || seen.has(requestId)) continue;
+            seen.add(requestId);
+            forgetPendingUiResponse(sid, requestId);
+            forgetAskUserDraft(sid, requestId);
+          }
+        }
+
+        function makeAskUserRow(ev) {
+          const sid = ev && ev.sid ? ev.sid : selected;
+          const requestId = askUserRequestId(ev);
+          const pendingResponse = requestId && sid ? askUserPendingResponseMap(sid)?.get(requestId) : null;
+          const resolvedAwaitingLog = Boolean((ev && ev.resolved_awaiting_log) || pendingResponse);
+          const resolved = Boolean(ev && ev.resolved) || resolvedAwaitingLog;
+          const allowFreeform = askUserBooleanFlag(ev, "allow_freeform", "allowFreeform", true);
+          const allowMultiple = askUserBooleanFlag(ev, "allow_multiple", "allowMultiple");
+          const answeredValues = pendingResponse && pendingResponse.cancelled !== true ? normalizedAskUserAnswerValues(pendingResponse.value) : normalizedAskUserAnswerValues(ev && ev.answer);
+          const answerText = pendingResponse
+            ? (pendingResponse.cancelled ? "Cancelled" : normalizedAskUserAnswer(pendingResponse.value))
+            : ev && ev.cancelled
+              ? "Cancelled"
+              : normalizedAskUserAnswer(ev && ev.answer);
+          const question = typeof (ev && ev.question) === "string" ? ev.question : "Choose an option";
+          const context = typeof (ev && ev.context) === "string" ? ev.context : "";
+          const options = normalizeAskUserOptions(ev && ev.options);
+          const draft = !resolved ? askUserDraftState(sid, requestId, ev) : { selected: answeredValues, freeform: "" };
+          const selectedValues = new Set(resolved ? answeredValues : draft.selected);
+          const row = el("div", { class: `msg-row ask-user-row${resolvedAwaitingLog ? " resolved-awaiting-log" : ""}` });
+          row.dataset.type = "ask_user";
+          row.dataset.askUserId = requestId;
+          if (ev && ev.live_only) row.dataset.liveOnly = "1";
+          if (typeof (ev && ev.ts) === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+          row.__askUserEvent = ev;
+
+          const card = el("div", { class: "askUserCard" });
+          card.appendChild(el("div", { class: "askUserBadge", text: "Ask user" }));
+          if (context) card.appendChild(el("div", { class: "askUserContext", text: context }));
+          card.appendChild(el("div", { class: "askUserQuestion", text: question }));
+          const canAnswer = Boolean(sid && requestId && !resolved);
+          if (options.length) {
+            const optionsWrap = el("div", { class: "askUserOptions" });
+            for (const option of options) {
+              const optionTitle = typeof option.title === "string" ? option.title : "";
+              const optionDescription = typeof option.description === "string" ? option.description : "";
+              if (!optionTitle) continue;
+              const isSelected = selectedValues.has(optionTitle);
+              const btn = el("button", {
+                class: allowMultiple ? "askUserOption is-multiple" : "askUserOption",
+                type: "button",
+              }, [
+                el("span", { class: "askUserOptionTitle", text: optionTitle }),
+                optionDescription ? el("span", { class: "askUserOptionDescription", text: optionDescription }) : null,
+              ].filter(Boolean));
+              if (isSelected) btn.classList.add("is-selected");
+              btn.disabled = !canAnswer;
+              btn.onclick = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (allowMultiple) {
+                  const nextSelected = draft.selected.includes(optionTitle)
+                    ? draft.selected.filter((value) => value !== optionTitle)
+                    : [...draft.selected, optionTitle];
+                  rememberAskUserDraft(sid, requestId, { ...draft, selected: nextSelected });
+                  syncLiveAskUserRows(sid);
+                  return;
+                }
+                void handleAskUserSubmit(ev, { selected: [optionTitle], freeform: "" });
+              };
+              optionsWrap.appendChild(btn);
+            }
+            card.appendChild(optionsWrap);
+          }
+          if (canAnswer && (allowFreeform || allowMultiple)) {
+            const composer = el("div", { class: "askUserComposer" });
+            let submitBtn = null;
+            if (allowFreeform) {
+              const input = el("textarea", {
+                class: "askUserFreeformInput",
+                rows: allowMultiple ? "2" : "1",
+                placeholder: allowMultiple ? "Add a custom answer" : "Type your answer",
+              });
+              input.value = draft.freeform || "";
+              input.oninput = () => {
+                draft.freeform = input.value;
+                rememberAskUserDraft(sid, requestId, draft);
+                if (submitBtn) submitBtn.disabled = !buildAskUserSubmissionPayload(ev, draft);
+              };
+              composer.appendChild(input);
+            }
+            submitBtn = el("button", {
+              class: "askUserSubmit",
+              type: "button",
+              text: allowMultiple ? "Submit selection" : "Submit answer",
+            });
+            submitBtn.disabled = !buildAskUserSubmissionPayload(ev, draft);
+            submitBtn.onclick = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void handleAskUserSubmit(ev, draft);
+            };
+            composer.appendChild(submitBtn);
+            card.appendChild(composer);
+          }
+          if (answerText) {
+            const suffix = resolvedAwaitingLog ? " (awaiting log)" : "";
+            card.appendChild(el("div", { class: "askUserAnswer", text: `Answer: ${answerText}${suffix}` }));
+          }
+          row.appendChild(card);
+          return { row };
+        }
+
+        async function handleAskUserSubmit(ev, draft) {
+          const sid = ev && ev.sid ? ev.sid : selected;
+          const requestId = askUserRequestId(ev);
+          if (!sid || !requestId) return;
+          const payload = buildAskUserSubmissionPayload(ev, draft);
+          if (!payload) return;
+          const pending = {
+            value: payload.value,
+            question: typeof ev.question === "string" ? ev.question : "",
+            context: typeof ev.context === "string" ? ev.context : "",
+            options: normalizeAskUserOptions(ev.options),
+            interaction_kind: "ask_user",
+            tool_name: "ask_user",
+            allow_freeform: askUserBooleanFlag(ev, "allow_freeform", "allowFreeform"),
+            allow_multiple: askUserBooleanFlag(ev, "allow_multiple", "allowMultiple"),
+          };
+          forgetAskUserDraft(sid, requestId);
+          rememberPendingUiResponse(sid, requestId, pending);
+          syncLiveAskUserRows(sid);
+          try {
+            await submitSessionUiResponse(sid, payload);
+            const nextState = await fetchSessionUiState(sid);
+            uiStateBySession.set(sid, nextState && typeof nextState === "object" ? nextState : { requests: [] });
+            syncLiveAskUserRows(sid);
+          } catch (e) {
+            forgetPendingUiResponse(sid, requestId);
+            syncLiveAskUserRows(sid);
+            setToast(`ask_user error: ${e && e.message ? e.message : "unknown error"}`);
+          }
+        }
+
+        function syncLiveAskUserRows(sid) {
+          if (!sid || sid !== selected) return;
+          const liveEvents = [];
+          const seen = new Set();
+          for (const req of uiStateRequestsForSession(sid)) {
+            const ev = syntheticAskUserEventForRequest(req, sid);
+            if (!ev) continue;
+            const requestId = askUserRequestId(ev);
+            if (!requestId || seen.has(requestId)) continue;
+            seen.add(requestId);
+            liveEvents.push(ev);
+          }
+          const pending = askUserPendingResponseMap(sid);
+          if (pending) {
+            for (const [requestId, payload] of pending.entries()) {
+              if (seen.has(requestId)) continue;
+              const ev = syntheticAskUserEventForPendingResponse(requestId, payload, sid);
+              if (!ev) continue;
+              seen.add(requestId);
+              liveEvents.push(ev);
+            }
+          }
+          for (const ev of liveEvents) {
+            const requestId = askUserRequestId(ev);
+            const existing = findAskUserRowById(requestId);
+            if (existing && existing.dataset.liveOnly !== "1") {
+              const existingEv = existing.__askUserEvent && typeof existing.__askUserEvent === "object" ? existing.__askUserEvent : {};
+              existing.replaceWith(makeAskUserRow({ ...mergeAskUserEventUpdate(existingEv, ev), sid }).row);
+              continue;
+            }
+            const nextRow = makeAskUserRow(ev).row;
+            if (existing) existing.replaceWith(nextRow);
+            else {
+              const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+              safeInsertBefore(chatInner, nextRow, anchor);
+            }
+          }
+          for (const row of Array.from(chatInner.querySelectorAll('.ask-user-row[data-live-only="1"]'))) {
+            if (seen.has(row.dataset.askUserId || "")) continue;
+            row.remove();
+          }
+          rebuildDecorations({ preserveScroll: false });
+          syncJumpButton();
         }
 
         function updateQueueBadge() {
@@ -2502,21 +3317,31 @@
 	            el("span", { class: "typingDot" }),
 	          ]);
 	          bubble.appendChild(dots);
+          bubble.appendChild(el("span", { class: "typingLabel" }));
 	          row.appendChild(bubble);
 	          typingRow = row;
 	          return row;
 	        }
 
-	        function setTyping(show) {
+	        function setTyping(show, toolName) {
 	          if (!show) {
 	            if (typingRow && typingRow.isConnected) typingRow.remove();
+	            lastKnownTool = null;
 	            return;
 	          }
+	          if (toolName === null) lastKnownTool = null;
+	          if (toolName) lastKnownTool = toolName;
 	          const row = ensureTypingRow();
+	          const label = row.querySelector(".typingLabel");
+	          if (label) {
+	            label.textContent = lastKnownTool || "";
+	            const dots = row.querySelector(".typingDots");
+	            if (dots) dots.setAttribute("title", lastKnownTool ? "Running " + lastKnownTool : "Running");
+	          }
 	          if (!row.isConnected) {
-	            chatInner.insertBefore(row, bottomSentinel);
+	            safeInsertBefore(chatInner, row, bottomSentinel);
 	          } else if (row.nextSibling !== bottomSentinel) {
-	            chatInner.insertBefore(row, bottomSentinel);
+	            safeInsertBefore(chatInner, row, bottomSentinel);
 	          }
 	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
 	        }
@@ -2527,6 +3352,7 @@
         }
 
         function syncJumpButton() {
+          updateTodoDockJumpOffset();
           jumpBtn.style.display = autoScroll || isNearBottom() ? "none" : "inline-flex";
         }
 
@@ -2567,7 +3393,7 @@
 
           for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
 
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row"));
+          const rows = directChatRows();
           let prevRole = null;
           let prevDay = null;
           let lastDay = null;
@@ -2575,7 +3401,7 @@
           for (const row of rows) {
             const role = row.classList.contains("user") ? "user" : "assistant";
             const ts = Number(row.dataset.ts || "0");
-            const day = ts ? ymd(new Date(ts * 1000)) : null;
+            const day = isDisplayableEpochTs(ts) ? ymd(new Date(ts * 1000)) : null;
 
             row.classList.remove("grouped");
             if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
@@ -2601,7 +3427,7 @@
         }
 
         function trimRenderedRows({ fromTop }) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = directChatRows().filter((x) => !x.classList.contains("typing-row"));
           if (rows.length <= CHAT_DOM_WINDOW) return;
           const extra = rows.length - CHAT_DOM_WINDOW;
           if (fromTop) {
@@ -2612,7 +3438,7 @@
         }
 
         function firstVisibleMessageRow() {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = directChatRows().filter((x) => !x.classList.contains("typing-row"));
           const viewportTop = chat.scrollTop + 1;
           for (const row of rows) {
             if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
@@ -2621,7 +3447,7 @@
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = directChatRows().filter((x) => !x.classList.contains("typing-row"));
           const allowedRows = Number.isFinite(Number(maxRows))
             ? Math.max(CHAT_DOM_WINDOW, Math.floor(Number(maxRows)))
             : CHAT_DOM_WINDOW;
@@ -2644,13 +3470,12 @@
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+          const displayTs = isDisplayableEpochTs(ts) ? ts : null;
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
           const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
           bubble.appendChild(md);
           void upgradeCandidateFileRefs(md);
-          if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
-
           if (pending) {
             bubble.style.opacity = "0.72";
             bubble.setAttribute("data-pending", "1");
@@ -2683,7 +3508,242 @@
           }
 
           row.appendChild(shell);
+          if (displayTs !== null) row.appendChild(el("div", { class: "ts", text: time24(new Date(displayTs * 1000)) }));
           return { row, bubble };
+        }
+
+        function makeToolRow(ev) {
+          const row = el("div", { class: "msg-row tool-marker" });
+          row.dataset.type = "tool";
+          row.dataset.toolName = ev.name || "";
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+          if (ev.args !== undefined) {
+            const card = document.createElement("details");
+            card.className = "tool-call-card";
+            const summary = document.createElement("summary");
+            summary.className = "tool-call-summary";
+            summary.appendChild(el("span", { class: "tool-chip", text: ev.name || "tool" }));
+            summary.appendChild(el("span", { class: "tool-call-label", text: "call" }));
+            card.appendChild(summary);
+            card.appendChild(el("pre", { class: "tool-call-args", text: JSON.stringify(ev.args, null, 2) }));
+            row.appendChild(card);
+            return { row };
+          }
+          const chip = el("span", { class: "tool-chip", text: ev.name || "tool" });
+          row.appendChild(chip);
+          return { row };
+        }
+
+        function makeToolResultRow(ev) {
+          const row = el("div", { class: "msg-row tool-result-row" });
+          row.dataset.type = "tool_result";
+          row.dataset.toolName = ev.name || "";
+          if (ev.is_error) row.classList.add("is-error");
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+
+          const card = document.createElement("details");
+          card.className = "tool-result-card";
+
+          const summary = document.createElement("summary");
+          summary.className = "tool-result-summary";
+          summary.appendChild(el("span", { class: "tool-chip", text: ev.name || "tool" }));
+          summary.appendChild(el("span", { class: "tool-result-label", text: "output" }));
+          card.appendChild(summary);
+
+          const body = el("div", { class: "tool-result-body" });
+          const md = el("div", { class: "md", html: mdToHtmlCached(ev.text || "") });
+          body.appendChild(md);
+          void upgradeCandidateFileRefs(md);
+          if (ev.details && typeof ev.details === "object") {
+            body.appendChild(el("pre", { class: "tool-result-details", text: JSON.stringify(ev.details, null, 2) }));
+          }
+          card.appendChild(body);
+
+          row.appendChild(card);
+          return { row };
+        }
+
+        function makeSubagentRow(ev) {
+          const row = el("div", { class: "msg-row subagent-row" });
+          row.dataset.type = "subagent";
+          row.dataset.agent = ev.agent || "subagent";
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+
+          const card = document.createElement("details");
+          card.className = "subagent-card";
+
+          const summary = document.createElement("summary");
+          summary.className = "subagent-summary";
+
+          const badge = el("span", { class: "subagent-badge", text: ev.agent || "subagent" });
+          summary.appendChild(badge);
+
+          if (ev.task) {
+            const taskText = el("span", {
+              class: "subagent-task",
+              text: ev.task.length > 120 ? ev.task.slice(0, 117) + "..." : ev.task,
+            });
+            summary.appendChild(taskText);
+          }
+
+          if (ev.output == null) {
+            const spinner = el("span", { class: "subagent-running", text: "running\u2026" });
+            summary.appendChild(spinner);
+          }
+
+          card.appendChild(summary);
+
+          if (ev.output) {
+            const body = el("div", { class: "subagent-body" });
+            const md = el("div", { class: "md", html: mdToHtmlCached(ev.output) });
+            body.appendChild(md);
+            card.appendChild(body);
+          } else if (ev.task && ev.task.length > 120) {
+            const body = el("div", { class: "subagent-body" });
+            const taskFull = el("div", { class: "subagent-task-full", text: ev.task });
+            body.appendChild(taskFull);
+            card.appendChild(body);
+          }
+
+          row.appendChild(card);
+          return { row };
+        }
+
+        function makeReasoningRow(ev) {
+          const row = el("div", { class: "msg-row reasoning-row" });
+          row.dataset.type = "reasoning";
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+
+          const card = document.createElement("details");
+          card.className = "reasoning-card";
+
+          const summary = document.createElement("summary");
+          summary.className = "reasoning-summary";
+          summary.appendChild(el("span", { class: "reasoning-badge", text: "Reasoning" }));
+          summary.appendChild(el("span", { class: "reasoning-preview", text: ev.summary || "Assistant reasoning" }));
+          card.appendChild(summary);
+
+          const body = el("div", { class: "reasoning-body" });
+          const md = el("div", { class: "md", html: mdToHtmlCached(ev.text || "") });
+          body.appendChild(md);
+          void upgradeCandidateFileRefs(md);
+          card.appendChild(body);
+
+          row.appendChild(card);
+          return { row };
+        }
+
+        function makeTodoSnapshotRow(ev) {
+          const row = el("div", { class: "msg-row todo-snapshot-row" });
+          row.dataset.type = "todo_snapshot";
+          if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
+
+          const card = document.createElement("details");
+          card.className = "todo-snapshot-card";
+          card.open = true;
+
+          const summary = document.createElement("summary");
+          summary.className = "todo-snapshot-summary";
+          summary.appendChild(el("span", { class: "todo-snapshot-badge", text: "Todos" }));
+          summary.appendChild(el("span", { class: "todo-snapshot-progress", text: ev.progress_text || "Todo snapshot" }));
+          const counts = ev.counts || {};
+          summary.appendChild(el("span", { class: "todo-snapshot-counts", text: `${counts.completed || 0}/${counts.total || 0}` }));
+          card.appendChild(summary);
+
+          const body = el("div", { class: "todo-snapshot-body" });
+          if (ev.operation) body.appendChild(el("div", { class: "todo-snapshot-op", text: `operation: ${ev.operation}` }));
+          const list = el("div", { class: "todo-snapshot-list" });
+          for (const item of Array.isArray(ev.items) ? ev.items : []) {
+            if (!item || typeof item !== "object") continue;
+            const title = typeof item.title === "string" ? item.title : "Untitled";
+            const status = typeof item.status === "string" ? item.status : "not-started";
+            const desc = typeof item.description === "string" ? item.description : "";
+            const itemRow = el("div", { class: `todo-snapshot-item status-${status}` }, [
+              el("span", { class: "todo-status-pill", text: status }),
+              el("div", { class: "todo-item-main" }, [
+                el("div", { class: "todo-item-title", text: title }),
+                desc ? el("div", { class: "todo-item-desc", text: desc }) : null,
+              ].filter(Boolean)),
+            ]);
+            list.appendChild(itemRow);
+          }
+          body.appendChild(list);
+          if (typeof ev.text === "string" && ev.text.trim()) {
+            body.appendChild(el("div", { class: "todo-snapshot-note", text: ev.text }));
+          }
+          card.appendChild(body);
+
+          row.appendChild(card);
+          return { row };
+        }
+
+        function eventVisibleInCurrentView(ev) {
+          if (!ev) return false;
+          if (ev.role === "user" || ev.role === "assistant") return true;
+          if (ev.type === "ask_user") return true;
+          if (ev.type === "reasoning") return true;
+          if (ev.type === "todo_snapshot") return true;
+          if (ev.type === "tool_result" || ev.type === "tool" || ev.type === "subagent") return true;
+          return false;
+        }
+
+        function renderEventRow(ev, { pending = false } = {}) {
+          if (!eventVisibleInCurrentView(ev)) return null;
+          if (ev.type === "tool_result") return makeToolResultRow(ev).row;
+          if (ev.type === "tool") return makeToolRow(ev).row;
+          if (ev.type === "subagent") return makeSubagentRow(ev).row;
+          if (ev.type === "ask_user") return makeAskUserRow(ev).row;
+          if (ev.type === "reasoning") return makeReasoningRow(ev).row;
+          if (ev.type === "todo_snapshot") return makeTodoSnapshotRow(ev).row;
+          if (ev.role === "user" || ev.role === "assistant") {
+            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+            return makeRow(ev, { ts, pending }).row;
+          }
+          return null;
+        }
+
+        function shouldConsolidateToolMarkers() {
+          return true;
+        }
+
+        function wrapToolGroup(markers) {
+          const names = markers.map(m => m.dataset.toolName).filter(Boolean);
+          const details = document.createElement("details");
+          details.className = "msg-row tool-group";
+          const summary = document.createElement("summary");
+          summary.className = "tool-group-summary";
+          const unique = [...new Set(names)];
+          const label = names.length === 1
+            ? names[0]
+            : `${names.length} tools: ${unique.slice(0, 5).join(", ")}${unique.length > 5 ? ", ..." : ""}`;
+          summary.textContent = label;
+          details.appendChild(summary);
+          const list = el("div", { class: "tool-group-list" });
+          markers[0].parentNode.insertBefore(details, markers[0]);
+          for (const m of markers) {
+            m.classList.add("consolidated");
+            list.appendChild(m);
+          }
+          details.appendChild(list);
+        }
+
+        function consolidateToolMarkers() {
+          if (!shouldConsolidateToolMarkers()) return;
+          const all = chatInner.querySelectorAll(".tool-marker:not(.consolidated)");
+          if (!all.length) return;
+          const markers = [...all];
+          let group = [markers[0]];
+          for (let i = 1; i < markers.length; i++) {
+            const m = markers[i];
+            const prev = group[group.length - 1];
+            if (m.previousElementSibling === prev || (m.previousElementSibling && m.previousElementSibling.classList.contains("tool-group"))) {
+              group.push(m);
+            } else {
+              wrapToolGroup(group);
+              group = [m];
+            }
+          }
+          if (group.length) wrapToolGroup(group);
         }
 
       function normalizeTextForPendingMatch(s) {
@@ -2692,7 +3752,41 @@
       }
 
       function eventKey(ev) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+        if (!ev) return "";
+        if (ev.type === "tool_result") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          const text = typeof ev.text === "string" ? pendingMatchKey(ev.text) : "";
+          if (ts === null || !text) return "";
+          return `tool_result|${Math.round(ts * 1000)}|${ev.name || ""}|${text}`;
+        }
+        if (ev.type === "tool") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          if (ts === null) return "";
+          return `tool|${Math.round(ts * 1000)}|${ev.name || ""}`;
+        }
+        if (ev.type === "subagent") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          if (ts === null) return "";
+          return `subagent|${Math.round(ts * 1000)}|${ev.agent || ""}`;
+        }
+        if (ev.type === "reasoning") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          if (ts === null) return "";
+          return `reasoning|${Math.round(ts * 1000)}|${pendingMatchKey(ev.text || "")}`;
+        }
+        if (ev.type === "todo_snapshot") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          if (ts === null) return "";
+          return `todo_snapshot|${Math.round(ts * 1000)}|${ev.progress_text || ""}`;
+        }
+        if (ev.type === "ask_user") {
+          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+          const id = askUserRequestId(ev);
+          const stem = id || (ts === null ? "" : String(Math.round(ts * 1000)));
+          if (!stem) return "";
+          return `ask_user|${stem}|${pendingMatchKey(ev.question || "")}|${ev.resolved ? "1" : "0"}`;
+        }
+        if (ev.role !== "user" && ev.role !== "assistant") return "";
         const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
         if (ts === null) return "";
         const tsMs = Math.round(ts * 1000);
@@ -2892,9 +3986,15 @@
                  e.stopPropagation();
                }
                closeOpenSwipe();
-               if (!confirm("Delete this session?")) return;
+               if (!confirm(deleteSessionConfirmText(s))) return;
                try {
                  await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
+                 if (selected === s.session_id) {
+                   pollGen += 1;
+                   if (pollTimer) clearTimeout(pollTimer);
+                   pollTimer = null;
+                   pollKickPending = false;
+                 }
                  clearCache(s.session_id);
                  if (selected === s.session_id) {
                    selected = null;
@@ -2948,25 +4048,21 @@
                if (!cwd) {
                  setToast("cwd unavailable");
                  return;
-               }
-               await spawnSessionWithCwd(
+              }
+                await spawnSessionWithCwd({
                  cwd,
-                 null,
-                 null,
-                 "",
-                 sessionProviderChoice(s),
-                 s && s.model ? s.model : "default",
-                 s && s.reasoning_effort ? s.reasoning_effort : "high",
-                 sessionIsFast(s),
-                 !!(s && s.transport === "tmux"),
-                 null,
-                 sessionAgentBackend(s)
-               );
+                 providerChoice: sessionProviderChoice(s),
+                 model: s && s.model ? s.model : "default",
+                 reasoningEffort: s && s.reasoning_effort ? s.reasoning_effort : "high",
+                 fast: sessionIsFast(s),
+                 createInTmux: !!(s && s.transport === "tmux"),
+                 backend: sessionAgentBackend(s),
+               });
              };
              const delBtn = el("button", {
                class: "icon-btn danger sessionDel",
-               title: "Delete session",
-               "aria-label": "Delete session",
+               title: `Delete session ${sessionDeleteTargetLabel(s)}`.trim(),
+               "aria-label": `Delete session ${sessionDeleteTargetLabel(s)}`.trim(),
                type: "button",
                html: iconSvg("trash"),
              });
@@ -2977,6 +4073,7 @@
                  "stateDot" +
                  (s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
              });
+             const bk = sessionBackend(s);
              const titleRow = el("div", { class: "sessionTitleRow" }, [
                stateDot,
                el("div", { class: "titleLine", title: s.cwd || "" }, [
@@ -2985,7 +4082,7 @@
                    ? el("span", { class: "sessionFastIcon", html: iconSvg("lightning"), title: "Fast session" })
                    : null,
                ].filter(Boolean)),
-             ]);
+             ].filter(Boolean));
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
 	             const metaItems = [
 	               el("img", {
@@ -3157,7 +4254,80 @@
         }
 
         function appendEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
+          if (!ev) return;
+          if (ev.type === "ask_user") {
+            const requestId = askUserRequestId(ev);
+            const existing = requestId ? findAskUserRowById(requestId) : null;
+            if (existing && existing.__askUserEvent && typeof existing.__askUserEvent === "object") {
+              const existingEv = existing.__askUserEvent;
+              ev = mergeAskUserEventUpdate(existingEv, ev);
+            }
+            if (requestId && selected && ev.resolved) {
+              if (existing) existing.remove();
+              forgetPendingUiResponse(selected, requestId);
+            }
+          }
+          if (ev.type === "todo_snapshot") {
+            refreshTodoDockFromEvents([ev], { replace: false, allowDiagnostics: false });
+          }
+          if (ev.type === "tool_result") {
+            if (isDuplicateEvent(ev)) return;
+            const stick = autoScroll || isNearBottom();
+            const row = renderEventRow(ev, { pending: Boolean(ev.pending) });
+            if (!row) {
+              markEventSeen(ev);
+              return;
+            }
+            const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+            safeInsertBefore(chatInner, row, anchor);
+            lastAssistantKey = "";
+            markEventSeen(ev);
+            if (!ev.pending && selected) appendCacheEvents(selected, [ev]);
+            if (stick) requestAnimationFrame(() => scrollToBottom());
+            return;
+          }
+          if (ev.type === "tool") {
+            if (isDuplicateEvent(ev)) return;
+            const stick = autoScroll || isNearBottom();
+            const row = renderEventRow(ev, { pending: Boolean(ev.pending) });
+            if (!row) {
+              markEventSeen(ev);
+              return;
+            }
+            const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+            safeInsertBefore(chatInner, row, anchor);
+            lastAssistantKey = "";
+            markEventSeen(ev);
+            if (!ev.pending && selected) appendCacheEvents(selected, [ev]);
+            if (stick) requestAnimationFrame(() => scrollToBottom());
+            return;
+          }
+          if (ev.type === "subagent") {
+            const stick = autoScroll || isNearBottom();
+            // Replace pending subagent row when completed version arrives
+            if (ev.output != null) {
+              const pending = chatInner.querySelector(
+                `.subagent-row[data-ts="${ev.ts}"][data-agent="${ev.agent || "subagent"}"]`
+              );
+              if (pending) pending.remove();
+            } else if (isDuplicateEvent(ev)) {
+              return;
+            }
+            const row = renderEventRow(ev, { pending: Boolean(ev.pending) });
+            if (!row) return;
+            const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+            safeInsertBefore(chatInner, row, anchor);
+            lastAssistantKey = "";
+            markEventSeen(ev);
+            if (!ev.pending && selected) appendCacheEvents(selected, [ev]);
+            if (stick) requestAnimationFrame(() => scrollToBottom());
+            return;
+          }
+          if (!eventVisibleInCurrentView(ev)) {
+            markEventSeen(ev);
+            return;
+          }
+          if (ev.role !== "user" && ev.role !== "assistant" && ev.type !== "tool_result" && ev.type !== "tool" && ev.type !== "reasoning" && ev.type !== "todo_snapshot" && ev.type !== "ask_user") return;
           if (consumePendingUserIfMatches(ev)) return;
           if (!ev.pending && ev.role === "assistant") {
             const k = assistantTextKey(ev);
@@ -3166,10 +4336,13 @@
           if (isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
-          const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-           const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+	          const row = renderEventRow(ev, { pending: Boolean(ev.pending) });
+	          if (!row) {
+	            markEventSeen(ev);
+	            return;
+	          }
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-	          chatInner.insertBefore(row, anchor);
+	          safeInsertBefore(chatInner, row, anchor);
             trimRenderedRows({ fromTop: true });
           rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
@@ -3182,28 +4355,30 @@
             requestAnimationFrame(() => scrollToBottom());
           }
           syncJumpButton();
-          if (ev.role === "user") lastAssistantKey = "";
+          if (ev.role === "user" || ev.type === "ask_user") lastAssistantKey = "";
           else if (!ev.pending && ev.role === "assistant") lastAssistantKey = assistantTextKey(ev) || "";
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
           const msgs = [];
           for (const ev of allEvents) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            if (!eventVisibleInCurrentView(ev)) continue;
             msgs.push(ev);
           }
           if (!msgs.length) return;
+          clearResolvedAskUserPendingResponses(msgs);
           autoScroll = false;
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+            const row = renderEventRow(ev, { pending: false });
+            if (row) frag.appendChild(row);
           }
           const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
           const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
-          const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
+          const firstMsg = directChatRows().find((row) => !row.classList.contains("typing-row")) || null;
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
-          chatInner.insertBefore(frag, anchor);
+          safeInsertBefore(chatInner, frag, anchor);
+          consolidateToolMarkers();
           if (!preserveViewport) chat.scrollTop = 1;
           trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
           rebuildDecorations({ preserveScroll: false });
@@ -3212,6 +4387,7 @@
           } else {
             chat.scrollTop = 1;
           }
+          refreshTodoDockFromEvents(msgs, { replace: false, allowDiagnostics: false });
           lastScrollTop = chat.scrollTop;
           syncJumpButton();
         }
@@ -3232,7 +4408,7 @@
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
             const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`, {
+            const data = await api(buildMessagesUrl(sid, { offset: 0, init: true, limit: olderPageLimit(), before: reqBefore }), {
               signal: ctl.signal,
             });
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
@@ -3271,8 +4447,9 @@
          const msgs = [];
          const initDedup = new Set();
          for (const ev of allEvents) {
-               if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-               if (consumePendingUserIfMatches(ev)) continue;
+               if (!ev) continue;
+               if (!eventVisibleInCurrentView(ev)) continue;
+               if (ev.role && consumePendingUserIfMatches(ev)) continue;
              const k = eventKey(ev);
              if (k && initDedup.has(k)) continue;
              if (k) initDedup.add(k);
@@ -3280,18 +4457,19 @@
              if (isAdjacentAssistantDuplicate(prev, ev)) continue;
                msgs.push(ev);
          }
-           if (!msgs.length) return;
-           lastAssistantKey = "";
+          if (!msgs.length) return;
+          clearResolvedAskUserPendingResponses(msgs);
+          lastAssistantKey = "";
            for (let i = msgs.length - 1; i >= 0; i--) {
              const ev = msgs[i];
              if (!ev) continue;
-             if (ev.role === "user") break;
+             if (ev.role === "user" || ev.type === "tool" || ev.type === "tool_result" || ev.type === "subagent" || ev.type === "ask_user") break;
              if (ev.role === "assistant") {
                lastAssistantKey = assistantTextKey(ev) || "";
                break;
              }
            }
-           if (selected) replaceCacheEvents(selected, msgs);
+          if (selected) replaceCacheEvents(selected, msgs);
            recentEventKeys.length = 0;
            recentEventKeySet.clear();
            for (const ev of msgs) {
@@ -3299,13 +4477,15 @@
           }
 	          const frag = document.createDocumentFragment();
           for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+	            const row = renderEventRow(ev, { pending: false });
+	            if (row) frag.appendChild(row);
 	          }
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-	          chatInner.insertBefore(frag, anchor);
+	          safeInsertBefore(chatInner, frag, anchor);
+            consolidateToolMarkers();
             trimRenderedRows({ fromTop: true });
 	          rebuildDecorations({ preserveScroll: false });
+            if (selected) syncLiveAskUserRows(selected);
             markClickFirstPaint();
 	          // Ensure scroll-to-bottom happens after layout.
 	          requestAnimationFrame(() => {
@@ -3319,13 +4499,15 @@
 	          backfillState = null;
 	        }
 
-			        async function pollMessages(sid = selected, gen = pollGen) {
-			          if (!sid) return;
-			          try {
+		        async function pollMessages(sid = selected, gen = pollGen) {
+		          if (!sid) return;
+		          try {
 	            const prevOffset = offset;
 	            const reqOffset = offset;
-		            const data = await api(`/api/sessions/${sid}/messages?offset=${reqOffset}`);
+	            const data = await api(buildMessagesUrl(sid, { offset: reqOffset }));
+	            const uiState = await fetchSessionUiState(sid);
 	            if (gen !== pollGen || sid !== selected) return;
+	            uiStateBySession.set(sid, uiState && typeof uiState === "object" ? uiState : { requests: [] });
 	            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
 	            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
 	            const nowBusy = Boolean(data.busy);
@@ -3344,7 +4526,8 @@
                 replaceCacheEvents(sid, []);
 	              setStatus({ running: Boolean(nowBusy), queueLen: data.queue_len });
 	              setContext(data.token);
-	              setTyping(Boolean(nowBusy));
+	              setTyping(Boolean(nowBusy), data.diag && data.diag.last_tool);
+	              syncLiveAskUserRows(sid);
 	              return;
 	            }
 	            if (activeLogPath && lp && lp !== activeLogPath) {
@@ -3357,22 +4540,27 @@
               turnOpen = false;
               setStatus({ running: false, queueLen: 0 });
               try {
-                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+                const d2 = await api(buildMessagesUrl(sid, { offset: 0, init: true, limit: initPageLimit(), before: 0 }));
                 if (gen !== pollGen || sid !== selected) return;
                 if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
                 if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
                 offset = d2.offset;
                 const evs2 = Array.isArray(d2.events) ? d2.events : [];
-                if (evs2.length) startInitialRender(evs2);
+                if (evs2.length) {
+                  startInitialRender(evs2);
+                  refreshTodoDockFromEvents(evs2, { replace: true, allowDiagnostics: true, sid });
+                } else {
+                  refreshTodoDockFromEvents([], { replace: true, allowDiagnostics: true, sid });
+                }
                 olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
-                setCacheMeta(sid, {
-                  threadId: activeThreadId,
-                  logPath: activeLogPath,
-                  offset,
-                  olderBefore,
-                  hasOlder: Boolean(d2.has_older),
-                });
+	            setCacheMeta(sid, {
+	              threadId: activeThreadId,
+	              logPath: activeLogPath,
+	              offset,
+	              olderBefore,
+	              hasOlder: Boolean(d2.has_older),
+	            });
 	                const nowBusy2 = Boolean(d2.busy);
 	                const turnStart2 = Boolean(d2.turn_start);
 	                const turnEnd2 = Boolean(d2.turn_end);
@@ -3381,7 +4569,8 @@
 	                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
                 setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
                 setContext(d2.token);
-                setTyping(Boolean(turnOpen || nowBusy2));
+                setTyping(Boolean(turnOpen || nowBusy2), d2.diag && d2.diag.last_tool);
+                syncLiveAskUserRows(sid);
                 } catch (e2) {
                   console.error("poll init reload failed", e2);
                   throw e2;
@@ -3390,13 +4579,16 @@
              }
 	
 		            offset = data.offset;
-              setCacheMeta(sid, { threadId: tid || activeThreadId, logPath: activeLogPath || lp || null, offset });
+	            setCacheMeta(sid, { threadId: tid || activeThreadId, logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
+              refreshTodoDockFromEvents(evs, { replace: true, allowDiagnostics: true, sid });
             } else {
               for (const ev of evs) appendEvent(ev);
             }
+            consolidateToolMarkers();
+            syncLiveAskUserRows(sid);
 
             const turnStart = Boolean(data.turn_start);
             const turnEnd = Boolean(data.turn_end);
@@ -3410,14 +4602,16 @@
 
             if ((turnEnd || turnAborted) && turnOpen) {
               turnOpen = false;
+              lastKnownTool = null;
             }
 		            if (turnOpen && !nowBusy) {
 		              turnOpen = false;
+		              lastKnownTool = null;
 		            }
 
 				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
 				            setContext(data.token);
-				            setTyping(Boolean(turnOpen || nowBusy));
+				            setTyping(Boolean(turnOpen || nowBusy), data.diag && data.diag.last_tool);
 	            const s = sessionIndex.get(sid);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
 		          } catch (e) {
@@ -3491,8 +4685,10 @@
         }
 
         async function refreshInitPageState(sid, gen, { rerender = false } = {}) {
-          const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+          const data = await api(buildMessagesUrl(sid, { offset: 0, init: true, limit: initPageLimit(), before: 0 }));
+          const uiState = await fetchSessionUiState(sid);
           if (pollGen !== gen || selected !== sid) return null;
+          uiStateBySession.set(sid, uiState && typeof uiState === "object" ? uiState : { requests: [] });
           const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
           const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
           const nextOlderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
@@ -3518,14 +4714,19 @@
           if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
           setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
           setContext(data.token);
-          setTyping(Boolean(turnOpen || nowBusy));
+          setTyping(Boolean(turnOpen || nowBusy), data.diag && data.diag.last_tool);
 
           if (rerender || identityChanged) {
             offset = Number(data.offset) || 0;
             resetChatRenderState();
             const evs = Array.isArray(data.events) ? data.events : [];
-            if (evs.length) startInitialRender(evs);
-            else replaceCacheEvents(sid, []);
+            if (evs.length) {
+              startInitialRender(evs);
+              refreshTodoDockFromEvents(evs, { replace: true, allowDiagnostics: true, sid });
+            } else {
+              replaceCacheEvents(sid, []);
+              refreshTodoDockFromEvents([], { replace: true, allowDiagnostics: true, sid });
+            }
             olderBefore = nextOlderBefore;
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             setCacheMeta(sid, {
@@ -3536,6 +4737,7 @@
               hasOlder: nextHasOlder,
             });
           }
+          syncLiveAskUserRows(sid);
           return data;
         }
 
@@ -3589,8 +4791,8 @@
                 clickLoadT0 = performance.now();
                 clickMetricPending = true;
           if (pollGen !== myGen || selected !== sid) return;
-			          const s0 = sessionIndex.get(sid);
-			          if (s0 && s0.token) setContext(s0.token);
+		          const s0 = sessionIndex.get(sid);
+		          if (s0 && s0.token) setContext(s0.token);
                 const cached = getCache(sid);
                 if (cached && !cacheMatchesSession(cached, s0)) clearCache(sid);
                 const hasCached = Boolean(
@@ -3607,6 +4809,7 @@
                   olderBefore = Number(cached.older_before) || 0;
                   setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
                   startInitialRender(cached.events);
+                  refreshTodoDockFromEvents(cached.events, { replace: true, allowDiagnostics: true, sid });
                   try {
                     await refreshInitPageState(sid, myGen);
                   } catch {
@@ -3881,8 +5084,19 @@
           return !!localAnnouncementEnabled;
         }
 
+        function enterToSendEnabled() {
+          return !!localEnterToSend;
+        }
+
         function notificationsEnabledLocally() {
           return !!localNotificationEnabled;
+        }
+
+        function setEnterToSendEnabled(enabled) {
+          localEnterToSend = !!enabled;
+          if (localEnterToSend) localStorage.setItem("codoxear.enterToSend", "1");
+          else localStorage.removeItem("codoxear.enterToSend");
+          if (enterToSendSettingToggle) enterToSendSettingToggle.checked = !!enterToSendEnabled();
         }
 
         function setAnnouncementEnabled(enabled) {
@@ -4159,6 +5373,7 @@
           if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
           if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
           if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+          if (enterToSendSettingToggle) enterToSendSettingToggle.checked = !!enterToSendEnabled();
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
         }
 
@@ -4426,6 +5641,9 @@
           voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
           scheduleVoiceSave();
         };
+        enterToSendSettingToggle.onchange = (e) => {
+          setEnterToSendEnabled(Boolean(e.target.checked));
+        };
         voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
         $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
         voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
@@ -4581,6 +5799,7 @@
           newSessionCwdInput.value = String(cwd || "");
           setNewSessionCwdError("");
           syncNewSessionNamePlaceholder();
+          resetNewSessionResumeState();
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
           applyDialogMenus();
@@ -4649,15 +5868,61 @@
           button.appendChild(el("span", { class: "pickerButtonChevron", html: iconSvg("chevronDown") }));
         }
 
+        function piContinueMissingSelectionMessage() {
+          if (newSessionBackend !== "pi" || newSessionPiMode !== "continue") return "";
+          if (newSessionResumeLoadError) return newSessionResumeLoadError;
+          if (newSessionResumeSelection && newSessionResumeSelection.session_id) return "";
+          if (newSessionResumeCandidates.length) return "Choose a Pi session to continue.";
+          return "No Pi sessions available to continue for this directory.";
+        }
+
+        function syncNewSessionPiContinueStatus() {
+          const blocker = piContinueMissingSelectionMessage();
+          const current = String(newSessionStatus.textContent || "").trim();
+          if (blocker) {
+            newSessionStatus.textContent = blocker;
+            return blocker;
+          }
+          if (current === "Choose a Pi session to continue." || current === "No Pi sessions available to continue for this directory.") {
+            newSessionStatus.textContent = "";
+          }
+          return "";
+        }
+
         function setNewSessionResumeSelection(item) {
           newSessionResumeSelection = item && typeof item === "object" ? item : null;
+          const needsExplicitPiChoice = newSessionBackend === "pi" && newSessionPiMode === "continue";
           setPickerButtonContent(
             newSessionResumeBtn,
-            newSessionResumeSelection ? newSessionResumeLabel(newSessionResumeSelection) : "Start fresh",
+            newSessionResumeSelection ? newSessionResumeLabel(newSessionResumeSelection) : needsExplicitPiChoice ? "Choose a session" : "Start fresh",
             "",
             !newSessionResumeSelection
           );
           syncNewSessionWorktreeUi();
+          syncNewSessionPiContinueStatus();
+        }
+
+        function setNewSessionPiMode(value) {
+          newSessionPiMode = String(value || "").trim().toLowerCase() === "continue" ? "continue" : "new";
+          for (const [mode, btn] of newSessionPiModeButtons.entries()) btn.classList.toggle("active", mode === newSessionPiMode);
+          if (newSessionPiMode !== "continue") newSessionResumeMenuOpen = false;
+          if (newSessionPiMode !== "continue" && newSessionResumeSelection) setNewSessionResumeSelection(null);
+          else setNewSessionResumeSelection(newSessionResumeSelection);
+          renderNewSessionResumeMenu();
+          syncNewSessionBackendUi();
+          syncNewSessionPiContinueStatus();
+        }
+
+        function resetNewSessionResumeState() {
+          if (newSessionResumeLoadTimer) {
+            clearTimeout(newSessionResumeLoadTimer);
+            newSessionResumeLoadTimer = null;
+          }
+          newSessionResumeLoadSeq += 1;
+          newSessionResumeLoadError = "";
+          newSessionResumeCandidates = [];
+          setNewSessionResumeSelection(null);
+          renderNewSessionResumeMenu();
         }
 
         function renderNewSessionBackendTabs() {
@@ -4678,7 +5943,10 @@
                 height: "20",
               }),
             ]);
-            btn.onclick = () => setNewSessionBackend(backend, { resetSelections: true });
+            btn.onclick = () => {
+              if (active) return;
+              setNewSessionBackend(backend, { resetSelections: true });
+            };
             newSessionBackendTabs.appendChild(btn);
           }
         }
@@ -4743,6 +6011,9 @@
           renderNewSessionProviderMenu();
           renderNewSessionReasoningMenu();
           renderNewSessionModelMenu();
+          if (resetSelections || previous !== next) resetNewSessionResumeState();
+          syncNewSessionBackendUi();
+          syncNewSessionPiContinueStatus();
           scheduleNewSessionResumeLoad();
         }
 
@@ -4828,6 +6099,24 @@
           newSessionFastToggle.checked = newSessionFast;
         }
 
+        function syncNewSessionBackendUi() {
+          const isPi = newSessionBackend === "pi";
+          if (isPi) {
+            newSessionTmuxToggle.checked = false;
+            if (newSessionWorktreeToggle.checked) newSessionWorktreeToggle.checked = false;
+          }
+          const showPiMode = isPi;
+          const showResumeField = !isPi || newSessionPiMode === "continue";
+          newSessionPiModeField.style.display = showPiMode ? "" : "none";
+          newSessionResumeField.style.display = showResumeField ? "" : "none";
+          newSessionResumeFieldLabel.textContent = isPi ? "Continue session" : "Resume conversation";
+          newSessionProviderTmuxRow.style.display = isPi ? "none" : "";
+          renderNewSessionResumeMenu();
+          if (!showResumeField && newSessionResumeSelection) setNewSessionResumeSelection(null);
+          syncNewSessionWorktreeUi();
+          syncNewSessionPiContinueStatus();
+        }
+
         function worktreePathSlug(branch) {
           return String(branch || "")
             .trim()
@@ -4861,6 +6150,13 @@
         }
 
         function syncNewSessionWorktreeUi() {
+          if (newSessionBackend === "pi") {
+            newSessionWorktreeField.style.display = "none";
+            newSessionWorktreeInput.disabled = true;
+            newSessionWorktreeInput.style.display = "none";
+            newSessionStartBtn.textContent = newSessionPiMode === "continue" ? "Continue session" : "Start session";
+            return;
+          }
           const canOffer = !!(newSessionCwdInfo && newSessionCwdInfo.git_repo) && !newSessionResumeSelection;
           if (!canOffer) newSessionWorktreeToggle.checked = false;
           const enabled = canOffer && !!newSessionWorktreeToggle.checked;
@@ -4874,20 +6170,23 @@
 
         function renderNewSessionResumeMenu() {
           newSessionResumeMenu.innerHTML = "";
-          const freshBtn = el("button", {
-            class: "fileMenuItem" + (!newSessionResumeSelection ? " active" : ""),
-            type: "button",
-            title: "Start a new conversation",
-          });
-          freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
-          freshBtn.onclick = () => {
-            setNewSessionResumeSelection(null);
-            newSessionResumeMenuOpen = false;
-            applyDialogMenus();
-          };
-          newSessionResumeMenu.appendChild(freshBtn);
+          const isPiContinue = newSessionBackend === "pi" && newSessionPiMode === "continue";
+          if (!isPiContinue) {
+            const freshBtn = el("button", {
+              class: "fileMenuItem" + (!newSessionResumeSelection ? " active" : ""),
+              type: "button",
+              title: "Start a new conversation",
+            });
+            freshBtn.appendChild(el("span", { class: "fileMenuPath", text: "Start fresh" }));
+            freshBtn.onclick = () => {
+              setNewSessionResumeSelection(null);
+              newSessionResumeMenuOpen = false;
+              applyDialogMenus();
+            };
+            newSessionResumeMenu.appendChild(freshBtn);
+          }
           if (!newSessionResumeCandidates.length) {
-            newSessionResumeMenu.appendChild(el("div", { class: "pickerEmpty", text: "No matching sessions" }));
+            newSessionResumeMenu.appendChild(el("div", { class: "pickerEmpty", text: isPiContinue ? "No current-project Pi sessions" : "No matching sessions" }));
             return;
           }
           for (const item of newSessionResumeCandidates) {
@@ -4960,9 +6259,10 @@
         async function loadNewSessionResumeCandidates(cwd) {
           const raw = String(cwd || "").trim();
           const seq = ++newSessionResumeLoadSeq;
-          const backend = newSessionBackend;
+          const backend = newSessionBackend === "pi" ? "pi" : "codex";
           if (!raw) {
             setNewSessionCwdError("");
+            newSessionResumeLoadError = "";
             newSessionResumeCandidates = [];
             setNewSessionResumeSelection(null);
             clearNewSessionCwdInfo();
@@ -4971,7 +6271,7 @@
             return;
           }
           try {
-            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}&agent_backend=${encodeURIComponent(backend)}`);
+            const res = await api(`/api/session_resume_candidates?cwd=${encodeURIComponent(raw)}&backend=${encodeURIComponent(backend)}`);
             if (seq !== newSessionResumeLoadSeq) return;
             newSessionCwdInfo = {
               exists: !!(res && res.exists),
@@ -4981,6 +6281,7 @@
               git_branch: res && typeof res.git_branch === "string" ? res.git_branch : "",
             };
             setNewSessionCwdError("");
+            newSessionResumeLoadError = "";
             const items = Array.isArray(res && res.sessions) ? res.sessions.filter((item) => item && typeof item === "object" && typeof item.session_id === "string") : [];
             newSessionResumeCandidates = items;
             const currentId = newSessionResumeSelection && typeof newSessionResumeSelection.session_id === "string" ? newSessionResumeSelection.session_id : "";
@@ -4990,11 +6291,14 @@
             syncNewSessionWorktreeUi();
           } catch (e) {
             if (seq !== newSessionResumeLoadSeq) return;
+            newSessionResumeLoadError = "";
             newSessionResumeCandidates = [];
             setNewSessionResumeSelection(null);
             clearNewSessionCwdInfo();
             if (e && e.obj && e.obj.field === "cwd") setNewSessionCwdError(e.message);
+            else if (backend === "pi" && newSessionPiMode === "continue") newSessionResumeLoadError = "Unable to load Pi sessions for this directory.";
             renderNewSessionResumeMenu();
+            syncNewSessionPiContinueStatus();
             syncNewSessionWorktreeUi();
           }
         }
@@ -5114,6 +6418,7 @@
           newSessionModelInput.value = "";
           syncNewSessionNamePlaceholder();
           newSessionResumeCandidates = [];
+          setNewSessionPiMode("new");
           setNewSessionResumeSelection(null);
           setNewSessionCwdError("");
           clearNewSessionCwdInfo();
@@ -5171,6 +6476,7 @@
         newSessionResumeBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (newSessionBackend === "pi" && newSessionPiMode !== "continue") return;
           renderNewSessionResumeMenu();
           newSessionResumeMenuOpen = !newSessionResumeMenuOpen;
           editDependencyMenuOpen = false;
@@ -5182,6 +6488,9 @@
           newSessionReasoningMenuOpen = false;
           applyDialogMenus();
         };
+        for (const [mode, btn] of newSessionPiModeButtons.entries()) {
+          btn.onclick = () => setNewSessionPiMode(mode);
+        }
         editCloseBtn.onclick = () => hideEditSession();
         $("#editCancelBtn").onclick = () => hideEditSession();
         editViewer.addEventListener("cancel", (e) => {
@@ -5255,6 +6564,7 @@
           newSessionCwdMenuFocus = -1;
           setNewSessionCwdError("");
           syncNewSessionNamePlaceholder();
+          resetNewSessionResumeState();
           renderRecentCwdMenu();
           newSessionCwdMenuOpen = true;
           newSessionModelMenuOpen = false;
@@ -5418,7 +6728,6 @@
         };
         newSessionStartBtn.onclick = async () => {
           const cwd = String(newSessionCwdInput.value || "").trim();
-          const agentBackend = newSessionBackend;
           setNewSessionCwdError("");
           if (!cwd) {
             newSessionStatus.textContent = "";
@@ -5426,24 +6735,42 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
-          const providerChoice = String(newSessionProvider || "").trim();
+          const backend = newSessionBackend === "pi" ? "pi" : "codex";
+          const providerChoice = String(newSessionProvider || "chatgpt").trim() || "chatgpt";
           const model = String(newSessionModelInput.value || "").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
-          const createInTmux = !!newSessionTmuxToggle.checked;
-          const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
-          if (newSessionWorktreeToggle.checked && !worktreeBranch) {
+          const piContinueBlocker = piContinueMissingSelectionMessage();
+          if (piContinueBlocker) {
+            newSessionStatus.textContent = piContinueBlocker;
+            return;
+          }
+          const createInTmux = backend === "codex" && !!newSessionTmuxToggle.checked;
+          const worktreeBranch = backend === "codex" && !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
+          if (backend === "codex" && newSessionWorktreeToggle.checked && !worktreeBranch) {
             newSessionStatus.textContent = "Branch name is required.";
             return;
           }
-          newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
+          newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : backend === "pi" ? "Starting Pi session..." : "Starting...";
           let cwdStartError = false;
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
-            if (e && e.obj && e.obj.field === "cwd") {
-              cwdStartError = true;
-              newSessionStatus.textContent = "";
-              setNewSessionCwdError(e.message);
-            }
-          }, agentBackend);
+          const brokerPid = await spawnSessionWithCwd({
+            cwd,
+            resumeSessionId,
+            worktreeBranch,
+            sessionName,
+            providerChoice,
+            model,
+            reasoningEffort: newSessionReasoningEffort,
+            fast: newSessionFast,
+            createInTmux,
+            backend,
+            errorHandler: (e) => {
+              if (e && e.obj && e.obj.field === "cwd") {
+                cwdStartError = true;
+                newSessionStatus.textContent = "";
+                setNewSessionCwdError(e.message);
+              }
+            },
+          });
           if (brokerPid) hideNewSessionDialog();
           else if (!cwdStartError) newSessionStatus.textContent = "Start failed.";
         };
@@ -5648,7 +6975,17 @@
           }
           fileEditorProgrammaticChange = false;
           fileDiff.innerHTML = "";
-          for (const model of fileEditorModels) {
+          const editor = fileEditor;
+          const models = fileEditorModels.slice();
+          fileEditor = null;
+          fileEditorModels = [];
+          fileEditorKind = "";
+          if (editor) {
+            try {
+              editor.dispose();
+            } catch (_) {}
+          }
+          for (const model of models) {
             try {
               model.dispose();
             } catch (_) {}
@@ -6048,17 +7385,17 @@
                 reject(new Error("monaco loader unavailable"));
                 return;
               }
-              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min";
               window.MonacoEnvironment = {
                 getWorkerUrl(_moduleId, _label) {
                   const src = `
 self.MonacoEnvironment={baseUrl:${JSON.stringify(base + "/")}};
-importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
+importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
 `;
                   return `data:text/javascript;charset=utf-8,${encodeURIComponent(src)}`;
                 },
               };
-              window.require.config({ paths: { vs: base } });
+              window.require.config({ paths: { vs: base + "/vs" } });
               window.require(["vs/editor/editor.main"], () => {
                 monacoNs = window.monaco;
                 if (!monacoNs) {
@@ -6377,8 +7714,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return false;
           }
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          const requestSessionId = currentFileSessionId();
+          if (!requestSessionId) return false;
           try {
             const inspect = await inspectSessionFilePath(rel);
+            if (requestSessionId !== currentFileSessionId()) return false;
             if (inspect && inspect.exists) {
               if (inspect.kind === "directory") {
                 fileStatus.textContent = `${rel} - path is a directory`;
@@ -6387,13 +7727,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               return await openFilePathWithGuard(rel, { line: null, mode: "file" });
             }
           } catch (e) {
+            if (requestSessionId !== currentFileSessionId()) return false;
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             return false;
           }
+          if (requestSessionId !== currentFileSessionId()) return false;
           setFileViewMode("file");
           setFilePath(rel, { line: null });
           renderFilePickerMenu();
           await openDraftFilePath(rel, { line: null });
+          if (requestSessionId !== currentFileSessionId()) return false;
           return true;
         }
 
@@ -7011,12 +8354,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function refreshFileCandidates() {
+          refreshFileCandidates._requestId = (refreshFileCandidates._requestId || 0) + 1;
+          const requestId = refreshFileCandidates._requestId;
           fileCandidateList = [];
           fileEntryMap = new Map();
           const sid = fileViewerSessionId || selected || "";
           if (!sid) return;
           try {
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
+            if (requestId !== refreshFileCandidates._requestId || sid !== currentFileSessionId()) return;
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
             const changedEntries = entriesIn
               .filter((entry) => entry && typeof entry.path === "string" && String(entry.path).trim())
@@ -7050,7 +8396,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             for (const entry of merged) {
               fileEntryMap.set(entry.path, entry);
             }
-          } catch (e) {}
+          } catch (e) {
+            if (requestId !== refreshFileCandidates._requestId || sid !== currentFileSessionId()) return;
+          }
+          if (requestId !== refreshFileCandidates._requestId || sid !== currentFileSessionId()) return;
           renderFilePickerMenu();
         }
 
@@ -7426,6 +8775,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         document.addEventListener("click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
+          if (todoDockExpanded && !t.closest("#todoDockHost")) {
+            setTodoDockExpanded(false);
+          }
           if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
             closeFilePickerMenu({ restoreInput: true });
           }
@@ -7496,6 +8848,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         document.addEventListener("keydown", handleFileTouchSelectionKeydown, true);
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
+          if (todoDockExpanded) {
+            e.preventDefault();
+            setTodoDockExpanded(false);
+            return;
+          }
           if (filePasteDialog.style.display === "flex") {
             hideFilePasteDialog();
             return;
@@ -7538,7 +8895,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             hideSendChoice();
             if (!raw || !sid) return;
             clearComposer();
-            await sendText(raw, { sid });
+            const sent = await sendText(raw, { sid });
+            if (!sent) {
+              $("#msg").value = raw;
+              autoGrow();
+            }
           };
         if (sendChoiceLaterBtn)
           sendChoiceLaterBtn.onclick = async () => {
@@ -7680,6 +9041,53 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           helpViewer.style.display = "none";
         }
 
+        function renderDiagTodoSnapshot(snapshot) {
+          const section = el("div", { class: "detailsSection todoSnapshotSection" });
+          section.appendChild(el("div", { class: "detailsSectionTitle", text: "Todo list" }));
+
+          const snap = snapshot && typeof snapshot === "object" ? snapshot : null;
+          const items = snap && Array.isArray(snap.items) ? snap.items : [];
+          if (!snap || snap.available !== true) {
+            section.appendChild(
+              el("div", {
+                class: "detailsSectionEmpty",
+                text: snap && snap.error ? "Todo list unavailable" : "No todo list yet",
+              })
+            );
+            return section;
+          }
+
+          if (snap.progress_text) {
+            section.appendChild(el("div", { class: "todoSnapshotSummary", text: String(snap.progress_text) }));
+          }
+
+          const list = el("div", { class: "todoSnapshotList" });
+          for (const item of items) {
+            const row = el("div", { class: "todoSnapshotItem" });
+            const head = el("div", { class: "todoSnapshotHead" });
+            head.appendChild(
+              el("div", {
+                class: "todoSnapshotTitle",
+                text: String(item && item.title ? item.title : "Untitled todo"),
+              })
+            );
+            head.appendChild(
+              el("span", {
+                class: "todoStatusChip",
+                text: String(item && item.status ? item.status : "not-started"),
+              })
+            );
+            row.appendChild(head);
+            if (item && item.description) {
+              row.appendChild(el("div", { class: "todoSnapshotDescription", text: String(item.description) }));
+            }
+            list.appendChild(row);
+          }
+
+          section.appendChild(list);
+          return section;
+        }
+
         async function showDiagViewer() {
           if (!selected) return;
           diagContent.innerHTML = "";
@@ -7706,6 +9114,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             };
             addRow("Session", d && d.session_id ? d.session_id : "-");
             addRow("Thread", d && d.thread_id ? d.thread_id : "-");
+            addRow("Backend", backendDisplayName(d && d.backend ? d.backend : "codex"));
             addRow("Owned", d ? sessionLaunchLabel(d).replace("-owned", "") : "-");
             addRow("Busy", d && typeof d.busy === "boolean" ? (d.busy ? "busy" : "idle") : "-");
             addRow("Queue", d && typeof d.queue_len === "number" ? String(d.queue_len) : "-");
@@ -7719,6 +9128,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             addRow("Agent", d ? agentBackendDisplayName(d.agent_backend) : "-");
             addRow("Agent PID", d && typeof d.codex_pid === "number" ? String(d.codex_pid) : "-");
 	            addRow("Log", d && d.log_path ? d.log_path : "-", { mono: true });
+	            addRow("Session file", d && d.session_file_path ? d.session_file_path : "-", { mono: true });
 	            addRow("tmux", d && d.tmux_session ? `${d.tmux_session}${d.tmux_window ? ":" + d.tmux_window : ""}` : "-");
 	            addRow("Branch", d && d.git_branch ? d.git_branch : "-");
 	            addRow("Provider", d && d.provider_choice ? d.provider_choice : d && d.model_provider ? d.model_provider : "-");
@@ -7741,6 +9151,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 addRow("Context", txt);
               }
             }
+            const todoSection = renderDiagTodoSnapshot(d && d.todo_snapshot ? d.todo_snapshot : null);
+            diagContent.appendChild(todoSection);
           } catch (e) {
             diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
@@ -7814,28 +9226,41 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           hideDiagViewer();
         };
         diagBackdrop.onclick = () => hideDiagViewer();
-        async function spawnSessionWithCwd(cwd, resumeSessionId = null, worktreeBranch = null, sessionName = "", providerChoice = "chatgpt", model = "default", reasoningEffort = "high", fast = false, createInTmux = false, errorHandler = null, agentBackend = "codex") {
+        async function spawnSessionWithCwd({
+          cwd,
+          resumeSessionId = null,
+          worktreeBranch = null,
+          sessionName = "",
+          providerChoice = "chatgpt",
+          model = "default",
+          reasoningEffort = "high",
+          fast = false,
+          createInTmux = false,
+          backend = "codex",
+          errorHandler = null,
+        } = {}) {
           if (!cwd || !String(cwd).trim()) {
             setToast("cwd unavailable");
             return null;
           }
           try {
-            const backend = normalizeAgentBackendName(agentBackend);
-            const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : "starting...";
+            const backendName = String(backend || "codex").trim().toLowerCase() === "pi" ? "pi" : "codex";
+            const modeLabel = resumeSessionId ? "resuming..." : worktreeBranch ? "creating worktree..." : createInTmux ? "starting in tmux..." : backendName === "pi" ? "starting pi..." : "starting...";
             const alias = String(sessionName || "").trim();
             const providerName = String(providerChoice || "").trim();
-            const providerSettings = providerChoiceToSettings(providerName, backend);
+            const providerSettings = providerChoiceToSettings(providerName, backendName);
             const modelName = String(model || "").trim();
             const effortName = String(reasoningEffort || "").trim().toLowerCase();
             setToast(modeLabel);
-            const body = { cwd: String(cwd), agent_backend: backend };
+            const body = { cwd: String(cwd), backend: backendName };
+            body.agent_backend = backendName;
             if (resumeSessionId) body.resume_session_id = String(resumeSessionId);
             if (worktreeBranch) body.worktree_branch = String(worktreeBranch);
             if (providerSettings.model_provider) body.model_provider = providerSettings.model_provider;
             if (providerSettings.preferred_auth_method) body.preferred_auth_method = providerSettings.preferred_auth_method;
             if (modelName) body.model = modelName;
             if (effortName) body.reasoning_effort = effortName;
-            if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
+            if (backendSupportsFast(backendName) && fast) body.service_tier = "fast";
             if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
@@ -7843,7 +9268,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               setToast("start failed");
               return null;
             }
-            const doneLabel = resumeSessionId ? "resumed" : worktreeBranch ? "worktree started" : createInTmux ? "tmux started" : "started";
+            const doneLabel = resumeSessionId ? "resumed" : worktreeBranch ? "worktree started" : createInTmux ? "tmux started" : backendName === "pi" ? "pi started" : "started";
             setToast(`${doneLabel} (broker ${brokerPid})`);
             for (let i = 0; i < 60; i++) {
               const sessions = await refreshSessions();
@@ -7859,7 +9284,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
               await new Promise((r) => setTimeout(r, 250));
             }
-            setToast(`${doneLabel} session will appear once the agent writes its session log`);
+            setToast(`${doneLabel} session will appear once ${backendDisplayName(backendName)} writes its session log`);
             return brokerPid;
           } catch (e) {
             const errLabel = resumeSessionId ? "resume" : worktreeBranch ? "worktree start" : "start";
@@ -8097,16 +9522,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            },
 	            { passive: true }
 	          );
-        textarea.addEventListener("keydown", (e) => {
-          if (e.key !== "Enter") return;
-          if (e.isComposing) return;
-          if (!(e.ctrlKey || e.metaKey)) return;
-          e.preventDefault();
-          form.requestSubmit();
-        });
-        window.addEventListener("resize", () => {
-          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
-        });
+	      function handleComposerKeydown(e) {
+	        if (e.key !== "Enter") return;
+	        if (e.isComposing) return;
+	        if (enterToSendEnabled()) {
+	          if (e.shiftKey) return;
+	        } else if (!(e.ctrlKey || e.metaKey)) {
+	          return;
+	        }
+	        e.preventDefault();
+	        form.requestSubmit();
+	      }
+	      textarea.addEventListener("keydown", handleComposerKeydown);
+	      window.addEventListener("resize", () => {
+	        if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+	      });
 
 	        attachBtn.onclick = () => {
 	          if (!selected) return;
@@ -8231,9 +9661,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function sendText(raw, { sid = null } = {}) {
           const sessionId = sid || selected;
-          if (!sessionId) return;
-          if (!raw || !raw.trim()) return;
-          if (sending) return;
+          if (!sessionId) return false;
+          if (!raw || !raw.trim()) return false;
+          if (sending) return false;
+          const priorTurnOpen = turnOpen;
+          const priorRunning = currentRunning;
           sending = true;
           $("#sendBtn").disabled = true;
           setToast("sending...");
@@ -8254,17 +9686,29 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setAttachCount(0);
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
-            await refreshSessions();
+            try {
+              await refreshSessions();
+            } catch (refreshErr) {
+              console.error("refreshSessions failed after accepted send", refreshErr);
+            }
+            return true;
           } catch (e2) {
             setToast(`send error: ${e2.message}`);
             if (renderHere) {
+              const pendingIdx = pendingUser.findIndex((x) => x && x.id === localId);
+              if (pendingIdx >= 0) pendingUser.splice(pendingIdx, 1);
+              turnOpen = priorTurnOpen;
+              currentRunning = priorRunning;
               const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
               if (pendingEl) {
                 pendingEl.style.opacity = "1";
+                pendingEl.removeAttribute("data-local-id");
+                pendingEl.removeAttribute("data-pending");
                 pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
                 pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
               }
             }
+            return false;
           } finally {
             sending = false;
             $("#sendBtn").disabled = false;
@@ -8282,7 +9726,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           clearComposer();
-          await sendText(raw);
+          const sent = await sendText(raw);
+          if (!sent) {
+            $("#msg").value = raw;
+            autoGrow();
+          }
         };
 
 	        (async () => {

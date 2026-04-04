@@ -138,6 +138,35 @@ class TestSendAck(unittest.TestCase):
         finally:
             client_sock.close()
 
+    def test_sessiond_ui_response_ack_does_not_wait_for_full_inject(self) -> None:
+        sessiond = Sessiond("/tmp", [])
+        sessiond.state = SessiondState(
+            session_id="sid",
+            codex_pid=1,
+            log_path=Path("/tmp/log.jsonl"),
+            sock_path=Path("/tmp/test.sock"),
+            pty_master_fd=1,
+            start_ts=0.0,
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            with patch("codoxear.sessiond._inject", side_effect=lambda *_a, **_k: time.sleep(0.5)) as inject:
+                thread = threading.Thread(target=sessiond._handle_conn, args=(server_sock,), daemon=True)
+                thread.start()
+                client_sock.settimeout(0.2)
+                client_sock.sendall((json.dumps({"cmd": "ui_response", "id": "ask-1", "value": "Details"}) + "\n").encode("utf-8"))
+                t0 = time.monotonic()
+                line = _recv_line(client_sock)
+                dt = time.monotonic() - t0
+                self.assertLess(dt, 0.2)
+                self.assertEqual(json.loads(line.decode("utf-8")), {"ok": True})
+                self.assertTrue(thread.is_alive())
+                thread.join(1.0)
+                self.assertFalse(thread.is_alive())
+                inject.assert_called_once_with(1, text="Details", suffix=b"\r")
+        finally:
+            client_sock.close()
+
     def test_broker_ignores_broken_pipe_while_replying(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         broker.state = BrokerState(

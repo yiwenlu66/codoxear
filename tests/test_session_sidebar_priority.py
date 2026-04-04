@@ -101,7 +101,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         }
         mgr._queues = {"target": ["queued"]}
         mgr._harness = {"target": {"enabled": True, "request": "x"}}
-        mgr._files = {"cwd:/tmp/target": ["/tmp/target/a.py"]}
+        mgr._files = {"sid:target": ["/tmp/target/a.py"]}
         called = {"shutdown": 0}
 
         def _sock_call(*args, **kwargs):
@@ -117,8 +117,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertNotIn("target", mgr._sidebar_meta)
         self.assertNotIn("target", mgr._queues)
         self.assertNotIn("target", mgr._harness)
-        self.assertNotIn("cwd:/tmp/target", mgr._files)
+        self.assertNotIn("sid:target", mgr._files)
         self.assertIsNone(mgr._sidebar_meta["blocked"].get("dependency_session_id"))
+        self.assertIn("target", mgr._hidden_sessions)
 
     def test_kill_session_falls_back_to_pid_teardown_when_socket_is_dead(self) -> None:
         mgr = _make_manager()

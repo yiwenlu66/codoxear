@@ -24,6 +24,7 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
+from codoxear.agent_backend import resolve_agent_backend
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
@@ -49,7 +50,7 @@ APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 PROC_ROOT = Path("/proc")
 
-AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
+AGENT_BACKEND = resolve_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), env=os.environ, default="codex")
 BACKEND = get_agent_backend(AGENT_BACKEND)
 AGENT_BIN = BACKEND.cli_bin()
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
@@ -147,7 +148,8 @@ def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions
 
 
 def _pi_session_dir_name(cwd: str) -> str:
-    return f"--{cwd.lstrip('/\\\\').replace('/', '-').replace('\\\\', '-').replace(':', '-')}--"
+    slug = cwd.lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
+    return f"--{slug}--"
 
 
 def _pi_session_dir_from_args(*, args: list[str], cwd: str, sessions_dir: Path) -> Path | None:
@@ -386,7 +388,13 @@ def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | No
     return out
 
 
-_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}
+_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {
+    "codex": ("To continue this session, run ",),
+    "pi": (
+        "To continue this conversation, run ",
+        "To continue this session, run ",
+    ),
+}
 
 
 def _detach_current_session_binding(st: "State") -> None:
@@ -755,11 +763,12 @@ class Broker:
                     if not st:
                         return
                     current_log_path = st.log_path
-                    need = (current_log_path is None) or (not current_log_path.exists())
                     root_pid = int(st.codex_pid)
                     sock_path = st.sock_path
                     known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
+                    if current_log_path is not None:
+                        ignored_paths.add(current_log_path)
                 if root_pid > 0:
                     lp = _proc_find_open_rollout_log(
                         proc_root=PROC_ROOT,
@@ -1058,6 +1067,7 @@ class Broker:
             return
         meta = {
             "session_id": st.session_id,
+            "backend": AGENT_BACKEND,
             "owner": OWNER_TAG if OWNER_TAG else None,
             "broker_pid": os.getpid(),
             "sessiond_pid": os.getpid(),
@@ -1274,9 +1284,15 @@ class Broker:
             last = st.last_rollout_path
             if last is not None and _paths_match(last, lp):
                 return
-            st.last_rollout_path = lp
             have_sock = st.sock_path is not None
             prev_lp = st.log_path
+            if prev_lp is not None and not _paths_match(prev_lp, lp):
+                try:
+                    st.ignored_rollout_paths.add(prev_lp.resolve())
+                except Exception:
+                    st.ignored_rollout_paths.add(prev_lp)
+            st.last_detected_rollout_path = lp
+            st.last_rollout_path = lp
             st.session_id = sid
             st.log_path = lp
             st.known_rollout_paths.add(lp)

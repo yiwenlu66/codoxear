@@ -26,13 +26,17 @@ import time
 import tomllib
 import traceback
 import urllib.parse
+import uuid
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .agent_backend import get_agent_backend
+from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
+from . import pi_messages as _pi_messages
+from . import pi_messages as _pi_messages
 from . import rollout_log as _rollout_log
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
@@ -43,6 +47,7 @@ from .util import find_session_log_for_session_id as _find_session_log_for_sessi
 from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
+from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -119,6 +124,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
 SOCK_DIR = APP_DIR / "socks"
+PROC_ROOT = Path("/proc")
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 UPLOAD_DIR = APP_DIR / "uploads"
@@ -154,6 +160,7 @@ else:
     CODEX_HOME = Path(_CODEX_HOME_ENV)
 CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
 CODEX_CONFIG_PATH = CODEX_HOME / "config.toml"
+PI_NATIVE_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
 MODELS_CACHE_PATH = CODEX_HOME / "models_cache.json"
 PI_HOME = get_agent_backend("pi").home()
 PI_SESSIONS_DIR = get_agent_backend("pi").sessions_dir()
@@ -455,6 +462,12 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
     return False
 
 
+def _probe_failure_safe_to_prune(*, broker_pid: int, codex_pid: int) -> bool:
+    # Probe timeouts can be normal during startup; only prune runtime artifacts
+    # once both tracked processes are gone.
+    return (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid))
+
+
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return _rollout_log._extract_token_update(objs)
 
@@ -538,7 +551,11 @@ def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
-    handler.wfile.write(body)
+    try:
+        handler.wfile.write(body)
+    except BrokenPipeError:
+        # Client disconnected during transmission.
+        pass
 
 
 def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
@@ -803,6 +820,13 @@ def _resolve_under(base: Path, rel: str) -> Path:
     return resolved
 
 
+def _safe_expanduser(p: Path) -> Path:
+    try:
+        return p.expanduser()
+    except RuntimeError:
+        return p
+
+
 def _resolve_session_path(base: Path, raw_path: str) -> Path:
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("path required")
@@ -810,8 +834,8 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
         raise ValueError("invalid path")
     p = Path(raw_path)
     if p.is_absolute():
-        return p.expanduser().resolve()
-    resolved_base = base.expanduser()
+        return _safe_expanduser(p).resolve()
+    resolved_base = _safe_expanduser(base)
     if not resolved_base.is_absolute():
         resolved_base = resolved_base.resolve()
     return (resolved_base / p).resolve()
@@ -858,7 +882,7 @@ def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | 
         return None
     match: Path | None = None
     for raw in tracked:
-        candidate = Path(raw).expanduser().resolve()
+        candidate = _safe_expanduser(Path(raw)).resolve()
         if candidate.name != name:
             continue
         if match is None:
@@ -870,7 +894,7 @@ def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | 
 
 
 def _list_session_relative_files(base: Path) -> list[str]:
-    root = base.expanduser()
+    root = _safe_expanduser(base)
     if not root.is_absolute():
         root = root.resolve()
     if not root.exists():
@@ -1102,7 +1126,7 @@ def _search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str
 
 
 def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_SEARCH_LIMIT) -> dict[str, Any]:
-    root = base.expanduser()
+    root = _safe_expanduser(base)
     if not root.is_absolute():
         root = root.resolve()
     if not root.exists():
@@ -1311,6 +1335,15 @@ def _clean_optional_text(value: Any) -> str | None:
     return out or None
 
 
+def _clean_optional_resume_session_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("resume_session_id must be a string")
+    out = value.strip()
+    return out or None
+
+
 def _normalize_requested_model(value: Any) -> str | None:
     out = _clean_optional_text(value)
     if out is None:
@@ -1376,14 +1409,96 @@ def _current_git_branch(cwd: Path) -> str | None:
     return branch
 
 
+def _todo_snapshot_payload_for_session(s: Session) -> dict[str, Any]:
+    empty = {"available": False, "error": False, "items": []}
+    read_error = {"available": False, "error": True, "items": []}
+    if s.backend != "pi" or s.session_path is None:
+        return empty
+    try:
+        snapshot = _pi_messages.read_latest_pi_todo_snapshot(s.session_path)
+    except FileNotFoundError:
+        return empty
+    except OSError as exc:
+        if exc.errno == errno.ENOENT:
+            return empty
+        return read_error
+    if snapshot is None:
+        return empty
+    return {
+        "available": True,
+        "error": False,
+        "items": snapshot.get("items", []),
+        "counts": snapshot.get("counts", {}),
+        "progress_text": snapshot.get("progress_text", ""),
+    }
+
+
+_PI_DIALOG_UI_METHODS = {"select", "confirm", "input", "editor"}
+
+
+def _sanitize_pi_ui_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    requests = payload.get("requests")
+    if not isinstance(requests, list):
+        return {"requests": []}
+    filtered = []
+    for item in requests:
+        if not isinstance(item, dict):
+            continue
+        method = item.get("method")
+        if not isinstance(method, str) or method not in _PI_DIALOG_UI_METHODS:
+            continue
+        filtered.append(item)
+    return {"requests": filtered}
+
+
+def _legacy_pi_ui_response_text(payload: dict[str, Any]) -> str | None:
+    if payload.get("cancelled") is True:
+        return None
+    confirmed = payload.get("confirmed")
+    if isinstance(confirmed, bool):
+        return "yes" if confirmed else "no"
+    value = payload.get("value")
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not text:
+                continue
+            parts.append(text)
+        if parts:
+            return ", ".join(parts)
+    return None
+
+
 def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    path_obj = Path(raw_path).expanduser()
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError("empty path")
+    if "\n" in raw_path or len(raw_path) > 1024:
+        # Likely a code snippet or pasted content, not a path.
+        # Rejecting here avoids OSError: File name too long in Path.exists().
+        raise ValueError("invalid path format")
+
+    try:
+        path_obj = _safe_expanduser(Path(raw_path))
+        for part in path_obj.parts:
+            if len(part.encode("utf-8", errors="ignore")) > 255:
+                raise ValueError("invalid path format (name too long)")
+    except ValueError:
+        raise
+    except Exception:
+        raise ValueError("invalid path format")
+
     if not path_obj.is_absolute():
         if session_id:
-            MANAGER.refresh_session_meta(session_id)
+            MANAGER.refresh_session_meta(session_id, strict=False)
             s = MANAGER.get_session(session_id)
             if s:
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 direct = (base / path_obj).resolve()
@@ -1594,6 +1709,102 @@ def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
     return method
 
 
+def _normalize_requested_backend(raw: Any) -> str:
+    if raw is None:
+        return "codex"
+    if not isinstance(raw, str):
+        raise ValueError("backend must be a string")
+    backend = raw.strip().lower()
+    if not backend:
+        return "codex"
+    if backend not in {"codex", "pi"}:
+        raise ValueError("backend must be one of codex, pi")
+    return backend
+
+
+def _parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
+    cwd = obj.get("cwd")
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise ValueError("cwd required")
+
+    backend = normalize_agent_backend(obj.get("backend"), default=normalize_agent_backend(obj.get("agent_backend"), default="codex"))
+    args = obj.get("args")
+    if args is None:
+        args_list = None
+    elif isinstance(args, list) and all(isinstance(x, str) for x in args):
+        args_list = [x for x in args if x]
+    else:
+        raise ValueError("args must be a list of strings")
+
+    resume_session_id = _clean_optional_resume_session_id(obj.get("resume_session_id"))
+
+    if backend == "pi":
+        pi_provider_choices = {
+            str(value)
+            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
+            if isinstance(value, str) and value.strip()
+        }
+        model_provider = _normalize_requested_model_provider(
+            obj.get("model_provider"),
+            allowed=pi_provider_choices or None,
+        )
+        model = _normalize_requested_model(obj.get("model"))
+        reasoning_effort = _normalize_requested_pi_reasoning_effort(obj.get("reasoning_effort"))
+        return {
+            "cwd": cwd,
+            "backend": backend,
+            "args": args_list,
+            "resume_session_id": resume_session_id,
+            "worktree_branch": None,
+            "model_provider": model_provider,
+            "preferred_auth_method": None,
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "service_tier": None,
+            "create_in_tmux": False,
+        }
+
+    allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
+    model_provider = _normalize_requested_model_provider(
+        obj.get("model_provider"),
+        allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+    )
+    preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
+    model = _normalize_requested_model(obj.get("model"))
+    reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
+    service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
+
+    create_in_tmux_raw = obj.get("create_in_tmux")
+    if create_in_tmux_raw is None:
+        create_in_tmux = False
+    elif isinstance(create_in_tmux_raw, bool):
+        create_in_tmux = create_in_tmux_raw
+    else:
+        raise ValueError("create_in_tmux must be a boolean")
+
+    worktree_branch_raw = obj.get("worktree_branch")
+    if worktree_branch_raw is None:
+        worktree_branch = None
+    elif isinstance(worktree_branch_raw, str):
+        worktree_branch = worktree_branch_raw.strip() or None
+    else:
+        raise ValueError("worktree_branch must be a string")
+
+    return {
+        "cwd": cwd,
+        "backend": backend,
+        "args": args_list,
+        "resume_session_id": resume_session_id,
+        "worktree_branch": worktree_branch,
+        "model_provider": model_provider,
+        "preferred_auth_method": preferred_auth_method,
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "service_tier": service_tier,
+        "create_in_tmux": create_in_tmux,
+    }
+
+
 def _configured_model_providers(data: dict[str, Any]) -> list[str]:
     providers = ["openai"]
     seen = {"openai"}
@@ -1616,6 +1827,83 @@ def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_
     if provider == "openai":
         return "chatgpt" if preferred_auth_method == "chatgpt" else "openai-api"
     return provider
+
+
+def _provider_choice_for_backend(*, backend: str, model_provider: str | None, preferred_auth_method: str | None) -> str | None:
+    if backend == "pi":
+        return None
+    return _provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method)
+
+
+def _metadata_log_path(*, meta: dict[str, Any], backend: str, sock: Path) -> Path | None:
+    if backend == "pi":
+        return None
+    if "log_path" not in meta:
+        raise ValueError(f"missing log_path in metadata for socket {sock}")
+    if meta.get("log_path") is None:
+        return None
+    log_path_raw = meta.get("log_path")
+    if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
+        raise ValueError(f"invalid log_path in metadata for socket {sock}")
+    return Path(log_path_raw)
+
+
+def _metadata_session_path(*, meta: dict[str, Any], backend: str, sock: Path) -> Path | None:
+    if backend != "pi":
+        return None
+    if "session_path" not in meta:
+        raise ValueError(f"missing session_path in metadata for socket {sock}")
+    session_path_raw = meta.get("session_path")
+    if not isinstance(session_path_raw, str) or (not session_path_raw.strip()):
+        raise ValueError(f"invalid session_path in metadata for socket {sock}")
+    return Path(session_path_raw)
+
+
+def _patch_metadata_session_path(sock: Path, session_path: Path, *, force: bool = False) -> None:
+    """Write discovered session_path back to the broker metadata file.
+
+    The PTY broker (broker.py) does not include session_path in its metadata
+    for pi sessions.  Once the server discovers the correct file, writing it
+    back makes the mapping persistent across server restarts.
+
+    When *force* is True, overwrite even if session_path is already present
+    (used when the session has switched via /resume).
+    """
+    meta_path = sock.with_suffix(".json")
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            return
+        if not force and "session_path" in meta:
+            return  # already present (e.g. pi_broker wrote it)
+        meta["session_path"] = str(session_path)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception:
+        pass  # best-effort; discovery will re-run next cycle
+
+
+def _patch_metadata_pi_binding(sock: Path, session_path: Path) -> None:
+    """Persist a recovered Pi binding for brokers that were launched ambiguously."""
+    meta_path = sock.with_suffix(".json")
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            return
+        changed = False
+        if meta.get("backend") != "pi":
+            meta["backend"] = "pi"
+            changed = True
+        if meta.get("agent_backend") != "pi":
+            meta["agent_backend"] = "pi"
+            changed = True
+        if meta.get("session_path") != str(session_path):
+            meta["session_path"] = str(session_path)
+            changed = True
+        if not changed:
+            return
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
@@ -1816,14 +2104,133 @@ def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") 
     }
 
 
-def _list_resume_candidates_for_cwd(cwd: str, *, agent_backend: str = "codex", limit: int = 12) -> list[dict[str, Any]]:
-    backend_name = normalize_agent_backend(agent_backend)
-    cwd2 = str(Path(cwd).expanduser().resolve())
+def _pi_native_session_dir_for_cwd(cwd: str | Path) -> Path:
+    cwd_path = _safe_expanduser(Path(cwd)).resolve()
+    slug = str(cwd_path).strip("/").replace("/", "-")
+    return PI_NATIVE_SESSIONS_DIR / f"--{slug}--"
+
+
+def _pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
+    now = float(_now())
+    millis = int(round((now - math.floor(now)) * 1000))
+    if millis >= 1000:
+        now = math.floor(now) + 1.0
+        millis = 0
+    stamp = time.strftime("%Y-%m-%dT%H-%M-%S", time.gmtime(now))
+    name = f"{stamp}-{millis:03d}Z_{uuid.uuid4()}.jsonl"
+    return _pi_native_session_dir_for_cwd(cwd) / name
+
+
+def _pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] | None:
+    try:
+        with session_path.open("rb") as f:
+            for raw in f:
+                if not raw.strip():
+                    continue
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "session":
+                    continue
+                session_id = obj.get("id") or obj.get("session_id")
+                cwd = obj.get("cwd")
+                if not (isinstance(session_id, str) and session_id):
+                    return None
+                if not (isinstance(cwd, str) and cwd):
+                    return None
+                try:
+                    updated_ts = float(session_path.stat().st_mtime)
+                except OSError:
+                    return None
+                return {
+                    "session_id": session_id,
+                    "cwd": cwd,
+                    "session_path": str(session_path),
+                    "updated_ts": updated_ts,
+                    "timestamp": obj.get("timestamp"),
+                    "git_branch": None,
+                    "backend": "pi",
+                }
+    except OSError:
+        return None
+    return None
+
+
+def _discover_pi_session_for_cwd(cwd: str, start_ts: float, *, exclude: set[Path] | None = None) -> Path | None:
+    """Auto-discover the pi session file for a PTY-wrapped pi broker.
+
+    When pi runs inside the PTY broker (piox), pi writes its own session file
+    to ~/.pi/agent/sessions/ but the broker sidecar has no session_path.
+    This function finds the most recently modified session file that was
+    created around/after the broker start time.
+
+    *exclude* contains session paths already claimed by other active sessions
+    so that two brokers sharing the same CWD pick different files.
+    """
+    session_dir = _pi_native_session_dir_for_cwd(cwd)
+    if not session_dir.is_dir():
+        return None
+    best: Path | None = None
+    best_mtime: float = 0
+    for f in session_dir.glob("*.jsonl"):
+        if exclude and f in exclude:
+            continue
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < start_ts - 10:
+            continue
+        if mtime > best_mtime:
+            best = f
+            best_mtime = mtime
+    return best
+
+
+def _safe_path_mtime(path: Path) -> float | None:
+    try:
+        return float(path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def _list_resume_candidates_for_cwd(
+    cwd: str,
+    *,
+    limit: int = 12,
+    backend: str | None = None,
+    agent_backend: str | None = None,
+) -> list[dict[str, Any]]:
+    cwd2 = str(_safe_expanduser(Path(cwd)).resolve())
+    backend_raw = backend if backend is not None else agent_backend
+    backend2 = normalize_agent_backend(backend_raw, default="codex")
+    if backend2 == "pi":
+        out: list[dict[str, Any]] = []
+        session_dir = _pi_native_session_dir_for_cwd(cwd2)
+        if not session_dir.exists():
+            return out
+        ranked_paths: list[tuple[float, Path]] = []
+        for session_path in session_dir.glob("*.jsonl"):
+            mtime = _safe_path_mtime(session_path)
+            if mtime is None:
+                continue
+            ranked_paths.append((mtime, session_path))
+        for _mtime, session_path in sorted(ranked_paths, key=lambda item: item[0], reverse=True):
+            row = _pi_resume_candidate_from_session_file(session_path)
+            if not isinstance(row, dict):
+                continue
+            if row.get("cwd") != cwd2:
+                continue
+            out.append(row)
+            if len(out) >= limit:
+                break
+        return out
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for log_path in _iter_session_logs(agent_backend=backend_name):
+    for log_path in _iter_session_logs(agent_backend=backend2):
         try:
-            row = _resume_candidate_from_log(log_path, agent_backend=backend_name)
+            row = _resume_candidate_from_log(log_path, agent_backend=backend2)
         except Exception:
             continue
         if not isinstance(row, dict):
@@ -1903,6 +2310,40 @@ def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int 
                     text = _user_message_text(payload)
                 else:
                     continue
+                if not text or _is_scaffold_user_text(text):
+                    continue
+                return _resume_preview_from_text(text)
+    except FileNotFoundError:
+        return ""
+    return ""
+
+
+def _first_user_message_preview_from_pi_session(session_path: Path, *, max_scan_bytes: int = 256 * 1024) -> str:
+    try:
+        with session_path.open("rb") as f:
+            total = 0
+            for raw in f:
+                total += len(raw)
+                if total > max_scan_bytes:
+                    break
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "message":
+                    continue
+                payload = obj.get("message")
+                if not isinstance(payload, dict):
+                    payload = obj.get("payload")
+                if not isinstance(payload, dict):
+                    payload = obj
+                if payload.get("role") != "user":
+                    continue
+                text = _user_message_text(payload)
+                if not text:
+                    content = payload.get("content")
+                    if isinstance(content, str):
+                        text = content.strip()
                 if not text or _is_scaffold_user_text(text):
                     continue
                 return _resume_preview_from_text(text)
@@ -1997,6 +2438,18 @@ def _last_chat_role_ts_from_tail(
     return _rollout_log._last_chat_role_ts_from_tail(path, max_scan_bytes=max_scan_bytes)
 
 
+def _session_file_activity_ts(path: Path | None) -> float | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        ts = float(path.stat().st_mtime)
+    except OSError:
+        return None
+    if not math.isfinite(ts) or ts <= 0:
+        return None
+    return ts
+
+
 @dataclass
 class Session:
     session_id: str
@@ -2009,6 +2462,8 @@ class Session:
     cwd: str
     log_path: Path | None
     sock_path: Path
+    session_path: Path | None = None
+    backend: str = "codex"
     busy: bool = False
     queue_len: int = 0
     token: dict[str, Any] | None = None
@@ -2036,11 +2491,60 @@ class Session:
     tmux_session: str | None = None
     tmux_window: str | None = None
     resume_session_id: str | None = None
+    first_user_message: str | None = None
+    pi_idle_activity_ts: float | None = None
+    pi_busy_activity_floor: float | None = None
+    pi_session_path_discovered: bool = False
+
+
+def _display_updated_ts(s: Session) -> float:
+    updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+    if s.backend == "pi":
+        activity_ts = _session_file_activity_ts(s.session_path)
+        if activity_ts is not None:
+            updated_ts = max(updated_ts, activity_ts)
+    return updated_ts
+
+
+def _display_source_path(s: Session) -> str | None:
+    if s.backend == "pi":
+        return str(s.session_path) if s.session_path is not None else None
+    return str(s.log_path) if s.log_path is not None else None
+
+
+def _display_pi_busy(s: Session, *, broker_busy: bool) -> bool:
+    if not broker_busy:
+        activity_ts = _session_file_activity_ts(s.session_path)
+        if activity_ts is not None:
+            s.pi_idle_activity_ts = activity_ts
+        s.pi_busy_activity_floor = None
+        return False
+    session_path = s.session_path
+    if session_path is None or (not session_path.exists()):
+        return True
+    activity_ts = _session_file_activity_ts(session_path)
+    if activity_ts is None:
+        return True
+    floor = s.pi_busy_activity_floor
+    if isinstance(floor, (int, float)) and activity_ts <= float(floor):
+        return True
+    idle_marker = s.pi_idle_activity_ts
+    if isinstance(idle_marker, (int, float)) and activity_ts <= float(idle_marker):
+        return False
+    idle = _pi_messages.is_pi_session_idle(session_path)
+    if idle is True:
+        s.pi_idle_activity_ts = activity_ts
+        s.pi_busy_activity_floor = None
+        return False
+    if idle is False:
+        s.pi_idle_activity_ts = None
+    return True
 
 
 class SessionManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
+        self._bad_sidecars: dict[str, tuple[bool, int, int]] = {}
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
@@ -2069,7 +2573,7 @@ class SessionManager:
             delivery_ledger_path=DELIVERY_LEDGER_PATH,
             vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
         )
-        self._discover_existing(force=True)
+        self._discover_existing(force=True, skip_invalid_sidecars=True)
         self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
         self._harness_thr.start()
         self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
@@ -2086,6 +2590,8 @@ class SessionManager:
         s.meta_system = 0
         s.last_chat_ts = None
         s.last_chat_history_scanned = False
+        s.pi_idle_activity_ts = None
+        s.pi_busy_activity_floor = None
         s.meta_log_off = int(meta_log_off)
         s.chat_index_events = []
         s.chat_index_scan_bytes = 0
@@ -2100,13 +2606,53 @@ class SessionManager:
         s.model = None
         s.reasoning_effort = None
         s.service_tier = None
+        s.first_user_message = None
 
-    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None, agent_backend: str) -> tuple[str | None, str | None, str | None, str | None]:
-        backend_name = normalize_agent_backend(agent_backend)
+    def _session_source_changed(self, s: Session, *, log_path: Path | None, session_path: Path | None) -> bool:
+        if s.log_path != log_path:
+            return True
+        if s.backend == "pi" and s.session_path != session_path:
+            return True
+        return False
+
+    def _claimed_pi_session_paths(self, *, exclude_sid: str = "") -> set[Path]:
+        """Return session_path values already assigned to active pi sessions."""
+        with self._lock:
+            out: set[Path] = set()
+            for s in self._sessions.values():
+                if s.backend == "pi" and s.session_path is not None and s.session_id != exclude_sid:
+                    out.add(s.session_path)
+            return out
+
+    def _apply_session_source(self, s: Session, *, log_path: Path | None, session_path: Path | None) -> None:
+        # For PTY-wrapped pi sessions, preserve a previously discovered
+        # session_path when the sidecar doesn't provide one.
+        if s.backend == "pi" and session_path is None and s.session_path is not None:
+            session_path = s.session_path
+        source_changed = self._session_source_changed(s, log_path=log_path, session_path=session_path)
+        s.log_path = log_path
+        s.session_path = session_path
+        if source_changed:
+            log_off = int(log_path.stat().st_size) if log_path is not None and log_path.exists() else 0
+            self._reset_log_caches(s, meta_log_off=log_off)
+
+    def _session_run_settings(
+        self,
+        *,
+        meta: dict[str, Any],
+        log_path: Path | None,
+        backend: str | None = None,
+        agent_backend: str | None = None,
+    ) -> tuple[str | None, str | None, str | None, str | None]:
+        backend_name = normalize_agent_backend(backend if backend is not None else agent_backend, default="codex")
         model_provider = _clean_optional_text(meta.get("model_provider"))
         preferred_auth_method = _normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
         model = _clean_optional_text(meta.get("model"))
-        reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if backend_name == "codex" else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
+        reasoning_effort = (
+            _display_reasoning_effort(meta.get("reasoning_effort"))
+            if backend_name == "codex"
+            else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
+        )
         if log_path is not None and log_path.exists():
             log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
             if log_provider is not None:
@@ -2132,9 +2678,57 @@ class SessionManager:
         if (not force) and ((now - last) < DISCOVER_MIN_INTERVAL_SECONDS):
             return
         try:
-            self._discover_existing(force=force)
+            self._discover_existing(force=force, skip_invalid_sidecars=True)
         except TypeError:
-            self._discover_existing()
+            try:
+                self._discover_existing(force=force)
+            except TypeError:
+                self._discover_existing()
+
+    def _sidecar_quarantine_signature(self, sock: Path) -> tuple[bool, int, int]:
+        meta_path = sock.with_suffix(".json")
+        try:
+            st = meta_path.stat()
+        except FileNotFoundError:
+            return (False, 0, 0)
+        return (True, int(st.st_mtime_ns), int(st.st_size))
+
+    def _sidecar_is_quarantined(self, sock: Path) -> bool:
+        bad_sidecars = getattr(self, "_bad_sidecars", None)
+        if not isinstance(bad_sidecars, dict):
+            self._bad_sidecars = {}
+            bad_sidecars = self._bad_sidecars
+        key = str(sock)
+        prev_sig = bad_sidecars.get(key)
+        if prev_sig is None:
+            return False
+        cur_sig = self._sidecar_quarantine_signature(sock)
+        if cur_sig == prev_sig:
+            return True
+        bad_sidecars.pop(key, None)
+        return False
+
+    def _quarantine_sidecar(
+        self,
+        sock: Path,
+        exc: BaseException,
+        *,
+        reason: str = "invalid sidecar",
+        log: bool = True,
+    ) -> None:
+        bad_sidecars = getattr(self, "_bad_sidecars", None)
+        if not isinstance(bad_sidecars, dict):
+            self._bad_sidecars = {}
+            bad_sidecars = self._bad_sidecars
+        bad_sidecars[str(sock)] = self._sidecar_quarantine_signature(sock)
+        if log:
+            sys.stderr.write(f"error: discover: quarantining {reason} for {sock}: {type(exc).__name__}: {exc}\n")
+            sys.stderr.flush()
+
+    def _clear_sidecar_quarantine(self, sock: Path) -> None:
+        bad_sidecars = getattr(self, "_bad_sidecars", None)
+        if isinstance(bad_sidecars, dict):
+            bad_sidecars.pop(str(sock), None)
 
     def _load_harness(self) -> None:
         try:
@@ -2672,7 +3266,7 @@ class SessionManager:
         if not s:
             raise KeyError("unknown session")
         sid_key = f"sid:{session_id}"
-        return sid_key, [session_id], s
+        return sid_key, [sid_key, session_id], s
 
     def files_get(self, session_id: str) -> list[str]:
         dirty = False
@@ -3053,10 +3647,14 @@ class SessionManager:
         if drop:
             self._save_queues()
         for sid in session_ids:
-            if self._maybe_drain_session_queue(sid):
-                break
+            try:
+                if self._maybe_drain_session_queue(sid):
+                    break
+            except Exception:
+                sys.stderr.write(f"error: queue sweep failed for session {sid}; skipping\n")
+                sys.stderr.flush()
 
-    def _discover_existing(self, *, force: bool = False) -> None:
+    def _discover_existing(self, *, force: bool = False, skip_invalid_sidecars: bool = False) -> None:
         if not force:
             now = time.time()
             with self._lock:
@@ -3066,43 +3664,94 @@ class SessionManager:
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
         recent_cwd_dirty = False
         for sock in sorted(SOCK_DIR.glob("*.sock")):
+            if skip_invalid_sidecars and self._sidecar_is_quarantined(sock):
+                continue
             session_id = sock.stem
-            # Prefer metadata file written by sessiond.
-            meta_path = sock.with_suffix(".json")
-            if not meta_path.exists():
-                raise RuntimeError(f"missing metadata sidecar for socket {sock}")
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            if not isinstance(meta, dict):
-                raise ValueError(f"invalid metadata json for socket {sock}")
+            try:
+                # Prefer metadata file written by sessiond.
+                meta_path = sock.with_suffix(".json")
+                if not meta_path.exists():
+                    raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if not isinstance(meta, dict):
+                    raise ValueError(f"invalid metadata json for socket {sock}")
 
-            thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
-            codex_pid_raw = meta.get("codex_pid")
-            broker_pid_raw = meta.get("broker_pid")
-            if not isinstance(codex_pid_raw, int):
-                raise ValueError(f"invalid codex_pid in metadata for socket {sock}")
-            if not isinstance(broker_pid_raw, int):
-                raise ValueError(f"invalid broker_pid in metadata for socket {sock}")
-            codex_pid = int(codex_pid_raw)
-            broker_pid = int(broker_pid_raw)
-            agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
-            owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
-            transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+                thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
+                backend = normalize_agent_backend(meta.get("backend"), default=normalize_agent_backend(meta.get("agent_backend"), default="codex"))
+                agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=backend)
+                codex_pid_raw = meta.get("codex_pid")
+                broker_pid_raw = meta.get("broker_pid")
+                if not isinstance(codex_pid_raw, int):
+                    raise ValueError(f"invalid codex_pid in metadata for socket {sock}")
+                if not isinstance(broker_pid_raw, int):
+                    raise ValueError(f"invalid broker_pid in metadata for socket {sock}")
+                codex_pid = int(codex_pid_raw)
+                broker_pid = int(broker_pid_raw)
+                owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
+                transport, tmux_session, tmux_window = self._session_transport(meta=meta)
 
-            log_path: Path | None = None
-            if "log_path" not in meta:
-                raise ValueError(f"missing log_path in metadata for socket {sock}")
-            if meta.get("log_path") is None:
-                log_path = None
-            else:
-                log_path_raw = meta.get("log_path")
-                if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
-                    raise ValueError(f"invalid log_path in metadata for socket {sock}")
-                log_path = Path(log_path_raw)
-            if log_path is not None and log_path.exists():
-                if agent_backend == "codex":
+                cwd_raw = meta.get("cwd")
+                if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+                    raise ValueError(f"invalid cwd in metadata for socket {sock}")
+                cwd = cwd_raw
+
+                start_ts_raw = meta.get("start_ts")
+                if not isinstance(start_ts_raw, (int, float)):
+                    raise ValueError(f"invalid start_ts in metadata for socket {sock}")
+                start_ts = float(start_ts_raw)
+
+                session_path_discovered = False
+                inferred_pi_session_path: Path | None = None
+                if backend == "codex" and agent_backend == "codex":
+                    for key in ("session_path", "log_path"):
+                        raw_path = meta.get(key)
+                        if not isinstance(raw_path, str) or not raw_path.strip():
+                            continue
+                        candidate = Path(raw_path)
+                        if infer_agent_backend_from_log_path(candidate) != "pi":
+                            continue
+                        inferred_pi_session_path = candidate
+                        break
+                    if inferred_pi_session_path is None and _pid_alive(codex_pid):
+                        claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                        inferred_pi_session_path = _proc_find_open_rollout_log(
+                            proc_root=PROC_ROOT,
+                            root_pid=codex_pid,
+                            agent_backend="pi",
+                            cwd=cwd,
+                            ignored_paths=claimed,
+                        )
+                    if inferred_pi_session_path is not None:
+                        backend = "pi"
+                        agent_backend = "pi"
+                        session_path_discovered = True
+                        _patch_metadata_pi_binding(sock, inferred_pi_session_path)
+
+                log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
+                if inferred_pi_session_path is not None:
+                    session_path = inferred_pi_session_path
+                else:
+                    try:
+                        session_path = _metadata_session_path(meta=meta, backend=backend, sock=sock)
+                    except ValueError as exc:
+                        if backend == "pi" and "missing session_path" in str(exc):
+                            session_path_discovered = True
+                            claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                            session_path = _discover_pi_session_for_cwd(cwd, start_ts, exclude=claimed)
+                            if session_path is not None:
+                                _patch_metadata_session_path(sock, session_path)
+                        else:
+                            raise
+                if log_path is not None and log_path.exists():
                     thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
-            else:
-                log_path = None
+                else:
+                    log_path = None
+            except Exception as exc:
+                if skip_invalid_sidecars:
+                    self._quarantine_sidecar(sock, exc)
+                    continue
+                raise
+            self._clear_sidecar_quarantine(sock)
 
             if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
                 self._unhide_session(session_id)
@@ -3118,35 +3767,40 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 continue
 
-            cwd_raw = meta.get("cwd")
-            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-                raise ValueError(f"invalid cwd in metadata for socket {sock}")
-            cwd = cwd_raw
+            try:
+                model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(backend=backend, meta=meta, log_path=log_path)
+                service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
+            except Exception as exc:
+                if skip_invalid_sidecars:
+                    self._quarantine_sidecar(sock, exc)
+                    continue
+                raise
             if self._remember_recent_cwd(cwd, ts=meta.get("updated_ts", meta.get("start_ts"))):
                 recent_cwd_dirty = True
 
-            start_ts_raw = meta.get("start_ts")
-            if not isinstance(start_ts_raw, (int, float)):
-                raise ValueError(f"invalid start_ts in metadata for socket {sock}")
-            start_ts = float(start_ts_raw)
             resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
-                meta=meta,
-                log_path=log_path,
-                agent_backend=agent_backend,
-            )
-            service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
 
             # Validate socket is responsive.
             try:
                 resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=0.5)
             except Exception as e:
-                # Socket discovery should not take down the sessions listing. Treat
-                # definitely-stale sockets as runtime artifacts and prune them, but
-                # avoid unlinking sockets for live processes (startup races).
+                # Socket discovery should not take down the sessions listing. Only
+                # timeouts are treated as transient while the tracked processes are
+                # still alive; a refused Unix-socket connect means the filesystem
+                # entry exists but no broker is listening on it anymore.
+                if _sock_error_definitely_stale(e):
+                    if skip_invalid_sidecars:
+                        self._quarantine_sidecar(sock, e, reason="unreachable sidecar", log=False)
+                    elif _probe_failure_safe_to_prune(broker_pid=broker_pid, codex_pid=codex_pid):
+                        _unlink_quiet(sock)
+                        _unlink_quiet(meta_path)
+                    else:
+                        sys.stderr.write(f"error: discover: sock state call failed for {sock}: {type(e).__name__}: {e}\n")
+                        sys.stderr.flush()
+                    continue
                 sys.stderr.write(f"error: discover: sock state call failed for {sock}: {type(e).__name__}: {e}\n")
                 sys.stderr.flush()
-                if _sock_error_definitely_stale(e) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
+                if _probe_failure_safe_to_prune(broker_pid=broker_pid, codex_pid=codex_pid):
                     _unlink_quiet(sock)
                     _unlink_quiet(meta_path)
                 continue
@@ -3163,11 +3817,13 @@ class SessionManager:
                 codex_pid=codex_pid,
                 agent_backend=agent_backend,
                 owned=owned,
+                backend=backend,
                 transport=transport,
                 start_ts=float(start_ts),
                 cwd=str(cwd),
                 log_path=log_path,
                 sock_path=sock,
+                session_path=session_path,
                 busy=bool(resp.get("busy")),
                 queue_len=int(resp.get("queue_len")),
                 token=(resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None),
@@ -3183,6 +3839,7 @@ class SessionManager:
                 tmux_session=tmux_session,
                 tmux_window=tmux_window,
                 resume_session_id=resume_session_id,
+                pi_session_path_discovered=session_path_discovered,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -3197,6 +3854,7 @@ class SessionManager:
                 else:
                     prev.sock_path = s.sock_path
                     prev.thread_id = s.thread_id
+                    prev.backend = s.backend
                     prev.broker_pid = s.broker_pid
                     prev.codex_pid = s.codex_pid
                     prev.agent_backend = s.agent_backend
@@ -3207,9 +3865,7 @@ class SessionManager:
                     prev.busy = s.busy
                     prev.queue_len = s.queue_len
                     prev.token = s.token
-                    if prev.log_path != s.log_path:
-                        prev.log_path = s.log_path
-                        self._reset_log_caches(prev, meta_log_off=meta_log_off)
+                    self._apply_session_source(prev, log_path=s.log_path, session_path=s.session_path)
                     prev.model_provider = model_provider
                     prev.preferred_auth_method = preferred_auth_method
                     prev.model = model
@@ -3218,6 +3874,7 @@ class SessionManager:
                     prev.tmux_session = tmux_session
                     prev.tmux_window = tmux_window
                     prev.resume_session_id = resume_session_id
+                    prev.pi_session_path_discovered = s.pi_session_path_discovered or prev.pi_session_path_discovered
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -3249,13 +3906,10 @@ class SessionManager:
             if not s.sock_path.exists():
                 dead.append((sid, s.sock_path))
                 continue
-            ok, err = self._refresh_session_state(sid, s.sock_path, timeout_s=0.4)
+            ok, _ = self._refresh_session_state(sid, s.sock_path, timeout_s=0.4)
             if ok:
                 continue
-            if err is not None and _sock_error_definitely_stale(err):
-                dead.append((sid, s.sock_path))
-                continue
-            if _pid_alive(s.broker_pid) or _pid_alive(s.codex_pid):
+            if not _probe_failure_safe_to_prune(broker_pid=s.broker_pid, codex_pid=s.codex_pid):
                 continue
             dead.append((sid, s.sock_path))
         if not dead:
@@ -3390,7 +4044,11 @@ class SessionManager:
                     s.last_chat_history_scanned = True
                     if isinstance(conv_ts, (int, float)):
                         s.last_chat_ts = float(conv_ts)
-                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+                if s.backend == "pi":
+                    activity_ts = _session_file_activity_ts(s.session_path)
+                    if activity_ts is not None:
+                        s.last_chat_ts = activity_ts if s.last_chat_ts is None else max(s.last_chat_ts, activity_ts)
+                updated_ts = _display_updated_ts(s)
                 cwd_recent = _clean_recent_cwd(s.cwd)
                 recent_map = getattr(self, "_recent_cwds", None)
                 if cwd_recent is not None:
@@ -3427,14 +4085,23 @@ class SessionManager:
                 blocked = dependency_session_id is not None
                 snoozed = snooze_until is not None and snooze_until > now_ts
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
-                cwd_path = Path(s.cwd).expanduser()
+                cwd_path = _safe_expanduser(Path(s.cwd))
                 if not cwd_path.is_absolute():
                     cwd_path = cwd_path.resolve()
                 git_branch = _current_git_branch(cwd_path)
+                if s.first_user_message is None:
+                    try:
+                        if s.backend == "pi" and s.session_path is not None and s.session_path.exists():
+                            s.first_user_message = _first_user_message_preview_from_pi_session(s.session_path)
+                        elif log_exists and s.log_path is not None:
+                            s.first_user_message = _first_user_message_preview_from_log(s.log_path)
+                    except Exception:
+                        s.first_user_message = ""
                 items.append(
                     {
                         "session_id": s.session_id,
                         "thread_id": s.thread_id,
+                        "backend": s.backend,
                         "pid": s.codex_pid,
                         "broker_pid": s.broker_pid,
                         "agent_backend": s.agent_backend,
@@ -3455,11 +4122,13 @@ class SessionManager:
                         "harness_cooldown_minutes": h_cooldown_minutes,
                         "harness_remaining_injections": h_remaining_injections,
                         "alias": alias,
+                        "first_user_message": s.first_user_message or "",
                         "files": list(files),
                         "git_branch": git_branch,
                         "model_provider": s.model_provider,
                         "preferred_auth_method": s.preferred_auth_method,
-                        "provider_choice": _provider_choice_for_settings(
+                        "provider_choice": _provider_choice_for_backend(
+                            backend=s.backend,
                             model_provider=s.model_provider,
                             preferred_auth_method=s.preferred_auth_method,
                         ),
@@ -3485,7 +4154,10 @@ class SessionManager:
             agent_backend = normalize_agent_backend(it.get("agent_backend"), default="codex")
             log_exists = bool(it.get("log_exists"))
             state_busy = bool(it.get("state_busy"))
-            if not log_exists:
+            if not log_exists and it.get("backend") == "pi":
+                s_obj = self._sessions.get(sid)
+                busy_out = _display_pi_busy(s_obj, broker_busy=state_busy) if s_obj is not None else state_busy
+            elif not log_exists:
                 busy_out = False
             else:
                 idle_val = bool(self.idle_from_log(sid))
@@ -3522,7 +4194,7 @@ class SessionManager:
         with self._lock:
             return self._sessions.get(session_id)
 
-    def refresh_session_meta(self, session_id: str) -> None:
+    def refresh_session_meta(self, session_id: str, *, strict: bool = True) -> None:
         # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
         # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
         with self._lock:
@@ -3530,59 +4202,83 @@ class SessionManager:
             if not s:
                 return
             sock = s.sock_path
-        meta_path = sock.with_suffix(".json")
-        if not meta_path.exists():
-            raise RuntimeError(f"missing metadata sidecar for socket {sock}")
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if not isinstance(meta, dict):
-            raise ValueError(f"invalid metadata json for socket {sock}")
+        try:
+            meta_path = sock.with_suffix(".json")
+            if not meta_path.exists():
+                raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            if not isinstance(meta, dict):
+                raise ValueError(f"invalid metadata json for socket {sock}")
 
-        thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
-        owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
-        agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
-        transport, tmux_session, tmux_window = self._session_transport(meta=meta)
-        if "log_path" not in meta:
-            raise ValueError(f"missing log_path in metadata for socket {sock}")
-        log_path: Path | None
-        if meta.get("log_path") is None:
-            log_path = None
-        else:
-            log_path_raw = meta.get("log_path")
-            if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
-                raise ValueError(f"invalid log_path in metadata for socket {sock}")
-            log_path = Path(log_path_raw)
-        if log_path is not None and log_path.exists():
-            if agent_backend == "codex":
+            thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
+            backend = normalize_agent_backend(meta.get("backend"), default=normalize_agent_backend(meta.get("agent_backend"), default=s.backend))
+            agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=backend)
+            owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
+            transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+            log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
+            session_path_discovered = False
+            if backend == "pi" and (not strict) and ("session_path" not in meta):
+                session_path_discovered = True
+                session_path = None
+            else:
+                session_path = _metadata_session_path(meta=meta, backend=backend, sock=sock)
+            if log_path is not None and log_path.exists():
                 thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
-        cwd_raw = meta.get("cwd")
-        if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-            raise ValueError(f"invalid cwd in metadata for socket {sock}")
-        cwd = cwd_raw
-        resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-        model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
-            meta=meta,
-            log_path=log_path,
-            agent_backend=agent_backend,
-        )
-        service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
+            cwd_raw = meta.get("cwd")
+            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+                raise ValueError(f"invalid cwd in metadata for socket {sock}")
+            cwd = cwd_raw
+
+            start_ts_raw = meta.get("start_ts")
+            start_ts = float(start_ts_raw) if isinstance(start_ts_raw, (int, float)) else s.start_ts
+            if backend == "pi" and session_path is None:
+                claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                session_path = _discover_pi_session_for_cwd(cwd, start_ts, exclude=claimed)
+                if session_path is not None:
+                    _patch_metadata_session_path(sock, session_path)
+            resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
+            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(backend=backend, meta=meta, log_path=log_path)
+            service_tier = _normalize_requested_service_tier(meta.get("service_tier"))
+        except Exception as exc:
+            if strict:
+                raise
+            self._quarantine_sidecar(sock, exc)
+            return
+        self._clear_sidecar_quarantine(sock)
+
+        # Detect pi session switch: if thread_id changed, the underlying
+        # session file has switched and we must re-discover session_path.
+        pi_session_switched = False
+        old_session_path: Path | None = None
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            if s2 and backend == "pi" and s2.thread_id and thread_id and s2.thread_id != thread_id and s2.session_path is not None:
+                pi_session_switched = True
+                old_session_path = s2.session_path
+
+        if pi_session_switched and old_session_path is not None:
+            claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+            claimed.add(old_session_path)
+            new_sp = _discover_pi_session_for_cwd(cwd, start_ts, exclude=claimed)
+            if new_sp is not None:
+                session_path = new_sp
+                _patch_metadata_session_path(sock, new_sp)
 
         with self._lock:
             s2 = self._sessions.get(session_id)
             if not s2:
                 return
+            if pi_session_switched:
+                s2.session_path = None
+                self._reset_log_caches(s2, meta_log_off=0)
             s2.thread_id = thread_id
             s2.agent_backend = agent_backend
+            s2.backend = backend
             s2.cwd = str(cwd)
             s2.owned = bool(owned)
             s2.transport = transport
-            if s2.log_path != log_path:
-                s2.log_path = log_path
-                if log_path is not None:
-                    log_off = int(log_path.stat().st_size)
-                else:
-                    log_off = 0
-                self._reset_log_caches(s2, meta_log_off=log_off)
+            self._apply_session_source(s2, log_path=log_path, session_path=session_path)
             s2.model_provider = model_provider
             s2.preferred_auth_method = preferred_auth_method
             s2.model = model
@@ -3591,6 +4287,7 @@ class SessionManager:
             s2.tmux_session = tmux_session
             s2.tmux_window = tmux_window
             s2.resume_session_id = resume_session_id
+            s2.pi_session_path_discovered = bool(s2.pi_session_path_discovered or session_path_discovered)
         if self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -3744,6 +4441,18 @@ class SessionManager:
             ev2["notification_text"] = notification_text
             out.append(ev2)
         return out
+
+    def _update_pi_last_chat_ts(self, session_id: str, events: list[dict[str, Any]], *, session_path: Path | None) -> None:
+        if not events:
+            return
+        latest_chat_ts = _session_file_activity_ts(session_path)
+        if latest_chat_ts is None:
+            return
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return
+            s.last_chat_ts = latest_chat_ts if s.last_chat_ts is None else max(s.last_chat_ts, latest_chat_ts)
 
     def _ensure_chat_index(self, session_id: str, *, min_events: int, before: int) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
         with self._lock:
@@ -3902,6 +4611,165 @@ class SessionManager:
             raise RuntimeError("unable to compute idle state from log")
         return bool(idle)
 
+    def get_messages_page(
+        self,
+        session_id: str,
+        *,
+        offset: int,
+        init: bool,
+        limit: int,
+        before: int,
+        view: str = "conversation",
+    ) -> dict[str, Any]:
+        self.refresh_session_meta(session_id, strict=False)
+        s = self.get_session(session_id)
+        if not s:
+            raise KeyError("unknown session")
+
+        state = self.get_state(session_id)
+        if not isinstance(state, dict):
+            raise ValueError("invalid broker state response")
+        if "busy" not in state:
+            raise ValueError("missing busy from broker state response")
+        if "queue_len" not in state:
+            raise ValueError("missing queue_len from broker state response")
+        state_token = state.get("token")
+        if not (isinstance(state_token, dict) or (state_token is None)):
+            raise ValueError("invalid token from broker state response")
+
+        if s.backend == "pi":
+            diag = {"tool_names": [], "last_tool": None}
+            flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
+            meta_delta = {"thinking": 0, "tool": 0, "system": 0}
+            events: list[dict[str, Any]] = []
+            new_off = 0
+            has_older = False
+            next_before = 0
+            # Lazy discover session_path for PTY-wrapped pi (piox).
+            # Only discover when session_path is truly unknown (None).
+            # When session_path is set but the file doesn't exist yet
+            # (Pi hasn't written to it), we must NOT fall back to discovery
+            # because _discover_pi_session_for_cwd picks the most-recently-
+            # modified file and would grab another session's file when two
+            # piox sessions share the same CWD.
+            if s.session_path is None and s.cwd:
+                claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                discovered = _discover_pi_session_for_cwd(s.cwd, s.start_ts, exclude=claimed)
+                if discovered is not None:
+                    s.session_path = discovered
+                    _patch_metadata_session_path(s.sock_path, discovered)
+            if s.session_path is not None and s.session_path.exists():
+                if init and offset == 0:
+                    events, new_off, has_older, next_before, diag = _pi_messages.read_pi_message_page(
+                        s.session_path,
+                        limit=limit,
+                        before=before,
+                    )
+                else:
+                    events, new_off, meta_delta, flags, diag = _pi_messages.read_pi_message_delta(
+                        s.session_path,
+                        offset=offset,
+                    )
+                self._update_pi_last_chat_ts(session_id, events, session_path=s.session_path)
+            # Detect session switch via /resume: when the current session file
+            # has gone stale (no writes) but a different, more recently modified
+            # file exists in the same session directory, the pi CLI likely
+            # switched sessions.  Re-discover and swap.
+            if s.pi_session_path_discovered and s.session_path is not None and s.cwd and not events:
+                sp_mtime = _safe_path_mtime(s.session_path)
+                if sp_mtime is not None and (time.time() - sp_mtime) > 2.0:
+                    old_sp = s.session_path
+                    claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                    claimed.add(old_sp)
+                    newer_sp = _discover_pi_session_for_cwd(s.cwd, s.start_ts, exclude=claimed)
+                    newer_sp_mtime = _safe_path_mtime(newer_sp) if newer_sp is not None else None
+                    if newer_sp is not None and newer_sp_mtime is not None and newer_sp_mtime > sp_mtime:
+                        s.session_path = newer_sp
+                        _patch_metadata_session_path(s.sock_path, newer_sp, force=True)
+                        self._reset_log_caches(s, meta_log_off=0)
+                        # Re-read from the newly discovered session file.
+                        events, new_off, has_older, next_before, diag = _pi_messages.read_pi_message_page(
+                            s.session_path,
+                            limit=limit,
+                            before=0,
+                        )
+                        self._update_pi_last_chat_ts(session_id, events, session_path=s.session_path)
+            pi_busy = _display_pi_busy(s, broker_busy=bool(state.get("busy")))
+            return {
+                "thread_id": s.thread_id,
+                "log_path": str(s.session_path) if s.session_path is not None else None,
+                "offset": int(new_off),
+                "events": events,
+                "meta_delta": meta_delta,
+                "turn_start": bool(flags.get("turn_start")),
+                "turn_end": bool(flags.get("turn_end")),
+                "turn_aborted": bool(flags.get("turn_aborted")),
+                "diag": diag,
+                "busy": pi_busy,
+                "queue_len": int(self._queue_len(session_id)),
+                "token": state_token,
+                "has_older": bool(has_older),
+                "next_before": int(next_before),
+            }
+
+        if s.log_path is None or (not s.log_path.exists()):
+            return {
+                "thread_id": s.thread_id,
+                "log_path": None,
+                "offset": 0,
+                "events": [],
+                "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                "turn_start": False,
+                "turn_end": False,
+                "turn_aborted": False,
+                "diag": {"pending_log": True},
+                "busy": False,
+                "queue_len": int(self._queue_len(session_id)),
+                "token": state_token,
+                "has_older": False,
+                "next_before": 0,
+            }
+
+        if init and offset == 0:
+            events, new_off, has_older, next_before, token_update = self._ensure_chat_index(
+                session_id,
+                min_events=limit,
+                before=before,
+            )
+            meta_delta = {"thinking": 0, "tool": 0, "system": 0}
+            flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
+            diag = {"tool_names": [], "last_tool": None}
+        else:
+            has_older = False
+            next_before = 0
+            objs, new_off = _read_jsonl_from_offset(s.log_path, offset)
+            events, meta_delta, flags, diag = _extract_chat_events(objs)
+            token_update = _extract_token_update(objs)
+            self.mark_log_delta(session_id, objs=objs, new_off=new_off)
+
+        s2 = self.get_session(session_id)
+        if token_update is not None and s2 is not None:
+            s2.token = token_update
+        idle_val = self.idle_from_log(session_id)
+        busy_val = bool(state.get("busy")) or (not bool(idle_val))
+        token_val = state_token if state_token is not None else token_update if isinstance(token_update, dict) else None
+        return {
+            "thread_id": s.thread_id,
+            "log_path": str(s.log_path),
+            "offset": int(new_off),
+            "events": events,
+            "meta_delta": meta_delta,
+            "turn_start": bool(flags.get("turn_start")),
+            "turn_end": bool(flags.get("turn_end")),
+            "turn_aborted": bool(flags.get("turn_aborted")),
+            "diag": diag,
+            "busy": bool(busy_val),
+            "queue_len": int(self._queue_len(session_id)),
+            "token": token_val,
+            "has_older": bool(has_older),
+            "next_before": int(next_before),
+        }
+
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float = 2.0) -> dict[str, Any]:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(timeout_s)
@@ -3967,8 +4835,9 @@ class SessionManager:
         reasoning_effort: str | None = None,
         service_tier: str | None = None,
         create_in_tmux: bool = False,
+        backend: str | None = None,
     ) -> dict[str, Any]:
-        backend_name = normalize_agent_backend(agent_backend)
+        backend_name = normalize_agent_backend(backend, default=normalize_agent_backend(agent_backend, default="codex"))
         cwd_path = _resolve_dir_target(cwd, field_name="cwd")
         if not cwd_path.exists():
             try:
@@ -3979,6 +4848,46 @@ class SessionManager:
         if not cwd_path.is_dir():
             raise ValueError(f"cwd is not a directory: {cwd_path}")
         cwd3 = str(cwd_path)
+        if backend_name == "pi":
+            if resume_session_id is not None:
+                resume_id = _clean_optional_resume_session_id(resume_session_id)
+                if not resume_id:
+                    raise ValueError("resume_session_id must be a non-empty string")
+                session_path: Path | None = None
+                for row in _list_resume_candidates_for_cwd(cwd3, limit=1000, backend="pi"):
+                    if row.get("session_id") != resume_id:
+                        continue
+                    raw_session_path = row.get("session_path")
+                    if isinstance(raw_session_path, str) and raw_session_path:
+                        session_path = Path(raw_session_path)
+                        break
+                if session_path is None:
+                    raise ValueError(f"resume session not found for cwd: {resume_id}")
+            else:
+                session_path = _pi_new_session_file_for_cwd(cwd_path)
+            session_path.parent.mkdir(parents=True, exist_ok=True)
+            argv = [sys.executable, "-m", "codoxear.pi_broker", "--cwd", str(cwd_path), "--session-file", str(session_path)]
+            env = dict(os.environ)
+            if _DOTENV.exists():
+                for k, v in _load_env_file(_DOTENV).items():
+                    env.setdefault(k, v)
+            env["CODEX_WEB_OWNER"] = "web"
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    env=env,
+                    start_new_session=True,
+                )
+            except Exception as e:
+                raise RuntimeError(f"spawn failed: {e}") from e
+            _wait_or_raise(proc, label="pi broker", timeout_s=1.5)
+            if proc.stderr is not None:
+                threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
+            threading.Thread(target=proc.wait, daemon=True).start()
+            return {"broker_pid": int(proc.pid), "backend": "pi"}
         if resume_session_id is not None and worktree_branch is not None:
             raise ValueError("worktree_branch cannot be used when resuming a session")
         spawn_cwd = cwd_path
@@ -4017,7 +4926,7 @@ class SessionManager:
             if reasoning_effort is not None:
                 codex_args.extend(["--thinking", reasoning_effort])
         if resume_session_id is not None:
-            resume_id = str(resume_session_id).strip()
+            resume_id = _clean_optional_resume_session_id(resume_session_id)
             if not resume_id:
                 raise ValueError("resume_session_id must be a non-empty string")
             found = False
@@ -4159,8 +5068,13 @@ class SessionManager:
             return False
         ok = self.kill_session(session_id)
         if ok:
+            # Hide the session immediately so stale sidecars do not repopulate the
+            # sidebar before the broker and child process have fully exited.
+            self._hide_session(session_id)
             self.files_clear(session_id)
             self._clear_deleted_session_state(session_id)
+            with self._lock:
+                self._sessions.pop(session_id, None)
         return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
@@ -4179,7 +5093,13 @@ class SessionManager:
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
-            raise
+            # Broker alive but socket temporarily unavailable (e.g. during
+            # session switch).  Auto-enqueue so the message is delivered
+            # once the broker becomes reachable again.
+            return self._queue_enqueue_local(session_id, text)
+        error = resp.get("error")
+        if isinstance(error, str) and error:
+            raise ValueError(error)
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2:
@@ -4188,6 +5108,8 @@ class SessionManager:
                 if "queue_len" not in resp:
                     raise ValueError("invalid broker send response")
                 s2.queue_len = int(resp.get("queue_len"))
+                s2.pi_idle_activity_ts = None
+                s2.pi_busy_activity_floor = _session_file_activity_ts(s2.session_path) if s2.busy else None
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
@@ -4222,18 +5144,87 @@ class SessionManager:
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
-            raise
+            # Broker is alive but socket temporarily unavailable (e.g. during
+            # session switch).  Return a degraded state instead of crashing.
+            return {"busy": bool(s.busy), "queue_len": int(s.queue_len), "token": s.token}
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2:
                 if "busy" not in resp or "queue_len" not in resp:
-                    raise ValueError("invalid broker state response")
+                    # Return the last known good state if broker responds with garbage.
+                    return {"busy": bool(s2.busy), "queue_len": int(s2.queue_len), "token": s2.token}
                 s2.busy = bool(resp.get("busy"))
                 s2.queue_len = int(resp.get("queue_len"))
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
                         s2.token = tok
+        return resp
+
+    def get_ui_state(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.backend != "pi":
+                raise ValueError("ui interactions are only supported for pi sessions")
+            sock = s.sock_path
+        try:
+            resp = self._sock_call(sock, {"cmd": "ui_state"}, timeout_s=1.5)
+        except Exception:
+            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                with self._lock:
+                    self._sessions.pop(session_id, None)
+                self._clear_deleted_session_state(session_id)
+                _unlink_quiet(sock)
+                _unlink_quiet(sock.with_suffix(".json"))
+                raise KeyError("unknown session")
+            raise ValueError("broker unavailable")
+
+        if resp.get("error") == "unknown cmd":
+            # Gracefully handle older brokers that don't support ui_state yet.
+            return {"requests": []}
+
+        error = resp.get("error")
+        if isinstance(error, str) and error:
+            raise ValueError(error)
+        return _sanitize_pi_ui_state_payload(resp)
+
+    def submit_ui_response(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.backend != "pi":
+                raise ValueError("ui interactions are only supported for pi sessions")
+            sock = s.sock_path
+        forward: dict[str, Any] = {"cmd": "ui_response"}
+        for key in ("id", "value", "confirmed", "cancelled"):
+            if key in payload:
+                forward[key] = payload[key]
+        try:
+            resp = self._sock_call(sock, forward, timeout_s=3.0)
+        except Exception:
+            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                with self._lock:
+                    self._sessions.pop(session_id, None)
+                self._clear_deleted_session_state(session_id)
+                _unlink_quiet(sock)
+                _unlink_quiet(sock.with_suffix(".json"))
+                raise KeyError("unknown session")
+            raise ValueError("broker unavailable")
+        if resp.get("error") == "unknown cmd":
+            if payload.get("cancelled") is True:
+                self.inject_keys(session_id, "\\x1b")
+                return {"ok": True, "legacy_fallback": True}
+            text = _legacy_pi_ui_response_text(payload)
+            if text is None:
+                raise ValueError("ui response value required")
+            self.send(session_id, text)
+            return {"ok": True, "legacy_fallback": True}
+        error = resp.get("error")
+        if isinstance(error, str) and error:
+            raise ValueError(error)
         return resp
 
     def get_tail(self, session_id: str) -> str:
@@ -4275,6 +5266,9 @@ class SessionManager:
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
             raise
+        err = resp.get("error")
+        if isinstance(err, str) and err:
+            raise ValueError(err)
         return resp
 
     def mark_turn_complete(self, session_id: str, payload: dict[str, Any]) -> None:
@@ -4518,6 +5512,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 qs = urllib.parse.parse_qs(u.query)
                 cwd_raw = qs.get("cwd", [""])[0]
+                backend_raw = qs.get("backend", ["codex"])[0]
                 try:
                     agent_backend = normalize_agent_backend(qs.get("agent_backend", [""])[0], default=DEFAULT_AGENT_BACKEND)
                 except ValueError as e:
@@ -4528,15 +5523,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e), "field": "cwd"})
                     return
+                try:
+                    backend = _normalize_requested_backend(backend_raw)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e), "field": "backend"})
+                    return
                 info = _describe_session_cwd(cwd_path)
-                rows = _list_resume_candidates_for_cwd(info["cwd"], agent_backend=agent_backend) if info["exists"] else []
+                rows = _list_resume_candidates_for_cwd(info["cwd"], backend=backend) if info["exists"] else []
                 for row in rows:
                     sid = row.get("session_id")
-                    log_path_raw = row.get("log_path")
                     alias = MANAGER.alias_get(sid) if isinstance(sid, str) and sid else ""
                     preview = ""
+                    log_path_raw = row.get("log_path")
+                    session_path_raw = row.get("session_path")
                     if isinstance(log_path_raw, str) and log_path_raw:
                         preview = _first_user_message_preview_from_log(Path(log_path_raw))
+                    elif isinstance(session_path_raw, str) and session_path_raw:
+                        preview = _first_user_message_preview_from_pi_session(Path(session_path_raw))
                     row["alias"] = alias
                     row["first_user_message"] = preview
                 _json_response(self, 200, {"ok": True, **info, "sessions": rows})
@@ -4558,7 +5561,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -4588,11 +5591,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if reasoning_effort is None:
                         reasoning_effort = log_effort
                 sidebar_meta = MANAGER.sidebar_meta_get(session_id)
-                cwd_path = Path(s.cwd).expanduser()
+                cwd_path = _safe_expanduser(Path(s.cwd))
                 if not cwd_path.is_absolute():
                     cwd_path = cwd_path.resolve()
                 git_branch = _current_git_branch(cwd_path)
-                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+                updated_ts = _display_updated_ts(s)
                 elapsed_s = max(0.0, time.time() - updated_ts)
                 time_priority = _priority_from_elapsed_seconds(elapsed_s)
                 base_priority = _clip01(time_priority + float(sidebar_meta["priority_offset"]))
@@ -4600,13 +5603,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
                 broker_busy = bool(state.get("busy"))
-                busy_val = broker_busy
-                if s.log_path is not None and s.log_path.exists():
+                busy = _display_pi_busy(s, broker_busy=broker_busy) if s.backend == "pi" else broker_busy
+                if s.backend != "pi" and s.log_path is not None and s.log_path.exists():
                     idle_val = MANAGER.idle_from_log(session_id)
-                    if s.agent_backend == "pi":
-                        busy_val = not bool(idle_val)
-                    else:
-                        busy_val = broker_busy or (not bool(idle_val))
+                    busy = broker_busy or (not bool(idle_val))
                 _json_response(
                     self,
                     200,
@@ -4614,21 +5614,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "session_id": s.session_id,
                         "thread_id": s.thread_id,
                         "agent_backend": s.agent_backend,
+                        "backend": s.backend,
+                        "agent_backend": s.agent_backend,
                         "owned": bool(s.owned),
                         "transport": s.transport,
                         "cwd": s.cwd,
                         "start_ts": float(s.start_ts),
-                        "updated_ts": float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts),
+                        "updated_ts": updated_ts,
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
+                        "session_file_path": _display_source_path(s),
                         "broker_pid": int(s.broker_pid),
                         "codex_pid": int(s.codex_pid),
-                        "busy": bool(busy_val),
+                        "busy": bool(busy),
                         "broker_busy": broker_busy,
                         "queue_len": MANAGER._queue_len(session_id),
                         "token": token_val,
                         "model_provider": model_provider,
                         "preferred_auth_method": preferred_auth_method,
-                        "provider_choice": _provider_choice_for_settings(
+                        "provider_choice": _provider_choice_for_backend(
+                            backend=s.backend,
                             model_provider=model_provider,
                             preferred_auth_method=preferred_auth_method,
                         ),
@@ -4644,6 +5648,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "priority_offset": sidebar_meta["priority_offset"],
                         "snooze_until": sidebar_meta["snooze_until"],
                         "dependency_session_id": sidebar_meta["dependency_session_id"],
+                        "todo_snapshot": _todo_snapshot_payload_for_session(s),
                     },
                 )
                 return
@@ -4668,6 +5673,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "queue": q})
                 return
 
+            if path.startswith("/api/sessions/") and path.endswith("/ui_state"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                try:
+                    payload = MANAGER.get_ui_state(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
+                _json_response(self, 200, payload)
+                return
+
             if path.startswith("/api/sessions/") and path.endswith("/file/read"):
                 if not _require_auth(self):
                     self._unauthorized()
@@ -4677,7 +5702,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -4688,7 +5713,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 p = _resolve_session_path(base, rel)
@@ -4751,7 +5776,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -4770,7 +5795,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if limit < 1:
                     _json_response(self, 400, {"error": "limit must be >= 1"})
                     return
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 try:
@@ -4808,12 +5833,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 try:
@@ -4839,7 +5864,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -4850,7 +5875,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 p = _resolve_session_path(base, rel)
@@ -4884,7 +5909,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -4895,7 +5920,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
+                base = _safe_expanduser(Path(s.cwd))
                 if not base.is_absolute():
                     base = base.resolve()
                 p = _resolve_session_path(base, rel)
@@ -4930,12 +5955,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                cwd = Path(s.cwd).expanduser()
+                cwd = _safe_expanduser(Path(s.cwd))
                 if not cwd.is_absolute():
                     cwd = cwd.resolve()
                 try:
@@ -5025,7 +6050,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -5038,7 +6063,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 rel = path_q[0]
                 staged_q = qs.get("staged")
                 staged = bool(staged_q and staged_q[0] == "1")
-                cwd = Path(s.cwd).expanduser()
+                cwd = _safe_expanduser(Path(s.cwd))
                 if not cwd.is_absolute():
                     cwd = cwd.resolve()
                 try:
@@ -5073,7 +6098,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not session_id:
                     self.send_error(404)
                     return
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 s = MANAGER.get_session(session_id)
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
@@ -5084,7 +6109,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                cwd = Path(s.cwd).expanduser()
+                cwd = _safe_expanduser(Path(s.cwd))
                 if not cwd.is_absolute():
                     cwd = cwd.resolve()
                 try:
@@ -5147,7 +6172,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 session_id = parts[3]
                 t0_meta = time.perf_counter()
-                MANAGER.refresh_session_meta(session_id)
+                MANAGER.refresh_session_meta(session_id, strict=False)
                 dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
                 s = MANAGER.get_session(session_id)
                 if not s:
@@ -5173,127 +6198,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         raise ValueError("invalid before")
                     before = int(before_q[0])
                 before = max(0, before)
-                if s.log_path is None or (not s.log_path.exists()):
-                    state = MANAGER.get_state(session_id)
-                    if not isinstance(state, dict):
-                        raise ValueError("invalid broker state response")
-                    if "busy" not in state:
-                        raise ValueError("missing busy from broker state response")
-                    if "queue_len" not in state:
-                        raise ValueError("missing queue_len from broker state response")
-                    queue_val = MANAGER._queue_len(session_id)
-                    state_token = state.get("token")
-                    if not (isinstance(state_token, dict) or (state_token is None)):
-                        raise ValueError("invalid token from broker state response")
-                    token_val = state_token
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "thread_id": s.thread_id,
-                            "log_path": None,
-                            "offset": 0,
-                            "events": [],
-                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
-                            "turn_start": False,
-                            "turn_end": False,
-                            "turn_aborted": False,
-                            "diag": {"pending_log": True},
-                            # Definition: a session with no associated rollout log is idle.
-                            "busy": False,
-                            "queue_len": int(queue_val),
-                            "token": token_val,
-                            "has_older": False,
-                            "next_before": 0,
-                        },
-                    )
-                    dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
-                    _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
-                    return
-
-                if offset == 0:
-                    limit_q = qs.get("limit")
-                    if limit_q is None:
-                        limit = 80
-                    else:
-                        if not limit_q:
-                            raise ValueError("invalid limit")
-                        limit = int(limit_q[0])
-                    limit = max(20, min(200, limit))
-                    t0_index = time.perf_counter()
-                    events, new_off, has_older, next_before, token_update = MANAGER._ensure_chat_index(
-                        session_id,
-                        min_events=limit,
-                        before=before,
-                    )
-                    dt_index_ms = (time.perf_counter() - t0_index) * 1000.0
-                    meta_delta = {"thinking": 0, "tool": 0, "system": 0}
-                    flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
-                    diag_key = "init_index_ms" if init else "bootstrap_index_ms"
-                    diag = {"tool_names": [], "last_tool": None, diag_key: round(dt_index_ms, 3)}
+                limit_q = qs.get("limit")
+                if limit_q is None:
+                    limit = 80
                 else:
-                    has_older = False
-                    next_before = 0
-                    objs, new_off = _read_jsonl_from_offset(s.log_path, offset)
-                    events, meta_delta, flags, diag = _extract_chat_events(objs)
-                    token_update = _extract_token_update(objs)
-                    MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
-                t0_state = time.perf_counter()
-                state = MANAGER.get_state(session_id)
-                dt_state_ms = (time.perf_counter() - t0_state) * 1000.0
-                s2 = MANAGER.get_session(session_id)
-                if token_update is not None and s2 is not None:
-                    s2.token = token_update
-                if not isinstance(state, dict):
-                    raise ValueError("invalid broker state response")
-                if "busy" not in state:
-                    raise ValueError("missing busy from broker state response")
-                if "queue_len" not in state:
-                    raise ValueError("missing queue_len from broker state response")
-                state_busy = bool(state.get("busy"))
-                state_queue = int(state.get("queue_len"))
-
-                t0_idle = time.perf_counter()
-                idle_val = MANAGER.idle_from_log(session_id)
-                dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
-                diag["idle_from_log_ms"] = round(dt_idle_ms, 3)
-
-                if s.agent_backend == "pi":
-                    busy_val = not bool(idle_val)
-                else:
-                    busy_val = bool(state_busy) or (not bool(idle_val))
-                queue_val = MANAGER._queue_len(session_id)
-
-                token_val: dict[str, Any] | None = None
-                if "token" in state:
-                    state_token = state.get("token")
-                    if not (isinstance(state_token, dict) or (state_token is None)):
-                        raise ValueError("invalid token from broker state response")
-                    token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
-                elif isinstance(token_update, dict):
-                    token_val = token_update
-                diag["state_ms"] = round(dt_state_ms, 3)
-                diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "thread_id": s.thread_id,
-                        "log_path": str(s.log_path),
-                        "offset": new_off,
-                        "events": events,
-                        "meta_delta": meta_delta,
-                        "turn_start": bool(flags.get("turn_start")),
-                        "turn_end": bool(flags.get("turn_end")),
-                        "turn_aborted": bool(flags.get("turn_aborted")),
-                        "diag": diag,
-                        "busy": bool(busy_val),
-                        "queue_len": int(queue_val),
-                        "token": token_val,
-                        "has_older": bool(has_older),
-                        "next_before": int(next_before),
-                    },
+                    if not limit_q:
+                        raise ValueError("invalid limit")
+                    limit = int(limit_q[0])
+                limit = max(20, min(200, limit))
+                payload = MANAGER.get_messages_page(
+                    session_id,
+                    offset=offset,
+                    init=init,
+                    limit=limit,
+                    before=before,
                 )
+                if isinstance(payload.get("diag"), dict) and s.backend != "pi":
+                    payload["diag"]["meta_refresh_ms"] = round(dt_meta_ms, 3)
+                _json_response(self, 200, payload)
                 dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
                 _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
                 return
@@ -5494,116 +6416,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(obj, dict):
                     raise ValueError("invalid json body (expected object)")
                 try:
-                    agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
+                    payload = _parse_create_session_request(obj)
                 except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                cwd = obj.get("cwd")
-                if not isinstance(cwd, str) or not cwd.strip():
-                    _json_response(self, 400, {"error": "cwd required", "field": "cwd"})
-                    return
-                try:
-                    if agent_backend == "codex":
-                        allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
-                        model_provider = _normalize_requested_model_provider(
-                            obj.get("model_provider"),
-                            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
-                        )
-                    else:
-                        pi_provider_choices = {
-                            str(value)
-                            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
-                            if isinstance(value, str) and value.strip()
-                        }
-                        model_provider = _normalize_requested_model_provider(
-                            obj.get("model_provider"),
-                            allowed=pi_provider_choices or None,
-                        )
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                if agent_backend == "codex":
-                    try:
-                        preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    if obj.get("preferred_auth_method") not in (None, ""):
-                        _json_response(self, 400, {"error": "preferred_auth_method is not supported for pi"})
-                        return
-                    preferred_auth_method = None
-                try:
-                    model = _normalize_requested_model(obj.get("model"))
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                if agent_backend == "codex":
-                    try:
-                        reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    try:
-                        service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    try:
-                        reasoning_effort = _normalize_requested_pi_reasoning_effort(obj.get("reasoning_effort"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    if obj.get("service_tier") not in (None, ""):
-                        _json_response(self, 400, {"error": "service_tier is not supported for pi"})
-                        return
-                    service_tier = None
-                create_in_tmux_raw = obj.get("create_in_tmux")
-                if create_in_tmux_raw is None:
-                    create_in_tmux = False
-                elif isinstance(create_in_tmux_raw, bool):
-                    create_in_tmux = create_in_tmux_raw
-                else:
-                    _json_response(self, 400, {"error": "create_in_tmux must be a boolean"})
-                    return
-                resume_session_id_raw = obj.get("resume_session_id")
-                if resume_session_id_raw is None:
-                    resume_session_id = None
-                elif isinstance(resume_session_id_raw, str):
-                    resume_session_id = resume_session_id_raw.strip() or None
-                else:
-                    _json_response(self, 400, {"error": "resume_session_id must be a string"})
-                    return
-                worktree_branch_raw = obj.get("worktree_branch")
-                if worktree_branch_raw is None:
-                    worktree_branch = None
-                elif isinstance(worktree_branch_raw, str):
-                    worktree_branch = worktree_branch_raw.strip() or None
-                else:
-                    _json_response(self, 400, {"error": "worktree_branch must be a string"})
-                    return
-                args = obj.get("args")
-                if args is None:
-                    args_list = None
-                elif isinstance(args, list) and all(isinstance(x, str) for x in args):
-                    args_list = [x for x in args if x]
-                else:
-                    _json_response(self, 400, {"error": "args must be a list of strings"})
+                    err = str(e)
+                    out: dict[str, Any] = {"error": err}
+                    if err == "cwd required":
+                        out["field"] = "cwd"
+                    _json_response(self, 400, out)
                     return
                 try:
                     res = MANAGER.spawn_web_session(
-                        cwd=cwd,
-                        args=args_list,
-                        agent_backend=agent_backend,
-                        resume_session_id=resume_session_id,
-                        worktree_branch=worktree_branch,
-                        model_provider=model_provider,
-                        preferred_auth_method=preferred_auth_method,
-                        model=model,
-                        reasoning_effort=reasoning_effort,
-                        service_tier=service_tier,
-                        create_in_tmux=create_in_tmux,
+                        cwd=payload["cwd"],
+                        args=payload["args"],
+                        resume_session_id=payload["resume_session_id"],
+                        worktree_branch=payload["worktree_branch"],
+                        model_provider=payload["model_provider"],
+                        preferred_auth_method=payload["preferred_auth_method"],
+                        model=payload["model"],
+                        reasoning_effort=payload["reasoning_effort"],
+                        service_tier=payload["service_tier"],
+                        create_in_tmux=payload["create_in_tmux"],
+                        backend=payload["backend"],
                     )
                 except ValueError as e:
                     payload: dict[str, Any] = {"error": str(e)}
@@ -5718,7 +6551,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_q or not path_q[0]:
                     _json_response(self, 400, {"error": "path required"})
                     return
-                path_obj = Path(path_q[0]).expanduser().resolve()
+                path_obj = _safe_expanduser(Path(path_q[0])).resolve()
                 if not path_obj.exists():
                     _json_response(self, 404, {"error": "file not found"})
                     return
@@ -5932,8 +6765,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(text, str) or not text.strip():
                     _json_response(self, 400, {"error": "text required"})
                     return
-                res = MANAGER.send(session_id, text)
+                try:
+                    res = MANAGER.send(session_id, text)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
                 _json_response(self, 200, res)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/ui_response"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                try:
+                    MANAGER.submit_ui_response(session_id, obj)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/enqueue"):
@@ -6101,6 +6965,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
+                    return
                 _json_response(self, 200, {"ok": True, "broker": resp})
                 return
 
@@ -6110,6 +6977,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
+                MANAGER.refresh_session_meta(session_id, strict=False)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                if s.backend == "pi":
+                    _json_response(
+                        self,
+                        409,
+                        {
+                            "error": "attachment injection is not supported for Pi sessions",
+                            "backend": "pi",
+                            "operation": "attachment_injection",
+                        },
+                    )
+                    return
                 body = _read_body(self, limit=20 * 1024 * 1024)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -6152,6 +7035,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     resp = MANAGER.inject_keys(session_id, seq)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 502, {"error": str(e)})
                     return
                 _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
                 return
