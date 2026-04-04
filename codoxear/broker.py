@@ -24,6 +24,7 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
+from codoxear.agent_backend import resolve_agent_backend
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
@@ -49,7 +50,7 @@ APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 PROC_ROOT = Path("/proc")
 
-AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
+AGENT_BACKEND = resolve_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), env=os.environ, default="codex")
 BACKEND = get_agent_backend(AGENT_BACKEND)
 AGENT_BIN = BACKEND.cli_bin()
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")

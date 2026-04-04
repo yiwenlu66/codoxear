@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from .agent_backend import get_agent_backend
+from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
 from . import pi_messages as _pi_messages
 from . import pi_messages as _pi_messages
@@ -46,6 +47,7 @@ from .util import find_session_log_for_session_id as _find_session_log_for_sessi
 from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
+from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -122,6 +124,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
 SOCK_DIR = APP_DIR / "socks"
+PROC_ROOT = Path("/proc")
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 UPLOAD_DIR = APP_DIR / "uploads"
@@ -1877,6 +1880,30 @@ def _patch_metadata_session_path(sock: Path, session_path: Path, *, force: bool 
         meta_path.write_text(json.dumps(meta), encoding="utf-8")
     except Exception:
         pass  # best-effort; discovery will re-run next cycle
+
+
+def _patch_metadata_pi_binding(sock: Path, session_path: Path) -> None:
+    """Persist a recovered Pi binding for brokers that were launched ambiguously."""
+    meta_path = sock.with_suffix(".json")
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(meta, dict):
+            return
+        changed = False
+        if meta.get("backend") != "pi":
+            meta["backend"] = "pi"
+            changed = True
+        if meta.get("agent_backend") != "pi":
+            meta["agent_backend"] = "pi"
+            changed = True
+        if meta.get("session_path") != str(session_path):
+            meta["session_path"] = str(session_path)
+            changed = True
+        if not changed:
+            return
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
@@ -3673,19 +3700,48 @@ class SessionManager:
                     raise ValueError(f"invalid start_ts in metadata for socket {sock}")
                 start_ts = float(start_ts_raw)
 
-                log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
                 session_path_discovered = False
-                try:
-                    session_path = _metadata_session_path(meta=meta, backend=backend, sock=sock)
-                except ValueError as exc:
-                    if backend == "pi" and "missing session_path" in str(exc):
-                        session_path_discovered = True
+                inferred_pi_session_path: Path | None = None
+                if backend == "codex" and agent_backend == "codex":
+                    for key in ("session_path", "log_path"):
+                        raw_path = meta.get(key)
+                        if not isinstance(raw_path, str) or not raw_path.strip():
+                            continue
+                        candidate = Path(raw_path)
+                        if infer_agent_backend_from_log_path(candidate) != "pi":
+                            continue
+                        inferred_pi_session_path = candidate
+                        break
+                    if inferred_pi_session_path is None and _pid_alive(codex_pid):
                         claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
-                        session_path = _discover_pi_session_for_cwd(cwd, start_ts, exclude=claimed)
-                        if session_path is not None:
-                            _patch_metadata_session_path(sock, session_path)
-                    else:
-                        raise
+                        inferred_pi_session_path = _proc_find_open_rollout_log(
+                            proc_root=PROC_ROOT,
+                            root_pid=codex_pid,
+                            agent_backend="pi",
+                            cwd=cwd,
+                            ignored_paths=claimed,
+                        )
+                    if inferred_pi_session_path is not None:
+                        backend = "pi"
+                        agent_backend = "pi"
+                        session_path_discovered = True
+                        _patch_metadata_pi_binding(sock, inferred_pi_session_path)
+
+                log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
+                if inferred_pi_session_path is not None:
+                    session_path = inferred_pi_session_path
+                else:
+                    try:
+                        session_path = _metadata_session_path(meta=meta, backend=backend, sock=sock)
+                    except ValueError as exc:
+                        if backend == "pi" and "missing session_path" in str(exc):
+                            session_path_discovered = True
+                            claimed = self._claimed_pi_session_paths(exclude_sid=session_id)
+                            session_path = _discover_pi_session_for_cwd(cwd, start_ts, exclude=claimed)
+                            if session_path is not None:
+                                _patch_metadata_session_path(sock, session_path)
+                        else:
+                            raise
                 if log_path is not None and log_path.exists():
                     thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
                 else:
