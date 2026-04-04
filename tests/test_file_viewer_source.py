@@ -38,6 +38,59 @@ def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
     return json.loads(proc.stdout)
 
 
+def eval_file_open_request_sequence() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("let fileOpenRequestId = 0;")
+    end = source.index("function rememberActiveFileSelection(", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        class AbortController {{
+          constructor() {{
+            this.signal = {{ aborted: false }};
+          }}
+          abort() {{
+            this.signal.aborted = true;
+          }}
+        }}
+        const ctx = {{
+          activeFilePath: "old.txt",
+          activeFileLine: 1,
+          fileViewerSessionId: "sid-1",
+          selected: "",
+          AbortController,
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId };\n")}, ctx);
+        const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
+        const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
+        const second = ctx.__test_file_open.beginFileOpenRequest("second.txt", {{ line: 8 }});
+        const result = {{
+          currentSessionId: ctx.__test_file_open.currentFileSessionId(),
+          firstCurrent,
+          firstSignalAborted: Boolean(first.signal && first.signal.aborted),
+          firstAfterSecond: ctx.__test_file_open.isCurrentFileOpenRequest(first),
+          secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
+          activeFilePath: ctx.activeFilePath,
+          activeFileLine: ctx.activeFileLine,
+        }};
+        ctx.__test_file_open.cancelPendingFileOpen();
+        result.secondAfterCancel = ctx.__test_file_open.isCurrentFileOpenRequest(second);
+        process.stdout.write(JSON.stringify(result));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
 class TestFileViewerSource(unittest.TestCase):
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -53,6 +106,17 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("function maybeReloadForUpdatedUi(nextVersion)", source)
         self.assertIn("maybeReloadForUpdatedUi(data && data.app_version)", source)
         self.assertIn("window.location.reload();", source)
+
+    def test_file_open_requests_are_single_owner(self) -> None:
+        result = eval_file_open_request_sequence()
+        self.assertEqual(result["currentSessionId"], "sid-1")
+        self.assertTrue(result["firstCurrent"])
+        self.assertTrue(result["firstSignalAborted"])
+        self.assertFalse(result["firstAfterSecond"])
+        self.assertTrue(result["secondCurrent"])
+        self.assertEqual(result["activeFilePath"], "second.txt")
+        self.assertEqual(result["activeFileLine"], 8)
+        self.assertFalse(result["secondAfterCancel"])
 
     def test_touch_file_editor_controls_target_touch_capabilities(self) -> None:
         self.assertTrue(eval_use_touch_file_editor_controls({"(pointer: coarse)": True, "(hover: none)": False}))
@@ -127,6 +191,20 @@ class TestFileViewerSource(unittest.TestCase):
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('if (!nextAnchor && typeof editor.setPosition === "function") editor.setPosition(nextCursor);', source)
+
+    def test_file_open_race_guard_is_wired_through_fetch_and_render(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("let fileOpenRequestId = 0;", source)
+        self.assertIn("let fileOpenAbortController = null;", source)
+        self.assertIn("function cancelPendingFileOpen()", source)
+        self.assertIn("const request = beginFileOpenRequest(nextPath, { line });", source)
+        self.assertIn("signal: request.signal", source)
+        self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
+        self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
+        self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
+        self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
+        self.assertIn("cancelPendingFileOpen();\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
     def test_touch_paste_tries_direct_clipboard_before_bridge(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
