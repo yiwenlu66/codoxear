@@ -227,6 +227,7 @@
 
       function fmtTs(ts) {
         try {
+          if (!isDisplayableEpochTs(ts)) return "";
           const d = new Date(ts * 1000);
           const y = String(d.getFullYear()).padStart(4, "0");
           const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -237,6 +238,12 @@
         } catch {
           return String(ts);
         }
+      }
+
+      function isDisplayableEpochTs(ts) {
+        const value = Number(ts);
+        // Pi delta polls can synthesize monotonic ordering values from file offsets.
+        return Number.isFinite(value) && value >= 946684800 && value <= 4102444800;
       }
 
       function fmtBytes(n) {
@@ -3394,7 +3401,7 @@
           for (const row of rows) {
             const role = row.classList.contains("user") ? "user" : "assistant";
             const ts = Number(row.dataset.ts || "0");
-            const day = ts ? ymd(new Date(ts * 1000)) : null;
+            const day = isDisplayableEpochTs(ts) ? ymd(new Date(ts * 1000)) : null;
 
             row.classList.remove("grouped");
             if (prevRole === role && prevDay && day && prevDay === day) row.classList.add("grouped");
@@ -3463,6 +3470,7 @@
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+          const displayTs = isDisplayableEpochTs(ts) ? ts : null;
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
           const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
@@ -3500,7 +3508,7 @@
           }
 
           row.appendChild(shell);
-          if (typeof ts === "number" && Number.isFinite(ts)) row.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
+          if (displayTs !== null) row.appendChild(el("div", { class: "ts", text: time24(new Date(displayTs * 1000)) }));
           return { row, bubble };
         }
 
