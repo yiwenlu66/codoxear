@@ -526,7 +526,20 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
     try:
         with path.open("rb") as f:
             f.seek(offset)
-            data = f.read(int(max_bytes))
+            target = max(1, int(max_bytes))
+            chunk_size = max(64 * 1024, min(target, 1024 * 1024))
+            data = f.read(target)
+            if b"\n" not in data:
+                extra: list[bytes] = []
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    extra.append(chunk)
+                    if b"\n" in chunk:
+                        break
+                if extra:
+                    data += b"".join(extra)
     except Exception as e:
         _log_exception(f"read jsonl {path} from offset {offset}", e)
         raise

@@ -24,3 +24,15 @@ def test_read_jsonl_from_offset_does_not_parse_truncated_utf8_tail(tmp_path):
     assert objs2 == [obj2]
     assert off2 == len(line1) + len(line2)
 
+
+def test_read_jsonl_from_offset_advances_over_oversized_record(tmp_path):
+    line0 = json.dumps({"prefix": 1}).encode("utf-8") + b"\n"
+    obj1 = {"text": "x" * (2 * 1024 * 1024 + 256)}
+    line1 = json.dumps(obj1).encode("utf-8") + b"\n"
+    p = tmp_path / "rollout.jsonl"
+    p.write_bytes(line0 + line1)
+
+    objs, off = read_jsonl_from_offset(p, len(line0), max_bytes=2 * 1024 * 1024)
+
+    assert objs == [obj1]
+    assert off == len(line0) + len(line1)
