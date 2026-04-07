@@ -692,6 +692,7 @@ class State:
     detach_trigger_tail: str = ""
     detach_trigger_tail_max: int = 8192
     token: dict[str, Any] | None = None
+    declared_log_path: Path | None = None
     last_rollout_path: Path | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
@@ -758,8 +759,14 @@ class Broker:
                     need = (current_log_path is None) or (not current_log_path.exists())
                     root_pid = int(st.codex_pid)
                     sock_path = st.sock_path
+                    declared_log_path = st.declared_log_path
                     known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
+                if declared_log_path is not None and declared_log_path.exists():
+                    if current_log_path is None or (not _paths_match(declared_log_path, current_log_path)):
+                        self._maybe_register_or_switch_rollout(log_path=declared_log_path)
+                        time.sleep(0.25)
+                        continue
                 if root_pid > 0:
                     lp = _proc_find_open_rollout_log(
                         proc_root=PROC_ROOT,
@@ -1358,11 +1365,12 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
+        st.declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
         if AGENT_BACKEND == "pi":
             st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
-        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
+        declared_log_path = st.declared_log_path
         if declared_log_path is not None and declared_log_path.exists():
             self._maybe_register_or_switch_rollout(log_path=declared_log_path)
 
