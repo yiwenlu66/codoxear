@@ -325,6 +325,25 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(rows[0]["model"], "gpt-5.4")
         self.assertEqual(rows[0]["reasoning_effort"], "high")
 
+    def test_load_cwd_groups_normalizes_loaded_keys(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            groups_path = Path(td) / "cwd_groups.json"
+            cwd_raw = str(Path(td) / "project" / "foo" / ".." / "bar")
+            expected_normalized = str(Path(cwd_raw).resolve(strict=False))
+            groups_path.write_text(
+                json.dumps({cwd_raw: {"label": " Demo ", "collapsed": 1}}) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("codoxear.server.CWD_GROUPS_PATH", groups_path):
+                mgr._load_cwd_groups()
+
+        self.assertEqual(
+            mgr.cwd_groups_get(),
+            {expected_normalized: {"label": "Demo", "collapsed": True}},
+        )
+
     def test_cwd_group_set_normalizes_path_and_round_trips_metadata(self) -> None:
         mgr = _make_manager()
         cwd_raw = "/tmp/project/foo/../bar"

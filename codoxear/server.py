@@ -3184,14 +3184,16 @@ class SessionManager:
             raise ValueError("invalid cwd_groups.json (expected object)")
         cleaned: dict[str, dict[str, Any]] = {}
         for cwd, v in obj.items():
-            if not isinstance(cwd, str) or not cwd:
+            try:
+                normalized_cwd = _normalize_cwd_group_key(cwd)
+            except ValueError:
                 continue
             if not isinstance(v, dict):
                 continue
             label = _clean_alias(v.get("label", ""))
             collapsed = bool(v.get("collapsed"))
             if label or collapsed:
-                cleaned[cwd] = {"label": label, "collapsed": collapsed}
+                cleaned[normalized_cwd] = {"label": label, "collapsed": collapsed}
         with self._lock:
             self._cwd_groups = cleaned
 
