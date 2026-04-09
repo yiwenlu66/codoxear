@@ -382,6 +382,18 @@ class TestSessionSidebarPriority(unittest.TestCase):
         all_groups = mgr.cwd_groups_get()
         self.assertEqual(all_groups[normalized], meta)
 
+    def test_cwd_group_set_returns_meta_copy(self) -> None:
+        mgr = _make_manager()
+        normalized, meta = mgr.cwd_group_set(cwd="/tmp/project", label="Project", collapsed=True)
+
+        meta["label"] = "Mutated"
+        meta["collapsed"] = False
+
+        self.assertEqual(
+            mgr._cwd_groups[normalized],
+            {"label": "Project", "collapsed": True},
+        )
+
     def test_cwd_group_set_drops_empty_default_entries(self) -> None:
         mgr = _make_manager()
         cwd = "/tmp/foo"

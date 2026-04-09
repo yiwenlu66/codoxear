@@ -3238,7 +3238,7 @@ class SessionManager:
                 self._cwd_groups[normalized_cwd] = entry
 
         self._save_cwd_groups()
-        return normalized_cwd, entry
+        return normalized_cwd, dict(entry)
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         cleaned = _clean_recent_cwd(cwd)
