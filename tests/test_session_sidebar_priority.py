@@ -21,6 +21,7 @@ def _make_manager() -> SessionManager:
     mgr._files = {}
     mgr._queues = {}
     mgr._recent_cwds = {}
+    mgr._cwd_groups = {}
     mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
@@ -31,6 +32,7 @@ def _make_manager() -> SessionManager:
     mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_cwd_groups = lambda *args, **kwargs: None  # type: ignore[method-assign]
     return mgr
 
 
@@ -322,6 +324,35 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(rows[0]["model"], "gpt-5.4")
         self.assertEqual(rows[0]["reasoning_effort"], "high")
+
+    def test_cwd_group_set_normalizes_path_and_round_trips_metadata(self) -> None:
+        mgr = _make_manager()
+        cwd_raw = "/tmp/project/foo/../bar"
+        expected_normalized = str(Path(cwd_raw).resolve(strict=False))
+        normalized, meta = mgr.cwd_group_set(cwd=cwd_raw, label=" My Project ", collapsed=True)
+
+        self.assertEqual(normalized, expected_normalized)
+        self.assertEqual(meta, {"label": "My Project", "collapsed": True})
+
+        # Verify retrieval
+        all_groups = mgr.cwd_groups_get()
+        self.assertEqual(all_groups[normalized], meta)
+
+    def test_cwd_group_set_drops_empty_default_entries(self) -> None:
+        mgr = _make_manager()
+        cwd = "/tmp/foo"
+        # First set something non-default
+        normalized, _ = mgr.cwd_group_set(cwd=cwd, label="Foo", collapsed=True)
+        self.assertIn(normalized, mgr.cwd_groups_get())
+
+        # Now set to default (empty label, not collapsed)
+        mgr.cwd_group_set(cwd=cwd, label="", collapsed=False)
+        self.assertNotIn(normalized, mgr.cwd_groups_get())
+
+    def test_cwd_group_set_rejects_non_boolean_collapsed(self) -> None:
+        mgr = _make_manager()
+        with self.assertRaisesRegex(ValueError, "collapsed must be a boolean"):
+            mgr.cwd_group_set(cwd="/tmp", collapsed="not-a-bool") # type: ignore
 
 
 if __name__ == "__main__":

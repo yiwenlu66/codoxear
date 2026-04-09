@@ -142,6 +142,7 @@ HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
+CWD_GROUPS_PATH = APP_DIR / "cwd_groups.json"
 VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
 PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
 DELIVERY_LEDGER_PATH = APP_DIR / "voice_delivery_ledger.json"
@@ -1284,6 +1285,12 @@ def _clean_alias(name: str) -> str:
     if len(cleaned) > 80:
         cleaned = cleaned[:80].rstrip()
     return cleaned
+
+
+def _normalize_cwd_group_key(cwd: Any) -> str:
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise ValueError("cwd must be a non-empty string")
+    return str(Path(cwd).expanduser().resolve(strict=False))
 
 
 def _clean_recent_cwd(value: Any) -> str | None:
@@ -2582,6 +2589,7 @@ class SessionManager:
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[str]] = {}
         self._recent_cwds: dict[str, float] = {}
+        self._cwd_groups: dict[str, dict[str, Any]] = {}
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
         self._load_harness()
@@ -2591,6 +2599,7 @@ class SessionManager:
         self._load_files()
         self._load_queues()
         self._load_recent_cwds()
+        self._load_cwd_groups()
         self._backfill_recent_cwds_from_logs()
         self._voice_push = VoicePushCoordinator(
             app_dir=APP_DIR,
@@ -3164,6 +3173,64 @@ class SessionManager:
         tmp = RECENT_CWD_PATH.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, RECENT_CWD_PATH)
+
+    def _load_cwd_groups(self) -> None:
+        try:
+            raw = CWD_GROUPS_PATH.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        obj = json.loads(raw)
+        if not isinstance(obj, dict):
+            raise ValueError("invalid cwd_groups.json (expected object)")
+        cleaned: dict[str, dict[str, Any]] = {}
+        for cwd, v in obj.items():
+            if not isinstance(cwd, str) or not cwd:
+                continue
+            if not isinstance(v, dict):
+                continue
+            label = _clean_alias(v.get("label", ""))
+            collapsed = bool(v.get("collapsed"))
+            if label or collapsed:
+                cleaned[cwd] = {"label": label, "collapsed": collapsed}
+        with self._lock:
+            self._cwd_groups = cleaned
+
+    def _save_cwd_groups(self) -> None:
+        with self._lock:
+            obj = dict(self._cwd_groups)
+        os.makedirs(APP_DIR, exist_ok=True)
+        tmp = CWD_GROUPS_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, CWD_GROUPS_PATH)
+
+    def cwd_groups_get(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            return dict(self._cwd_groups)
+
+    def cwd_group_set(self, cwd: str, label: str | None = None, collapsed: bool | None = None) -> tuple[str, dict[str, Any]]:
+        normalized_cwd = _normalize_cwd_group_key(cwd)
+
+        with self._lock:
+            existing = self._cwd_groups.get(normalized_cwd, {"label": "", "collapsed": False})
+
+            new_label = _clean_alias(label) if label is not None else existing["label"]
+
+            if collapsed is not None:
+                if not isinstance(collapsed, bool):
+                    raise ValueError("collapsed must be a boolean")
+                new_collapsed = collapsed
+            else:
+                new_collapsed = existing["collapsed"]
+
+            entry = {"label": new_label, "collapsed": new_collapsed}
+
+            if not new_label and not new_collapsed:
+                self._cwd_groups.pop(normalized_cwd, None)
+            else:
+                self._cwd_groups[normalized_cwd] = entry
+
+        self._save_cwd_groups()
+        return normalized_cwd, entry
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         cleaned = _clean_recent_cwd(cwd)
