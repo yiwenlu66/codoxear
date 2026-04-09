@@ -408,16 +408,49 @@ class TestSessionSidebarPriority(unittest.TestCase):
             {"label": "Project", "collapsed": True},
         )
 
-    def test_cwd_group_set_drops_empty_default_entries(self) -> None:
+    def test_cwd_group_set_clears_label_preserves_existing_collapsed(self) -> None:
         mgr = _make_manager()
         cwd = "/tmp/foo"
         mgr._recent_cwds = {cwd: time.time()}
-        # First set something non-default
         normalized, _ = mgr.cwd_group_set(cwd=cwd, label="Foo", collapsed=True)
-        self.assertIn(normalized, mgr.cwd_groups_get())
 
-        # Now set to default (empty label, not collapsed)
-        mgr.cwd_group_set(cwd=cwd, label="", collapsed=False)
+        normalized_again, meta = mgr.cwd_group_set(cwd=cwd, label="")
+
+        self.assertEqual(normalized_again, normalized)
+        self.assertEqual(meta, {"label": "", "collapsed": True})
+        self.assertEqual(mgr.cwd_groups_get()[normalized], meta)
+
+    def test_cwd_group_set_updates_collapsed_preserves_existing_label(self) -> None:
+        mgr = _make_manager()
+        cwd = "/tmp/foo"
+        mgr._recent_cwds = {cwd: time.time()}
+        normalized, _ = mgr.cwd_group_set(cwd=cwd, label="Foo")
+
+        normalized_again, meta = mgr.cwd_group_set(cwd=cwd, collapsed=True)
+
+        self.assertEqual(normalized_again, normalized)
+        self.assertEqual(meta, {"label": "Foo", "collapsed": True})
+        self.assertEqual(mgr.cwd_groups_get()[normalized], meta)
+
+    def test_cwd_group_set_drops_empty_default_entries_from_serialized_store(self) -> None:
+        mgr = _make_manager()
+        cwd = "/tmp/foo"
+        with tempfile.TemporaryDirectory() as td:
+            groups_path = Path(td) / "cwd_groups.json"
+            mgr._recent_cwds = {cwd: time.time()}
+            mgr._save_cwd_groups = SessionManager._save_cwd_groups.__get__(mgr, SessionManager)
+
+            with patch("codoxear.server.APP_DIR", Path(td)), patch("codoxear.server.CWD_GROUPS_PATH", groups_path):
+                normalized, _ = mgr.cwd_group_set(cwd=cwd, label="Foo", collapsed=True)
+                self.assertEqual(
+                    json.loads(groups_path.read_text(encoding="utf-8")),
+                    {normalized: {"label": "Foo", "collapsed": True}},
+                )
+
+                mgr.cwd_group_set(cwd=cwd, label="", collapsed=False)
+
+                self.assertEqual(json.loads(groups_path.read_text(encoding="utf-8")), {})
+
         self.assertNotIn(normalized, mgr.cwd_groups_get())
 
     def test_cwd_group_set_rejects_non_boolean_collapsed(self) -> None:
