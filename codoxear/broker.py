@@ -755,12 +755,22 @@ class Broker:
                     if not st:
                         return
                     current_log_path = st.log_path
-                    need = (current_log_path is None) or (not current_log_path.exists())
+                    current_session_id = st.session_id
+                    current_last_rollout_path = st.last_rollout_path
                     root_pid = int(st.codex_pid)
                     sock_path = st.sock_path
                     known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
+                    if AGENT_BACKEND == "pi" and current_log_path is not None and current_log_path.exists():
+                        if (
+                            current_session_id is None
+                            or current_last_rollout_path is None
+                            or (not _paths_match(current_last_rollout_path, current_log_path))
+                        ):
+                            self._maybe_register_or_switch_rollout(log_path=current_log_path)
+                            time.sleep(0.25)
+                            continue
                     lp = _proc_find_open_rollout_log(
                         proc_root=PROC_ROOT,
                         root_pid=root_pid,
@@ -773,7 +783,7 @@ class Broker:
                             self._maybe_register_or_switch_rollout(log_path=lp)
                             time.sleep(0.25)
                             continue
-                    if AGENT_BACKEND == "pi":
+                    if AGENT_BACKEND == "pi" and current_log_path is None:
                         claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
                         discovered = _find_new_session_log(
                             sessions_dir=self.sessions_dir,
@@ -1363,8 +1373,16 @@ class Broker:
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
         declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
-        if declared_log_path is not None and declared_log_path.exists():
-            self._maybe_register_or_switch_rollout(log_path=declared_log_path)
+        if declared_log_path is not None:
+            st.log_path = declared_log_path
+            if declared_log_path.exists():
+                try:
+                    st.log_off = int(declared_log_path.stat().st_size)
+                except Exception:
+                    st.log_off = 0
+                self._maybe_register_or_switch_rollout(log_path=declared_log_path)
+            else:
+                st.log_off = 0
 
         def _sigwinch(_signo: int, _frame: Any) -> None:
             try:
