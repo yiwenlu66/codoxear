@@ -1025,7 +1025,7 @@ class TestPiBackendRouting(unittest.TestCase):
             },
         )
 
-    def test_ui_response_route_forwards_browser_answer(self) -> None:
+    def test_ui_response_route_does_not_fallback_to_send_for_live_pi_rpc_session(self) -> None:
         mgr = _make_manager()
         body = json.dumps(
             {
@@ -1053,6 +1053,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 log_path=None,
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
             )
 
             def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
@@ -1077,7 +1080,7 @@ class TestPiBackendRouting(unittest.TestCase):
         )
         self.assertEqual(payload, {"ok": True})
 
-    def test_ui_response_route_falls_back_to_send_for_legacy_pi_sessiond(self) -> None:
+    def test_ui_response_route_rejects_live_pi_rpc_unknown_cmd_without_send_fallback(self) -> None:
         mgr = _make_manager()
         body = json.dumps({"id": "ui-req-1", "value": "Details"}).encode("utf-8")
         forwarded: list[dict[str, object]] = []
@@ -1097,6 +1100,92 @@ class TestPiBackendRouting(unittest.TestCase):
                 log_path=None,
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+                forwarded.append(dict(req))
+                if req["cmd"] == "ui_response":
+                    return {"error": "unknown cmd"}
+                if req["cmd"] == "send":
+                    raise AssertionError("live pi-rpc session must not use send fallback")
+                return {}
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
+
+            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+                Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 502)
+        self.assertEqual(payload, {"error": "live ui responses are unavailable for this pi session"})
+        self.assertEqual(forwarded, [{"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}])
+
+    def test_ui_state_route_rejects_live_pi_rpc_unknown_cmd_without_silent_fallback(self) -> None:
+        mgr = _make_manager()
+        forwarded: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=sock,
+                session_path=Path("/tmp/pi-session.jsonl"),
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+                forwarded.append(dict(req))
+                if req["cmd"] == "ui_state":
+                    return {"error": "unknown cmd"}
+                raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
+
+            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+                Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 502)
+        self.assertEqual(payload, {"error": "live ui interactions are unavailable for this pi session"})
+        self.assertEqual(forwarded, [{"cmd": "ui_state"}])
+
+    def test_ui_response_route_legacy_pi_session_still_uses_send_fallback(self) -> None:
+        mgr = _make_manager()
+        body = json.dumps({"id": "ui-req-1", "value": "Details"}).encode("utf-8")
+        forwarded: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=sock,
+                session_path=Path("/tmp/pi-session.jsonl"),
+                transport="pty",
             )
 
             def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
@@ -1106,6 +1195,76 @@ class TestPiBackendRouting(unittest.TestCase):
                 if req["cmd"] == "send":
                     return {"queued": False, "queue_len": 0}
                 return {}
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
+
+            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+                Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload, {"ok": True})
+        self.assertEqual(
+            forwarded,
+            [
+                {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"},
+                {"cmd": "send", "text": "Details"},
+            ],
+        )
+
+    def test_ui_response_route_refreshes_stale_live_capabilities_before_fallback_decision(self) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        body = json.dumps({"id": "ui-req-1", "value": "Details"}).encode("utf-8")
+        forwarded: list[dict[str, object]] = []
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "pi-session.jsonl"
+            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": td,
+                        "start_ts": 123.0,
+                        "session_path": str(session_path),
+                        "sock_path": str(sock),
+                        "transport": "pi-rpc",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+                forwarded.append(dict(req))
+                if req["cmd"] == "ui_response":
+                    return {"error": "unknown cmd"}
+                if req["cmd"] == "send":
+                    return {"queued": False, "queue_len": 0}
+                raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
@@ -1611,6 +1770,110 @@ class TestPiMessageNormalization(unittest.TestCase):
         assert session is not None
         self.assertEqual(session.session_path, recovered_session_path)
         self.assertFalse(mgr._sidecar_is_quarantined(sock))
+
+    def test_refresh_session_meta_updates_live_pi_ui_capabilities_from_sidecar(self) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "pi-session.jsonl"
+            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": td,
+                        "start_ts": 123.0,
+                        "session_path": str(session_path),
+                        "sock_path": str(sock),
+                        "transport": "pi-rpc",
+                        "supports_live_ui": True,
+                        "ui_protocol_version": 1,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+                transport="pi-rpc",
+                supports_live_ui=None,
+                ui_protocol_version=None,
+            )
+
+            mgr.refresh_session_meta("pi-session")
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertTrue(session.supports_live_ui)
+        self.assertEqual(session.ui_protocol_version, 1)
+
+    def test_refresh_session_meta_clears_missing_live_pi_ui_capabilities(self) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "pi-session.jsonl"
+            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": td,
+                        "start_ts": 123.0,
+                        "session_path": str(session_path),
+                        "sock_path": str(sock),
+                        "transport": "pi-rpc",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            mgr.refresh_session_meta("pi-session")
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertIsNone(session.supports_live_ui)
+        self.assertIsNone(session.ui_protocol_version)
 
     def test_refresh_session_meta_non_strict_quarantines_invalid_pi_sidecar(self) -> None:
         mgr = _make_manager()

@@ -26,6 +26,7 @@ from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.agent_backend import resolve_agent_backend
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from codoxear.pi_broker import PiBroker
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
@@ -123,7 +124,7 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
     return None
 
 
-def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions_dir: Path) -> Path | None:
+def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions_dir: Path, cwd: str | None = None) -> Path | None:
     if normalize_agent_backend(agent_backend) != "pi":
         return None
     for idx, token in enumerate(args):
@@ -135,14 +136,12 @@ def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions
         if (not raw) or (not raw.endswith(".jsonl")):
             return None
         path = Path(raw).expanduser()
+        if cwd and not path.is_absolute():
+            path = Path(cwd) / path
         try:
             resolved = path.resolve()
         except Exception:
             resolved = path
-        try:
-            resolved.relative_to(sessions_dir.resolve())
-        except Exception:
-            return None
         return resolved
     return None
 
@@ -762,6 +761,7 @@ class Broker:
             args=self.codex_args,
             agent_backend=AGENT_BACKEND,
             sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
         )
         if declared_log_path is not None:
             candidate = declared_log_path.parent
@@ -1335,7 +1335,55 @@ class Broker:
         elif prev_lp is None or not _paths_match(prev_lp, lp):
             self._write_meta()
 
+    def _run_pi_foreground_broker(self) -> int:
+        session_path = _session_log_path_from_args(
+            args=self.codex_args,
+            agent_backend=AGENT_BACKEND,
+            sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
+        )
+        resume_session_id = self._resume_session_id
+        if session_path is not None and resume_session_id is None:
+            try:
+                payload = _read_session_meta_payload(session_path, agent_backend="pi", timeout_s=0.0)
+            except Exception:
+                payload = None
+            if isinstance(payload, dict):
+                sid = payload.get("id")
+                if isinstance(sid, str) and sid:
+                    resume_session_id = sid
+        if session_path is None and resume_session_id:
+            search_dir = _pi_session_dir_from_args(args=self.codex_args, cwd=self.cwd, sessions_dir=self.sessions_dir)
+            if search_dir is None:
+                search_dir = self.sessions_dir
+            session_path = _find_session_log_for_session_id(search_dir, resume_session_id, agent_backend="pi")
+        forwarded_args = list(self.codex_args)
+        if session_path is not None:
+            trimmed: list[str] = []
+            skip_next = False
+            for arg in self.codex_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg == "--session":
+                    skip_next = True
+                    continue
+                if arg == "--session-dir":
+                    skip_next = True
+                    continue
+                trimmed.append(arg)
+            forwarded_args = trimmed
+        return PiBroker(
+            cwd=self.cwd,
+            session_path=session_path,
+            agent_args=forwarded_args,
+            resume_session_id=resume_session_id,
+        ).run(foreground=True)
+
     def run(self) -> int:
+        if AGENT_BACKEND == "pi":
+            return self._run_pi_foreground_broker()
+
         rows, cols = _term_size()
         _require_proc()
 
@@ -1403,7 +1451,12 @@ class Broker:
             st.known_rollout_paths = set(_iter_session_logs(self._pi_scan_sessions_dir(), agent_backend="pi"))
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
-        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
+        declared_log_path = _session_log_path_from_args(
+            args=self.codex_args,
+            agent_backend=AGENT_BACKEND,
+            sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
+        )
         if declared_log_path is not None and declared_log_path.exists():
             self._maybe_register_or_switch_rollout(log_path=declared_log_path)
 

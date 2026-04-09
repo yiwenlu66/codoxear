@@ -156,27 +156,23 @@ class TestBrokerFailClosed(unittest.TestCase):
 
         self.assertEqual(find_new.call_args.kwargs["sessions_dir"].resolve(), expected_dir.resolve())
 
-    def test_pi_run_initializes_known_rollout_paths_from_current_session_subdir(self) -> None:
+    def test_pi_run_delegates_new_session_launch_to_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        _FakeThread.started_targets = []
         with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
             "os.environ", {"PI_HOME": td}, clear=False
         ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
             broker = Broker(cwd="/tmp/pi-work", codex_args=[])
             expected_dir = Path(td) / "agent" / "sessions" / "--tmp-pi-work--"
-            with patch("codoxear.broker._require_proc"), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
-                "codoxear.broker.pty.fork", return_value=(1234, 55)
-            ), patch("codoxear.broker._set_winsize"), patch("codoxear.broker.signal.signal"), patch(
-                "codoxear.broker.os.waitpid", return_value=(1234, 0)
-            ), patch("codoxear.broker.os.close"), patch.object(broker, "_write_meta"), patch(
-                "codoxear.broker.threading.Thread", _FakeThread
-            ), patch("codoxear.broker._iter_session_logs", return_value=[]) as iter_logs:
-                broker.run()
+            with patch("codoxear.broker.PiBroker") as pi_broker_cls, patch(
+                "codoxear.broker.pty.fork", side_effect=AssertionError("PTY launch path should be skipped for Pi")
+            ):
+                pi_broker_cls.return_value.run.return_value = 0
 
-        sessions_dir_arg = iter_logs.call_args.kwargs.get("sessions_dir")
-        if sessions_dir_arg is None:
-            sessions_dir_arg = iter_logs.call_args.args[0]
-        self.assertEqual(sessions_dir_arg.resolve(), expected_dir.resolve())
+                exit_code = broker.run()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(pi_broker_cls.call_args.kwargs["session_path"].parent.resolve(), expected_dir.resolve())
+        pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
 
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
@@ -365,42 +361,25 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertEqual(meta["agent_backend"], "pi")
         self.assertTrue(meta["supports_web_control"])
 
-    def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
+    def test_pi_resume_run_passes_session_arg_to_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        captured: dict[str, object] = {}
         with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
             "codoxear.broker.BACKEND", get_agent_backend("pi")
         ):
             log_path = Path(td) / "pi-resume.jsonl"
             log_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp"}\n', encoding="utf-8")
-            expected_size = log_path.stat().st_size
             broker = Broker(cwd="/tmp", codex_args=["--session", str(log_path)])
             broker.sessions_dir = log_path.parent
-
-            def _capture_write_meta() -> None:
-                st = broker.state
-                captured["session_id"] = st.session_id if st else None
-                captured["log_path"] = str(st.log_path) if st and st.log_path else None
-                captured["log_off"] = st.log_off if st else None
-
-            with patch("codoxear.broker._require_proc"), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
-                "codoxear.broker.pty.fork", return_value=(1234, 55)
-            ), patch("codoxear.broker._set_winsize"), patch(
-                "codoxear.broker.signal.signal"
-            ), patch(
-                "codoxear.broker.os.waitpid", return_value=(1234, 0)
-            ), patch(
-                "codoxear.broker.os.close"
-            ), patch.object(
-                broker, "_write_meta", side_effect=_capture_write_meta
-            ), patch(
-                "codoxear.broker.threading.Thread", _FakeThread
+            with patch("codoxear.broker.PiBroker") as pi_broker_cls, patch(
+                "codoxear.broker.pty.fork", side_effect=AssertionError("PTY launch path should be skipped for Pi")
             ):
-                broker.run()
+                pi_broker_cls.return_value.run.return_value = 0
 
-        self.assertEqual(captured["session_id"], "resume-a")
-        self.assertEqual(captured["log_path"], str(log_path))
-        self.assertEqual(captured["log_off"], expected_size)
+                exit_code = broker.run()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(pi_broker_cls.call_args.kwargs["session_path"], log_path.resolve())
+        pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
 
 
 if __name__ == "__main__":

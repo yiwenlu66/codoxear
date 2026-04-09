@@ -704,6 +704,77 @@ class VoicePushCoordinator:
             self._hls.reset()
         return {"active_listener_count": count}
 
+    def enqueue_test_announcement(self, *, session_display_name: str = "Codoxear") -> dict[str, Any]:
+        settings = self.settings_snapshot()
+        if not str(settings.get("tts_base_url") or "").strip():
+            raise ValueError("tts_base_url is required")
+        if not str(settings.get("tts_api_key") or "").strip():
+            raise ValueError("tts_api_key is required")
+
+        now_ts = float(time.time())
+        message_id = f"test-{int(now_ts * 1000)}-{_sha256_hex(str(now_ts))[:8]}"
+        voice = self._voice_for_session("test-session", session_display_name)
+        task = AnnouncementTask(
+            message_id=message_id,
+            source_message_ids=(message_id,),
+            session_id="test-session",
+            session_display_name=session_display_name,
+            message_class="final_response",
+            source_text="This is a Codoxear announcement test.",
+            spoken_text="This is a Codoxear announcement test.",
+            notification_text="Codoxear announcement test",
+            voice=voice,
+            ts=now_ts,
+            summary_word_target=None,
+            listener_epoch=0,
+        )
+
+        with self._lock:
+            listener_count = self._active_listener_count_locked(now_ts=now_ts)
+            if listener_count <= 0:
+                raise ValueError("no active listener")
+            task = AnnouncementTask(
+                message_id=task.message_id,
+                source_message_ids=task.source_message_ids,
+                session_id=task.session_id,
+                session_display_name=task.session_display_name,
+                message_class=task.message_class,
+                source_text=task.source_text,
+                spoken_text=task.spoken_text,
+                notification_text=task.notification_text,
+                voice=task.voice,
+                ts=task.ts,
+                summary_word_target=task.summary_word_target,
+                listener_epoch=self._listener_epoch,
+            )
+            self._delivery_ledger[message_id] = {
+                "message_id": message_id,
+                "session_id": task.session_id,
+                "session_display_name": session_display_name,
+                "message_class": task.message_class,
+                "preview_text": task.source_text,
+                "notification_text": task.notification_text,
+                "summary_text": "",
+                "summary_status": "skipped",
+                "narrated_status": "pending",
+                "push_status": "skipped",
+                "voice": voice,
+                "created_ts": now_ts,
+                "updated_ts": now_ts,
+                "last_error": "",
+            }
+            self._enqueue_task_locked(task)
+            self._trim_locked()
+            self._queue_ready.notify_all()
+            queue_depth = len(self._queue)
+
+        self._save_delivery_ledger()
+        return {
+            "message_id": message_id,
+            "queue_depth": queue_depth,
+            "voice": voice,
+        }
+
     def set_settings(self, raw: Any) -> dict[str, Any]:
         settings = _clean_voice_settings(raw)
         with self._lock:

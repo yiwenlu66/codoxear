@@ -356,6 +356,36 @@ def _normalize_ask_user_answer(answer: Any, *, allow_multiple: bool) -> str | li
     return None
 
 
+def _normalize_ask_user_result(details: dict[str, Any], *, allow_multiple: bool) -> tuple[str | list[str] | None, bool]:
+    answer = _normalize_ask_user_answer(details.get("answer"), allow_multiple=allow_multiple)
+    was_custom = bool(details.get("wasCustom"))
+    if answer is not None:
+        return answer, was_custom
+
+    response = details.get("response")
+    if not isinstance(response, dict):
+        return None, was_custom
+
+    kind = response.get("kind") if isinstance(response.get("kind"), str) else ""
+    selections = response.get("selections")
+    if isinstance(selections, list):
+        normalized = [item for item in selections if isinstance(item, str) and item]
+        if normalized:
+            if allow_multiple or len(normalized) > 1:
+                return normalized, was_custom or kind == "custom"
+            return normalized[0], was_custom or kind == "custom"
+
+    value = response.get("value")
+    if isinstance(value, str) and value:
+        return value, was_custom or kind == "custom"
+
+    comment = response.get("comment")
+    if isinstance(comment, str) and comment.strip():
+        return comment.strip(), True
+
+    return None, was_custom
+
+
 def _todo_snapshot_event(payload: dict[str, Any], *, ts: float) -> dict[str, Any] | None:
     details = _tool_result_details(payload)
     if not isinstance(details, dict):
@@ -435,10 +465,10 @@ def normalize_pi_entries(
             info = pending_ask_user.pop(call_id, None) if isinstance(call_id, str) else None
             ts = info["ts"] if info else _event_ts_value(preferred_ts=payload_ts or entry_ts, fallback_ts=fallback_ts)
             event: dict[str, Any] = info.copy() if info else _ask_user_event({}, call_id=call_id if isinstance(call_id, str) else None, ts=ts)
-            answer = details.get("answer")
-            event["answer"] = _normalize_ask_user_answer(answer, allow_multiple=bool(event.get("allow_multiple")))
+            answer, was_custom = _normalize_ask_user_result(details, allow_multiple=bool(event.get("allow_multiple")))
+            event["answer"] = answer
             event["cancelled"] = bool(details.get("cancelled"))
-            event["was_custom"] = bool(details.get("wasCustom"))
+            event["was_custom"] = was_custom
             event["resolved"] = True
             event["ts"] = float(ts)
             events.append(event)

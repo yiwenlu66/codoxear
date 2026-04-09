@@ -22,6 +22,7 @@ class PiRpcClient:
         proc: Any | None = None,
         cwd: str | None = None,
         session_path: Path | None = None,
+        agent_args: list[str] | None = None,
     ) -> None:
         self._lock = threading.Lock()
         self._stdin_lock = threading.Lock()
@@ -32,6 +33,7 @@ class PiRpcClient:
         self._stderr_bytes = 0
         self._stderr_max_bytes = 16 * 1024
         self._closed = False
+        self._agent_args = list(agent_args or [])
         self._proc = proc if proc is not None else self._spawn(cwd=cwd, session_path=session_path)
         self._reader = threading.Thread(target=self._reader_loop, name="pi-rpc-reader", daemon=True)
         self._reader.start()
@@ -50,6 +52,7 @@ class PiRpcClient:
         argv = [PI_BIN, "--mode", "rpc"]
         if session_path is not None:
             argv.extend(["--session", str(session_path)])
+        argv.extend(list(getattr(self, "_agent_args", []) or []))
         return subprocess.Popen(
             argv,
             cwd=cwd,

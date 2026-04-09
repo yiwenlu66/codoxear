@@ -2496,6 +2496,8 @@ class Session:
     reasoning_effort: str | None = None
     service_tier: str | None = None
     transport: str | None = None
+    supports_live_ui: bool | None = None
+    ui_protocol_version: int | None = None
     tmux_session: str | None = None
     tmux_window: str | None = None
     resume_session_id: str | None = None
@@ -2503,6 +2505,19 @@ class Session:
     pi_idle_activity_ts: float | None = None
     pi_busy_activity_floor: float | None = None
     pi_session_path_discovered: bool = False
+
+
+def _session_supports_live_pi_ui(session: Session) -> bool:
+    if session.backend != "pi":
+        return False
+    transport = (session.transport or "").strip().lower()
+    if transport != "pi-rpc":
+        return False
+    if session.supports_live_ui is not True:
+        return False
+    if not isinstance(session.ui_protocol_version, int) or session.ui_protocol_version < 1:
+        return False
+    return True
 
 
 def _display_updated_ts(s: Session) -> float:
@@ -3701,6 +3716,9 @@ class SessionManager:
                 broker_pid = int(broker_pid_raw)
                 owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
                 transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+                supports_live_ui = meta.get("supports_live_ui") if isinstance(meta.get("supports_live_ui"), bool) else None
+                ui_protocol_version_raw = meta.get("ui_protocol_version")
+                ui_protocol_version = ui_protocol_version_raw if type(ui_protocol_version_raw) is int else None
 
                 cwd_raw = meta.get("cwd")
                 if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
@@ -3834,6 +3852,8 @@ class SessionManager:
                 owned=owned,
                 backend=backend,
                 transport=transport,
+                supports_live_ui=supports_live_ui,
+                ui_protocol_version=ui_protocol_version,
                 start_ts=float(start_ts),
                 cwd=str(cwd),
                 log_path=log_path,
@@ -3875,6 +3895,8 @@ class SessionManager:
                     prev.agent_backend = s.agent_backend
                     prev.owned = s.owned
                     prev.transport = s.transport
+                    prev.supports_live_ui = s.supports_live_ui
+                    prev.ui_protocol_version = s.ui_protocol_version
                     prev.start_ts = s.start_ts
                     prev.cwd = s.cwd
                     prev.busy = s.busy
@@ -4230,6 +4252,9 @@ class SessionManager:
             agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=backend)
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+            supports_live_ui = meta.get("supports_live_ui") if isinstance(meta.get("supports_live_ui"), bool) else None
+            ui_protocol_version_raw = meta.get("ui_protocol_version")
+            ui_protocol_version = ui_protocol_version_raw if type(ui_protocol_version_raw) is int else None
             log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
             session_path_discovered = False
             if backend == "pi" and (not strict) and ("session_path" not in meta):
@@ -4293,6 +4318,8 @@ class SessionManager:
             s2.cwd = str(cwd)
             s2.owned = bool(owned)
             s2.transport = transport
+            s2.supports_live_ui = supports_live_ui
+            s2.ui_protocol_version = ui_protocol_version
             self._apply_session_source(s2, log_path=log_path, session_path=session_path)
             s2.model_provider = model_provider
             s2.preferred_auth_method = preferred_auth_method
@@ -5177,6 +5204,7 @@ class SessionManager:
         return resp
 
     def get_ui_state(self, session_id: str) -> dict[str, Any]:
+        self.refresh_session_meta(session_id, strict=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -5197,6 +5225,8 @@ class SessionManager:
             raise ValueError("broker unavailable")
 
         if resp.get("error") == "unknown cmd":
+            if _session_supports_live_pi_ui(s):
+                raise ValueError("live ui interactions are unavailable for this pi session")
             # Gracefully handle older brokers that don't support ui_state yet.
             return {"requests": []}
 
@@ -5206,6 +5236,7 @@ class SessionManager:
         return _sanitize_pi_ui_state_payload(resp)
 
     def submit_ui_response(self, session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        self.refresh_session_meta(session_id, strict=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -5229,6 +5260,8 @@ class SessionManager:
                 raise KeyError("unknown session")
             raise ValueError("broker unavailable")
         if resp.get("error") == "unknown cmd":
+            if _session_supports_live_pi_ui(s):
+                raise ValueError("live ui responses are unavailable for this pi session")
             if payload.get("cancelled") is True:
                 self.inject_keys(session_id, "\\x1b")
                 return {"ok": True, "legacy_fallback": True}
@@ -6582,6 +6615,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "enabled must be a boolean"})
                     return
                 payload = MANAGER._voice_push.listener_heartbeat(client_id=client_id, enabled=enabled)
+                _json_response(self, 200, {"ok": True, **payload})
+                return
+
+            if path == "/api/audio/test_announcement":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                try:
+                    payload = MANAGER._voice_push.enqueue_test_announcement(session_display_name="Codoxear test")
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 _json_response(self, 200, {"ok": True, **payload})
                 return
 
