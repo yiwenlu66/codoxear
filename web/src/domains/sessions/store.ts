@@ -1,5 +1,5 @@
 import { api } from "../../lib/api";
-import type { NewSessionDefaults, SessionSummary } from "../../lib/types";
+import type { CwdGroupMeta, NewSessionDefaults, SessionSummary } from "../../lib/types";
 
 export interface SessionsState {
   items: SessionSummary[];
@@ -7,6 +7,7 @@ export interface SessionsState {
   loading: boolean;
   newSessionDefaults: NewSessionDefaults | null;
   recentCwds: string[];
+  cwdGroups: Record<string, CwdGroupMeta>;
   tmuxAvailable: boolean;
 }
 
@@ -28,6 +29,7 @@ export function createSessionsStore(): SessionsStore {
     loading: false,
     newSessionDefaults: null,
     recentCwds: [],
+    cwdGroups: {},
     tmuxAvailable: false,
   };
   const listeners = new Set<() => void>();
@@ -69,6 +71,7 @@ export function createSessionsStore(): SessionsStore {
           loading: false,
           newSessionDefaults: data.new_session_defaults ?? state.newSessionDefaults,
           recentCwds: Array.isArray(data.recent_cwds) ? data.recent_cwds.filter((cwd): cwd is string => typeof cwd === "string") : state.recentCwds,
+          cwdGroups: data.cwd_groups ?? state.cwdGroups,
           tmuxAvailable: typeof data.tmux_available === "boolean" ? data.tmux_available : state.tmuxAvailable,
         };
         emit();

@@ -6,6 +6,7 @@ import type {
   EditSessionResponse,
   GitFileVersionsResponse,
   HarnessConfigResponse,
+  EditCwdGroupResponse,
   MessagesResponse,
   NotificationFeedResponse,
   NotificationMessageResponse,
@@ -68,6 +69,9 @@ export const api = {
   },
   logout() {
     return postJson<LogoutResponse>(`/api/logout`, {});
+  },
+  editCwdGroup(payload: { cwd: string; label?: string; collapsed?: boolean }) {
+    return postJson<EditCwdGroupResponse>(`/api/cwd_groups/edit`, payload);
   },
   getVoiceSettings() {
     return getJson<VoiceSettingsResponse>(`/api/settings/voice`);

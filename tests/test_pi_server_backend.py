@@ -1361,6 +1361,60 @@ class TestPiBackendRouting(unittest.TestCase):
                 manager.get_session.assert_called_once_with("pi-session")
                 manager.inject_keys.assert_not_called()
 
+    def test_list_sessions_returns_cwd_groups(self) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        cwd_groups = {"/tmp": {"label": "Temp", "collapsed": True}}
+        with patch("codoxear.server._require_auth", return_value=True), \
+             patch("codoxear.server.MANAGER") as manager:
+            manager.list_sessions.return_value = []
+            manager.recent_cwds.return_value = []
+            manager.cwd_groups_get.return_value = cwd_groups
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["cwd_groups"], cwd_groups)
+        manager.cwd_groups_get.assert_called_once()
+
+    def test_edit_cwd_group_updates_metadata(self) -> None:
+        body = json.dumps({
+            "cwd": "/tmp",
+            "label": "New Label",
+            "collapsed": True
+        }).encode("utf-8")
+        handler = _HandlerHarness("/api/cwd_groups/edit", body)
+
+        with patch("codoxear.server._require_auth", return_value=True), \
+             patch("codoxear.server.MANAGER") as manager:
+            manager.cwd_group_set.return_value = ("/tmp", {"label": "New Label", "collapsed": True})
+
+            Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload, {
+            "ok": True,
+            "cwd": "/tmp",
+            "label": "New Label",
+            "collapsed": True
+        })
+        manager.cwd_group_set.assert_called_once_with(cwd="/tmp", label="New Label", collapsed=True)
+
+    def test_edit_cwd_group_returns_400_on_value_error(self) -> None:
+        body = json.dumps({"cwd": "/tmp", "collapsed": "not-a-bool"}).encode("utf-8")
+        handler = _HandlerHarness("/api/cwd_groups/edit", body)
+
+        with patch("codoxear.server._require_auth", return_value=True), \
+             patch("codoxear.server.MANAGER") as manager:
+            manager.cwd_group_set.side_effect = ValueError("collapsed must be a boolean")
+
+            Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 400)
+        self.assertEqual(payload, {"error": "collapsed must be a boolean"})
+
 
 class TestPiMessageNormalization(unittest.TestCase):
     def test_prompt_and_turn_events_emit_user_and_assistant_rows(self) -> None:

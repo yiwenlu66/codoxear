@@ -34,6 +34,7 @@ describe("createSessionsStore", () => {
       loading: false,
       newSessionDefaults: null,
       recentCwds: [],
+      cwdGroups: {},
       tmuxAvailable: false,
     });
   });
@@ -58,6 +59,7 @@ describe("createSessionsStore", () => {
       loading: false,
       newSessionDefaults: null,
       recentCwds: [],
+      cwdGroups: {},
       tmuxAvailable: false,
     });
   });
@@ -73,6 +75,7 @@ describe("createSessionsStore", () => {
       loading: false,
       newSessionDefaults: null,
       recentCwds: [],
+      cwdGroups: {},
       tmuxAvailable: false,
     });
   });
@@ -97,6 +100,7 @@ describe("createSessionsStore", () => {
       loading: false,
       newSessionDefaults: null,
       recentCwds: [],
+      cwdGroups: {},
       tmuxAvailable: false,
     });
   });
@@ -136,5 +140,18 @@ describe("createSessionsStore", () => {
     resolveFirst!({ sessions: [{ session_id: "s1" }] });
     await firstPromise;
     expect(store.getState().activeSessionId).toBeNull();
+  });
+
+  it("stores cwd groups from the API", async () => {
+    const cwdGroups = { "/tmp": { label: "Temp", collapsed: true } };
+    vi.mocked(api.listSessions).mockResolvedValue({
+      sessions: [],
+      cwd_groups: cwdGroups,
+    } as never);
+    const store = createSessionsStore();
+
+    await store.refresh();
+
+    expect(store.getState().cwdGroups).toEqual(cwdGroups);
   });
 });

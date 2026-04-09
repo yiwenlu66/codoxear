@@ -5778,6 +5778,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 t0 = time.perf_counter()
                 sessions = MANAGER.list_sessions()
                 recent_cwds = MANAGER.recent_cwds()
+                cwd_groups = MANAGER.cwd_groups_get()
                 new_session_defaults = _read_new_session_defaults()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
@@ -5788,6 +5789,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "app_version": _current_app_version(),
                         "sessions": sessions,
                         "recent_cwds": recent_cwds,
+                        "cwd_groups": cwd_groups,
                         "new_session_defaults": new_session_defaults,
                         "tmux_available": _tmux_available(),
                         "tmux_session_name": TMUX_SESSION_NAME,
@@ -6563,6 +6565,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.send_error(404)
                     return
                 path = stripped
+
+            if path == "/api/cwd_groups/edit":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                try:
+                    cwd, entry = MANAGER.cwd_group_set(
+                        cwd=obj.get("cwd"),
+                        label=obj.get("label"),
+                        collapsed=obj.get("collapsed"),
+                    )
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, "cwd": cwd, **entry})
+                return
 
             if path == "/api/login":
                 body = _read_body(self)

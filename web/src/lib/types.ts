@@ -47,6 +47,7 @@ export interface SessionsResponse {
   app_version?: string;
   sessions: SessionSummary[];
   recent_cwds?: string[];
+  cwd_groups?: Record<string, CwdGroupMeta>;
   new_session_defaults?: NewSessionDefaults;
   tmux_available?: boolean;
   tmux_session_name?: string;
@@ -71,6 +72,18 @@ export interface EditSessionResponse extends RenameSessionResponse {
   priority_offset?: number;
   snooze_until?: number | null;
   dependency_session_id?: string | null;
+}
+
+export interface CwdGroupMeta {
+  label?: string;
+  collapsed?: boolean;
+}
+
+export interface EditCwdGroupResponse {
+  ok?: boolean;
+  cwd?: string;
+  label?: string;
+  collapsed?: boolean;
 }
 
 export interface LogoutResponse {
