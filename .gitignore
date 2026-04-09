@@ -27,3 +27,6 @@ generated_imgs/
 /.cocoindex_code/
 /openclaw-main
 /.playwright-cli
+.playwright-mcp
+.pytest_cache
+.venv
