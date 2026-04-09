@@ -68,6 +68,15 @@
         },
         { passive: false }
       );
+      function defaultButtonTooltip(attrs = {}, node = null) {
+        const candidates = [attrs.title, attrs["aria-label"], attrs["data-tooltip"], attrs.text, node && node.textContent];
+        for (const raw of candidates) {
+          const value = String(raw || "").trim();
+          if (value) return value;
+        }
+        return "";
+      }
+
       const el = (tag, attrs = {}, children = []) => {
         const n = document.createElement(tag);
         for (const [k, v] of Object.entries(attrs)) {
@@ -75,6 +84,11 @@
           else if (k === "text") n.textContent = v;
           else if (k === "html") n.innerHTML = v;
           else n.setAttribute(k, v);
+        }
+        // Keep icon-first buttons hoverable even when a title was not set explicitly.
+        if (tag === "button" && !n.getAttribute("title")) {
+          const tooltip = defaultButtonTooltip(attrs, n);
+          if (tooltip) n.setAttribute("title", tooltip);
         }
         for (const c of children) n.appendChild(c);
         return n;
