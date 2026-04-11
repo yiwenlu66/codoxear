@@ -1,12 +1,9 @@
 import { api } from "../../lib/api";
-import type { SessionUiRequest } from "../../lib/types";
 
 export interface SessionUiState {
   sessionId: string | null;
-  requests: SessionUiRequest[];
   diagnostics: Record<string, unknown> | null;
   queue: Record<string, unknown> | null;
-  files: string[];
   loading: boolean;
 }
 
@@ -23,10 +20,8 @@ export interface SessionUiStore {
 export function createSessionUiStore(): SessionUiStore {
   let state: SessionUiState = {
     sessionId: null,
-    requests: [],
     diagnostics: null,
     queue: null,
-    files: [],
     loading: false,
   };
   const listeners = new Set<() => void>();
@@ -46,36 +41,27 @@ export function createSessionUiStore(): SessionUiStore {
         listeners.delete(listener);
       };
     },
-    async refresh(sessionId: string, options?: SessionUiRefreshOptions) {
+    async refresh(sessionId: string, _options?: SessionUiRefreshOptions) {
       const refreshId = ++currentRefreshId;
       const preserveCurrentState = state.sessionId === sessionId;
       state = {
         sessionId,
-        requests: preserveCurrentState ? state.requests : [],
         diagnostics: preserveCurrentState ? state.diagnostics : null,
         queue: preserveCurrentState ? state.queue : null,
-        files: preserveCurrentState ? state.files : [],
         loading: true,
       };
       emit();
 
       try {
-        const requestsPromise = options?.agentBackend === "pi" ? api.getSessionUiState(sessionId) : Promise.resolve({ requests: [] });
-        const [uiState, diagnostics, queue] = await Promise.all([
-          requestsPromise,
-          api.getDiagnostics(sessionId),
-          api.getQueue(sessionId),
-        ]);
+        const workspace = await api.getWorkspace(sessionId);
         if (refreshId !== currentRefreshId) {
           return;
         }
 
         state = {
           sessionId,
-          requests: uiState.requests,
-          diagnostics: diagnostics as Record<string, unknown>,
-          queue: queue as Record<string, unknown>,
-          files: [],
+          diagnostics: (workspace.diagnostics ?? null) as Record<string, unknown> | null,
+          queue: (workspace.queue ?? null) as Record<string, unknown> | null,
           loading: false,
         };
         emit();

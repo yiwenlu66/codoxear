@@ -83,7 +83,7 @@ describe("FileViewerDialog", () => {
     document.body.appendChild(root);
     await act(async () => {
       render(
-        <FileViewerDialog open sessionId="sess-diff" files={["src/main.tsx"]} onClose={() => undefined} />,
+        <FileViewerDialog open sessionId="sess-diff" onClose={() => undefined} />,
         root!,
       );
       await settle(8);
@@ -134,7 +134,7 @@ describe("FileViewerDialog", () => {
     document.body.appendChild(root);
     await act(async () => {
       render(
-        <FileViewerDialog open sessionId="sess-cache" files={[]} onClose={() => undefined} />,
+        <FileViewerDialog open sessionId="sess-cache" onClose={() => undefined} />,
         root!,
       );
       await settle(8);
@@ -183,7 +183,7 @@ describe("FileViewerDialog", () => {
     document.body.appendChild(root);
     await act(async () => {
       render(
-        <FileViewerDialog open sessionId="sess-preview" files={[]} initialPath="docs/intro.md" onClose={() => undefined} />,
+        <FileViewerDialog open sessionId="sess-preview" initialPath="docs/intro.md" onClose={() => undefined} />,
         root!,
       );
       await settle(8);
@@ -221,7 +221,7 @@ describe("FileViewerDialog", () => {
         <FileViewerDialog
           open
           sessionId="sess-line"
-          files={[]}
+         
           initialPath="src/main.tsx"
           initialLine={18}
           onClose={() => undefined}
@@ -233,5 +233,24 @@ describe("FileViewerDialog", () => {
 
     expect((api as any).getFileRead).toHaveBeenCalledWith("sess-line", "src/main.tsx", expect.any(AbortSignal));
     expect(root.textContent).toContain("line 18");
+  });
+
+  it("shows a friendly error when the file list payload is malformed", async () => {
+    const { api } = await import("../../lib/api");
+    (api as any).getFiles.mockResolvedValue({ ok: true, path: "", entries: null });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <FileViewerDialog open sessionId="sess-bad-files" onClose={() => undefined} />,
+        root!,
+      );
+      await settle(8);
+    });
+    await settle(8);
+
+    expect(root.textContent).toContain("Unable to list files");
+    expect(root.textContent).not.toContain("Cannot read properties of null");
   });
 });

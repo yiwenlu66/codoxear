@@ -34,13 +34,21 @@ class PiRpcClient:
         self._stderr_max_bytes = 16 * 1024
         self._closed = False
         self._agent_args = list(agent_args or [])
-        self._proc = proc if proc is not None else self._spawn(cwd=cwd, session_path=session_path)
-        self._reader = threading.Thread(target=self._reader_loop, name="pi-rpc-reader", daemon=True)
+        self._proc = (
+            proc
+            if proc is not None
+            else self._spawn(cwd=cwd, session_path=session_path)
+        )
+        self._reader = threading.Thread(
+            target=self._reader_loop, name="pi-rpc-reader", daemon=True
+        )
         self._reader.start()
         stderr = getattr(self._proc, "stderr", None)
         self._stderr_reader = None
         if stderr is not None:
-            self._stderr_reader = threading.Thread(target=self._stderr_loop, name="pi-rpc-stderr", daemon=True)
+            self._stderr_reader = threading.Thread(
+                target=self._stderr_loop, name="pi-rpc-stderr", daemon=True
+            )
             self._stderr_reader.start()
 
     @property
@@ -48,7 +56,9 @@ class PiRpcClient:
         pid = getattr(self._proc, "pid", 0)
         return int(pid) if isinstance(pid, int) else 0
 
-    def _spawn(self, *, cwd: str | None, session_path: Path | None) -> subprocess.Popen[str]:
+    def _spawn(
+        self, *, cwd: str | None, session_path: Path | None
+    ) -> subprocess.Popen[str]:
         argv = [PI_BIN, "--mode", "rpc"]
         if session_path is not None:
             argv.extend(["--session", str(session_path)])
@@ -168,7 +178,14 @@ class PiRpcClient:
             stdin.write(json.dumps(payload) + "\n")
             stdin.flush()
 
-    def send_command(self, command_type: str, *, payload: dict[str, Any] | None = None, request_id: str | None = None, timeout_s: float = 5.0) -> dict[str, Any]:
+    def send_command(
+        self,
+        command_type: str,
+        *,
+        payload: dict[str, Any] | None = None,
+        request_id: str | None = None,
+        timeout_s: float = 5.0,
+    ) -> dict[str, Any]:
         if self._closed:
             raise RuntimeError("pi rpc client is closed")
         if not isinstance(command_type, str) or not command_type:
@@ -198,7 +215,9 @@ class PiRpcClient:
         else:
             ok = bool(resp.get("ok", False))
         if not ok:
-            raise RuntimeError(str(resp.get("error") or f"pi rpc {command_type} failed"))
+            raise RuntimeError(
+                str(resp.get("error") or f"pi rpc {command_type} failed")
+            )
         result = resp.get("data")
         if not isinstance(result, dict):
             result = resp.get("result")
@@ -219,6 +238,13 @@ class PiRpcClient:
 
     def get_state(self) -> dict[str, Any]:
         return self.send_command("get_state")
+
+    def get_commands(self) -> list[dict[str, Any]]:
+        result = self.send_command("get_commands")
+        commands = result.get("commands")
+        if not isinstance(commands, list):
+            return []
+        return [item for item in commands if isinstance(item, dict)]
 
     def send_ui_response(
         self,

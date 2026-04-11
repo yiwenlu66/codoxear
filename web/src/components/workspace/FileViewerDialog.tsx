@@ -13,7 +13,6 @@ import { normalizeRememberedLine, preferredFileSelectionForSession, rememberFile
 export interface FileViewerDialogProps {
   open: boolean;
   sessionId: string | null;
-  files: string[];
   initialPath?: string;
   initialLine?: number | null;
   initialMode?: FileViewMode | null;
@@ -31,6 +30,26 @@ type TreeNode = SessionFileListEntry & {
   loading?: boolean;
 };
 
+function normalizeFileListEntries(value: unknown): SessionFileListEntry[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    const path = typeof record.path === "string" ? record.path.trim() : "";
+    const kind = record.kind === "dir" || record.kind === "file" ? record.kind : null;
+    if (!name || !path || !kind) {
+      return [];
+    }
+    return [{ name, path, kind }];
+  });
+}
+
 function entryToTreeNode(entry: SessionFileListEntry): TreeNode {
   return {
     ...entry,
@@ -43,7 +62,7 @@ function entryToTreeNode(entry: SessionFileListEntry): TreeNode {
 }
 
 function sortTreeNodes(nodes: TreeNode[]) {
-  return [...nodes].sort((left, right) => {
+  return nodes.slice().sort((left, right) => {
     if (left.kind !== right.kind) {
       return left.kind === "dir" ? -1 : 1;
     }
@@ -218,7 +237,6 @@ function FileTreeNodeRow({
 export function FileViewerDialog({
   open,
   sessionId,
-  files: _files,
   initialPath = "",
   initialLine = null,
   initialMode = null,
@@ -264,7 +282,14 @@ export function FileViewerDialog({
         if (controller.signal.aborted || requestId !== listRequestIdRef.current) {
           return;
         }
-        setTree(sortTreeNodes(response.entries.map(entryToTreeNode)));
+        const entries = normalizeFileListEntries(response.entries);
+        if (!entries) {
+          setTree([]);
+          setTreeError("Unable to list files");
+          setTreeLoading(false);
+          return;
+        }
+        setTree(sortTreeNodes(entries.map(entryToTreeNode)));
         setTreeError("");
         setTreeLoading(false);
       } catch (nextError) {
@@ -390,7 +415,12 @@ export function FileViewerDialog({
       if (controller.signal.aborted) {
         return;
       }
-      setTree((current) => mergeTreeChildren(current, dirPath, response.entries));
+      const entries = normalizeFileListEntries(response.entries);
+      if (!entries) {
+        setTree((current) => setTreeNodeError(current, dirPath, "Unable to list files"));
+        return;
+      }
+      setTree((current) => mergeTreeChildren(current, dirPath, entries));
     }).catch((nextError) => {
       if (controller.signal.aborted || (nextError instanceof Error && nextError.name === "AbortError")) {
         return;

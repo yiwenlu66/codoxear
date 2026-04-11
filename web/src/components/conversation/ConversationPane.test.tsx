@@ -134,6 +134,86 @@ describe("ConversationPane", () => {
     expect(text).toContain("Fixed.");
   });
 
+  it("renders Claude Todo V2 task-assignment custom messages as dedicated timeline events", () => {
+    const sessionsStore = createStaticStore(
+      { items: [], activeSessionId: "sess-custom", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-custom": [
+            {
+              type: "custom_message",
+              custom_type: "claude-todo-v2-task-assignment",
+              text: "Task #1 assigned to @Codex",
+              subject: "Clarify Claude Todo V2 compatibility goal",
+              description: "Ask the user a focused requirement question.",
+              owner: "Codex",
+              assigned_by: "team-lead",
+              ts: 100,
+            },
+          ],
+        },
+        offsetsBySessionId: { "sess-custom": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.querySelector("[data-testid='message-surface'][data-kind='custom_message']")).not.toBeNull();
+    expect(root.textContent).toContain("Task #1 assigned to @Codex");
+    expect(root.textContent).toContain("Clarify Claude Todo V2 compatibility goal");
+    expect(root.textContent).toContain("Codex");
+    expect(root.textContent).toContain("team-lead");
+    expect(root.textContent).toContain("Ask the user a focused requirement question.");
+  });
+
+  it("renders unknown custom messages through a safe fallback card", () => {
+    const sessionsStore = createStaticStore(
+      { items: [], activeSessionId: "sess-custom-fallback", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-custom-fallback": [
+            {
+              type: "custom_message",
+              custom_type: "claude-todo-v2-task-note",
+              text: "Task note added",
+              ts: 200,
+            },
+          ],
+        },
+        offsetsBySessionId: { "sess-custom-fallback": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.querySelector("[data-testid='message-surface'][data-kind='custom_message']")).not.toBeNull();
+    expect(root.textContent).toContain("Task note added");
+  });
+
   it("groups consecutive assistant messages and avoids showing role labels as body text", () => {
     const sessionsStore = createStaticStore(
       { items: [], activeSessionId: "sess-3", loading: false, newSessionDefaults: null },
@@ -681,6 +761,7 @@ describe("ConversationPane", () => {
       { refresh: () => Promise.resolve(), select: () => undefined },
     );
     const loadInitial = vi.fn().mockResolvedValue(undefined);
+    const liveLoadInitial = vi.fn().mockResolvedValue(undefined);
     const loadOlder = vi.fn().mockResolvedValue(undefined);
     const messagesStore = createStaticStore(
       {
@@ -695,11 +776,15 @@ describe("ConversationPane", () => {
       },
       { loadInitial, poll: () => Promise.resolve(), loadOlder },
     );
+    const liveSessionStore = createStaticStore(
+      { offsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: {}, loadingBySessionId: {} },
+      { loadInitial: liveLoadInitial, poll: () => Promise.resolve() },
+    );
 
     root = document.createElement("div");
     document.body.appendChild(root);
     render(
-      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+      <AppProviders liveSessionStore={liveSessionStore as any} sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
         <ConversationPane />
       </AppProviders>,
       root,
@@ -711,12 +796,399 @@ describe("ConversationPane", () => {
     expect(loadOlderButton).toBeDefined();
     expect(jumpButton).toBeDefined();
 
+    const initialLegacyLoadCalls = loadInitial.mock.calls.length;
+
     loadOlderButton?.click();
     jumpButton?.click();
     await Promise.resolve();
 
     expect(loadOlder).toHaveBeenCalledWith("sess-9");
-    expect(loadInitial).toHaveBeenCalledWith("sess-9");
+    expect(loadInitial).toHaveBeenCalledTimes(initialLegacyLoadCalls);
+    expect(liveLoadInitial).toHaveBeenCalledWith("sess-9");
+  });
+
+  it("shows a floating previous-user button only after scrolling above an earlier user message", async () => {
+    const sessionsStore = createStaticStore(
+      { items: [{ session_id: "sess-jump", agent_backend: "pi" }], activeSessionId: "sess-jump", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-jump": [
+            { role: "user", text: "First question" },
+            { role: "assistant", text: "First answer" },
+            { role: "user", text: "Second question" },
+            { role: "assistant", text: "Second answer" },
+            { role: "assistant", text: "Newest answer" },
+          ],
+        },
+        offsetsBySessionId: { "sess-jump": 5 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    const pane = root.querySelector(".conversationPane") as HTMLDivElement | null;
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".messageRow"));
+
+    expect(pane).not.toBeNull();
+    expect(root.querySelector("[data-testid='jump-to-previous-user']")).toBeNull();
+
+    rows.forEach((row, index) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 180 });
+    });
+    Object.defineProperty(pane!, "clientHeight", { configurable: true, value: 360 });
+    Object.defineProperty(pane!, "scrollTop", { configurable: true, writable: true, value: 190 });
+
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const jumpButton = root.querySelector("[data-testid='jump-to-previous-user']") as HTMLButtonElement | null;
+    expect(jumpButton).not.toBeNull();
+    expect(jumpButton?.textContent).toBe("");
+    expect(jumpButton?.getAttribute("aria-label")).toBe("Jump to previous user message");
+  });
+
+  it("jumps to the nearest earlier rendered user message and can step backward again", async () => {
+    const sessionsStore = createStaticStore(
+      {
+        items: [{ session_id: "sess-jump-target", agent_backend: "pi" }],
+        activeSessionId: "sess-jump-target",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const loadOlder = vi.fn().mockResolvedValue(undefined);
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-jump-target": [
+            { role: "user", text: "Question 1" },
+            { role: "assistant", text: "Answer 1" },
+            { role: "user", text: "Question 2" },
+            { role: "assistant", text: "Answer 2" },
+            { role: "assistant", text: "Answer 3" },
+          ],
+        },
+        offsetsBySessionId: { "sess-jump-target": 5 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder },
+    );
+
+    const scrollTo = vi.fn();
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    const pane = root.querySelector(".conversationPane") as HTMLDivElement | null;
+    Object.defineProperty(pane!, "scrollTo", { configurable: true, value: scrollTo });
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".messageRow"));
+    rows.forEach((row, index) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 240 });
+    });
+    Object.defineProperty(pane!, "clientHeight", { configurable: true, value: 360 });
+    Object.defineProperty(pane!, "scrollTop", { configurable: true, writable: true, value: 700 });
+
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const jumpButton = root.querySelector("[data-testid='jump-to-previous-user']") as HTMLButtonElement | null;
+    expect(jumpButton).not.toBeNull();
+    await act(async () => {
+      jumpButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 464, behavior: "smooth" });
+    expect(loadOlder).not.toHaveBeenCalled();
+
+    pane!.scrollTop = 464;
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const secondJumpButton = root.querySelector("[data-testid='jump-to-previous-user']") as HTMLButtonElement | null;
+    expect(secondJumpButton).not.toBeNull();
+    await act(async () => {
+      secondJumpButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+  });
+
+  it("clears the previous-user jump button when switching to a session without earlier user rows", async () => {
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-a": [
+            { role: "user", text: "Question A" },
+            { role: "assistant", text: "Answer A" },
+            { role: "user", text: "Question A2" },
+            { role: "assistant", text: "Answer A2" },
+            { role: "assistant", text: "Newest answer" },
+          ],
+          "sess-b": [{ role: "assistant", text: "Only answer" }],
+        },
+        offsetsBySessionId: { "sess-a": 5, "sess-b": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders
+        sessionsStore={createStaticStore(
+          {
+            items: [
+              { session_id: "sess-a", agent_backend: "pi" },
+              { session_id: "sess-b", agent_backend: "pi" },
+            ],
+            activeSessionId: "sess-a",
+            loading: false,
+            newSessionDefaults: null,
+          },
+          { refresh: () => Promise.resolve(), select: () => undefined },
+        ) as any}
+        messagesStore={messagesStore as any}
+      >
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    const pane = root.querySelector(".conversationPane") as HTMLDivElement | null;
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".messageRow"));
+    rows.forEach((row, index) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 180 });
+    });
+    Object.defineProperty(pane!, "clientHeight", { configurable: true, value: 360 });
+    Object.defineProperty(pane!, "scrollTop", { configurable: true, writable: true, value: 410 });
+
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(root.querySelector("[data-testid='jump-to-previous-user']")).not.toBeNull();
+
+    await act(async () => {
+      render(
+        <AppProviders
+          sessionsStore={createStaticStore(
+            {
+              items: [
+                { session_id: "sess-a", agent_backend: "pi" },
+                { session_id: "sess-b", agent_backend: "pi" },
+              ],
+              activeSessionId: "sess-b",
+              loading: false,
+              newSessionDefaults: null,
+            },
+            { refresh: () => Promise.resolve(), select: () => undefined },
+          ) as any}
+          messagesStore={messagesStore as any}
+        >
+          <ConversationPane />
+        </AppProviders>,
+        root!,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(root.querySelector("[data-testid='jump-to-previous-user']")).toBeNull();
+  });
+
+  it("shows a scroll-to-bottom button when the pane is away from the latest content", async () => {
+    const sessionsStore = createStaticStore(
+      { items: [{ session_id: "sess-bottom", agent_backend: "pi" }], activeSessionId: "sess-bottom", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-bottom": [
+            { role: "user", text: "Question 1" },
+            { role: "assistant", text: "Answer 1" },
+            { role: "assistant", text: "Answer 2" },
+            { role: "assistant", text: "Answer 3" },
+          ],
+        },
+        offsetsBySessionId: { "sess-bottom": 4 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList?.contains("conversationPane") ? 1500 : (scrollHeightDescriptor?.get?.call(this) ?? 0);
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList?.contains("conversationPane") ? 360 : (clientHeightDescriptor?.get?.call(this) ?? 0);
+      },
+    });
+
+    const pane = root.querySelector(".conversationPane") as HTMLDivElement | null;
+    Object.defineProperty(pane!, "scrollTop", { configurable: true, writable: true, value: 620 });
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".messageRow"));
+    rows.forEach((row, index) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 400 });
+    });
+
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const bottomButton = root.querySelector("[data-testid='scroll-to-bottom']") as HTMLButtonElement | null;
+    expect(bottomButton).not.toBeNull();
+    expect(bottomButton?.textContent).toBe("");
+    expect(bottomButton?.getAttribute("aria-label")).toBe("Scroll to conversation bottom");
+
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+    }
+    if (clientHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeightDescriptor);
+    }
+  });
+
+  it("shows both floating buttons together and scrolls to the bottom when requested", async () => {
+    const sessionsStore = createStaticStore(
+      { items: [{ session_id: "sess-both", agent_backend: "pi" }], activeSessionId: "sess-both", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-both": [
+            { role: "user", text: "Question 1" },
+            { role: "assistant", text: "Answer 1" },
+            { role: "user", text: "Question 2" },
+            { role: "assistant", text: "Answer 2" },
+            { role: "assistant", text: "Answer 3" },
+            { role: "assistant", text: "Newest answer" },
+          ],
+        },
+        offsetsBySessionId: { "sess-both": 6 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    const scrollTo = vi.fn();
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList?.contains("conversationPane") ? 1800 : (scrollHeightDescriptor?.get?.call(this) ?? 0);
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList?.contains("conversationPane") ? 360 : (clientHeightDescriptor?.get?.call(this) ?? 0);
+      },
+    });
+
+    const pane = root.querySelector(".conversationPane") as HTMLDivElement | null;
+    Object.defineProperty(pane!, "scrollTo", { configurable: true, value: scrollTo });
+    Object.defineProperty(pane!, "scrollTop", { configurable: true, writable: true, value: 700 });
+    const rows = Array.from(root.querySelectorAll<HTMLElement>(".messageRow"));
+    rows.forEach((row, index) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: index * 350 });
+    });
+
+    await act(async () => {
+      pane?.dispatchEvent(new Event("scroll"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const previousButton = root.querySelector("[data-testid='jump-to-previous-user']") as HTMLButtonElement | null;
+    const bottomButton = root.querySelector("[data-testid='scroll-to-bottom']") as HTMLButtonElement | null;
+
+    expect(previousButton).not.toBeNull();
+    expect(bottomButton).not.toBeNull();
+
+    await act(async () => {
+      bottomButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 1800, behavior: "smooth" });
+
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+    }
+    if (clientHeightDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeightDescriptor);
+    }
   });
 
   it("keeps existing messages visible while a background refresh is in flight", () => {
@@ -823,5 +1295,39 @@ describe("ConversationPane", () => {
     expect(root.querySelectorAll(".daySeparator").length).toBe(2);
     expect(root.textContent).toContain("Day one");
     expect(root.textContent).toContain("Day two");
+  });
+
+  it("does not keep showing the skeleton when a different session is still loading", () => {
+    const sessionsStore = createStaticStore(
+      { items: [{ session_id: "sess-1", agent_backend: "pi" }], activeSessionId: "sess-1", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-1": [{ role: "assistant", text: "Loaded message" }],
+        },
+        offsetsBySessionId: { "sess-1": 1 },
+        hasOlderBySessionId: {},
+        olderBeforeBySessionId: {},
+        loadingOlderBySessionId: {},
+        loadingBySessionId: { "sess-2": true },
+        loadedBySessionId: { "sess-1": true },
+        loading: true,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.textContent).toContain("Loaded message");
+    expect(root.querySelector("[data-kind='loading']")).toBeNull();
   });
 });

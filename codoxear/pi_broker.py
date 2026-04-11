@@ -144,18 +144,30 @@ def _record_ui_request(st: "State", event: dict[str, Any]) -> None:
     )
     allow_freeform = method in {"select", "input", "editor"}
     if "allow_freeform" in event or "allowFreeform" in event:
-        allow_freeform = bool(event.get("allow_freeform") if "allow_freeform" in event else event.get("allowFreeform"))
+        allow_freeform = bool(
+            event.get("allow_freeform")
+            if "allow_freeform" in event
+            else event.get("allowFreeform")
+        )
     allow_multiple = False
     if "allow_multiple" in event or "allowMultiple" in event:
-        allow_multiple = bool(event.get("allow_multiple") if "allow_multiple" in event else event.get("allowMultiple"))
+        allow_multiple = bool(
+            event.get("allow_multiple")
+            if "allow_multiple" in event
+            else event.get("allowMultiple")
+        )
 
     st.pending_ui_requests[request_id] = {
         "id": request_id,
         "method": method,
         "title": event.get("title"),
         "message": event.get("message"),
-        "question": event.get("question") if isinstance(event.get("question"), str) else None,
-        "context": event.get("context") if isinstance(event.get("context"), str) else None,
+        "question": event.get("question")
+        if isinstance(event.get("question"), str)
+        else None,
+        "context": event.get("context")
+        if isinstance(event.get("context"), str)
+        else None,
         "options": list(options) if isinstance(options, list) else [],
         "allow_freeform": allow_freeform,
         "allow_multiple": allow_multiple,
@@ -249,14 +261,19 @@ class PiBroker:
         self.session_path = session_path
         self.rpc = rpc
         self.agent_args = list(agent_args or [])
-        self.resume_session_id = resume_session_id or _resume_session_id_from_agent_args(self.agent_args)
+        self.resume_session_id = (
+            resume_session_id or _resume_session_id_from_agent_args(self.agent_args)
+        )
         self.state: State | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self._previous_sigint_handler: Any | None = None
 
     def _agent_args_manage_session(self) -> bool:
-        return any(arg in {"--session", "--no-session", "--session-dir"} for arg in self.agent_args)
+        return any(
+            arg in {"--session", "--no-session", "--session-dir"}
+            for arg in self.agent_args
+        )
 
     def _write_meta(self) -> None:
         with self._lock:
@@ -280,12 +297,16 @@ class PiBroker:
             "log_path": None,
             "sock_path": str(st.sock_path),
             "resume_session_id": self.resume_session_id,
+            "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip()
+            or None,
         }
         if st.session_path is not None:
             meta["session_path"] = str(st.session_path)
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=str(meta_path.parent), delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=str(meta_path.parent), delete=False
+        ) as tmp:
             tmp.write(json.dumps(meta))
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, meta_path)
@@ -324,10 +345,14 @@ class PiBroker:
                     st2.busy = False
                     st2.prompt_sent_at = 0.0
             self._drain_rpc_output_locked(st2)
-            state_turn_id = _extract_turn_id(rpc_state) if isinstance(rpc_state, dict) else None
+            state_turn_id = (
+                _extract_turn_id(rpc_state) if isinstance(rpc_state, dict) else None
+            )
             if state_turn_id:
                 st2.last_turn_id = state_turn_id
-            sid = _extract_session_id(rpc_state) if isinstance(rpc_state, dict) else None
+            sid = (
+                _extract_session_id(rpc_state) if isinstance(rpc_state, dict) else None
+            )
             if isinstance(sid, str) and sid and sid != st2.session_id:
                 st2.session_id = sid
                 rewrite_meta = True
@@ -342,12 +367,22 @@ class PiBroker:
         drain_stderr = getattr(st.rpc, "drain_stderr_lines", None)
         if callable(drain_stderr):
             try:
-                stderr_lines = [line for line in drain_stderr() if isinstance(line, str) and line]
+                raw_stderr_lines = drain_stderr()
+                if isinstance(raw_stderr_lines, list):
+                    stderr_lines = [
+                        line
+                        for line in raw_stderr_lines
+                        if isinstance(line, str) and line
+                    ]
+                else:
+                    stderr_lines = []
             except Exception:
                 stderr_lines = []
         for line in stderr_lines:
             suffix = "" if line.endswith("\n") else "\n"
-            st.output_tail = (st.output_tail + f"[stderr] {line}{suffix}")[-st.output_tail_max :]
+            st.output_tail = (st.output_tail + f"[stderr] {line}{suffix}")[
+                -st.output_tail_max :
+            ]
         try:
             events = st.rpc.drain_events()
         except Exception:
@@ -363,7 +398,11 @@ class PiBroker:
                 event_type in _TERMINAL_TURN_EVENT_TYPES
                 and (
                     (bool(event_turn_id) and st.last_turn_id == event_turn_id)
-                    or ((not event_turn_id) and (not st.last_turn_id) and st.prompt_sent_at <= 0.0)
+                    or (
+                        (not event_turn_id)
+                        and (not st.last_turn_id)
+                        and st.prompt_sent_at <= 0.0
+                    )
                 )
             )
             if terminal_event_matches_active_turn:
@@ -372,7 +411,11 @@ class PiBroker:
             if output:
                 st.output_tail = (st.output_tail + output)[-st.output_tail_max :]
             if not event_turn_id:
-                if event_type in _TERMINAL_TURN_EVENT_TYPES and (not st.last_turn_id) and st.prompt_sent_at <= 0.0:
+                if (
+                    event_type in _TERMINAL_TURN_EVENT_TYPES
+                    and (not st.last_turn_id)
+                    and st.prompt_sent_at <= 0.0
+                ):
                     st.busy = False
                     st.prompt_sent_at = 0.0
                     st.last_turn_id = None
@@ -542,7 +585,11 @@ class PiBroker:
             if cmd == "state":
                 with self._lock:
                     st = self.state
-                    resp = {"busy": bool(st.busy) if st else False, "queue_len": 0, "token": st.token if st else None}
+                    resp = {
+                        "busy": bool(st.busy) if st else False,
+                        "queue_len": 0,
+                        "token": st.token if st else None,
+                    }
                 _send_socket_json_line(conn, resp)
                 return
 
@@ -560,16 +607,30 @@ class PiBroker:
                     st = self.state
                     if st is not None:
                         self._drain_rpc_output_locked(st)
-                    resp = {
-                        "requests": [
+                        requests = [
                             request
                             for request in st.pending_ui_requests.values()
                             if request.get("status") == "pending"
                         ]
-                        if st
-                        else [],
-                    }
+                    else:
+                        requests = []
+                    resp = {"requests": requests}
                 _send_socket_json_line(conn, resp)
+                return
+
+            if cmd == "commands":
+                with self._lock:
+                    st = self.state
+                    if st is not None:
+                        self._drain_rpc_output_locked(st)
+                        rpc = st.rpc
+                    else:
+                        rpc = None
+                if rpc is None:
+                    _send_socket_json_line(conn, {"error": "no state"})
+                    return
+                commands = rpc.get_commands()
+                _send_socket_json_line(conn, {"commands": commands})
                 return
 
             if cmd == "ui_response":
@@ -593,10 +654,14 @@ class PiBroker:
                         return
                     pending = st.pending_ui_requests.get(request_id)
                     if pending is None:
-                        _send_socket_json_line(conn, {"error": "unknown or expired request"})
+                        _send_socket_json_line(
+                            conn, {"error": "unknown or expired request"}
+                        )
                         return
                     if pending.get("status") != "pending":
-                        _send_socket_json_line(conn, {"error": "request already resolved"})
+                        _send_socket_json_line(
+                            conn, {"error": "request already resolved"}
+                        )
                         return
                     pending["status"] = "resolved"
                     rpc = st.rpc
@@ -606,7 +671,11 @@ class PiBroker:
                     with self._lock:
                         st = self.state
                         current = st.pending_ui_requests.get(request_id) if st else None
-                        if current is pending and current.get("status") == "resolved":
+                        if (
+                            current is pending
+                            and isinstance(current, dict)
+                            and current.get("status") == "resolved"
+                        ):
                             current["status"] = "pending"
                     raise
                 _send_socket_json_line(conn, {"ok": True})
@@ -633,10 +702,14 @@ class PiBroker:
                         _send_socket_json_line(conn, {"error": "no state"})
                         return
                 if seq != b"\x1b":
-                    _send_socket_json_line(conn, {"error": f"unsupported key sequence: {seq_raw}"})
+                    _send_socket_json_line(
+                        conn, {"error": f"unsupported key sequence: {seq_raw}"}
+                    )
                     return
                 self._interrupt_terminal_turn()
-                _send_socket_json_line(conn, {"ok": True, "queued": False, "n": len(seq)})
+                _send_socket_json_line(
+                    conn, {"ok": True, "queued": False, "n": len(seq)}
+                )
                 return
 
             if cmd == "shutdown":
@@ -687,7 +760,9 @@ class PiBroker:
                 continue
             except Exception:
                 break
-            threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
+            threading.Thread(
+                target=self._handle_conn, args=(conn,), daemon=True
+            ).start()
         try:
             srv.close()
         except Exception:
@@ -701,7 +776,9 @@ class PiBroker:
         if session_path is None and not self._agent_args_manage_session():
             session_path = PI_SESSION_DIR / f"{token}.jsonl"
         sock_path = SOCK_DIR / f"{token}.sock"
-        rpc = self.rpc or PiRpcClient(cwd=self.cwd, session_path=session_path, agent_args=self.agent_args)
+        rpc = self.rpc or PiRpcClient(
+            cwd=self.cwd, session_path=session_path, agent_args=self.agent_args
+        )
         rpc_pid = getattr(rpc, "pid", None)
         self.state = State(
             session_id=None,
@@ -712,14 +789,22 @@ class PiBroker:
             rpc=rpc,
         )
         self._write_meta()
-        threading.Thread(target=self._bg_sync_loop, name="pi-bg-sync", daemon=True).start()
+        threading.Thread(
+            target=self._bg_sync_loop, name="pi-bg-sync", daemon=True
+        ).start()
         self._previous_sigint_handler = None
         if foreground and sys.stdin.isatty() and sys.stdout.isatty():
             self._previous_sigint_handler = signal.getsignal(signal.SIGINT)
             signal.signal(signal.SIGINT, self._handle_sigint)
-            threading.Thread(target=self._stdin_loop, name="pi-stdin", daemon=True).start()
-            threading.Thread(target=self._stdout_loop, name="pi-stdout", daemon=True).start()
-        sock_thread = threading.Thread(target=self._sock_server, name="pi-sock-server", daemon=True)
+            threading.Thread(
+                target=self._stdin_loop, name="pi-stdin", daemon=True
+            ).start()
+            threading.Thread(
+                target=self._stdout_loop, name="pi-stdout", daemon=True
+            ).start()
+        sock_thread = threading.Thread(
+            target=self._sock_server, name="pi-sock-server", daemon=True
+        )
         sock_thread.start()
         proc = getattr(rpc, "_proc", None)
         exit_code = 0
@@ -753,11 +838,15 @@ def main() -> None:
     ap.add_argument("--session-file")
     ap.add_argument("args", nargs=argparse.REMAINDER)
     ns = ap.parse_args()
-    session_path = Path(ns.session_file).expanduser().resolve() if ns.session_file else None
+    session_path = (
+        Path(ns.session_file).expanduser().resolve() if ns.session_file else None
+    )
     args = list(ns.args)
     if args and args[0] == "--":
         args = args[1:]
-    raise SystemExit(PiBroker(cwd=ns.cwd, session_path=session_path, agent_args=args).run())
+    raise SystemExit(
+        PiBroker(cwd=ns.cwd, session_path=session_path, agent_args=args).run()
+    )
 
 
 if __name__ == "__main__":

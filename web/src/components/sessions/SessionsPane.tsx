@@ -79,18 +79,14 @@ function groupSessions(items: SessionSummary[], cwdGroups: Record<string, CwdGro
 }
 
 export function SessionsPane({ onNewSession }: SessionsPaneProps) {
-  const { items, activeSessionId, cwdGroups = {} } = useSessionsStore();
+  const { items, activeSessionId, cwdGroups = {}, remainingByGroup = {}, omittedGroupCount = 0 } = useSessionsStore();
   const sessionsStoreApi = useSessionsStoreApi();
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingSession, setEditingSession] = useState<SessionSummary | null>(null);
   const [actionError, setActionError] = useState("");
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
 
-  const editingSession = useMemo(
-    () => items.find((session) => session.session_id === editingSessionId) ?? null,
-    [editingSessionId, items],
-  );
-  const groupedSessions = useMemo(() => groupSessions(items, cwdGroups), [items, cwdGroups]);
+  const groupedSessions = useMemo(() => groupSessions(items, cwdGroups), [cwdGroups, items]);
 
   const deleteSession = async (session: SessionSummary) => {
     const confirmed = typeof window === "undefined" || typeof window.confirm !== "function"
@@ -108,6 +104,60 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
     }
   };
 
+  const selectCreatedSession = async (response: { session_id?: string; broker_pid?: number }) => {
+    await sessionsStoreApi.refresh();
+    const returnedSessionId = String(response.session_id || "").trim();
+    let createdSession = returnedSessionId
+      ? sessionsStoreApi.getState().items.find((item) => item.session_id === returnedSessionId)
+      : undefined;
+    if (!createdSession) {
+      createdSession = sessionsStoreApi.getState().items.find((item) => item.broker_pid === response.broker_pid);
+    }
+    if (!createdSession) {
+      await sessionsStoreApi.refresh({ preferNewest: true });
+      const state = sessionsStoreApi.getState();
+      createdSession = (returnedSessionId
+        ? state.items.find((item) => item.session_id === returnedSessionId)
+        : undefined)
+        ?? state.items.find((item) => item.broker_pid === response.broker_pid)
+        ?? state.items.find((item) => item.session_id === state.activeSessionId)
+        ?? state.items[0];
+    }
+    if (createdSession) {
+      sessionsStoreApi.select(createdSession.session_id);
+    }
+  };
+
+  const resumeHistoricalSession = async (session: SessionSummary) => {
+    const cwd = String(session.cwd || "").trim();
+    if (!cwd) {
+      setActionError("This historical session is missing resume metadata.");
+      return;
+    }
+
+    setActionError("");
+
+    try {
+      const details = await api.getSessionDetails(session.session_id);
+      const source = details.session;
+      const resumeSessionId = String(source.resume_session_id || "").trim();
+      if (!resumeSessionId) {
+        setActionError("This historical session is missing resume metadata.");
+        return;
+      }
+      const backend = normalizeLaunchBackend(source.agent_backend);
+      const response = await api.createSession({
+        cwd,
+        backend,
+        resume_session_id: resumeSessionId,
+      });
+      await selectCreatedSession(response);
+      await sessionsStoreApi.refreshBootstrap();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to resume session");
+    }
+  };
+
   const duplicateSession = async (session: SessionSummary) => {
     const cwd = String(session.cwd || "").trim();
     if (!cwd) {
@@ -116,33 +166,23 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
     }
 
     setActionError("");
-    const backend = normalizeLaunchBackend(session.agent_backend);
-    const providerSettings = providerChoiceToSettings(String(session.provider_choice || ""), backend);
 
     try {
+      const details = await api.getSessionDetails(session.session_id);
+      const source = details.session;
+      const backend = normalizeLaunchBackend(source.agent_backend);
+      const providerSettings = providerChoiceToSettings(String(source.provider_choice || ""), backend);
       const response = await api.createSession({
         cwd,
         backend,
-        model: String(session.model || "").trim() || undefined,
+        model: String(source.model || "").trim() || undefined,
         model_provider: providerSettings.model_provider,
         preferred_auth_method: providerSettings.preferred_auth_method,
-        reasoning_effort: String(session.reasoning_effort || "").trim() || undefined,
-        service_tier: String(session.service_tier || "").trim().toLowerCase() === "fast" ? "fast" : undefined,
-        create_in_tmux: backend === "codex" && String(session.transport || "").trim().toLowerCase() === "tmux" ? true : undefined,
+        reasoning_effort: String(source.reasoning_effort || "").trim() || undefined,
+        service_tier: String(source.service_tier || "").trim().toLowerCase() === "fast" ? "fast" : undefined,
+        create_in_tmux: backend === "codex" && String(source.transport || "").trim().toLowerCase() === "tmux" ? true : undefined,
       });
-
-      await sessionsStoreApi.refresh();
-      let createdSession = sessionsStoreApi.getState().items.find((item) => item.broker_pid === response.broker_pid);
-      if (!createdSession) {
-        await sessionsStoreApi.refresh({ preferNewest: true });
-        const state = sessionsStoreApi.getState();
-        createdSession = state.items.find((item) => item.broker_pid === response.broker_pid)
-          ?? state.items.find((item) => item.session_id === state.activeSessionId)
-          ?? state.items[0];
-      }
-      if (createdSession) {
-        sessionsStoreApi.select(createdSession.session_id);
-      }
+      await selectCreatedSession(response);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to duplicate session");
     }
@@ -158,7 +198,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
 
     try {
       await api.editCwdGroup({ cwd: group.cwd, ...payload });
-      await sessionsStoreApi.refresh();
+      await sessionsStoreApi.refreshBootstrap();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save group changes.";
@@ -184,44 +224,84 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
         {actionError ? <p className="px-1 pb-2 text-sm font-medium text-red-600">{actionError}</p> : null}
         <ScrollArea className="sessionsSurfaceBody">
           <div className="sessionsList">
-            {groupedSessions.map((group) => (
-              <SessionGroup
-                key={group.key}
-                title={group.title}
-                subtitle={group.subtitle}
-                collapsed={group.collapsed}
-                canRename={Boolean(group.cwd)}
-                isSaving={pendingGroupKey === group.key}
-                errorMessage={groupErrors[group.key]}
-                onRename={
-                  group.cwd
-                    ? async (label) => saveGroupChange(group, { label: label.trim() })
-                    : undefined
-                }
-                onToggle={
-                  group.cwd
-                    ? () => {
-                        void saveGroupChange(group, { collapsed: !group.collapsed });
-                      }
-                    : undefined
-                }
+            {groupedSessions.map((group) => {
+              const visibleSessions = group.sessions;
+              const hiddenSessionCount = Math.max(0, Number(remainingByGroup[group.key] || 0));
+              const hasHiddenSessions = hiddenSessionCount > 0;
+
+              return (
+                <SessionGroup
+                  key={group.key}
+                  title={group.title}
+                  subtitle={group.subtitle}
+                  collapsed={group.collapsed}
+                  canRename={Boolean(group.cwd)}
+                  isSaving={pendingGroupKey === group.key}
+                  errorMessage={groupErrors[group.key]}
+                  onRename={
+                    group.cwd
+                      ? async (label) => saveGroupChange(group, { label: label.trim() })
+                      : undefined
+                  }
+                  onToggle={
+                    group.cwd
+                      ? () => {
+                          void saveGroupChange(group, { collapsed: !group.collapsed });
+                        }
+                      : undefined
+                  }
+                >
+                  {visibleSessions.map((session) => (
+                    <SessionCard
+                      key={session.session_id}
+                      session={session}
+                      active={session.session_id === activeSessionId}
+                      onSelect={() => {
+                        if (session.historical) {
+                          void resumeHistoricalSession(session);
+                          return;
+                        }
+                        sessionsStoreApi.select(session.session_id);
+                      }}
+                      onDuplicate={session.historical ? undefined : () => { void duplicateSession(session); }}
+                      onDelete={session.historical ? undefined : () => { void deleteSession(session); }}
+                      onEdit={session.historical ? undefined : () => {
+                        setActionError("");
+                        void api.getSessionDetails(session.session_id)
+                          .then((details) => setEditingSession(details.session))
+                          .catch((error) => {
+                            setActionError(error instanceof Error ? error.message : "Failed to load session details");
+                          });
+                      }}
+                    />
+                  ))}
+                  {hasHiddenSessions ? (
+                    <button
+                      type="button"
+                      className="sessionGroupMoreButton"
+                      aria-label={`Load ${hiddenSessionCount} more sessions in ${group.title}`}
+                      onClick={() => {
+                        void sessionsStoreApi.loadMoreGroup(group.key);
+                      }}
+                    >
+                      ...
+                    </button>
+                  ) : null}
+                </SessionGroup>
+              );
+            })}
+            {omittedGroupCount > 0 ? (
+              <button
+                type="button"
+                className="sessionGroupMoreButton"
+                aria-label={`Load ${omittedGroupCount} more directories`}
+                onClick={() => {
+                  void sessionsStoreApi.loadMoreGroups();
+                }}
               >
-                {group.sessions.map((session) => (
-                  <SessionCard
-                    key={session.session_id}
-                    session={session}
-                    active={session.session_id === activeSessionId}
-                    onSelect={() => sessionsStoreApi.select(session.session_id)}
-                    onEdit={() => {
-                      setActionError("");
-                      setEditingSessionId(session.session_id);
-                    }}
-                    onDuplicate={() => { void duplicateSession(session); }}
-                    onDelete={() => { void deleteSession(session); }}
-                  />
-                ))}
-              </SessionGroup>
-            ))}
+                Load {omittedGroupCount} more directories
+              </button>
+            ) : null}
           </div>
         </ScrollArea>
       </aside>
@@ -231,7 +311,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
         open={editingSession != null}
         session={editingSession}
         sessions={items}
-        onClose={() => setEditingSessionId(null)}
+        onClose={() => setEditingSession(null)}
         onSaved={async () => {
           await sessionsStoreApi.refresh();
         }}

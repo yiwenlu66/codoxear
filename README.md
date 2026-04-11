@@ -38,6 +38,11 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 - `python3 -m pip install .`
 
+If you are running from a source checkout and want the latest frontend bundle, build the web app before starting the server:
+
+- `cd web && npm install && npm run build`
+- `npm run build` writes the production bundle to `web/dist/` and copies it into `codoxear/static/dist/`, which is what `codoxear-server` serves
+
 1. Create `.env`:
 
    - Copy `.env.example` to `.env`

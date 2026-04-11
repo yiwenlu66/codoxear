@@ -22,11 +22,13 @@ vi.mock("../lib/api", () => ({
     getNotificationSubscriptionState: vi.fn().mockResolvedValue({ ok: true, vapid_public_key: "", subscriptions: [] }),
     upsertNotificationSubscription: vi.fn().mockResolvedValue({ ok: true, vapid_public_key: "", subscriptions: [] }),
     toggleNotificationSubscription: vi.fn().mockResolvedValue({ ok: true, vapid_public_key: "", subscriptions: [] }),
+    triggerTestPushNotification: vi.fn().mockResolvedValue({ ok: true, sent_count: 1, failed_count: 0, target_count: 1, notification_text: "回复完成" }),
     getFiles: vi.fn().mockResolvedValue({ ok: true, path: "", entries: [{ name: "src", path: "src", kind: "dir" }] }),
     getFileRead: vi.fn().mockResolvedValue({ ok: true, kind: "text", text: "console.log('viewer');" }),
     getGitFileVersions: vi.fn().mockResolvedValue({ ok: true, path: "src/main.tsx", base_text: "before", current_text: "after" }),
     getHarness: vi.fn().mockResolvedValue({ ok: true, enabled: true, request: "Keep going", cooldown_minutes: 15, remaining_injections: 2 }),
     saveHarness: vi.fn().mockResolvedValue({ ok: true, enabled: true, request: "Keep going", cooldown_minutes: 15, remaining_injections: 2 }),
+    interruptSession: vi.fn().mockResolvedValue({ ok: true }),
     logout: vi.fn().mockResolvedValue({ ok: true }),
   },
 }));
@@ -93,6 +95,17 @@ async function flush() {
   await Promise.resolve();
 }
 
+function setDocumentVisibility(state: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: state,
+  });
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    value: state === "hidden",
+  });
+}
+
 function createStaticStore<TState extends object, TActions extends Record<string, (...args: any[]) => any>>(
   state: TState,
   actions: TActions,
@@ -145,10 +158,20 @@ function renderAppShell({
       loading: false,
       newSessionDefaults: null,
     },
-    { refresh: vi.fn().mockResolvedValue(undefined), select: vi.fn() },
+    { refresh: vi.fn().mockResolvedValue(undefined), refreshBootstrap: vi.fn().mockResolvedValue(undefined), select: vi.fn() },
   );
   const messagesStore = createStaticStore(
     { bySessionId: messageState, offsetsBySessionId: offsetState, loading: false },
+    { loadInitial: vi.fn().mockResolvedValue(undefined), poll: vi.fn().mockResolvedValue(undefined) },
+  );
+  const liveSessionStore = createStaticStore(
+    {
+      offsetsBySessionId: offsetState,
+      requestsBySessionId: activeSessionId ? { [activeSessionId]: requests as any[] } : {},
+      requestVersionsBySessionId: {},
+      busyBySessionId: Object.fromEntries(sessionItems.map((session) => [session.session_id, session.busy])),
+      loadingBySessionId: {},
+    },
     { loadInitial: vi.fn().mockResolvedValue(undefined), poll: vi.fn().mockResolvedValue(undefined) },
   );
   const composerStore = createStaticStore(
@@ -168,6 +191,7 @@ function renderAppShell({
       <AppProviders
         sessionsStore={sessionsStore as any}
         messagesStore={messagesStore as any}
+        liveSessionStore={liveSessionStore as any}
         composerStore={composerStore as any}
         sessionUiStore={sessionUiStore as any}
       >
@@ -177,7 +201,7 @@ function renderAppShell({
     );
   });
 
-  return { sessionsStore, messagesStore, composerStore, sessionUiStore };
+  return { sessionsStore, messagesStore, liveSessionStore, composerStore, sessionUiStore };
 }
 
 function getRoot(): HTMLDivElement {
@@ -190,6 +214,10 @@ function getRoot(): HTMLDivElement {
 
 function findButtonByText(label: string) {
   return Array.from(getRoot().querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes(label));
+}
+
+function findButtonByAriaLabel(label: string) {
+  return getRoot().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 }
 
 function requireButtonByText(label: string) {
@@ -213,6 +241,7 @@ function getToolbarTodoButton() {
 describe("AppShell", () => {
   afterEach(() => {
     localStorage.clear();
+    setDocumentVisibility("visible");
     if (root) {
       render(null, root);
       root.remove();
@@ -241,11 +270,12 @@ describe("AppShell", () => {
     expect(getRoot().textContent).toContain("Settings");
     expect(getRoot().textContent).toContain("Log out");
     expect(getRoot().textContent).toContain("No session selected");
-    expect(getRoot().textContent).toContain("Files");
-    expect(getRoot().textContent).toContain("Workspace");
-    expect(getRoot().textContent).toContain("Harness");
-    expect(getRoot().querySelector(".mobileSheetTrigger")?.textContent).toContain("Sessions");
-    expect(getRoot().querySelector(".mobileToolsTrigger")?.textContent).toContain("Tools");
+    expect(getRoot().querySelector(".mobileSheetTrigger")).toBeNull();
+    expect(getRoot().querySelector(".mobileToolsTrigger")).toBeNull();
+    expect(findButtonByAriaLabel("Files")).not.toBeNull();
+    expect(findButtonByAriaLabel("Workspace")).not.toBeNull();
+    expect(findButtonByAriaLabel("Harness mode")).not.toBeNull();
+    expect(findButtonByAriaLabel("Interrupt (Esc)")).not.toBeNull();
     const notificationsButton = getRoot().querySelector<HTMLButtonElement>('[aria-label="Notifications off"]');
     const announcementsButton = getRoot().querySelector<HTMLButtonElement>('[aria-label="Announcements off"]');
     expect(notificationsButton).not.toBeNull();
@@ -256,30 +286,114 @@ describe("AppShell", () => {
     expect(announcementsButton?.querySelector("svg")).not.toBeNull();
   });
 
-  it("opens grouped mobile tools actions from the toolbar", async () => {
-    renderAppShell({ diagnostics: { status: "ok" } });
-
-    act(() => {
-      getRoot().querySelector<HTMLButtonElement>(".mobileToolsTrigger")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  it("renders the conversation tools trigger in the Sessions slot on narrow viewports", () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 880px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn().mockReturnValue(false),
+      })),
     });
+
+    try {
+      renderAppShell({ activeSessionId: null, diagnostics: null });
+      const trigger = findButtonByAriaLabel("Conversation tools");
+      expect(trigger).not.toBeNull();
+      expect(trigger?.disabled).toBe(false);
+      expect(trigger?.closest(".conversationToolbarGroupPrimary")).not.toBeNull();
+      expect(getRoot().querySelector(".mobileSheetTrigger")).toBeNull();
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  it("renders direct toolbar icon actions on desktop without a grouped tools trigger", async () => {
+    renderAppShell({ diagnostics: { status: "ok" } });
     await flush();
 
-    const toolsSheet = getRoot().querySelector("[data-testid='mobile-tools-sheet']");
-    expect(toolsSheet).not.toBeNull();
-    expect(toolsSheet?.textContent).toContain("Tools");
-    expect(toolsSheet?.textContent).toContain("Files");
-    expect(toolsSheet?.textContent).toContain("Workspace");
-    expect(toolsSheet?.textContent).toContain("Harness");
+    expect(getRoot().querySelector(".mobileToolsTrigger")).toBeNull();
+    expect(findButtonByAriaLabel("Files")?.querySelector("svg")).not.toBeNull();
+    expect(findButtonByAriaLabel("Workspace")?.querySelector("svg")).not.toBeNull();
+    expect(findButtonByAriaLabel("Harness mode")?.querySelector("svg")).not.toBeNull();
+    expect(findButtonByAriaLabel("Interrupt (Esc)")?.querySelector("svg")).not.toBeNull();
+  });
+
+  it("renders a grouped toolbar menu on narrow viewports", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 880px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn().mockReturnValue(false),
+      })),
+    });
+
+    try {
+      renderAppShell({ diagnostics: { status: "ok" } });
+      await flush();
+
+      const menuButton = findButtonByAriaLabel("Conversation tools");
+      expect(menuButton).not.toBeNull();
+      expect(findButtonByAriaLabel("Files")).toBeNull();
+      expect(findButtonByAriaLabel("Workspace")).toBeNull();
+
+      act(() => {
+        menuButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+
+      const sessionsButton = findButtonByAriaLabel("Sessions");
+      const filesButton = findButtonByAriaLabel("Files");
+      const workspaceButton = findButtonByAriaLabel("Workspace");
+      const harnessButton = findButtonByAriaLabel("Harness mode");
+      const interruptButton = findButtonByAriaLabel("Interrupt (Esc)");
+
+      expect(sessionsButton).not.toBeNull();
+      expect(filesButton).not.toBeNull();
+      expect(workspaceButton).not.toBeNull();
+      expect(harnessButton).not.toBeNull();
+      expect(interruptButton).not.toBeNull();
+      expect(sessionsButton?.querySelector("svg")).not.toBeNull();
+      expect(filesButton?.querySelector("svg")).not.toBeNull();
+      expect(workspaceButton?.querySelector("svg")).not.toBeNull();
+      expect(harnessButton?.querySelector("svg")).not.toBeNull();
+      expect(interruptButton?.querySelector("svg")).not.toBeNull();
+      expect(interruptButton?.className).toContain("conversationMenuItemDanger");
+      expect(sessionsButton?.className).toContain("conversationMenuItem");
+      expect(filesButton?.className).toContain("conversationMenuItem");
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
   });
 
   it("opens workspace details in a dialog from the toolbar", async () => {
     renderAppShell({ diagnostics: { status: "ok" } });
     await flush();
 
-    const button = requireButtonByText("Workspace");
+    const button = findButtonByAriaLabel("Workspace");
+    expect(button).not.toBeNull();
 
     act(() => {
-      button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     await flush();
 
@@ -309,9 +423,17 @@ describe("AppShell", () => {
       renderAppShell({ diagnostics: { status: "ok" } });
       await flush();
 
-      const button = requireButtonByText("Workspace");
+      const menuButton = findButtonByAriaLabel("Conversation tools");
+      expect(menuButton).not.toBeNull();
       act(() => {
-        button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        menuButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+
+      const button = findButtonByAriaLabel("Workspace");
+      expect(button).not.toBeNull();
+      act(() => {
+        button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       });
       await flush();
 
@@ -328,12 +450,57 @@ describe("AppShell", () => {
     }
   });
 
+  it("opens the sessions sheet from the grouped toolbar menu on narrow viewports", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 880px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn().mockReturnValue(false),
+      })),
+    });
+
+    try {
+      renderAppShell({ diagnostics: { status: "ok" } });
+      await flush();
+
+      const menuButton = findButtonByAriaLabel("Conversation tools");
+      expect(menuButton).not.toBeNull();
+      act(() => {
+        menuButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+
+      const sessionsButton = findButtonByAriaLabel("Sessions");
+      expect(sessionsButton).not.toBeNull();
+      act(() => {
+        sessionsButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+
+      const mobileSheet = getRoot().querySelector('[role="dialog"][aria-labelledby="mobile-sessions-title"]');
+      expect(mobileSheet).not.toBeNull();
+      expect(mobileSheet?.textContent).toContain("Sessions");
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
   it("opens the file viewer from the toolbar and requests the root directory listing", async () => {
     const { api } = await import("../lib/api");
     renderAppShell({ files: [] });
     await flush();
 
-    const button = findButtonByText("Files");
+    const button = findButtonByAriaLabel("Files");
     expect(button).not.toBeNull();
 
     act(() => {
@@ -352,7 +519,7 @@ describe("AppShell", () => {
     renderAppShell();
     await flush();
 
-    const button = findButtonByText("Harness");
+    const button = findButtonByAriaLabel("Harness mode");
     expect(button).not.toBeNull();
 
     act(() => {
@@ -372,6 +539,30 @@ describe("AppShell", () => {
     await flush();
 
     expect(api.saveHarness).toHaveBeenCalledWith("sess-1", expect.objectContaining({ enabled: true, request: "Keep going" }));
+  });
+
+  it("interrupts the active busy session from the toolbar", async () => {
+    const { api } = await import("../lib/api");
+    renderAppShell({ items: [{ session_id: "sess-1", alias: "Legacy shell", agent_backend: "pi", busy: true }] });
+    await flush();
+
+    const button = findButtonByAriaLabel("Interrupt (Esc)");
+    expect(button).not.toBeNull();
+    expect(button?.disabled).toBe(false);
+
+    act(() => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+
+    expect(api.interruptSession).toHaveBeenCalledWith("sess-1");
+  });
+
+  it("hides the interrupt toolbar action when the active session is idle", async () => {
+    renderAppShell({ items: [{ session_id: "sess-1", alias: "Legacy shell", agent_backend: "pi", busy: false }] });
+    await flush();
+
+    expect(findButtonByAriaLabel("Interrupt (Esc)")).toBeNull();
   });
 
   it("opens announcement settings when announcements are enabled without credentials", async () => {
@@ -418,6 +609,35 @@ describe("AppShell", () => {
     await flush();
 
     expect(localStorage.getItem("codoxear.replySoundEnabled")).toBe("0");
+  });
+
+  it("requests a fixed-text mobile test push from settings", async () => {
+    const { api } = await import("../lib/api");
+    renderAppShell();
+    await flush();
+
+    const button = getRoot().querySelector<HTMLButtonElement>('[aria-label="Announcements off"]');
+    expect(button).not.toBeNull();
+
+    act(() => {
+      button!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+
+    const pushButton = Array.from(getRoot().querySelectorAll<HTMLButtonElement>("button")).find(
+      (item) => item.textContent?.includes("Test Push"),
+    );
+    expect(pushButton).not.toBeUndefined();
+
+    await act(async () => {
+      pushButton!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(api.triggerTestPushNotification).toHaveBeenCalled();
+    expect(getRoot().textContent).toContain("Test push sent to 1 device");
   });
 
   it("sends announcement listener heartbeats when announcements are enabled", async () => {
@@ -487,6 +707,366 @@ describe("AppShell", () => {
 
     expect(notificationSpy).toHaveBeenCalledWith("Legacy shell", expect.objectContaining({ body: "finished task" }));
     vi.useRealTimers();
+  });
+
+  it("pauses notification feed polling while hidden and catches up on resume", async () => {
+    vi.useFakeTimers();
+    const { api } = await import("../lib/api");
+    const notificationSpy = vi.fn();
+    vi.stubGlobal("Notification", class NotificationMock {
+      static permission = "granted";
+      static requestPermission = vi.fn().mockResolvedValue("granted");
+      constructor(title: string, options?: NotificationOptions) {
+        notificationSpy(title, options);
+      }
+    } as any);
+    localStorage.setItem("codoxear.notificationEnabled", "1");
+    setDocumentVisibility("hidden");
+    vi.mocked(api.getNotificationsFeed)
+      .mockResolvedValueOnce({ ok: true, items: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        items: [{ message_id: "msg-hidden", session_display_name: "Legacy shell", notification_text: "resumed", updated_ts: 43 }],
+      });
+
+    renderAppShell();
+    await flush();
+
+    expect(api.getNotificationsFeed).not.toHaveBeenCalled();
+
+    await act(async () => {
+      setDocumentVisibility("visible");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flush();
+    });
+
+    expect(api.getNotificationsFeed).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(notificationSpy).toHaveBeenCalledWith("Legacy shell", expect.objectContaining({ body: "resumed" }));
+    vi.useRealTimers();
+  });
+
+  it("plays the reply beep for a background session when the notification feed reports a completed reply", async () => {
+    vi.useFakeTimers();
+    const { api } = await import("../lib/api");
+    const oscillatorStart = vi.fn();
+    const oscillatorStop = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    vi.stubGlobal("AudioContext", class AudioContextMock {
+      currentTime = 0;
+      destination = {};
+
+      createOscillator() {
+        return {
+          connect: vi.fn(),
+          type: "triangle",
+          frequency: { setValueAtTime: vi.fn() },
+          start: oscillatorStart,
+          stop: oscillatorStop,
+          onended: null,
+        };
+      }
+
+      createGain() {
+        return {
+          connect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+      }
+
+      close = close;
+    } as any);
+
+    vi.mocked(api.getNotificationsFeed)
+      .mockResolvedValueOnce({ ok: true, items: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        items: [{ message_id: "msg-bg-1", session_display_name: "Background shell", notification_text: "done", updated_ts: 42 }],
+      });
+
+    renderAppShell({
+      items: [
+        { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: false },
+        { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: false },
+      ],
+      activeSessionId: "sess-1",
+      messages: {
+        "sess-1": [],
+        "sess-2": [],
+      },
+    });
+    await flush();
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+    expect(oscillatorStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("plays the reply beep for a background busy session when polling receives a final response", async () => {
+    vi.useFakeTimers();
+    const oscillatorStart = vi.fn();
+    const oscillatorStop = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    vi.stubGlobal("AudioContext", class AudioContextMock {
+      currentTime = 0;
+      destination = {};
+
+      createOscillator() {
+        return {
+          connect: vi.fn(),
+          type: "triangle",
+          frequency: { setValueAtTime: vi.fn() },
+          start: oscillatorStart,
+          stop: oscillatorStop,
+          onended: null,
+        };
+      }
+
+      createGain() {
+        return {
+          connect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+      }
+
+      close = close;
+    } as any);
+
+    const { liveSessionStore, messagesStore } = renderAppShell({
+      items: [
+        { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: true },
+        { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: true },
+      ],
+      activeSessionId: "sess-1",
+      messages: {
+        "sess-1": [],
+        "sess-2": [],
+      },
+    });
+    await flush();
+
+    (liveSessionStore as any).poll = vi.fn().mockImplementation(async (sessionId: string) => {
+      if (sessionId !== "sess-2") {
+        return undefined;
+      }
+      const state = (messagesStore as any).getState();
+      (messagesStore as any).setState({
+        ...state,
+        bySessionId: {
+          ...state.bySessionId,
+          "sess-2": [{ role: "assistant", message_class: "final_response", message_id: "msg-bg-poll", text: "done" }],
+        },
+      });
+      return undefined;
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect((liveSessionStore as any).poll).toHaveBeenCalledWith("sess-2");
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+    expect(oscillatorStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay the reply beep when activating a session whose completed reply already beeped in background", async () => {
+    vi.useFakeTimers();
+    const oscillatorStart = vi.fn();
+    const oscillatorStop = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    vi.stubGlobal("AudioContext", class AudioContextMock {
+      currentTime = 0;
+      destination = {};
+
+      createOscillator() {
+        return {
+          connect: vi.fn(),
+          type: "triangle",
+          frequency: { setValueAtTime: vi.fn() },
+          start: oscillatorStart,
+          stop: oscillatorStop,
+          onended: null,
+        };
+      }
+
+      createGain() {
+        return {
+          connect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+      }
+
+      close = close;
+    } as any);
+
+    const { liveSessionStore, messagesStore, sessionsStore } = renderAppShell({
+      items: [
+        { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: true },
+        { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: true },
+      ],
+      activeSessionId: "sess-1",
+      messages: {
+        "sess-1": [],
+        "sess-2": [],
+      },
+    });
+    await flush();
+
+    (liveSessionStore as any).poll = vi.fn().mockImplementation(async (sessionId: string) => {
+      if (sessionId !== "sess-2") {
+        return undefined;
+      }
+      const state = (messagesStore as any).getState();
+      (messagesStore as any).setState({
+        ...state,
+        bySessionId: {
+          ...state.bySessionId,
+          "sess-2": [{ role: "assistant", message_class: "final_response", message_id: "msg-bg-poll-1", text: "ok" }],
+        },
+      });
+      return undefined;
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+
+    flushSync(() => {
+      (sessionsStore as any).setState({
+        items: [
+          { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: false },
+        ],
+        activeSessionId: "sess-2",
+        loading: false,
+        newSessionDefaults: null,
+      });
+    });
+    flushSync(() => {
+      const state = (messagesStore as any).getState();
+      (messagesStore as any).setState({
+        ...state,
+        bySessionId: {
+          ...state.bySessionId,
+          "sess-2": [{ role: "assistant", message_class: "final_response", message_id: "msg-bg-init-2", text: "ok" }],
+        },
+      });
+    });
+    await flush();
+    await flush();
+
+    expect(oscillatorStart).toHaveBeenCalledTimes(1);
+    expect(oscillatorStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not play the reply beep for final responses loaded during session activation", async () => {
+    const oscillatorStart = vi.fn();
+    const oscillatorStop = vi.fn();
+    const close = vi.fn().mockResolvedValue(undefined);
+
+    vi.stubGlobal("AudioContext", class AudioContextMock {
+      currentTime = 0;
+      destination = {};
+
+      createOscillator() {
+        return {
+          connect: vi.fn(),
+          type: "triangle",
+          frequency: { setValueAtTime: vi.fn() },
+          start: oscillatorStart,
+          stop: oscillatorStop,
+          onended: null,
+        };
+      }
+
+      createGain() {
+        return {
+          connect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+      }
+
+      close = close;
+    } as any);
+
+    const { liveSessionStore, messagesStore, sessionsStore } = renderAppShell({
+      items: [
+        { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: false },
+        { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: false },
+      ],
+      activeSessionId: "sess-1",
+      messages: {
+        "sess-1": [],
+        "sess-2": [],
+      },
+    });
+    await flush();
+
+    (liveSessionStore as any).loadInitial = vi.fn().mockImplementation(async (sessionId: string) => {
+      if (sessionId !== "sess-2") {
+        return undefined;
+      }
+      const state = (messagesStore as any).getState();
+      (messagesStore as any).setState({
+        ...state,
+        bySessionId: {
+          ...state.bySessionId,
+          "sess-2": [{ role: "assistant", message_class: "final_response", message_id: "msg-activate-1", text: "loaded on activate" }],
+        },
+      });
+      return undefined;
+    });
+
+    flushSync(() => {
+      (sessionsStore as any).setState({
+        items: [
+          { session_id: "sess-1", alias: "Active shell", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", alias: "Background shell", agent_backend: "pi", busy: false },
+        ],
+        activeSessionId: "sess-2",
+        loading: false,
+        newSessionDefaults: null,
+      });
+    });
+    await flush();
+    await flush();
+
+    expect(oscillatorStart).not.toHaveBeenCalled();
+    expect(oscillatorStop).not.toHaveBeenCalled();
   });
 
   it("shows a desktop notification immediately for a live final response event", async () => {
@@ -687,6 +1267,84 @@ describe("AppShell", () => {
     expect(getRoot().querySelector('[aria-label="Notifications on (push)"]')).not.toBeNull();
   });
 
+  it("replaces stale mobile push subscriptions before enabling notifications", async () => {
+    const { api } = await import("../lib/api");
+    vi.stubGlobal("Notification", class NotificationMock {
+      static permission = "granted";
+      static requestPermission = vi.fn().mockResolvedValue("granted");
+      constructor() {}
+    } as any);
+    vi.stubGlobal("PushManager", class PushManagerMock {} as any);
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+    });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      configurable: true,
+      value: 5,
+    });
+
+    const staleSubscription = {
+      endpoint: "https://permanently-removed.invalid/fcm/send/stale-token",
+      unsubscribe: vi.fn().mockResolvedValue(true),
+      toJSON: () => ({
+        endpoint: "https://permanently-removed.invalid/fcm/send/stale-token",
+        keys: { p256dh: "old-p256", auth: "old-auth" },
+      }),
+    };
+    const freshSubscriptionJson = {
+      endpoint: "https://push.example.test/sub/2",
+      keys: { p256dh: "p256-new", auth: "auth-new" },
+    };
+    const freshSubscription = {
+      endpoint: freshSubscriptionJson.endpoint,
+      toJSON: () => freshSubscriptionJson,
+    };
+    const subscribe = vi.fn().mockResolvedValue(freshSubscription);
+    const getSubscription = vi.fn().mockResolvedValue(staleSubscription);
+    const register = vi.fn().mockResolvedValue({ pushManager: { getSubscription, subscribe } });
+    Object.defineProperty(window.navigator, "serviceWorker", {
+      configurable: true,
+      value: { register },
+    });
+
+    vi.mocked(api.getVoiceSettings).mockResolvedValueOnce({
+      tts_enabled_for_narration: false,
+      tts_enabled_for_final_response: true,
+      tts_base_url: "https://example.test/v1",
+      tts_api_key: "secret",
+      audio: { active_listener_count: 0, queue_depth: 0, segment_count: 0, stream_url: "/api/audio/live.m3u8" },
+      notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "ZmFrZS1rZXk" },
+    } as any);
+    vi.mocked(api.getNotificationSubscriptionState).mockResolvedValue({ ok: true, vapid_public_key: "ZmFrZS1rZXk", subscriptions: [] } as any);
+    vi.mocked(api.upsertNotificationSubscription).mockResolvedValue({
+      ok: true,
+      vapid_public_key: "ZmFrZS1rZXk",
+      subscriptions: [{ endpoint: freshSubscriptionJson.endpoint, notifications_enabled: true, device_class: "mobile" }],
+    } as any);
+
+    renderAppShell();
+    await flush();
+
+    const button = getRoot().querySelector<HTMLButtonElement>('[aria-label="Notifications off"]');
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button!.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+    await flush();
+
+    expect(staleSubscription.unsubscribe).toHaveBeenCalled();
+    expect(subscribe).toHaveBeenCalled();
+    expect(api.upsertNotificationSubscription).toHaveBeenCalledWith(expect.objectContaining({
+      subscription: freshSubscriptionJson,
+      device_class: "mobile",
+    }));
+  });
+
   it("autoplays announcement audio when enabled and live segments are ready", async () => {
     localStorage.setItem("codoxear.announcementEnabled", "1");
     const play = vi.fn().mockResolvedValue(undefined);
@@ -770,7 +1428,7 @@ describe("AppShell", () => {
     renderAppShell({ diagnostics: { status: "ok" } });
 
     act(() => {
-      requireButtonByText("Workspace").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      findButtonByAriaLabel("Workspace")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     await flush();
 
@@ -781,11 +1439,12 @@ describe("AppShell", () => {
   it("keeps Workspace available while diagnostics are shown in the dialog", async () => {
     renderAppShell({ diagnostics: { status: "ok" } });
 
-    const workspaceButton = requireButtonByText("Workspace");
-    expect(workspaceButton.disabled).toBe(false);
+    const workspaceButton = findButtonByAriaLabel("Workspace");
+    expect(workspaceButton).not.toBeNull();
+    expect(workspaceButton?.disabled).toBe(false);
 
     act(() => {
-      workspaceButton.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      workspaceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     await flush();
 
@@ -832,7 +1491,7 @@ describe("AppShell", () => {
     await flush();
 
     act(() => {
-      requireButtonByText("Workspace").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      findButtonByAriaLabel("Workspace")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     await flush();
 
@@ -953,10 +1612,14 @@ describe("AppShell", () => {
         loading: false,
         newSessionDefaults: null,
       },
-      { refresh: vi.fn(), select: vi.fn() },
+      { refresh: vi.fn(), refreshBootstrap: vi.fn(), select: vi.fn() },
     );
     const messagesStore = createStaticStore(
       { bySessionId: { "4a145abccb9a48889dc7f3e5bed735f2": [] }, offsetsBySessionId: { "4a145abccb9a48889dc7f3e5bed735f2": 0 }, loading: false },
+      { loadInitial: vi.fn(), poll: vi.fn() },
+    );
+    const liveSessionStore = createStaticStore(
+      { offsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: {}, loadingBySessionId: {} },
       { loadInitial: vi.fn(), poll: vi.fn() },
     );
     const composerStore = createStaticStore(
@@ -964,7 +1627,7 @@ describe("AppShell", () => {
       { setDraft: vi.fn(), submit: vi.fn() },
     );
     const sessionUiStore = createStaticStore(
-      { sessionId: "4a145abccb9a48889dc7f3e5bed735f2", diagnostics: null, queue: null, files: [], requests: [], loading: false },
+      { sessionId: "4a145abccb9a48889dc7f3e5bed735f2", diagnostics: null, queue: null, loading: false },
       { refresh: vi.fn() },
     );
 
@@ -975,6 +1638,7 @@ describe("AppShell", () => {
       <AppProviders
         sessionsStore={sessionsStore as any}
         messagesStore={messagesStore as any}
+        liveSessionStore={liveSessionStore as any}
         composerStore={composerStore as any}
         sessionUiStore={sessionUiStore as any}
       >
@@ -984,5 +1648,57 @@ describe("AppShell", () => {
     );
 
     expect(getRoot().querySelector(".conversationTitle")?.textContent).toContain("我准备用 preact + vite 重构web端，请帮我出个规划");
+  });
+
+  it("refreshes sessions when active session polling returns 404", async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const sessionsStore = createStaticStore(
+      {
+        items: [{ session_id: "sess-1", alias: "Legacy shell", agent_backend: "pi", busy: true }],
+        activeSessionId: "sess-1",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      { refresh, refreshBootstrap: vi.fn().mockResolvedValue(undefined), select: vi.fn() },
+    );
+    const messagesStore = createStaticStore(
+      { bySessionId: { "sess-1": [] }, offsetsBySessionId: { "sess-1": 0 }, loading: false },
+      { loadInitial: vi.fn().mockResolvedValue(undefined), poll: vi.fn().mockResolvedValue(undefined) },
+    );
+    const liveSessionStore = createStaticStore(
+      { offsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: {}, loadingBySessionId: {} },
+      { loadInitial: vi.fn().mockRejectedValue({ status: 404 }), poll: vi.fn().mockResolvedValue(undefined) },
+    );
+    const composerStore = createStaticStore(
+      { draft: "", sending: false },
+      { setDraft: vi.fn(), submit: vi.fn() },
+    );
+    const sessionUiStore = createStaticStore(
+      { sessionId: "sess-1", diagnostics: null, queue: null, loading: false },
+      { refresh: vi.fn().mockResolvedValue(undefined) },
+    );
+
+    const mountNode = document.createElement("div");
+    root = mountNode;
+    document.body.appendChild(mountNode);
+    act(() => {
+      render(
+        <AppProviders
+          sessionsStore={sessionsStore as any}
+          messagesStore={messagesStore as any}
+          liveSessionStore={liveSessionStore as any}
+          composerStore={composerStore as any}
+          sessionUiStore={sessionUiStore as any}
+        >
+          <AppShell />
+        </AppProviders>,
+        mountNode,
+      );
+    });
+
+    await flush();
+    await flush();
+
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

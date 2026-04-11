@@ -28,6 +28,8 @@ function createStaticStore<TState extends object, TActions extends Record<string
 describe("SessionWorkspace", () => {
   let root: HTMLDivElement | null = null;
 
+  const ASK_USER_BRIDGE_PREFIX = "__codoxear_ask_user_bridge_v1__";
+
   afterEach(() => {
     vi.clearAllMocks();
     if (root) {
@@ -39,36 +41,47 @@ describe("SessionWorkspace", () => {
 
   it("renders structured ask_user prompts and submits multi-select with freeform input", async () => {
     const { api } = await import("../../lib/api");
-    const refresh = vi.fn().mockResolvedValue(undefined);
+    const workspaceRefresh = vi.fn().mockResolvedValue(undefined);
+    const liveRefresh = vi.fn().mockResolvedValue(undefined);
+    const liveSessionStore = createStaticStore(
+      {
+        offsetsBySessionId: {},
+        requestsBySessionId: {
+          "sess-1": [
+            {
+              id: "req-1",
+              method: "select",
+              question: "Choose deployment targets",
+              context: "You can pick more than one.",
+              allow_multiple: true,
+              allow_freeform: true,
+              options: [
+                { title: "Alpha", description: "Primary region" },
+                { title: "Beta", description: "Backup region" },
+              ],
+            },
+          ],
+        },
+        requestVersionsBySessionId: {},
+        busyBySessionId: {},
+        loadingBySessionId: {},
+      },
+      { loadInitial: liveRefresh, poll: vi.fn() },
+    );
     const sessionUiStore = createStaticStore(
       {
         sessionId: "sess-1",
         diagnostics: null,
         queue: null,
-        files: [],
         loading: false,
-        requests: [
-          {
-            id: "req-1",
-            method: "select",
-            question: "Choose deployment targets",
-            context: "You can pick more than one.",
-            allow_multiple: true,
-            allow_freeform: true,
-            options: [
-              { title: "Alpha", description: "Primary region" },
-              { title: "Beta", description: "Backup region" },
-            ],
-          },
-        ],
       },
-      { refresh },
+      { refresh: workspaceRefresh },
     );
 
     root = document.createElement("div");
     document.body.appendChild(root);
     render(
-      <AppProviders sessionUiStore={sessionUiStore as any}>
+      <AppProviders liveSessionStore={liveSessionStore as any} sessionUiStore={sessionUiStore as any}>
         <SessionWorkspace />
       </AppProviders>,
       root,
@@ -97,7 +110,8 @@ describe("SessionWorkspace", () => {
       id: "req-1",
       value: ["Alpha", "Gamma"],
     });
-    expect(refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
+    expect(liveRefresh).toHaveBeenCalledWith("sess-1");
+    expect(workspaceRefresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
   });
 
   it("locks request actions while submitting and shows an error when submission fails", async () => {
@@ -193,6 +207,88 @@ describe("SessionWorkspace", () => {
     expect(api.submitUiResponse).toHaveBeenCalledWith("sess-2", {
       id: "req-2",
       value: "fast",
+    });
+  });
+
+  it("renders bridged AskUserQuestion editor requests as structured multi-question cards", async () => {
+    const { api } = await import("../../lib/api");
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const sessionUiStore = createStaticStore(
+      {
+        sessionId: "sess-bridge",
+        diagnostics: null,
+        queue: null,
+        files: [],
+        loading: false,
+        requests: [
+          {
+            id: "req-bridge-1",
+            method: "editor",
+            title: "AskUserQuestion",
+            prefill: `${ASK_USER_BRIDGE_PREFIX}\n${JSON.stringify({
+              questions: [
+                {
+                  header: "展示位置",
+                  question: "这个 `claude-todo-v2-state` 你希望优先展示在哪一层？",
+                  options: [
+                    { label: "Composer 上方 (Recommended)", description: "最靠近输入区。" },
+                    { label: "会话详情", description: "只放在右侧面板。" },
+                  ],
+                },
+                {
+                  header: "展示内容",
+                  question: "你希望这个 state 怎么用？",
+                  options: [
+                    { label: "只作显隐控制", description: "只决定面板显示。" },
+                    { label: "显示一个状态标签", description: "同时展示启用状态。" },
+                  ],
+                },
+              ],
+              metadata: { source: "brainstorming" },
+            })}`,
+          },
+        ],
+      },
+      { refresh },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionUiStore={sessionUiStore as any}>
+        <SessionWorkspace />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.textContent).toContain("这个 `claude-todo-v2-state` 你希望优先展示在哪一层？");
+    expect(root.textContent).toContain("你希望这个 state 怎么用？");
+    expect(root.textContent).toContain("Composer 上方 (Recommended)");
+    expect(root.textContent).toContain("显示一个状态标签");
+
+    const optionButtons = Array.from(root.querySelectorAll("button"));
+    const firstAnswer = optionButtons.find((button) => button.textContent?.includes("Composer 上方")) as HTMLButtonElement;
+    const secondAnswer = optionButtons.find((button) => button.textContent?.includes("显示一个状态标签")) as HTMLButtonElement;
+    expect(firstAnswer).toBeDefined();
+    expect(secondAnswer).toBeDefined();
+
+    firstAnswer.click();
+    secondAnswer.click();
+    await flush();
+
+    const confirm = optionButtons.find((button) => button.textContent === "Confirm") as HTMLButtonElement;
+    confirm.click();
+    await flush();
+
+    expect(api.submitUiResponse).toHaveBeenCalledWith("sess-bridge", {
+      id: "req-bridge-1",
+      value: `${ASK_USER_BRIDGE_PREFIX}\n${JSON.stringify({
+        action: "answered",
+        answers: {
+          "这个 `claude-todo-v2-state` 你希望优先展示在哪一层？": "Composer 上方 (Recommended)",
+          "你希望这个 state 怎么用？": "显示一个状态标签",
+        },
+      })}`,
     });
   });
 

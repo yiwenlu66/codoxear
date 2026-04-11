@@ -30,3 +30,7 @@ generated_imgs/
 .playwright-mcp
 .pytest_cache
 .venv
+.ruff_cache
+.tmp
+.pi
+.superpowers

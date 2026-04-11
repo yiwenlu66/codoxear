@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
-import { getJson } from "./http";
-import type { MessagesResponse, SessionUiStateResponse, SessionsResponse } from "./types";
+import { getJson, HttpError, subscribeUnauthorized } from "./http";
+import type { LiveSessionResponse, MessagesResponse, SessionBootstrapResponse, SessionDetailsResponse, SessionUiStateResponse, SessionsResponse, WorkspaceResponse } from "./types";
 
 describe("getJson", () => {
   afterEach(() => {
@@ -24,7 +24,6 @@ describe("getJson", () => {
   it("parses successful json responses", async () => {
     const payload: SessionsResponse = {
       sessions: [{ session_id: "s1", agent_backend: "pi", busy: true }],
-      new_session_defaults: { default_backend: "pi" },
     };
     vi.stubGlobal(
       "fetch",
@@ -36,6 +35,26 @@ describe("getJson", () => {
     );
 
     await expect(getJson<SessionsResponse>("/api/sessions")).resolves.toEqual(payload);
+  });
+
+  it("throws an HttpError with status and notifies unauthorized listeners on 401", async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeUnauthorized(listener);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: async () => '{"error":"Unauthorized"}',
+      }),
+    );
+
+    await expect(getJson("/api/sessions")).rejects.toMatchObject({
+      message: "Unauthorized",
+      status: 401,
+    } satisfies Partial<HttpError>);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
   });
 });
 
@@ -53,12 +72,110 @@ describe("api", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const payload = await api.listSessions(signal);
+    const payload = await api.listSessions(undefined, signal);
 
     expect(payload).toEqual({ sessions: [] });
     expect(fetchMock).toHaveBeenCalledWith("api/sessions", {
       headers: { Accept: "application/json" },
       signal,
+    });
+  });
+
+  it("requests sessions bootstrap metadata", async () => {
+    const payload: SessionBootstrapResponse = {
+      recent_cwds: ["/tmp/project"],
+      cwd_groups: { "/tmp/project": { label: "Project", collapsed: false } },
+      new_session_defaults: { default_backend: "pi" },
+      tmux_available: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getSessionsBootstrap()).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/bootstrap", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("requests session details", async () => {
+    const payload: SessionDetailsResponse = {
+      ok: true,
+      session: { session_id: "sess-1", model: "gpt-5.4", priority_offset: 0.25 },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getSessionDetails("sess-1")).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/sess-1/details", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("requests more sessions for a specific cwd group", async () => {
+    const payload: SessionsResponse = {
+      sessions: [{ session_id: "sess-6", cwd: "/work/docs" }],
+      remaining_by_group: { "/work/docs": 1 },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.listSessions({ groupKey: "/work/docs", offset: 5, limit: 5 })).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions?group_key=%2Fwork%2Fdocs&offset=5&limit=5", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("requests more omitted session groups", async () => {
+    const payload: SessionsResponse = {
+      sessions: [{ session_id: "group-4", cwd: "/work/group-4" }],
+      omitted_group_count: 0,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.listSessions({ groupOffset: 3, groupLimit: 3 })).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions?group_offset=3&group_limit=3", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("posts credentials to the login endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '{"ok":true}',
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.login("123456")).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("api/login", {
+      method: "POST",
+      signal: undefined,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ password: "123456" }),
     });
   });
 
@@ -126,6 +243,118 @@ describe("api", () => {
       headers: { Accept: "application/json" },
       signal: undefined,
     });
+  });
+
+  it("requests live session data with an offset", async () => {
+    const payload: LiveSessionResponse = {
+      ok: true,
+      session_id: "session-1",
+      offset: 6,
+      busy: true,
+      events: [{ id: "m2" }],
+      requests: [{ id: "r1", method: "select" }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getLiveSession("session-1", 4)).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/session-1/live?offset=4", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("requests live session data with a requests version cursor", async () => {
+    const payload: LiveSessionResponse = {
+      ok: true,
+      session_id: "session-1",
+      offset: 6,
+      busy: true,
+      events: [{ id: "m2" }],
+      requests_version: "v1",
+      requests: [{ id: "r1", method: "select" }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getLiveSession("session-1", 4, "v1")).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "api/sessions/session-1/live?offset=4&requests_version=v1",
+      {
+        headers: { Accept: "application/json" },
+        signal: undefined,
+      },
+    );
+  });
+
+  it("requests workspace data", async () => {
+    const payload: WorkspaceResponse = {
+      ok: true,
+      session_id: "session-1",
+      diagnostics: { status: "ok" },
+      queue: { items: ["Queued follow-up"] },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getWorkspace("session-1")).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/session-1/workspace", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("requests the session command list", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '{"commands":[{"name":"reload","description":"Reload Pi"}]}',
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getSessionCommands("pi-session")).resolves.toEqual({
+      commands: [{ name: "reload", description: "Reload Pi" }],
+    });
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/pi-session/commands", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
+  it("posts attachment payloads for a session", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '{"ok":true,"path":"/tmp/upload.txt"}',
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.attachSessionFile("codex-session", {
+      filename: "notes.txt",
+      data_b64: "aGVsbG8=",
+      attachment_index: 1,
+    })).resolves.toEqual({ ok: true, path: "/tmp/upload.txt" });
+
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/codex-session/inject_image", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        filename: "notes.txt",
+        data_b64: "aGVsbG8=",
+        attachment_index: 1,
+      }),
+    }));
   });
 
   it("requests file reads for a session path", async () => {

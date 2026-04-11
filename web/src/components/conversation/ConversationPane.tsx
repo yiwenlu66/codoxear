@@ -2,13 +2,14 @@ import { Fragment, type ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import { AskUserCard, askUserHistorySignature, isUnresolvedAskUserEvent } from "./AskUserCard";
-import { useComposerStore, useMessagesStore, useMessagesStoreApi, useSessionsStore } from "../../app/providers";
+import { useComposerStore, useLiveSessionStoreApi, useMessagesStore, useMessagesStoreApi, useSessionsStore } from "../../app/providers";
 import type { MessageEvent } from "../../lib/types";
 
 const MAIN_TIMELINE_KINDS = new Set([
@@ -20,6 +21,7 @@ const MAIN_TIMELINE_KINDS = new Set([
   "tool_result",
   "subagent",
   "todo_snapshot",
+  "custom_message",
   "pi_session",
   "pi_model_change",
   "pi_thinking_level_change",
@@ -38,6 +40,7 @@ const EVENT_LABELS: Record<string, string> = {
   tool_result: "Tool Result",
   subagent: "Subagent",
   todo_snapshot: "Todo Progress",
+  custom_message: "Custom Message",
   pi_session: "Session",
   pi_model_change: "Model Change",
   pi_thinking_level_change: "Thinking Level",
@@ -597,7 +600,7 @@ function renderCardHeader(kind: string, title?: string, summary?: string, ts?: n
   const showTimestamp = isDisplayableEpochTs(ts);
   return (
     <header className="messageCardHeader flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="messageCardHeaderRow flex flex-wrap items-center gap-2">
         <Badge variant={surfaceBadgeVariant(kind)}>{eventLabel(kind)}</Badge>
         {title ? <div className="messageCardTitle text-sm font-semibold text-foreground">{title}</div> : null}
         {showTimestamp ? (
@@ -842,6 +845,48 @@ function renderTodoSnapshotCard(event: MessageEvent, options: MarkdownRenderOpti
   );
 }
 
+function renderCustomMessageCard(event: MessageEvent, options: MarkdownRenderOptions) {
+  const customType = typeof event.custom_type === "string" ? event.custom_type : "";
+
+  if (customType === "claude-todo-v2-task-assignment") {
+    return (
+      <MessageSurface kind="custom_message">
+        {renderCardHeader("custom_message", firstNonEmptyText(event.text, "Task assignment"), "Claude Todo V2", event.ts)}
+        <div className="space-y-3">
+          {event.subject ? (
+            <div className="messageMetaItem rounded-xl bg-background/70 p-3 text-sm">
+              <span className="block text-xs uppercase tracking-wide text-muted-foreground">Subject</span>
+              <strong>{event.subject}</strong>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
+            {event.owner ? (
+              <div className="messageMetaItem rounded-xl bg-background/70 p-3 text-sm">
+                <span className="block text-xs uppercase tracking-wide text-muted-foreground">Owner</span>
+                <strong>{event.owner}</strong>
+              </div>
+            ) : null}
+            {event.assigned_by ? (
+              <div className="messageMetaItem rounded-xl bg-background/70 p-3 text-sm">
+                <span className="block text-xs uppercase tracking-wide text-muted-foreground">Assigned By</span>
+                <strong>{event.assigned_by}</strong>
+              </div>
+            ) : null}
+          </div>
+          {event.description ? renderRichText(event.description, "messageBody", options) : null}
+        </div>
+      </MessageSurface>
+    );
+  }
+
+  return (
+    <MessageSurface kind="custom_message">
+      {renderCardHeader("custom_message", firstNonEmptyText(event.text, event.summary, event.name), customType || undefined, event.ts)}
+      {event.description ? renderRichText(event.description, "messageBody", options) : null}
+    </MessageSurface>
+  );
+}
+
 function renderSystemCard(event: MessageEvent, kind: string, options: MarkdownRenderOptions) {
   const title = firstNonEmptyText(event.summary, event.name);
   const body = firstNonEmptyText(event.text, event.context, event.question, title === event.summary ? "" : event.summary);
@@ -878,6 +923,8 @@ function renderConversationEvent(
       return renderSubagentCard(event, options);
     case "todo_snapshot":
       return renderTodoSnapshotCard(event, options);
+    case "custom_message":
+      return renderCustomMessageCard(event, options);
     case "pi_session":
     case "pi_model_change":
     case "pi_thinking_level_change":
@@ -955,6 +1002,73 @@ function scrollPaneToBottom(element: HTMLElement) {
   element.scrollTop = element.scrollHeight;
 }
 
+const PREVIOUS_USER_BUTTON_SCROLL_THRESHOLD = 320;
+const PREVIOUS_USER_BUTTON_VIEWPORT_RATIO = 0.5;
+const PREVIOUS_USER_TARGET_TOLERANCE = 24;
+const PREVIOUS_USER_SCROLL_TOP_PADDING = 16;
+
+function ArrowUpTurnIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M5 6 8 3l3 3" />
+      <path d="M8 3v7" />
+      <path d="M8 10h3.5A2.5 2.5 0 0 1 14 12.5" />
+    </svg>
+  );
+}
+
+function ArrowDownIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 3v10" />
+      <path d="m5 10 3 3 3-3" />
+    </svg>
+  );
+}
+
+function findPreviousUserRow(pane: HTMLElement): HTMLElement | null {
+  const visibilityThreshold = pane.clientHeight > 0
+    ? pane.clientHeight * PREVIOUS_USER_BUTTON_VIEWPORT_RATIO
+    : PREVIOUS_USER_BUTTON_SCROLL_THRESHOLD;
+  if (pane.scrollTop < visibilityThreshold) {
+    return null;
+  }
+
+  const threshold = pane.scrollTop - PREVIOUS_USER_TARGET_TOLERANCE;
+
+  const rows = Array.from(pane.querySelectorAll<HTMLElement>(".messageRow.user"));
+  let candidate: HTMLElement | null = null;
+  for (const row of rows) {
+    if (row.offsetTop <= threshold) {
+      candidate = row;
+      continue;
+    }
+    break;
+  }
+
+  return candidate;
+}
+
+function shouldShowScrollToBottom(pane: HTMLElement): boolean {
+  const rows = Array.from(pane.querySelectorAll<HTMLElement>(".messageRow"));
+  const lastRow = rows[rows.length - 1] ?? null;
+  const fallbackContentBottom = lastRow ? lastRow.offsetTop + lastRow.offsetHeight : 0;
+  const contentBottom = Math.max(pane.scrollHeight, fallbackContentBottom);
+  const visibleHeight = pane.clientHeight > 0 ? pane.clientHeight : 0;
+  const distanceFromBottom = contentBottom - (pane.scrollTop + visibleHeight);
+  const threshold = visibleHeight > 0 ? Math.max(160, Math.round(visibleHeight * 0.5)) : 180;
+  return distanceFromBottom > threshold;
+}
+
+function scrollPaneToPosition(element: HTMLElement, top: number) {
+  const nextTop = Math.max(0, top);
+  if (typeof element.scrollTo === "function") {
+    element.scrollTo({ top: nextTop, behavior: "smooth" });
+    return;
+  }
+  element.scrollTop = nextTop;
+}
+
 interface ConversationPaneProps {
   onOpenFilePath?: (path: string, line?: number | null) => void;
 }
@@ -968,8 +1082,10 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const hasOlderBySessionId = messagesState.hasOlderBySessionId ?? {};
   const olderBeforeBySessionId = messagesState.olderBeforeBySessionId ?? {};
   const loadingOlderBySessionId = messagesState.loadingOlderBySessionId ?? {};
-  const loading = messagesState.loading;
+  const loadingBySessionId = (messagesState as { loadingBySessionId?: Record<string, boolean> }).loadingBySessionId ?? {};
+  const loadedBySessionId = (messagesState as { loadedBySessionId?: Record<string, boolean> }).loadedBySessionId ?? {};
   const messagesStoreApi = useMessagesStoreApi();
+  const liveSessionStoreApi = useLiveSessionStoreApi();
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
   const allowLegacyAskUserFallback = Boolean(activeSession?.agent_backend === "pi" && activeSession?.transport !== "pi-rpc");
   const isBusy = activeSession?.busy === true;
@@ -980,20 +1096,37 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const sectionRef = useRef<HTMLElement | null>(null);
   const historyAnchorRef = useRef<{ key: string; top: number } | null>(null);
   const scrollModeRef = useRef<"bottom" | "preserve" | null>(null);
+  const [showPreviousUserJump, setShowPreviousUserJump] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const hasOlder = activeSessionId ? hasOlderBySessionId[activeSessionId] === true : false;
   const olderCursor = activeSessionId ? olderBeforeBySessionId[activeSessionId] ?? 0 : 0;
   const olderLoading = activeSessionId ? loadingOlderBySessionId[activeSessionId] === true : false;
+  const activeSessionLoading = activeSessionId ? loadingBySessionId[activeSessionId] === true : false;
+  const activeSessionLoaded = activeSessionId ? loadedBySessionId[activeSessionId] === true : false;
   const showHistoryControls = Boolean(activeSessionId && messages.length && (hasOlder || olderCursor > 0 || olderLoading));
-  const showLoadingState = loading && messages.length === 0;
+  const showLoadingState = activeSessionLoading && messages.length === 0 && !activeSessionLoaded;
   const markdownOptions: MarkdownRenderOptions = {
     sessionId: activeSessionId || undefined,
     cwd: activeSession?.cwd,
     onOpenLocalFile: onOpenFilePath,
   };
 
+  const recomputeFloatingNavigation = () => {
+    const pane = sectionRef.current?.querySelector(".conversationPane") as HTMLElement | null;
+    if (!pane || !activeSessionId) {
+      setShowPreviousUserJump(false);
+      setShowScrollToBottom(false);
+      return;
+    }
+    setShowPreviousUserJump(Boolean(findPreviousUserRow(pane)));
+    setShowScrollToBottom(shouldShowScrollToBottom(pane));
+  };
+
   useLayoutEffect(() => {
     const pane = sectionRef.current?.querySelector(".conversationPane") as HTMLElement | null;
     if (!pane || (!messages.length && !isBusy)) {
+      setShowPreviousUserJump(false);
+      setShowScrollToBottom(false);
       return;
     }
 
@@ -1007,11 +1140,13 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
       }
       historyAnchorRef.current = null;
       scrollModeRef.current = null;
+      recomputeFloatingNavigation();
       return;
     }
 
     scrollPaneToBottom(pane);
     scrollModeRef.current = null;
+    recomputeFloatingNavigation();
   }, [messages.length, activeSessionId, isBusy]);
 
   useEffect(() => {
@@ -1024,6 +1159,8 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
       if (pane.scrollTop <= 12 && !olderLoading && (hasOlder || olderCursor > 0)) {
         void handleLoadOlder();
       }
+      setShowPreviousUserJump(Boolean(findPreviousUserRow(pane)));
+      setShowScrollToBottom(shouldShowScrollToBottom(pane));
     };
 
     pane.addEventListener("scroll", onScroll);
@@ -1048,11 +1185,28 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
     if (!activeSessionId) return;
     historyAnchorRef.current = null;
     scrollModeRef.current = "bottom";
-    await messagesStoreApi.loadInitial(activeSessionId);
+    await liveSessionStoreApi.loadInitial(activeSessionId);
+  };
+
+  const handleJumpToPreviousUser = () => {
+    const pane = sectionRef.current?.querySelector(".conversationPane") as HTMLElement | null;
+    if (!pane) return;
+    const target = findPreviousUserRow(pane);
+    if (!target) {
+      setShowPreviousUserJump(false);
+      return;
+    }
+    scrollPaneToPosition(pane, target.offsetTop - PREVIOUS_USER_SCROLL_TOP_PADDING);
+  };
+
+  const handleScrollToBottom = () => {
+    const pane = sectionRef.current?.querySelector(".conversationPane") as HTMLElement | null;
+    if (!pane) return;
+    scrollPaneToPosition(pane, pane.scrollHeight);
   };
 
   return (
-    <section ref={sectionRef} className="conversationTimeline flex min-h-0 flex-1">
+    <section ref={sectionRef} className="conversationTimeline relative flex min-h-0 flex-1">
       <ScrollArea className={cn("conversationPane conversationScrollArea min-h-0 flex-1 px-3 py-4", !activeSessionId && "emptyState")}>
         {showLoadingState ? (
           renderLoadingCards()
@@ -1123,6 +1277,36 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
           </div>
         )}
       </ScrollArea>
+      {showPreviousUserJump || showScrollToBottom ? (
+        <div className="conversationNavButtons">
+          {showPreviousUserJump ? (
+            <Button
+              data-testid="jump-to-previous-user"
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="conversationJumpButton shadow-lg"
+              onClick={handleJumpToPreviousUser}
+              aria-label="Jump to previous user message"
+            >
+              <ArrowUpTurnIcon />
+            </Button>
+          ) : null}
+          {showScrollToBottom ? (
+            <Button
+              data-testid="scroll-to-bottom"
+              type="button"
+              variant="secondary"
+              size="icon"
+              className="conversationJumpButton shadow-lg"
+              onClick={handleScrollToBottom}
+              aria-label="Scroll to conversation bottom"
+            >
+              <ArrowDownIcon />
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -1,13 +1,17 @@
 import base64
+import gzip
 import io
 import json
 import os
 import socket
 import tempfile
 import threading
+import urllib.parse
 import unittest
 import uuid
 from pathlib import Path
+from typing import Any
+from typing import cast
 from unittest.mock import ANY
 from unittest.mock import patch
 
@@ -17,11 +21,15 @@ from codoxear.server import Session
 from codoxear.server import SessionManager
 from codoxear.server import _parse_create_session_request
 from codoxear.server import _provider_choice_for_backend
+from codoxear.server import _json_response
+from codoxear.server import _ui_requests_version
 from tests.pi_fixtures import pi_persisted_session_file
 from tests.pi_fixtures import pi_runtime_session_file
 
 
-def _pi_message_entry(role: str, text: str, *, block_type: str = "output_text") -> dict[str, object]:
+def _pi_message_entry(
+    role: str, text: str, *, block_type: str = "output_text"
+) -> dict[str, object]:
     return {
         "type": "message",
         "payload": {
@@ -33,7 +41,9 @@ def _pi_message_entry(role: str, text: str, *, block_type: str = "output_text") 
 
 
 def _write_jsonl(path: Path, entries: list[dict[str, object]]) -> None:
-    path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+    path.write_text(
+        "".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8"
+    )
 
 
 def _make_manager() -> SessionManager:
@@ -47,6 +57,7 @@ def _make_manager() -> SessionManager:
     mgr._hidden_sessions = set()
     mgr._files = {}
     mgr._queues = {}
+    mgr._pi_commands_cache = {}
     mgr._recent_cwds = {}
     mgr._last_discover_ts = 0.0
     mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]
@@ -84,8 +95,186 @@ class _HandlerHarness:
         return
 
 
+class _ResettingWriter:
+    def write(self, _data: bytes) -> int:
+        raise ConnectionResetError(54, "Connection reset by peer")
+
+
 class TestPiBackendRouting(unittest.TestCase):
-    def test_discover_existing_keeps_live_pi_bootstrap_sidecars_on_slow_state_probe(self) -> None:
+    def test_json_response_uses_compact_encoding(self) -> None:
+        handler = _HandlerHarness("/api/test")
+
+        _json_response(cast(Any, handler), 200, {"ok": True, "nested": {"value": 1}})
+
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            handler.wfile.getvalue().decode("utf-8"),
+            '{"ok":true,"nested":{"value":1}}',
+        )
+
+    def test_json_response_gzips_when_client_accepts_it(self) -> None:
+        handler = _HandlerHarness("/api/test")
+        handler.headers["Accept-Encoding"] = "br, gzip"
+
+        _json_response(cast(Any, handler), 200, {"ok": True})
+
+        headers = dict(handler.sent_headers)
+        self.assertEqual(headers.get("Content-Encoding"), "gzip")
+        body = gzip.decompress(handler.wfile.getvalue()).decode("utf-8")
+        self.assertEqual(body, '{"ok":true}')
+
+    def test_get_session_commands_caches_pi_command_results(self) -> None:
+        mgr = _make_manager()
+        sock = Path("/tmp/pi-session.sock")
+        session_path = Path("/tmp/pi-session.jsonl")
+        mgr._sessions["pi-session"] = Session(
+            session_id="pi-session",
+            thread_id="pi-thread-001",
+            agent_backend="pi",
+            backend="pi",
+            broker_pid=3333,
+            codex_pid=4444,
+            owned=True,
+            start_ts=123.0,
+            cwd="/tmp/pi-cwd",
+            log_path=None,
+            sock_path=sock,
+            session_path=session_path,
+        )
+
+        with (
+            patch.object(
+                mgr,
+                "_sock_call",
+                return_value={
+                    "commands": [
+                        {"name": "reload", "description": "Reload Pi"},
+                        {"name": "resume", "description": "Resume session"},
+                    ]
+                },
+            ) as sock_call,
+            patch("codoxear.server.time.time", side_effect=[100.0, 100.0, 110.0]),
+        ):
+            first = mgr.get_session_commands("pi-session")
+            second = mgr.get_session_commands("pi-session")
+
+        self.assertEqual(
+            first,
+            {
+                "commands": [
+                    {"name": "reload", "description": "Reload Pi"},
+                    {"name": "resume", "description": "Resume session"},
+                ]
+            },
+        )
+        self.assertEqual(second, first)
+        sock_call.assert_called_once_with(sock, {"cmd": "commands"}, timeout_s=2.0)
+
+    def test_commands_endpoint_returns_pi_commands(self) -> None:
+        handler = _HandlerHarness("/api/sessions/pi-session/commands")
+
+        with (
+            patch("codoxear.server.MANAGER") as manager,
+            patch("codoxear.server._require_auth", return_value=True),
+        ):
+            manager.get_session_commands.return_value = {
+                "commands": [{"name": "reload", "description": "Reload Pi"}]
+            }
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        self.assertEqual(handler.status, 200)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(
+            payload,
+            {"commands": [{"name": "reload", "description": "Reload Pi"}]},
+        )
+        manager.get_session_commands.assert_called_once_with("pi-session")
+
+    def test_get_session_commands_legacy_broker_unknown_cmd_falls_back_to_empty(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=sock,
+                session_path=Path(td) / "pi-session.jsonl",
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
+                self.assertEqual(req, {"cmd": "commands"})
+                self.assertEqual(timeout_s, 2.0)
+                return {"error": "unknown cmd"}
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+
+            payload = mgr.get_session_commands("pi-session")
+
+        self.assertEqual(payload, {"commands": []})
+
+    def test_commands_endpoint_legacy_broker_unknown_cmd_returns_empty(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=sock,
+                session_path=Path(td) / "pi-session.jsonl",
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
+                self.assertEqual(req, {"cmd": "commands"})
+                self.assertEqual(timeout_s, 2.0)
+                return {"error": "unknown cmd"}
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            handler = _HandlerHarness("/api/sessions/pi-session/commands")
+
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
+                Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        self.assertEqual(handler.status, 200)
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(payload, {"commands": []})
+
+    def test_discover_existing_keeps_live_pi_bootstrap_sidecars_on_slow_state_probe(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
@@ -110,9 +299,14 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", side_effect=socket.timeout("slow bootstrap")
-            ), patch("codoxear.server._pid_alive", return_value=True), patch("codoxear.server.time.time", return_value=133.0):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr, "_sock_call", side_effect=socket.timeout("slow bootstrap")
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+                patch("codoxear.server.time.time", return_value=133.0),
+            ):
                 mgr._discover_existing(force=True)
 
             self.assertTrue(sock.exists())
@@ -145,9 +339,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", side_effect=ConnectionRefusedError("stale listener")
-            ), patch("codoxear.server._pid_alive", return_value=True):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    side_effect=ConnectionRefusedError("stale listener"),
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+            ):
                 mgr._discover_existing(force=True, skip_invalid_sidecars=True)
 
             self.assertTrue(sock.exists())
@@ -156,7 +356,30 @@ class TestPiBackendRouting(unittest.TestCase):
 
         self.assertIsNone(mgr.get_session("pi-session"))
 
-    def test_discover_existing_refreshes_session_path_for_tracked_pi_session(self) -> None:
+    def test_discover_existing_ignores_socket_without_metadata_sidecar(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock_dir = Path(td)
+            sock = sock_dir / "pi-session.sock"
+            sock.touch()
+
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch("codoxear.server.sys.stderr.write") as stderr_write,
+                patch("codoxear.server.sys.stderr.flush") as stderr_flush,
+            ):
+                mgr._discover_existing(force=True, skip_invalid_sidecars=True)
+
+            self.assertTrue(sock.exists())
+            self.assertFalse(mgr._sidecar_is_quarantined(sock))
+            stderr_write.assert_not_called()
+            stderr_flush.assert_not_called()
+
+        self.assertIsNone(mgr.get_session("pi-session"))
+
+    def test_discover_existing_refreshes_session_path_for_tracked_pi_session(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
@@ -164,8 +387,12 @@ class TestPiBackendRouting(unittest.TestCase):
             sock.touch()
             old_session_path = sock_dir / "old-pi-session.jsonl"
             new_session_path = sock_dir / "new-pi-session.jsonl"
-            old_session_path.write_text('{"session_id":"pi-thread-001"}\n', encoding="utf-8")
-            new_session_path.write_text('{"session_id":"pi-thread-002"}\n', encoding="utf-8")
+            old_session_path.write_text(
+                '{"session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
+            new_session_path.write_text(
+                '{"session_id":"pi-thread-002"}\n', encoding="utf-8"
+            )
             (sock_dir / "pi-session.json").write_text(
                 json.dumps(
                     {
@@ -197,8 +424,14 @@ class TestPiBackendRouting(unittest.TestCase):
                 session_path=old_session_path,
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}), patch(
-                "codoxear.server._pid_alive", return_value=True
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
             ):
                 mgr._discover_existing(force=True)
 
@@ -207,6 +440,70 @@ class TestPiBackendRouting(unittest.TestCase):
         assert session is not None
         self.assertEqual(session.thread_id, "pi-thread-002")
         self.assertEqual(session.session_path, new_session_path)
+
+    def test_discover_existing_prefers_exact_pi_thread_match_over_same_cwd_discovery(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock_dir = Path(td)
+            sock = sock_dir / "pi-session.sock"
+            sock.touch()
+            exact_session_path = sock_dir / "exact-pi-session.jsonl"
+            wrong_session_path = sock_dir / "wrong-pi-session.jsonl"
+            exact_session_path.write_text(
+                '{"type":"session","id":"pi-thread-exact","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            wrong_session_path.write_text(
+                '{"type":"session","id":"pi-thread-wrong","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            (sock_dir / "pi-session.json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-exact",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": "/tmp/pi-cwd",
+                        "start_ts": 123.0,
+                        "sock_path": str(sock),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    return_value=exact_session_path,
+                ) as find_exact,
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    return_value=wrong_session_path,
+                ) as discover,
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                mgr._discover_existing(force=True)
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.thread_id, "pi-thread-exact")
+        self.assertEqual(session.session_path, exact_session_path)
+        find_exact.assert_called()
+        discover.assert_not_called()
+        patch_meta.assert_called_once()
+        self.assertEqual(patch_meta.call_args.args[:2], (sock, exact_session_path))
 
     def test_discover_existing_keeps_pi_session_file_out_of_log_path(self) -> None:
         mgr = _make_manager()
@@ -233,10 +530,26 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}), patch(
-                "codoxear.server._pid_alive", return_value=True
-            ), patch("codoxear.server._coerce_main_thread_log", side_effect=AssertionError("pi sidecars must not trigger rollout coercion")), patch(
-                "codoxear.server._read_run_settings_from_log", side_effect=AssertionError("pi sidecars must not trigger rollout parsing")
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+                patch(
+                    "codoxear.server._coerce_main_thread_log",
+                    side_effect=AssertionError(
+                        "pi sidecars must not trigger rollout coercion"
+                    ),
+                ),
+                patch(
+                    "codoxear.server._read_run_settings_from_log",
+                    side_effect=AssertionError(
+                        "pi sidecars must not trigger rollout parsing"
+                    ),
+                ),
             ):
                 mgr._discover_existing(force=True)
 
@@ -270,8 +583,14 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}), patch(
-                "codoxear.server._pid_alive", return_value=True
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
             ):
                 mgr._discover_existing(force=True)
 
@@ -312,9 +631,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), \
-                 patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0}), \
-                 patch("codoxear.server._discover_pi_session_for_cwd", return_value=None):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr, "_sock_call", return_value={"busy": False, "queue_len": 0}
+                ),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd", return_value=None
+                ),
+            ):
                 mgr._discover_existing(force=True)
                 session = mgr.get_session("pi-session")
                 self.assertIsNotNone(session)
@@ -322,14 +647,19 @@ class TestPiBackendRouting(unittest.TestCase):
                 self.assertEqual(session.backend, "pi")
                 self.assertIsNone(session.session_path)
 
-    def test_discover_existing_recovers_pi_backend_from_open_pi_log_when_sidecar_says_codex(self) -> None:
+    def test_discover_existing_recovers_pi_backend_from_open_pi_log_when_sidecar_says_codex(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
             sock = sock_dir / "pi-session.sock"
             sock.touch()
             session_path = sock_dir / "pi-session.jsonl"
-            session_path.write_text('{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
             meta_path = sock_dir / "pi-session.json"
             meta_path.write_text(
                 json.dumps(
@@ -350,10 +680,17 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), \
-                 patch.object(mgr, "_sock_call", return_value={"busy": False, "queue_len": 0}), \
-                 patch("codoxear.server._pid_alive", return_value=True), \
-                 patch("codoxear.server._proc_find_open_rollout_log", return_value=session_path):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr, "_sock_call", return_value={"busy": False, "queue_len": 0}
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+                patch(
+                    "codoxear.server._proc_find_open_rollout_log",
+                    return_value=session_path,
+                ),
+            ):
                 mgr._discover_existing(force=True)
 
             session = mgr.get_session("pi-session")
@@ -368,10 +705,14 @@ class TestPiBackendRouting(unittest.TestCase):
             self.assertEqual(persisted["agent_backend"], "pi")
             self.assertEqual(persisted["session_path"], str(session_path))
 
-    def test_list_sessions_includes_supported_pi_sidecar_without_session_path(self) -> None:
+    def test_list_sessions_includes_supported_pi_sidecar_without_session_path(
+        self,
+    ) -> None:
         """A brokered pi sidecar without session_path is valid (PTY-wrapped piox)."""
         mgr = _make_manager()
-        mgr._discover_existing_if_stale = SessionManager._discover_existing_if_stale.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr._discover_existing_if_stale = (
+            SessionManager._discover_existing_if_stale.__get__(mgr, SessionManager)
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
             good_sock = sock_dir / "good-session.sock"
@@ -379,7 +720,9 @@ class TestPiBackendRouting(unittest.TestCase):
             good_sock.touch()
             pty_sock.touch()
             good_session_path = sock_dir / "good-session.jsonl"
-            good_session_path.write_text('{"session_id":"pi-thread-good"}\n', encoding="utf-8")
+            good_session_path.write_text(
+                '{"session_id":"pi-thread-good"}\n', encoding="utf-8"
+            )
             (sock_dir / "good-session.json").write_text(
                 json.dumps(
                     {
@@ -414,9 +757,17 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}
-            ), patch("codoxear.server._discover_pi_session_for_cwd", return_value=None):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd", return_value=None
+                ),
+            ):
                 rows = mgr.list_sessions()
 
             sids = sorted(row["session_id"] for row in rows)
@@ -424,7 +775,9 @@ class TestPiBackendRouting(unittest.TestCase):
 
     def test_list_sessions_hides_unsupported_terminal_pi_sidecar(self) -> None:
         mgr = _make_manager()
-        mgr._discover_existing_if_stale = SessionManager._discover_existing_if_stale.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr._discover_existing_if_stale = (
+            SessionManager._discover_existing_if_stale.__get__(mgr, SessionManager)
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
             pty_sock = sock_dir / "pty-session.sock"
@@ -445,14 +798,24 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}
-            ), patch("codoxear.server._discover_pi_session_for_cwd", return_value=None):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd", return_value=None
+                ),
+            ):
                 rows = mgr.list_sessions()
 
             self.assertEqual(rows, [])
 
-    def test_discover_existing_skips_invalid_service_tier_sidecar_when_requested(self) -> None:
+    def test_discover_existing_skips_invalid_service_tier_sidecar_when_requested(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
@@ -462,8 +825,12 @@ class TestPiBackendRouting(unittest.TestCase):
             bad_sock.touch()
             good_session_path = sock_dir / "good-session.jsonl"
             bad_session_path = sock_dir / "bad-session.jsonl"
-            good_session_path.write_text('{"session_id":"pi-thread-good"}\n', encoding="utf-8")
-            bad_session_path.write_text('{"session_id":"pi-thread-bad"}\n', encoding="utf-8")
+            good_session_path.write_text(
+                '{"session_id":"pi-thread-good"}\n', encoding="utf-8"
+            )
+            bad_session_path.write_text(
+                '{"session_id":"pi-thread-bad"}\n', encoding="utf-8"
+            )
             (sock_dir / "good-session.json").write_text(
                 json.dumps(
                     {
@@ -499,20 +866,33 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}
-            ), patch("codoxear.server._pid_alive", return_value=True):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+            ):
                 mgr._discover_existing(force=True, skip_invalid_sidecars=True)
 
             rows = mgr.list_sessions()
             self.assertEqual([row["session_id"] for row in rows], ["good-session"])
             self.assertTrue(mgr._sidecar_is_quarantined(bad_sock))
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch("codoxear.server._pid_alive", return_value=True):
-                with self.assertRaisesRegex(ValueError, "service_tier must be one of fast, flex"):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch("codoxear.server._pid_alive", return_value=True),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "service_tier must be one of fast, flex"
+                ):
                     mgr._discover_existing(force=True)
 
-    def test_discover_existing_skips_invalid_run_settings_sidecar_when_requested(self) -> None:
+    def test_discover_existing_skips_invalid_run_settings_sidecar_when_requested(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             sock_dir = Path(td)
@@ -522,8 +902,12 @@ class TestPiBackendRouting(unittest.TestCase):
             bad_sock.touch()
             good_session_path = sock_dir / "good-session.jsonl"
             bad_session_path = sock_dir / "bad-session.jsonl"
-            good_session_path.write_text('{"session_id":"pi-thread-good"}\n', encoding="utf-8")
-            bad_session_path.write_text('{"session_id":"pi-thread-bad"}\n', encoding="utf-8")
+            good_session_path.write_text(
+                '{"session_id":"pi-thread-good"}\n', encoding="utf-8"
+            )
+            bad_session_path.write_text(
+                '{"session_id":"pi-thread-bad"}\n', encoding="utf-8"
+            )
             (sock_dir / "good-session.json").write_text(
                 json.dumps(
                     {
@@ -559,17 +943,28 @@ class TestPiBackendRouting(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch.object(
-                mgr, "_sock_call", return_value={"busy": False, "queue_len": 0, "token": None}
-            ), patch("codoxear.server._pid_alive", return_value=True):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch.object(
+                    mgr,
+                    "_sock_call",
+                    return_value={"busy": False, "queue_len": 0, "token": None},
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
+            ):
                 mgr._discover_existing(force=True, skip_invalid_sidecars=True)
 
             rows = mgr.list_sessions()
             self.assertEqual([row["session_id"] for row in rows], ["good-session"])
             self.assertTrue(mgr._sidecar_is_quarantined(bad_sock))
 
-            with patch("codoxear.server.SOCK_DIR", sock_dir), patch("codoxear.server._pid_alive", return_value=True):
-                with self.assertRaisesRegex(ValueError, "preferred_auth_method must be one of chatgpt, apikey"):
+            with (
+                patch("codoxear.server.SOCK_DIR", sock_dir),
+                patch("codoxear.server._pid_alive", return_value=True),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError, "preferred_auth_method must be one of chatgpt, apikey"
+                ):
                     mgr._discover_existing(force=True)
 
     def test_prune_dead_sessions_keeps_live_session_on_stale_probe_error(self) -> None:
@@ -593,8 +988,13 @@ class TestPiBackendRouting(unittest.TestCase):
             )
             mgr._clear_deleted_session_state = lambda _sid: None  # type: ignore[method-assign]
 
-            with patch.object(mgr, "_refresh_session_state", return_value=(False, ConnectionRefusedError("socket not ready"))), patch(
-                "codoxear.server._pid_alive", return_value=True
+            with (
+                patch.object(
+                    mgr,
+                    "_refresh_session_state",
+                    return_value=(False, ConnectionRefusedError("socket not ready")),
+                ),
+                patch("codoxear.server._pid_alive", return_value=True),
             ):
                 mgr._prune_dead_sessions()
 
@@ -624,16 +1024,33 @@ class TestPiBackendRouting(unittest.TestCase):
             row = mgr.list_sessions()[0]
 
         self.assertIsNone(row["provider_choice"])
-        self.assertIsNone(_provider_choice_for_backend(backend="pi", model_provider=None, preferred_auth_method=None))
+        self.assertIsNone(
+            _provider_choice_for_backend(
+                backend="pi", model_provider=None, preferred_auth_method=None
+            )
+        )
 
     def test_spawn_web_session_dispatches_to_pi_backend(self) -> None:
         manager = SessionManager.__new__(SessionManager)
 
         session_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
-            "codoxear.server.subprocess.Popen", return_value=_Proc()
-        ) as popen_mock, patch("codoxear.server._now", return_value=1774708716.099), patch("codoxear.server.uuid.uuid4", return_value=session_uuid), patch.object(
-            threading.Thread, "start", lambda self: None
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.server._wait_or_raise", return_value=None),
+            patch(
+                "codoxear.server._wait_for_spawned_broker_meta",
+                return_value={
+                    "broker_pid": 2468,
+                    "backend": "pi",
+                    "sock_path": "/tmp/pi-web-session.sock",
+                },
+            ),
+            patch(
+                "codoxear.server.subprocess.Popen", return_value=_Proc()
+            ) as popen_mock,
+            patch("codoxear.server._now", return_value=1774708716.099),
+            patch("codoxear.server.uuid.uuid4", return_value=session_uuid),
+            patch.object(threading.Thread, "start", lambda self: None),
         ):
             result = SessionManager.spawn_web_session(manager, cwd=td, backend="pi")
 
@@ -648,8 +1065,52 @@ class TestPiBackendRouting(unittest.TestCase):
         )
         self.assertEqual(argv[:4], [ANY, "-m", "codoxear.pi_broker", "--cwd"])
         self.assertEqual(Path(argv[4]).resolve(), Path(td).resolve())
-        self.assertEqual(argv[5:], ["--session-file", str(expected_session_path)])
-        self.assertEqual(result, {"broker_pid": 2468, "backend": "pi"})
+        self.assertEqual(argv[5:7], ["--session-file", str(expected_session_path)])
+        self.assertEqual(argv[7], "--")
+        self.assertEqual(argv[8], "-e")
+        self.assertEqual(
+            result,
+            {"broker_pid": 2468, "backend": "pi", "session_id": "pi-web-session"},
+        )
+
+    def test_spawn_web_session_adds_codoxear_ask_user_bridge_extension_for_pi(
+        self,
+    ) -> None:
+        manager = SessionManager.__new__(SessionManager)
+
+        session_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.server._wait_or_raise", return_value=None),
+            patch(
+                "codoxear.server._wait_for_spawned_broker_meta",
+                return_value={
+                    "broker_pid": 2468,
+                    "backend": "pi",
+                    "sock_path": "/tmp/pi-web-session.sock",
+                },
+            ),
+            patch(
+                "codoxear.server.subprocess.Popen", return_value=_Proc()
+            ) as popen_mock,
+            patch("codoxear.server._now", return_value=1774708716.099),
+            patch("codoxear.server.uuid.uuid4", return_value=session_uuid),
+            patch.object(threading.Thread, "start", lambda self: None),
+        ):
+            SessionManager.spawn_web_session(manager, cwd=td, backend="pi")
+
+        argv = popen_mock.call_args.args[0]
+        self.assertIn("-e", argv)
+        extension_index = argv.index("-e")
+        self.assertEqual(
+            Path(argv[extension_index + 1]).resolve(),
+            (
+                Path(__file__).resolve().parents[1]
+                / "codoxear"
+                / "pi_extensions"
+                / "ask_user_bridge.ts"
+            ).resolve(),
+        )
 
     def test_create_session_defaults_to_codex_backend(self) -> None:
         payload = _parse_create_session_request({"cwd": "/tmp/codex-cwd"})
@@ -657,7 +1118,9 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(payload["backend"], "codex")
         self.assertEqual(payload["cwd"], "/tmp/codex-cwd")
 
-    def test_create_session_preserves_pi_fields_and_ignores_codex_only_fields(self) -> None:
+    def test_create_session_preserves_pi_fields_and_ignores_codex_only_fields(
+        self,
+    ) -> None:
         payload = _parse_create_session_request(
             {
                 "cwd": "/tmp/pi-cwd",
@@ -680,7 +1143,9 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertFalse(payload["create_in_tmux"])
         self.assertEqual(payload["resume_session_id"], "resume-me")
 
-    def test_create_session_rejects_non_string_resume_session_id_for_pi_backend(self) -> None:
+    def test_create_session_rejects_non_string_resume_session_id_for_pi_backend(
+        self,
+    ) -> None:
         with self.assertRaisesRegex(ValueError, "resume_session_id must be a string"):
             _parse_create_session_request(
                 {
@@ -732,7 +1197,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 log_path=None,
                 sock_path=sock,
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: {"ok": True, "queued": False, "n": 1} if req["cmd"] == "keys" else {}  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
+                {"ok": True, "queued": False, "n": 1} if req["cmd"] == "keys" else {}
+            )  # type: ignore[method-assign]
 
             resp = mgr.inject_keys("pi-session", "\\x1b")
 
@@ -756,7 +1223,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 log_path=None,
                 sock_path=sock,
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: {"error": "abort failed"} if req["cmd"] == "keys" else {}  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
+                {"error": "abort failed"} if req["cmd"] == "keys" else {}
+            )  # type: ignore[method-assign]
 
             with self.assertRaisesRegex(ValueError, "abort failed"):
                 mgr.inject_keys("pi-session", "\\x1b")
@@ -764,9 +1233,10 @@ class TestPiBackendRouting(unittest.TestCase):
     def test_interrupt_endpoint_returns_broker_key_error(self) -> None:
         handler = _HandlerHarness("/api/sessions/pi-session/interrupt")
 
-        with patch("codoxear.server._require_auth", return_value=True), patch(
-            "codoxear.server.MANAGER"
-        ) as manager:
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
             manager.inject_keys.side_effect = ValueError("abort failed")
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
@@ -794,9 +1264,14 @@ class TestPiBackendRouting(unittest.TestCase):
                 log_path=None,
                 sock_path=sock,
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: {"error": "prompt rejected"} if req["cmd"] == "send" else {}  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
+                {"error": "prompt rejected"} if req["cmd"] == "send" else {}
+            )  # type: ignore[method-assign]
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         body = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -822,10 +1297,17 @@ class TestPiBackendRouting(unittest.TestCase):
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: {"requests": [{"id": "ui-req-1", "method": "select"}]} if req["cmd"] == "ui_state" else {}  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
+                {"requests": [{"id": "ui-req-1", "method": "select"}]}
+                if req["cmd"] == "ui_state"
+                else {}
+            )  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_GET(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -851,16 +1333,28 @@ class TestPiBackendRouting(unittest.TestCase):
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: {
-                "requests": [
-                    {"id": "ui-notify-1", "method": "notify", "message": "indexed"},
-                    {"id": "ui-widget-1", "method": "setWidget", "message": None},
-                    {"id": "ui-req-1", "method": "select", "question": "Pick one", "options": ["Details", "Sidebar"]},
-                ]
-            } if req["cmd"] == "ui_state" else {}  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
+                {
+                    "requests": [
+                        {"id": "ui-notify-1", "method": "notify", "message": "indexed"},
+                        {"id": "ui-widget-1", "method": "setWidget", "message": None},
+                        {
+                            "id": "ui-req-1",
+                            "method": "select",
+                            "question": "Pick one",
+                            "options": ["Details", "Sidebar"],
+                        },
+                    ]
+                }
+                if req["cmd"] == "ui_state"
+                else {}
+            )  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_GET(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -898,11 +1392,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (_ for _ in ()).throw(BrokenPipeError("broker unavailable"))  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (_ for _ in ()).throw(
+                BrokenPipeError("broker unavailable")
+            )  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr), patch(
-                "codoxear.server._pid_alive", return_value=False
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+                patch("codoxear.server._pid_alive", return_value=False),
             ):
                 Handler.do_GET(handler)  # type: ignore[arg-type]
 
@@ -910,6 +1408,199 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 404)
         self.assertEqual(payload, {"error": "unknown session"})
         self.assertNotIn("pi-session", mgr._sessions)
+
+    def test_live_route_returns_messages_busy_and_requests_for_pi_session(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            session_path = Path(td) / "pi-session.jsonl"
+            _write_jsonl(
+                session_path,
+                [
+                    {"type": "session", "session_id": "pi-session-001"},
+                    _pi_message_entry("user", "first prompt"),
+                    _pi_message_entry("assistant", "first reply"),
+                ],
+            )
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+            )
+
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
+                if req["cmd"] == "state":
+                    return {"busy": True, "queue_len": 2, "token": None}
+                if req["cmd"] == "ui_state":
+                    return {
+                        "requests": [
+                            {
+                                "id": "ask-1",
+                                "method": "select",
+                                "question": "Pick one",
+                            }
+                        ]
+                    }
+                raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            handler = _HandlerHarness("/api/sessions/pi-session/live?offset=0")
+
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
+                Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["busy"], False)
+        self.assertEqual(
+            payload["requests"],
+            [{"id": "ask-1", "method": "select", "question": "Pick one"}],
+        )
+        self.assertEqual(
+            [event["role"] for event in payload["events"]],
+            ["user", "assistant"],
+        )
+        self.assertNotIn("diagnostics", payload)
+        self.assertNotIn("queue", payload)
+
+    def test_live_route_omits_unchanged_requests_when_client_has_current_version(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            session_path = Path(td) / "pi-session.jsonl"
+            _write_jsonl(
+                session_path,
+                [
+                    {"type": "session", "session_id": "pi-session-001"},
+                    _pi_message_entry("user", "first prompt"),
+                    _pi_message_entry("assistant", "first reply"),
+                ],
+            )
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+            )
+
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
+                if req["cmd"] == "state":
+                    return {"busy": True, "queue_len": 2, "token": None}
+                if req["cmd"] == "ui_state":
+                    return {
+                        "requests": [
+                            {
+                                "id": "ask-1",
+                                "method": "select",
+                                "question": "Pick one",
+                            }
+                        ]
+                    }
+                raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            current_version = _ui_requests_version(
+                [{"id": "ask-1", "method": "select", "question": "Pick one"}]
+            )
+            handler = _HandlerHarness(
+                f"/api/sessions/pi-session/live?offset=2&requests_version={current_version}"
+            )
+
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
+                Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["requests_version"], current_version)
+        self.assertNotIn("requests", payload)
+
+    def test_workspace_route_returns_diagnostics_and_queue_only(self) -> None:
+        handler = _HandlerHarness("/api/sessions/pi-session/workspace")
+        session = Session(
+            session_id="pi-session",
+            thread_id="pi-thread-001",
+            agent_backend="pi",
+            backend="pi",
+            broker_pid=3333,
+            codex_pid=4444,
+            owned=True,
+            start_ts=123.0,
+            cwd="/tmp",
+            log_path=None,
+            sock_path=Path("/tmp/pi.sock"),
+            session_path=Path("/tmp/pi-session.jsonl"),
+        )
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+            patch("codoxear.server._current_git_branch", return_value=None),
+            patch(
+                "codoxear.server._pi_messages.read_latest_pi_todo_snapshot",
+                return_value=None,
+            ),
+        ):
+            manager.refresh_session_meta.return_value = None
+            manager.get_session.return_value = session
+            manager.get_state.return_value = {
+                "busy": False,
+                "queue_len": 1,
+                "token": None,
+            }
+            manager._queue_len.return_value = 1
+            manager.queue_list.return_value = ["Queued follow-up"]
+            manager.sidebar_meta_get.return_value = {
+                "priority_offset": 0.0,
+                "snooze_until": None,
+                "dependency_session_id": None,
+            }
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["session_id"], "pi-session")
+        self.assertIn("diagnostics", payload)
+        self.assertEqual(payload["diagnostics"]["busy"], False)
+        self.assertEqual(
+            payload["diagnostics"]["todo_snapshot"],
+            {"available": False, "error": False, "items": []},
+        )
+        self.assertEqual(payload["queue"], {"items": ["Queued follow-up"]})
+        self.assertNotIn("events", payload)
+        self.assertNotIn("requests", payload)
 
     def test_pi_session_messages_and_ui_state_can_coexist_for_ask_user(self) -> None:
         mgr = _make_manager()
@@ -957,7 +1648,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 session_path=session_path,
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 if req["cmd"] == "state":
                     return {"busy": False, "queue_len": 0, "token": None}
                 if req["cmd"] == "ui_state":
@@ -978,10 +1671,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
-            messages_handler = _HandlerHarness("/api/sessions/pi-session/messages?init=1&limit=20")
+            messages_handler = _HandlerHarness(
+                "/api/sessions/pi-session/messages?init=1&limit=20"
+            )
             ui_handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_GET(messages_handler)  # type: ignore[arg-type]
                 Handler.do_GET(ui_handler)  # type: ignore[arg-type]
 
@@ -1025,7 +1723,9 @@ class TestPiBackendRouting(unittest.TestCase):
             },
         )
 
-    def test_ui_response_route_does_not_fallback_to_send_for_live_pi_rpc_session(self) -> None:
+    def test_ui_response_route_does_not_fallback_to_send_for_live_pi_rpc_session(
+        self,
+    ) -> None:
         mgr = _make_manager()
         body = json.dumps(
             {
@@ -1058,14 +1758,23 @@ class TestPiBackendRouting(unittest.TestCase):
                 ui_protocol_version=1,
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 forwarded.update(req)
-                return {"status": "accepted", "forwarded": dict(req)} if req["cmd"] == "ui_response" else {}
+                return (
+                    {"status": "accepted", "forwarded": dict(req)}
+                    if req["cmd"] == "ui_response"
+                    else {}
+                )
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -1080,7 +1789,9 @@ class TestPiBackendRouting(unittest.TestCase):
         )
         self.assertEqual(payload, {"ok": True})
 
-    def test_ui_response_route_rejects_live_pi_rpc_unknown_cmd_without_send_fallback(self) -> None:
+    def test_ui_response_route_rejects_live_pi_rpc_unknown_cmd_without_send_fallback(
+        self,
+    ) -> None:
         mgr = _make_manager()
         body = json.dumps({"id": "ui-req-1", "value": "Details"}).encode("utf-8")
         forwarded: list[dict[str, object]] = []
@@ -1105,26 +1816,39 @@ class TestPiBackendRouting(unittest.TestCase):
                 ui_protocol_version=1,
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 forwarded.append(dict(req))
                 if req["cmd"] == "ui_response":
                     return {"error": "unknown cmd"}
                 if req["cmd"] == "send":
-                    raise AssertionError("live pi-rpc session must not use send fallback")
+                    raise AssertionError(
+                        "live pi-rpc session must not use send fallback"
+                    )
                 return {}
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 502)
-        self.assertEqual(payload, {"error": "live ui responses are unavailable for this pi session"})
-        self.assertEqual(forwarded, [{"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}])
+        self.assertEqual(
+            payload, {"error": "live ui responses are unavailable for this pi session"}
+        )
+        self.assertEqual(
+            forwarded, [{"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}]
+        )
 
-    def test_ui_state_route_rejects_live_pi_rpc_unknown_cmd_without_silent_fallback(self) -> None:
+    def test_ui_state_route_rejects_live_pi_rpc_unknown_cmd_without_silent_fallback(
+        self,
+    ) -> None:
         mgr = _make_manager()
         forwarded: list[dict[str, object]] = []
         with tempfile.TemporaryDirectory() as td:
@@ -1148,7 +1872,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 ui_protocol_version=1,
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 forwarded.append(dict(req))
                 if req["cmd"] == "ui_state":
                     return {"error": "unknown cmd"}
@@ -1157,12 +1883,18 @@ class TestPiBackendRouting(unittest.TestCase):
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_state")
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_GET(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 502)
-        self.assertEqual(payload, {"error": "live ui interactions are unavailable for this pi session"})
+        self.assertEqual(
+            payload,
+            {"error": "live ui interactions are unavailable for this pi session"},
+        )
         self.assertEqual(forwarded, [{"cmd": "ui_state"}])
 
     def test_ui_response_route_legacy_pi_session_still_uses_send_fallback(self) -> None:
@@ -1188,7 +1920,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 transport="pty",
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 forwarded.append(dict(req))
                 if req["cmd"] == "ui_response":
                     return {"error": "unknown cmd"}
@@ -1199,7 +1933,10 @@ class TestPiBackendRouting(unittest.TestCase):
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -1213,16 +1950,22 @@ class TestPiBackendRouting(unittest.TestCase):
             ],
         )
 
-    def test_ui_response_route_refreshes_stale_live_capabilities_before_fallback_decision(self) -> None:
+    def test_ui_response_route_refreshes_stale_live_capabilities_before_fallback_decision(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         body = json.dumps({"id": "ui-req-1", "value": "Details"}).encode("utf-8")
         forwarded: list[dict[str, object]] = []
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             session_path = Path(td) / "pi-session.jsonl"
-            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -1258,7 +2001,9 @@ class TestPiBackendRouting(unittest.TestCase):
                 ui_protocol_version=1,
             )
 
-            def _sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0.0) -> dict[str, object]:
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
                 forwarded.append(dict(req))
                 if req["cmd"] == "ui_response":
                     return {"error": "unknown cmd"}
@@ -1269,7 +2014,10 @@ class TestPiBackendRouting(unittest.TestCase):
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr):
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+            ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -1303,11 +2051,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 sock_path=sock,
                 session_path=Path("/tmp/pi-session.jsonl"),
             )
-            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (_ for _ in ()).throw(BrokenPipeError("broker unavailable"))  # type: ignore[method-assign]
+            mgr._sock_call = lambda _sock, req, timeout_s=0.0: (_ for _ in ()).throw(
+                BrokenPipeError("broker unavailable")
+            )  # type: ignore[method-assign]
             handler = _HandlerHarness("/api/sessions/pi-session/ui_response", body=body)
 
-            with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER", mgr), patch(
-                "codoxear.server._pid_alive", return_value=False
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER", mgr),
+                patch("codoxear.server._pid_alive", return_value=False),
             ):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
@@ -1316,7 +2068,9 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(payload, {"error": "unknown session"})
         self.assertNotIn("pi-session", mgr._sessions)
 
-    def test_attachment_inject_endpoints_reject_pi_backend_without_broker_keys(self) -> None:
+    def test_attachment_inject_endpoints_reject_pi_backend_without_broker_keys(
+        self,
+    ) -> None:
         body = json.dumps(
             {
                 "filename": "note.txt",
@@ -1339,10 +2093,16 @@ class TestPiBackendRouting(unittest.TestCase):
             session_path=Path("/tmp/pi-session.jsonl"),
         )
 
-        for path in ("/api/sessions/pi-session/inject_file", "/api/sessions/pi-session/inject_image"):
+        for path in (
+            "/api/sessions/pi-session/inject_file",
+            "/api/sessions/pi-session/inject_image",
+        ):
             with self.subTest(path=path):
                 handler = _HandlerHarness(path, body)
-                with patch("codoxear.server._require_auth", return_value=True), patch("codoxear.server.MANAGER") as manager:
+                with (
+                    patch("codoxear.server._require_auth", return_value=True),
+                    patch("codoxear.server.MANAGER") as manager,
+                ):
                     manager.get_session.return_value = pi_session
 
                     Handler.do_POST(handler)  # type: ignore[arg-type]
@@ -1357,74 +2117,393 @@ class TestPiBackendRouting(unittest.TestCase):
                         "operation": "attachment_injection",
                     },
                 )
-                manager.refresh_session_meta.assert_called_once_with("pi-session", strict=False)
+                manager.refresh_session_meta.assert_called_once_with(
+                    "pi-session", strict=False
+                )
                 manager.get_session.assert_called_once_with("pi-session")
                 manager.inject_keys.assert_not_called()
 
-    def test_list_sessions_returns_cwd_groups(self) -> None:
-        handler = _HandlerHarness("/api/sessions")
+    def test_sessions_bootstrap_returns_cwd_groups(self) -> None:
+        handler = _HandlerHarness("/api/sessions/bootstrap")
         cwd_groups = {"/tmp": {"label": "Temp", "collapsed": True}}
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
-            manager.list_sessions.return_value = []
-            manager.recent_cwds.return_value = []
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+            patch(
+                "codoxear.server._read_new_session_defaults",
+                return_value={"default_backend": "pi"},
+            ),
+            patch("codoxear.server._tmux_available", return_value=True),
+        ):
+            manager.recent_cwds.return_value = ["/tmp"]
             manager.cwd_groups_get.return_value = cwd_groups
 
             Handler.do_GET(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["recent_cwds"], ["/tmp"])
         self.assertEqual(payload["cwd_groups"], cwd_groups)
+        self.assertEqual(payload["new_session_defaults"], {"default_backend": "pi"})
+        self.assertEqual(payload["tmux_available"], True)
+        manager.list_sessions.assert_not_called()
         manager.cwd_groups_get.assert_called_once()
 
-    def test_list_sessions_normalizes_session_cwds_to_match_group_keys(self) -> None:
+    def test_list_sessions_returns_only_lightweight_rows(self) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        expected_cwd = str(Path("/tmp/project").resolve(strict=False))
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": "sess-1",
+                    "thread_id": "thread-1",
+                    "cwd": "/tmp/project",
+                    "agent_backend": "pi",
+                    "broker_pid": 2468,
+                    "busy": True,
+                    "queue_len": 2,
+                    "alias": "Active",
+                    "files": ["large", "unused"],
+                    "log_path": "/tmp/session.jsonl",
+                    "token": {"used": 123},
+                    "thinking": 4,
+                    "harness_enabled": True,
+                    "tmux_window": "0",
+                    "model_provider": "unused-provider-internal",
+                    "model": "gpt-5.4",
+                    "provider_choice": "openai-api",
+                    "reasoning_effort": "high",
+                    "service_tier": "fast",
+                    "priority_offset": 0.25,
+                    "snooze_until": 1234,
+                    "dependency_session_id": "sess-0",
+                    "resume_session_id": "resume-1",
+                    "time_priority": 0.5,
+                }
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            payload,
+            {
+                "sessions": [
+                    {
+                        "session_id": "sess-1",
+                        "thread_id": "thread-1",
+                        "cwd": expected_cwd,
+                        "agent_backend": "pi",
+                        "busy": True,
+                        "queue_len": 2,
+                        "alias": "Active",
+                    }
+                ],
+                "remaining_by_group": {},
+                "omitted_group_count": 0,
+            },
+        )
+        self.assertNotIn("model", payload["sessions"][0])
+        self.assertNotIn("provider_choice", payload["sessions"][0])
+        self.assertNotIn("reasoning_effort", payload["sessions"][0])
+        self.assertNotIn("service_tier", payload["sessions"][0])
+        self.assertNotIn("priority_offset", payload["sessions"][0])
+        self.assertNotIn("snooze_until", payload["sessions"][0])
+        self.assertNotIn("dependency_session_id", payload["sessions"][0])
+        self.assertNotIn("resume_session_id", payload["sessions"][0])
+        self.assertNotIn("broker_pid", payload["sessions"][0])
+        manager.recent_cwds.assert_not_called()
+        manager.cwd_groups_get.assert_not_called()
+
+    def test_session_details_returns_launch_and_edit_fields_removed_from_list(
+        self,
+    ) -> None:
+        handler = _HandlerHarness("/api/sessions/sess-1/details")
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": "sess-1",
+                    "cwd": "/tmp/project",
+                    "agent_backend": "codex",
+                    "model": "gpt-5.4",
+                    "provider_choice": "openai-api",
+                    "reasoning_effort": "high",
+                    "service_tier": "fast",
+                    "transport": "tmux",
+                    "priority_offset": 0.25,
+                    "snooze_until": 1234,
+                    "dependency_session_id": "sess-0",
+                }
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["session"]["model"], "gpt-5.4")
+        self.assertEqual(payload["session"]["provider_choice"], "openai-api")
+        self.assertEqual(payload["session"]["priority_offset"], 0.25)
+
+    def test_list_sessions_caps_each_group_to_five_rows_and_reports_remaining(
+        self,
+    ) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        docs_cwd = str(Path("/work/docs").resolve(strict=False))
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": f"docs-{index}",
+                    "alias": f"Docs {index}",
+                    "cwd": docs_cwd,
+                    "agent_backend": "pi",
+                }
+                for index in range(1, 8)
+            ] + [
+                {
+                    "session_id": "api-1",
+                    "alias": "API 1",
+                    "cwd": "/work/api",
+                    "agent_backend": "codex",
+                }
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [row["session_id"] for row in payload["sessions"]],
+            ["docs-1", "docs-2", "docs-3", "docs-4", "docs-5", "api-1"],
+        )
+        self.assertEqual(payload["remaining_by_group"], {docs_cwd: 2})
+
+    def test_list_sessions_supports_loading_more_rows_for_one_group(self) -> None:
+        docs_cwd = str(Path("/work/docs").resolve(strict=False))
+        handler = _HandlerHarness(
+            f"/api/sessions?group_key={urllib.parse.quote(docs_cwd)}&offset=5&limit=5"
+        )
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": f"docs-{index}",
+                    "alias": f"Docs {index}",
+                    "cwd": docs_cwd,
+                    "agent_backend": "pi",
+                }
+                for index in range(1, 8)
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [row["session_id"] for row in payload["sessions"]], ["docs-6", "docs-7"]
+        )
+        self.assertEqual(payload["remaining_by_group"], {})
+
+    def test_list_sessions_includes_recent_groups_and_busy_groups_only(self) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        cwds = [
+            str(Path(f"/work/group-{index}").resolve(strict=False))
+            for index in range(1, 6)
+        ]
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": "recent-1",
+                    "cwd": cwds[0],
+                    "agent_backend": "pi",
+                    "busy": False,
+                },
+                {
+                    "session_id": "recent-2",
+                    "cwd": cwds[1],
+                    "agent_backend": "pi",
+                    "busy": False,
+                },
+                {
+                    "session_id": "recent-3",
+                    "cwd": cwds[2],
+                    "agent_backend": "pi",
+                    "busy": False,
+                },
+                {
+                    "session_id": "old-idle",
+                    "cwd": cwds[3],
+                    "agent_backend": "pi",
+                    "busy": False,
+                },
+                {
+                    "session_id": "old-busy",
+                    "cwd": cwds[4],
+                    "agent_backend": "pi",
+                    "busy": True,
+                },
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [row["session_id"] for row in payload["sessions"]],
+            ["old-busy", "recent-1", "recent-2"],
+        )
+        self.assertEqual(payload["omitted_group_count"], 2)
+
+    def test_list_sessions_orders_groups_by_busy_then_recent_activity(self) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        group_old = str(Path("/work/old").resolve(strict=False))
+        group_busy = str(Path("/work/busy").resolve(strict=False))
+        group_recent = str(Path("/work/recent").resolve(strict=False))
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": "old-1",
+                    "cwd": group_old,
+                    "agent_backend": "pi",
+                    "busy": False,
+                    "updated_ts": 100,
+                },
+                {
+                    "session_id": "busy-1",
+                    "cwd": group_busy,
+                    "agent_backend": "pi",
+                    "busy": True,
+                    "updated_ts": 50,
+                },
+                {
+                    "session_id": "recent-1",
+                    "cwd": group_recent,
+                    "agent_backend": "pi",
+                    "busy": False,
+                    "updated_ts": 200,
+                },
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [row["session_id"] for row in payload["sessions"]],
+            ["busy-1", "recent-1", "old-1"],
+        )
+
+    def test_list_sessions_supports_loading_more_omitted_groups(self) -> None:
+        handler = _HandlerHarness("/api/sessions?group_offset=4&group_limit=2")
+        cwds = [
+            str(Path(f"/work/group-{index}").resolve(strict=False))
+            for index in range(1, 6)
+        ]
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {
+                    "session_id": f"group-{index}",
+                    "cwd": cwd,
+                    "agent_backend": "pi",
+                    "busy": index == 5,
+                }
+                for index, cwd in enumerate(cwds, start=1)
+            ]
+
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(
+            [row["session_id"] for row in payload["sessions"]], ["group-4"]
+        )
+        self.assertEqual(payload["omitted_group_count"], 0)
+
+    def test_json_response_ignores_connection_reset_during_write(self) -> None:
+        handler = _HandlerHarness("/api/sessions")
+        handler.wfile = cast(io.BytesIO, _ResettingWriter())
+
+        _json_response(cast(Any, handler), 200, {"ok": True})
+
+        self.assertEqual(handler.status, 200)
+
+    def test_list_sessions_normalizes_session_cwds(self) -> None:
         handler = _HandlerHarness("/api/sessions")
         raw_cwd = "  /tmp/project/../project/docs  "
         expected_cwd = str(Path(raw_cwd.strip()).resolve(strict=False))
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
-            manager.list_sessions.return_value = [{"session_id": "sess-1", "cwd": raw_cwd}]
-            manager.recent_cwds.return_value = []
-            manager.cwd_groups_get.return_value = {expected_cwd: {"label": "Docs", "collapsed": False}}
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.list_sessions.return_value = [
+                {"session_id": "sess-1", "cwd": raw_cwd}
+            ]
 
             Handler.do_GET(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
         self.assertEqual(payload["sessions"][0]["cwd"], expected_cwd)
-        self.assertEqual(payload["cwd_groups"], {expected_cwd: {"label": "Docs", "collapsed": False}})
+        self.assertNotIn("cwd_groups", payload)
 
     def test_edit_cwd_group_updates_metadata(self) -> None:
-        body = json.dumps({
-            "cwd": "/tmp",
-            "label": "New Label",
-            "collapsed": True
-        }).encode("utf-8")
+        body = json.dumps(
+            {"cwd": "/tmp", "label": "New Label", "collapsed": True}
+        ).encode("utf-8")
         handler = _HandlerHarness("/api/cwd_groups/edit", body)
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
-            manager.cwd_group_set.return_value = ("/tmp", {"label": "New Label", "collapsed": True})
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.cwd_group_set.return_value = (
+                "/tmp",
+                {"label": "New Label", "collapsed": True},
+            )
 
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
-        self.assertEqual(payload, {
-            "ok": True,
-            "cwd": "/tmp",
-            "label": "New Label",
-            "collapsed": True
-        })
-        manager.cwd_group_set.assert_called_once_with(cwd="/tmp", label="New Label", collapsed=True)
+        self.assertEqual(
+            payload,
+            {"ok": True, "cwd": "/tmp", "label": "New Label", "collapsed": True},
+        )
+        manager.cwd_group_set.assert_called_once_with(
+            cwd="/tmp", label="New Label", collapsed=True
+        )
 
     def test_edit_cwd_group_returns_400_on_value_error(self) -> None:
         body = json.dumps({"cwd": "/tmp", "collapsed": "not-a-bool"}).encode("utf-8")
         handler = _HandlerHarness("/api/cwd_groups/edit", body)
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
-            manager.cwd_group_set.side_effect = ValueError("collapsed must be a boolean")
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.cwd_group_set.side_effect = ValueError(
+                "collapsed must be a boolean"
+            )
 
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
@@ -1436,8 +2515,10 @@ class TestPiBackendRouting(unittest.TestCase):
         body = json.dumps({"cwd": "/tmp", "label": 123}).encode("utf-8")
         handler = _HandlerHarness("/api/cwd_groups/edit", body)
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
             manager.cwd_group_set.side_effect = ValueError("label must be a string")
 
             Handler.do_POST(handler)  # type: ignore[arg-type]
@@ -1450,21 +2531,29 @@ class TestPiBackendRouting(unittest.TestCase):
         body = json.dumps({"cwd": "/tmp/unknown", "label": "Unknown"}).encode("utf-8")
         handler = _HandlerHarness("/api/cwd_groups/edit", body)
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
-            manager.cwd_group_set.side_effect = ValueError("cwd is not a known session working directory")
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager.cwd_group_set.side_effect = ValueError(
+                "cwd is not a known session working directory"
+            )
 
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 400)
-        self.assertEqual(payload, {"error": "cwd is not a known session working directory"})
+        self.assertEqual(
+            payload, {"error": "cwd is not a known session working directory"}
+        )
 
     def test_edit_cwd_group_returns_400_on_empty_body(self) -> None:
         handler = _HandlerHarness("/api/cwd_groups/edit")
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
@@ -1475,26 +2564,76 @@ class TestPiBackendRouting(unittest.TestCase):
     def test_edit_cwd_group_returns_400_on_malformed_json(self) -> None:
         handler = _HandlerHarness("/api/cwd_groups/edit", b"{")
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 400)
-        self.assertIn("Expecting property name enclosed in double quotes", payload["error"])
+        self.assertIn(
+            "Expecting property name enclosed in double quotes", payload["error"]
+        )
         manager.cwd_group_set.assert_not_called()
 
     def test_edit_cwd_group_returns_400_on_non_object_json(self) -> None:
-        handler = _HandlerHarness("/api/cwd_groups/edit", json.dumps(["/tmp"]).encode("utf-8"))
+        handler = _HandlerHarness(
+            "/api/cwd_groups/edit", json.dumps(["/tmp"]).encode("utf-8")
+        )
 
-        with patch("codoxear.server._require_auth", return_value=True), \
-             patch("codoxear.server.MANAGER") as manager:
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
             Handler.do_POST(handler)  # type: ignore[arg-type]
 
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 400)
         self.assertEqual(payload, {"error": "invalid json body (expected object)"})
         manager.cwd_group_set.assert_not_called()
+
+    def test_notifications_test_push_returns_payload(self) -> None:
+        handler = _HandlerHarness("/api/notifications/test_push", b"{}")
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager._voice_push.send_test_push_notification.return_value = {
+                "sent_count": 1,
+                "failed_count": 0,
+                "target_count": 1,
+                "notification_text": "回复完成",
+            }
+
+            Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["sent_count"], 1)
+        manager._voice_push.send_test_push_notification.assert_called_once_with(
+            session_display_name="Codoxear test"
+        )
+
+    def test_notifications_test_push_returns_400_for_missing_mobile_subscriptions(
+        self,
+    ) -> None:
+        handler = _HandlerHarness("/api/notifications/test_push", b"{}")
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER") as manager,
+        ):
+            manager._voice_push.send_test_push_notification.side_effect = ValueError(
+                "no enabled mobile subscriptions"
+            )
+
+            Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 400)
+        self.assertEqual(payload, {"error": "no enabled mobile subscriptions"})
 
 
 class TestPiMessageNormalization(unittest.TestCase):
@@ -1509,10 +2648,23 @@ class TestPiMessageNormalization(unittest.TestCase):
 
         # User and assistant messages plus tool markers from tool.started / bashExecution
         self.assertEqual(
-            events,
+            events[0],
+            {
+                "role": "user",
+                "text": "Summarize the current repository state.",
+                "ts": 0.0,
+            },
+        )
+        self.assertEqual(events[1]["role"], "assistant")
+        self.assertEqual(
+            events[1]["text"], "Codoxear serves a browser UI for Codex-style sessions."
+        )
+        self.assertEqual(events[1]["ts"], 1.0)
+        self.assertEqual(events[1]["message_class"], "final_response")
+        self.assertIsInstance(events[1]["message_id"], str)
+        self.assertEqual(
+            events[2:],
             [
-                {"role": "user", "text": "Summarize the current repository state.", "ts": 0.0},
-                {"role": "assistant", "text": "Codoxear serves a browser UI for Codex-style sessions.", "ts": 1.0},
                 {"type": "tool", "name": "read", "ts": 2.0},
                 {"type": "tool", "name": "bashExecution", "ts": 2.1},
             ],
@@ -1524,16 +2676,26 @@ class TestPiMessageNormalization(unittest.TestCase):
         self.assertEqual(diag["last_tool"], "bashExecution")
 
     def test_runtime_pi_session_shape_normalizes_into_chat_rows(self) -> None:
-        events, _meta, flags, diag = pi_messages.normalize_pi_entries(pi_runtime_session_file())
+        events, _meta, flags, diag = pi_messages.normalize_pi_entries(
+            pi_runtime_session_file()
+        )
 
         # Millisecond timestamps are converted to seconds by _entry_ts()
         self.assertEqual(
-            events,
-            [
-                {"role": "user", "text": "Summarize the current repository state.", "ts": 1774708707.28},
-                {"role": "assistant", "text": "Codoxear serves a browser UI for Codex-style sessions.", "ts": 1774708716.099},
-            ],
+            events[0],
+            {
+                "role": "user",
+                "text": "Summarize the current repository state.",
+                "ts": 1774708707.28,
+            },
         )
+        self.assertEqual(events[1]["role"], "assistant")
+        self.assertEqual(
+            events[1]["text"], "Codoxear serves a browser UI for Codex-style sessions."
+        )
+        self.assertEqual(events[1]["ts"], 1774708716.099)
+        self.assertEqual(events[1]["message_class"], "final_response")
+        self.assertIsInstance(events[1]["message_id"], str)
         self.assertFalse(flags["turn_start"])
         self.assertFalse(flags["turn_end"])
         self.assertEqual(diag["tool_names"], [])
@@ -1543,7 +2705,9 @@ class TestPiMessageNormalization(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
             session_path.write_text(
-                "".join(json.dumps(entry) + "\n" for entry in pi_persisted_session_file()),
+                "".join(
+                    json.dumps(entry) + "\n" for entry in pi_persisted_session_file()
+                ),
                 encoding="utf-8",
             )
             session_size = session_path.stat().st_size
@@ -1563,9 +2727,15 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            first = mgr.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0)
+            first = mgr.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0
+            )
 
             restarted = _make_manager()
             restarted._sessions["pi-session"] = Session(
@@ -1582,17 +2752,27 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            restarted._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            restarted._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            second = restarted.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0)
+            second = restarted.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0
+            )
 
         self.assertEqual(first["events"], second["events"])
-        self.assertEqual([event["role"] for event in second["events"]], ["user", "assistant"])
+        self.assertEqual(
+            [event["role"] for event in second["events"]], ["user", "assistant"]
+        )
         self.assertEqual(second["offset"], session_size)
         self.assertFalse(second["has_older"])
         self.assertEqual(second["next_before"], 0)
 
-    def test_pi_messages_refresh_session_listing_recency_on_replay_and_poll(self) -> None:
+    def test_pi_messages_refresh_session_listing_recency_on_replay_and_poll(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
@@ -1625,9 +2805,15 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            replay = mgr.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0)
+            replay = mgr.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0
+            )
             rows_after_replay = mgr.list_sessions()
 
             with session_path.open("a", encoding="utf-8") as f:
@@ -1638,13 +2824,18 @@ class TestPiMessageNormalization(unittest.TestCase):
                     f.write(json.dumps(entry) + "\n")
             os.utime(session_path, (poll_mtime, poll_mtime))
 
-            poll = mgr.get_messages_page("pi-session", offset=replay["offset"], init=False, limit=20, before=0)
+            poll = mgr.get_messages_page(
+                "pi-session", offset=replay["offset"], init=False, limit=20, before=0
+            )
             rows_after_poll = mgr.list_sessions()
 
         self.assertEqual([event["ts"] for event in replay["events"]], [0.0, 1.0])
         self.assertEqual(rows_after_replay[0]["updated_ts"], replay_mtime)
         self.assertGreater(poll["events"][0]["ts"], replay["events"][-1]["ts"])
-        self.assertEqual([event["text"] for event in poll["events"]], ["follow-up prompt", "follow-up reply"])
+        self.assertEqual(
+            [event["text"] for event in poll["events"]],
+            ["follow-up prompt", "follow-up reply"],
+        )
         self.assertEqual(rows_after_poll[0]["updated_ts"], poll_mtime)
 
     def test_list_sessions_refreshes_pi_recency_without_messages_poll(self) -> None:
@@ -1694,21 +2885,35 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
             rows_before_refresh = mgr.list_sessions()
 
             with session_path.open("a", encoding="utf-8") as f:
-                f.write(json.dumps(_pi_message_entry("assistant", "fresh reply")) + "\n")
+                f.write(
+                    json.dumps(_pi_message_entry("assistant", "fresh reply")) + "\n"
+                )
             os.utime(session_path, (refreshed_mtime, refreshed_mtime))
 
             rows_after_refresh = mgr.list_sessions()
 
-        self.assertEqual([row["session_id"] for row in rows_before_refresh[:2]], ["other-session", "pi-session"])
-        self.assertEqual([row["session_id"] for row in rows_after_refresh[:2]], ["pi-session", "other-session"])
+        self.assertEqual(
+            [row["session_id"] for row in rows_before_refresh[:2]],
+            ["other-session", "pi-session"],
+        )
+        self.assertEqual(
+            [row["session_id"] for row in rows_after_refresh[:2]],
+            ["pi-session", "other-session"],
+        )
         self.assertEqual(rows_after_refresh[0]["updated_ts"], refreshed_mtime)
 
-    def test_list_sessions_keeps_pi_busy_when_session_file_has_not_advanced(self) -> None:
+    def test_list_sessions_keeps_pi_busy_when_session_file_has_not_advanced(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
@@ -1741,22 +2946,34 @@ class TestPiMessageNormalization(unittest.TestCase):
                 last_chat_ts=unchanged_mtime,
                 pi_busy_activity_floor=unchanged_mtime,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": True, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": True,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
             rows = mgr.list_sessions()
 
         self.assertTrue(rows[0]["busy"])
 
-    def test_refresh_session_meta_resets_pi_caches_when_session_path_changes(self) -> None:
+    def test_refresh_session_meta_resets_pi_caches_when_session_path_changes(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             old_session_path = Path(td) / "old-session.jsonl"
             new_session_path = Path(td) / "new-session.jsonl"
-            old_session_path.write_text('{"session_id":"pi-thread-001"}\n', encoding="utf-8")
-            new_session_path.write_text('{"session_id":"pi-thread-002"}\n', encoding="utf-8")
+            old_session_path.write_text(
+                '{"session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
+            new_session_path.write_text(
+                '{"session_id":"pi-thread-002"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -1822,7 +3039,9 @@ class TestPiMessageNormalization(unittest.TestCase):
 
     def test_refresh_session_meta_requires_pi_session_path_metadata(self) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
@@ -1859,14 +3078,20 @@ class TestPiMessageNormalization(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing session_path"):
                 mgr.refresh_session_meta("pi-session")
 
-    def test_refresh_session_meta_non_strict_recovers_missing_pi_session_path_via_discovery(self) -> None:
+    def test_refresh_session_meta_non_strict_recovers_missing_pi_session_path_via_discovery(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             recovered_session_path = Path(td) / "recovered-session.jsonl"
-            recovered_session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            recovered_session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -1897,7 +3122,10 @@ class TestPiMessageNormalization(unittest.TestCase):
                 session_path=None,
             )
 
-            with patch("codoxear.server._discover_pi_session_for_cwd", return_value=recovered_session_path):
+            with patch(
+                "codoxear.server._discover_pi_session_for_cwd",
+                return_value=recovered_session_path,
+            ):
                 mgr.refresh_session_meta("pi-session", strict=False)
 
         session = mgr.get_session("pi-session")
@@ -1906,14 +3134,218 @@ class TestPiMessageNormalization(unittest.TestCase):
         self.assertEqual(session.session_path, recovered_session_path)
         self.assertFalse(mgr._sidecar_is_quarantined(sock))
 
-    def test_refresh_session_meta_updates_live_pi_ui_capabilities_from_sidecar(self) -> None:
+    def test_refresh_session_meta_non_strict_prefers_exact_thread_match_over_same_cwd_discovery(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            exact_session_path = Path(td) / "exact-session.jsonl"
+            wrong_session_path = Path(td) / "wrong-session.jsonl"
+            exact_session_path.write_text(
+                '{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            wrong_session_path.write_text(
+                '{"type":"session","id":"pi-thread-wrong","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": "/tmp/pi-cwd",
+                        "start_ts": 123.0,
+                        "sock_path": str(sock),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=None,
+            )
+
+            with (
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    return_value=exact_session_path,
+                ) as find_exact,
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    return_value=wrong_session_path,
+                ) as discover,
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                mgr.refresh_session_meta("pi-session", strict=False)
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.session_path, exact_session_path)
+        find_exact.assert_called()
+        discover.assert_not_called()
+        patch_meta.assert_called_once()
+        self.assertEqual(patch_meta.call_args.args[:2], (sock, exact_session_path))
+
+    def test_refresh_session_meta_reuses_matching_pi_session_path_without_global_scan(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "exact-session.jsonl"
+            session_path.write_text(
+                '{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": "/tmp/pi-cwd",
+                        "start_ts": 123.0,
+                        "sock_path": str(sock),
+                        "session_path": str(session_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+            )
+
+            with (
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    side_effect=AssertionError("global scan should not run"),
+                ),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    side_effect=AssertionError("cwd discovery should not run"),
+                ),
+            ):
+                mgr.refresh_session_meta("pi-session")
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.session_path, session_path)
+
+    def test_refresh_session_meta_non_strict_reuses_in_memory_pi_session_path_cache(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "cached-session.jsonl"
+            session_path.write_text(
+                '{"type":"session","id":"pi-thread-001","cwd":"/tmp/pi-cwd"}\n',
+                encoding="utf-8",
+            )
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "pi-thread-001",
+                        "backend": "pi",
+                        "owner": "web",
+                        "broker_pid": 3333,
+                        "codex_pid": 4444,
+                        "cwd": "/tmp/pi-cwd",
+                        "start_ts": 123.0,
+                        "sock_path": str(sock),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+            )
+
+            with (
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                ) as find_exact,
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                ) as discover,
+            ):
+                mgr.refresh_session_meta("pi-session", strict=False)
+
+        find_exact.assert_not_called()
+        discover.assert_not_called()
+
+        session = mgr.get_session("pi-session")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session.session_path, session_path)
+
+    def test_refresh_session_meta_updates_live_pi_ui_capabilities_from_sidecar(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             session_path = Path(td) / "pi-session.jsonl"
-            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -1961,12 +3393,16 @@ class TestPiMessageNormalization(unittest.TestCase):
 
     def test_refresh_session_meta_clears_missing_live_pi_ui_capabilities(self) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             session_path = Path(td) / "pi-session.jsonl"
-            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -2010,14 +3446,20 @@ class TestPiMessageNormalization(unittest.TestCase):
         self.assertIsNone(session.supports_live_ui)
         self.assertIsNone(session.ui_protocol_version)
 
-    def test_refresh_session_meta_non_strict_quarantines_invalid_pi_sidecar(self) -> None:
+    def test_refresh_session_meta_non_strict_quarantines_invalid_pi_sidecar(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             sock = Path(td) / "pi.sock"
             sock.touch()
             known_session_path = Path(td) / "known-session.jsonl"
-            known_session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            known_session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock.with_suffix(".json").write_text(
                 json.dumps(
                     {
@@ -2058,9 +3500,13 @@ class TestPiMessageNormalization(unittest.TestCase):
         assert session is not None
         self.assertEqual(session.session_path, known_session_path)
 
-    def test_get_messages_page_tolerates_malformed_sidecar_after_discovery(self) -> None:
+    def test_get_messages_page_tolerates_malformed_sidecar_after_discovery(
+        self,
+    ) -> None:
         mgr = _make_manager()
-        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(mgr, SessionManager)  # type: ignore[method-assign]
+        mgr.refresh_session_meta = SessionManager.refresh_session_meta.__get__(
+            mgr, SessionManager
+        )  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
             _write_jsonl(
@@ -2102,12 +3548,20 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            payload = mgr.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0)
+            payload = mgr.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0
+            )
             expected_offset = session_path.stat().st_size
 
-        self.assertEqual([event["role"] for event in payload["events"]], ["user", "assistant"])
+        self.assertEqual(
+            [event["role"] for event in payload["events"]], ["user", "assistant"]
+        )
         self.assertEqual(payload["offset"], expected_offset)
 
     def test_removed_event_stream_view_no_longer_includes_system_events(self) -> None:
@@ -2149,12 +3603,26 @@ class TestPiMessageNormalization(unittest.TestCase):
                 sock_path=sock,
                 session_path=session_path,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            payload = mgr.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0, view="events")
+            payload = mgr.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0, view="events"
+            )
 
-        self.assertEqual([event["role"] for event in payload["events"]], ["user", "assistant"])
-        self.assertFalse(any(event.get("type") in {"pi_event", "pi_model_change", "pi_thinking_level_change"} for event in payload["events"]))
+        self.assertEqual(
+            [event["role"] for event in payload["events"]], ["user", "assistant"]
+        )
+        self.assertFalse(
+            any(
+                event.get("type")
+                in {"pi_event", "pi_model_change", "pi_thinking_level_change"}
+                for event in payload["events"]
+            )
+        )
 
     def test_delta_polling_keeps_synthetic_timestamps_monotonic(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -2166,7 +3634,9 @@ class TestPiMessageNormalization(unittest.TestCase):
             ]
             _write_jsonl(session_path, initial_entries)
 
-            initial_events, initial_off, _has_older, _next_before, _diag = pi_messages.read_pi_message_page(session_path, limit=20, before=0)
+            initial_events, initial_off, _has_older, _next_before, _diag = (
+                pi_messages.read_pi_message_page(session_path, limit=20, before=0)
+            )
 
             with session_path.open("a", encoding="utf-8") as f:
                 for entry in (
@@ -2182,34 +3652,59 @@ class TestPiMessageNormalization(unittest.TestCase):
                 read_offsets.append(int(offset))
                 return real_read(path, offset, max_bytes=max_bytes)
 
-            with patch.object(pi_messages, "_read_jsonl_from_offset", side_effect=_spy_read):
-                delta_events, _new_off, _meta, _flags, _diag = pi_messages.read_pi_message_delta(session_path, offset=initial_off)
+            with patch.object(
+                pi_messages, "_read_jsonl_from_offset", side_effect=_spy_read
+            ):
+                delta_events, _new_off, _meta, _flags, _diag = (
+                    pi_messages.read_pi_message_delta(session_path, offset=initial_off)
+                )
 
         self.assertEqual([event["ts"] for event in initial_events], [0.0, 1.0])
         self.assertEqual(read_offsets[0], initial_off)
         self.assertTrue(all(offset >= initial_off for offset in read_offsets))
-        self.assertEqual(sorted(event["ts"] for event in delta_events), [event["ts"] for event in delta_events])
+        self.assertEqual(
+            sorted(event["ts"] for event in delta_events),
+            [event["ts"] for event in delta_events],
+        )
         self.assertGreater(delta_events[0]["ts"], initial_events[-1]["ts"])
-        self.assertEqual([event["text"] for event in delta_events], ["follow-up prompt", "follow-up reply"])
+        self.assertEqual(
+            [event["text"] for event in delta_events],
+            ["follow-up prompt", "follow-up reply"],
+        )
 
     def test_large_session_replay_reads_past_sixty_four_chunks(self) -> None:
-        with tempfile.TemporaryDirectory() as td, patch.object(pi_messages, "_PI_READ_MAX_BYTES", 256):
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch.object(pi_messages, "_PI_READ_MAX_BYTES", 256),
+        ):
             session_path = Path(td) / "pi-session.jsonl"
-            entries: list[dict[str, object]] = [{"type": "session", "session_id": "pi-session-001"}]
+            entries: list[dict[str, object]] = [
+                {"type": "session", "session_id": "pi-session-001"}
+            ]
             for idx in range(200):
-                entries.append(_pi_message_entry("user", f"message {idx:03d} {'.' * 40}"))
+                entries.append(
+                    _pi_message_entry("user", f"message {idx:03d} {'.' * 40}")
+                )
             _write_jsonl(session_path, entries)
 
-            events, new_off, has_older, next_before, _diag = pi_messages.read_pi_message_page(session_path, limit=500, before=0)
+            events, new_off, has_older, next_before, _diag = (
+                pi_messages.read_pi_message_page(session_path, limit=500, before=0)
+            )
 
             self.assertEqual(len(events), 200)
-            self.assertEqual(events[-1]["text"], "message 199 ........................................")
+            self.assertEqual(
+                events[-1]["text"],
+                "message 199 ........................................",
+            )
             self.assertEqual(new_off, session_path.stat().st_size)
             self.assertFalse(has_older)
             self.assertEqual(next_before, 0)
 
     def test_replay_and_older_pages_cap_diag_tool_names(self) -> None:
-        with tempfile.TemporaryDirectory() as td, patch.object(pi_messages, "_PI_DIAG_TOOL_NAMES_LIMIT", 3):
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch.object(pi_messages, "_PI_DIAG_TOOL_NAMES_LIMIT", 3),
+        ):
             session_path = Path(td) / "pi-session.jsonl"
             entries: list[dict[str, object]] = [
                 {"type": "session", "session_id": "pi-session-001"},
@@ -2217,11 +3712,25 @@ class TestPiMessageNormalization(unittest.TestCase):
                 _pi_message_entry("assistant", "first reply"),
             ]
             for idx in range(6):
-                entries.append({"type": "tool.started", "tool_name": f"tool-{idx}", "turn_id": "turn-001"})
+                entries.append(
+                    {
+                        "type": "tool.started",
+                        "tool_name": f"tool-{idx}",
+                        "turn_id": "turn-001",
+                    }
+                )
             _write_jsonl(session_path, entries)
 
-            _events, _new_off, _has_older, _next_before, init_diag = pi_messages.read_pi_message_page(session_path, limit=20, before=0)
-            _older_events, _older_off, _older_has_older, _older_next_before, older_diag = pi_messages.read_pi_message_page(
+            _events, _new_off, _has_older, _next_before, init_diag = (
+                pi_messages.read_pi_message_page(session_path, limit=20, before=0)
+            )
+            (
+                _older_events,
+                _older_off,
+                _older_has_older,
+                _older_next_before,
+                older_diag,
+            ) = pi_messages.read_pi_message_page(
                 session_path,
                 limit=1,
                 before=1,
@@ -2238,15 +3747,57 @@ class TestPiMessageNormalization(unittest.TestCase):
             _pi_message_entry("assistant", "plain reply", block_type="text"),
         ]
 
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
-
-        self.assertEqual(
-            events,
-            [
-                {"role": "user", "text": "typed prompt", "ts": 0.0},
-                {"role": "assistant", "text": "plain reply", "ts": 1.0},
-            ],
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
         )
+
+        self.assertEqual(events[0], {"role": "user", "text": "typed prompt", "ts": 0.0})
+        self.assertEqual(events[1]["role"], "assistant")
+        self.assertEqual(events[1]["text"], "plain reply")
+        self.assertEqual(events[1]["ts"], 1.0)
+        self.assertEqual(events[1]["message_class"], "final_response")
+        self.assertIsInstance(events[1]["message_id"], str)
+
+    def test_normalize_marks_final_assistant_text_with_message_metadata(self) -> None:
+        entries = [
+            _pi_message_entry("user", "typed prompt", block_type="input_text"),
+            _pi_message_entry("assistant", "plain reply", block_type="text"),
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
+
+        self.assertEqual(events[1]["role"], "assistant")
+        self.assertEqual(events[1]["message_class"], "final_response")
+        self.assertIsInstance(events[1]["message_id"], str)
+
+    def test_normalize_marks_assistant_text_before_tool_call_as_narration(self) -> None:
+        entries = [
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "Working on it"},
+                        {
+                            "type": "toolCall",
+                            "id": "call-1",
+                            "name": "bash",
+                            "arguments": {"command": "pwd"},
+                        },
+                    ],
+                },
+            },
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
+
+        self.assertEqual(events[0]["role"], "assistant")
+        self.assertEqual(events[0]["message_class"], "narration")
+        self.assertIsInstance(events[0]["message_id"], str)
 
     def test_subagent_call_and_result_produce_subagent_event(self) -> None:
         entries = [
@@ -2260,7 +3811,10 @@ class TestPiMessageNormalization(unittest.TestCase):
                             "type": "toolCall",
                             "id": "call_abc",
                             "name": "subagent",
-                            "arguments": {"agent": "reviewer", "task": "Review the plan"},
+                            "arguments": {
+                                "agent": "reviewer",
+                                "task": "Review the plan",
+                            },
                         }
                     ],
                 },
@@ -2275,7 +3829,9 @@ class TestPiMessageNormalization(unittest.TestCase):
                 },
             },
         ]
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
         self.assertEqual(len(events), 2)
         self.assertEqual(events[0], {"role": "user", "text": "do something", "ts": 0.0})
         sa = events[1]
@@ -2295,13 +3851,18 @@ class TestPiMessageNormalization(unittest.TestCase):
                             "type": "toolCall",
                             "id": "call_xyz",
                             "name": "subagent",
-                            "arguments": {"agent": "worker", "task": "Implement feature"},
+                            "arguments": {
+                                "agent": "worker",
+                                "task": "Implement feature",
+                            },
                         }
                     ],
                 },
             },
         ]
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
         self.assertEqual(len(events), 1)
         sa = events[0]
         self.assertEqual(sa["type"], "subagent")
@@ -2321,7 +3882,9 @@ class TestPiMessageNormalization(unittest.TestCase):
                 },
             },
         ]
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
         self.assertEqual(len(events), 1)
         sa = events[0]
         self.assertEqual(sa["type"], "subagent")
@@ -2355,7 +3918,9 @@ class TestPiMessageNormalization(unittest.TestCase):
                 },
             },
         ]
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
         self.assertEqual(len(events), 1)
         sa = events[0]
         self.assertEqual(sa["agent"], "delegate")
@@ -2441,8 +4006,18 @@ class TestPiMessageNormalization(unittest.TestCase):
                 "message": {
                     "role": "assistant",
                     "content": [
-                        {"type": "toolCall", "id": "c1", "name": "read", "arguments": {"file": "a.py"}},
-                        {"type": "toolCall", "id": "c2", "name": "grep", "arguments": {"pattern": "foo"}},
+                        {
+                            "type": "toolCall",
+                            "id": "c1",
+                            "name": "read",
+                            "arguments": {"file": "a.py"},
+                        },
+                        {
+                            "type": "toolCall",
+                            "id": "c2",
+                            "name": "grep",
+                            "arguments": {"pattern": "foo"},
+                        },
                     ],
                 },
             },
@@ -2464,7 +4039,12 @@ class TestPiMessageNormalization(unittest.TestCase):
                     "role": "assistant",
                     "content": [
                         {"type": "text", "text": "Let me check that."},
-                        {"type": "toolCall", "id": "c1", "name": "bash", "arguments": {"command": "pwd"}},
+                        {
+                            "type": "toolCall",
+                            "id": "c1",
+                            "name": "bash",
+                            "arguments": {"command": "pwd"},
+                        },
                     ],
                 },
             },
@@ -2517,7 +4097,9 @@ class TestPiMessageNormalization(unittest.TestCase):
             },
         ]
 
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
 
         self.assertEqual(events[0]["type"], "reasoning")
         self.assertEqual(events[0]["text"], "Investigating the repo layout.")
@@ -2537,8 +4119,18 @@ class TestPiMessageNormalization(unittest.TestCase):
                     "details": {
                         "operation": "write",
                         "todos": [
-                            {"id": 1, "title": "Investigate Pi events", "status": "completed", "description": "done"},
-                            {"id": 2, "title": "Build event stream", "status": "in-progress", "description": "active"},
+                            {
+                                "id": 1,
+                                "title": "Investigate Pi events",
+                                "status": "completed",
+                                "description": "done",
+                            },
+                            {
+                                "id": 2,
+                                "title": "Build event stream",
+                                "status": "in-progress",
+                                "description": "active",
+                            },
                         ],
                     },
                 },
@@ -2549,12 +4141,113 @@ class TestPiMessageNormalization(unittest.TestCase):
 
         self.assertEqual(events[0]["type"], "todo_snapshot")
         self.assertEqual(events[0]["operation"], "write")
-        self.assertEqual(events[0]["counts"], {"total": 2, "completed": 1, "in_progress": 1, "not_started": 0})
+        self.assertEqual(
+            events[0]["counts"],
+            {"total": 2, "completed": 1, "in_progress": 1, "not_started": 0},
+        )
         self.assertEqual(events[0]["progress_text"], "1/2 completed")
         self.assertEqual(meta["tool"], 1)
         self.assertIn("manage_todo_list", diag["tool_names"])
 
-    def test_model_and_thinking_level_changes_are_ignored_without_event_stream(self) -> None:
+    def test_claude_todo_v2_task_assignment_custom_message_is_normalized(self) -> None:
+        entries = [
+            {
+                "type": "custom_message",
+                "customType": "claude-todo-v2-task-assignment",
+                "content": "Task #1 assigned to @Codex",
+                "display": True,
+                "details": {
+                    "taskId": "1",
+                    "taskListId": "3c7c0443-c037-47f4-8326-86c13e21403c",
+                    "subject": "Clarify Claude Todo V2 compatibility goal",
+                    "description": "Ask the user a focused requirement question.",
+                    "owner": "Codex",
+                    "assignedBy": "team-lead",
+                    "timestamp": "2026-04-09T15:01:23.735Z",
+                },
+                "id": "fe60f4ff",
+                "parentId": "46834883",
+                "timestamp": "2026-04-09T15:02:02.525Z",
+            },
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries)
+
+        self.assertEqual(events[0]["type"], "custom_message")
+        self.assertEqual(events[0]["custom_type"], "claude-todo-v2-task-assignment")
+        self.assertEqual(events[0]["text"], "Task #1 assigned to @Codex")
+        self.assertEqual(events[0]["display"], True)
+        self.assertEqual(events[0]["task_id"], "1")
+        self.assertEqual(
+            events[0]["task_list_id"], "3c7c0443-c037-47f4-8326-86c13e21403c"
+        )
+        self.assertEqual(
+            events[0]["subject"], "Clarify Claude Todo V2 compatibility goal"
+        )
+        self.assertEqual(
+            events[0]["description"], "Ask the user a focused requirement question."
+        )
+        self.assertEqual(events[0]["owner"], "Codex")
+        self.assertEqual(events[0]["assigned_by"], "team-lead")
+        self.assertEqual(events[0]["details"]["taskId"], "1")
+        self.assertAlmostEqual(events[0]["ts"], 1775746922.525)
+
+    def test_unknown_custom_message_falls_back_to_generic_normalized_event(
+        self,
+    ) -> None:
+        entries = [
+            {
+                "type": "custom_message",
+                "customType": "claude-todo-v2-task-note",
+                "content": "Task note added",
+                "display": False,
+                "details": {
+                    "taskId": "3",
+                    "note": "Need another sample before folding into snapshot.",
+                },
+                "timestamp": "2026-04-09T15:02:10.000Z",
+            },
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries)
+
+        self.assertEqual(events[0]["type"], "custom_message")
+        self.assertEqual(events[0]["custom_type"], "claude-todo-v2-task-note")
+        self.assertEqual(events[0]["text"], "Task note added")
+        self.assertEqual(events[0]["display"], False)
+        self.assertEqual(events[0]["details"]["taskId"], "3")
+        self.assertIn("ts", events[0])
+
+    def test_claude_todo_v2_context_custom_message_is_normalized(self) -> None:
+        entries = [
+            {
+                "type": "custom_message",
+                "customType": "claude-todo-v2-context",
+                "content": "Claude Todo V2 task tools are active for task list 0752b114-9039-45b0-a64e-b21df86819f5. No shared tasks exist yet.",
+                "display": False,
+                "id": "e3b53b0c",
+                "parentId": "6e10532a",
+                "timestamp": "2026-04-09T15:42:12.720Z",
+            },
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries)
+
+        self.assertEqual(events[0]["type"], "custom_message")
+        self.assertEqual(events[0]["custom_type"], "claude-todo-v2-context")
+        self.assertEqual(events[0]["display"], False)
+        self.assertEqual(
+            events[0]["task_list_id"], "0752b114-9039-45b0-a64e-b21df86819f5"
+        )
+        self.assertEqual(events[0]["has_shared_tasks"], False)
+        self.assertEqual(
+            events[0]["text"],
+            "Claude Todo V2 task tools are active for task list 0752b114-9039-45b0-a64e-b21df86819f5. No shared tasks exist yet.",
+        )
+
+    def test_model_and_thinking_level_changes_are_ignored_without_event_stream(
+        self,
+    ) -> None:
         entries = [
             {
                 "type": "model_change",
@@ -2569,7 +4262,9 @@ class TestPiMessageNormalization(unittest.TestCase):
             },
         ]
 
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
 
         self.assertEqual(events, [])
 
@@ -2582,7 +4277,9 @@ class TestPiMessageNormalization(unittest.TestCase):
             },
         ]
 
-        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+            entries, include_system=True
+        )
 
         self.assertEqual(events, [])
 
@@ -2594,7 +4291,12 @@ class TestPiMessageNormalization(unittest.TestCase):
                 "message": {
                     "role": "assistant",
                     "content": [
-                        {"type": "toolCall", "id": "c1", "name": "bash", "arguments": {"command": "pwd"}},
+                        {
+                            "type": "toolCall",
+                            "id": "c1",
+                            "name": "bash",
+                            "arguments": {"command": "pwd"},
+                        },
                         {"type": "text", "text": "done"},
                     ],
                 },
@@ -2610,7 +4312,9 @@ class TestPiMessageNormalization(unittest.TestCase):
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
-            session_path.write_text('{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","session_id":"pi-thread-001"}\n', encoding="utf-8"
+            )
             sock = Path(td) / "pi.sock"
             sock.touch()
             mgr._sessions["pi-session"] = Session(
@@ -2629,17 +4333,25 @@ class TestPiMessageNormalization(unittest.TestCase):
                 busy=True,
                 pi_busy_activity_floor=float(session_path.stat().st_mtime),
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": True, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": True,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
             rows = mgr.list_sessions()
-            payload = mgr.get_messages_page("pi-session", offset=0, init=True, limit=20, before=0)
+            payload = mgr.get_messages_page(
+                "pi-session", offset=0, init=True, limit=20, before=0
+            )
 
         self.assertTrue(rows[0]["busy"])
         self.assertTrue(payload["busy"])
         self.assertEqual(payload["events"], [])
         self.assertEqual(payload["diag"], {"tool_names": [], "last_tool": None})
 
-    def test_pi_busy_not_overridden_by_idle_session_file_when_no_new_events(self) -> None:
+    def test_pi_busy_not_overridden_by_idle_session_file_when_no_new_events(
+        self,
+    ) -> None:
         """After resume + send, the session file still contains old content
         ending with an assistant message.  The idle check on the file would
         return True, but since there are no new events (Pi hasn't written yet),
@@ -2675,13 +4387,22 @@ class TestPiMessageNormalization(unittest.TestCase):
                 pi_busy_activity_floor=float(session_path.stat().st_mtime),
             )
             # Broker reports busy (prompt just sent)
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": True, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": True,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
             # Delta poll from end of file (no new content) — broker says busy
-            payload = mgr.get_messages_page("pi-session", offset=initial_offset, init=False, limit=20, before=0)
+            payload = mgr.get_messages_page(
+                "pi-session", offset=initial_offset, init=False, limit=20, before=0
+            )
 
         # busy should be preserved because no new events from the session file
-        self.assertTrue(payload["busy"], "busy should not be overridden when session file has no new events")
+        self.assertTrue(
+            payload["busy"],
+            "busy should not be overridden when session file has no new events",
+        )
 
     def test_pi_busy_clears_when_session_file_advanced_past_busy_floor(self) -> None:
         mgr = _make_manager()
@@ -2698,7 +4419,9 @@ class TestPiMessageNormalization(unittest.TestCase):
             initial_offset = session_path.stat().st_size
 
             with session_path.open("a", encoding="utf-8") as f:
-                f.write('{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}\n')
+                f.write(
+                    '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}\n'
+                )
             new_mtime = old_mtime + 5.0
             os.utime(session_path, (new_mtime, new_mtime))
             settled_offset = session_path.stat().st_size
@@ -2721,11 +4444,20 @@ class TestPiMessageNormalization(unittest.TestCase):
                 busy=True,
                 pi_busy_activity_floor=old_mtime,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": True, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": True,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            payload = mgr.get_messages_page("pi-session", offset=settled_offset, init=False, limit=20, before=0)
+            payload = mgr.get_messages_page(
+                "pi-session", offset=settled_offset, init=False, limit=20, before=0
+            )
 
-        self.assertFalse(payload["busy"], "busy should clear once the session file advances past the busy floor and is idle")
+        self.assertFalse(
+            payload["busy"],
+            "busy should clear once the session file advances past the busy floor and is idle",
+        )
 
     def test_pi_session_auto_discovery_does_not_switch_back_to_older_file(self) -> None:
         mgr = _make_manager()
@@ -2734,7 +4466,7 @@ class TestPiMessageNormalization(unittest.TestCase):
             old_session_path = root / "old-pi-session.jsonl"
             new_session_path = root / "new-pi-session.jsonl"
             old_session_path.write_text(
-                '\n'.join(
+                "\n".join(
                     [
                         '{"type":"session","id":"pi-thread-old","cwd":"/tmp","timestamp":"2026-03-28T12:00:00Z"}',
                         '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"old reply"}]}}',
@@ -2744,7 +4476,7 @@ class TestPiMessageNormalization(unittest.TestCase):
                 encoding="utf-8",
             )
             new_session_path.write_text(
-                '\n'.join(
+                "\n".join(
                     [
                         '{"type":"session","id":"pi-thread-new","cwd":"/tmp","timestamp":"2026-03-28T12:05:00Z"}',
                         '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"new reply"}]}}',
@@ -2776,9 +4508,15 @@ class TestPiMessageNormalization(unittest.TestCase):
                 busy=False,
                 pi_session_path_discovered=True,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            def fake_discover_pi_session_for_cwd(_cwd: str, _start_ts: float, *, exclude: set[Path] | None = None) -> Path | None:
+            def fake_discover_pi_session_for_cwd(
+                _cwd: str, _start_ts: float, *, exclude: set[Path] | None = None
+            ) -> Path | None:
                 blocked = set(exclude or set())
                 if old_session_path in blocked:
                     return new_session_path
@@ -2786,27 +4524,223 @@ class TestPiMessageNormalization(unittest.TestCase):
                     return old_session_path
                 return None
 
-            with patch("codoxear.server.time.time", return_value=2000.0), patch(
-                "codoxear.server._discover_pi_session_for_cwd", side_effect=fake_discover_pi_session_for_cwd
-            ), patch("codoxear.server._patch_metadata_session_path") as patch_meta:
-                first = mgr.get_messages_page("pi-session", offset=old_session_path.stat().st_size, init=False, limit=20, before=0)
-                self.assertEqual(mgr._sessions["pi-session"].session_path, new_session_path)
+            with (
+                patch("codoxear.server.time.time", return_value=2000.0),
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    return_value=None,
+                ),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    side_effect=fake_discover_pi_session_for_cwd,
+                ),
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                first = mgr.get_messages_page(
+                    "pi-session",
+                    offset=old_session_path.stat().st_size,
+                    init=False,
+                    limit=20,
+                    before=0,
+                )
+                self.assertEqual(
+                    mgr._sessions["pi-session"].session_path, new_session_path
+                )
 
-                second = mgr.get_messages_page("pi-session", offset=first["offset"], init=False, limit=20, before=0)
+                second = mgr.get_messages_page(
+                    "pi-session", offset=first["offset"], init=False, limit=20, before=0
+                )
 
         self.assertEqual(mgr._sessions["pi-session"].session_path, new_session_path)
-        self.assertEqual([call.args[1] for call in patch_meta.call_args_list], [new_session_path])
+        self.assertEqual(
+            [call.args[1] for call in patch_meta.call_args_list], [new_session_path]
+        )
         self.assertTrue(any(ev.get("text") == "new reply" for ev in first["events"]))
         self.assertEqual(second["events"], [])
 
-    def test_pi_explicit_session_path_does_not_drift_to_newer_same_cwd_file(self) -> None:
+    def test_get_messages_page_lazy_pi_binding_prefers_exact_thread_match(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            exact_session_path = root / "exact-pi-session.jsonl"
+            wrong_session_path = root / "wrong-pi-session.jsonl"
+            exact_session_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"pi-thread-exact","cwd":"/tmp"}',
+                        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"exact reply"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            wrong_session_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"pi-thread-wrong","cwd":"/tmp"}',
+                        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"wrong reply"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            sock = root / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-exact",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=900.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=None,
+                busy=False,
+            )
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
+
+            with (
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    return_value=exact_session_path,
+                ) as find_exact,
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    return_value=wrong_session_path,
+                ) as discover,
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                payload = mgr.get_messages_page(
+                    "pi-session", offset=0, init=True, limit=20, before=0
+                )
+
+        self.assertEqual(mgr._sessions["pi-session"].session_path, exact_session_path)
+        self.assertTrue(
+            any(ev.get("text") == "exact reply" for ev in payload["events"])
+        )
+        self.assertFalse(
+            any(ev.get("text") == "wrong reply" for ev in payload["events"])
+        )
+        find_exact.assert_called()
+        discover.assert_not_called()
+        patch_meta.assert_called_once()
+        self.assertEqual(patch_meta.call_args.args[:2], (sock, exact_session_path))
+
+    def test_pi_session_stale_recovery_prefers_exact_thread_match_over_same_cwd_file(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            stale_session_path = root / "stale-pi-session.jsonl"
+            exact_session_path = root / "exact-pi-session.jsonl"
+            wrong_session_path = root / "wrong-pi-session.jsonl"
+            stale_session_path.write_text(
+                '{"type":"session","id":"pi-thread-old","cwd":"/tmp","timestamp":"2026-03-28T12:00:00Z"}\n',
+                encoding="utf-8",
+            )
+            exact_session_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"pi-thread-exact","cwd":"/tmp","timestamp":"2026-03-28T12:05:00Z"}',
+                        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"exact reply"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            wrong_session_path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"pi-thread-wrong","cwd":"/tmp","timestamp":"2026-03-28T12:06:00Z"}',
+                        '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"wrong reply"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.utime(stale_session_path, (1000.0, 1000.0))
+            os.utime(exact_session_path, (1008.0, 1008.0))
+            os.utime(wrong_session_path, (1010.0, 1010.0))
+
+            sock = root / "pi.sock"
+            sock.touch()
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-exact",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=900.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=stale_session_path,
+                busy=False,
+                pi_session_path_discovered=True,
+            )
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
+
+            with (
+                patch("codoxear.server.time.time", return_value=2000.0),
+                patch(
+                    "codoxear.server._find_session_log_for_session_id",
+                    return_value=exact_session_path,
+                ) as find_exact,
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    return_value=wrong_session_path,
+                ) as discover,
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                payload = mgr.get_messages_page(
+                    "pi-session",
+                    offset=stale_session_path.stat().st_size,
+                    init=False,
+                    limit=20,
+                    before=0,
+                )
+
+        self.assertEqual(mgr._sessions["pi-session"].session_path, exact_session_path)
+        self.assertTrue(
+            any(ev.get("text") == "exact reply" for ev in payload["events"])
+        )
+        self.assertFalse(
+            any(ev.get("text") == "wrong reply" for ev in payload["events"])
+        )
+        find_exact.assert_called()
+        discover.assert_not_called()
+        self.assertEqual(
+            [call.args[1] for call in patch_meta.call_args_list], [exact_session_path]
+        )
+
+    def test_pi_explicit_session_path_does_not_drift_to_newer_same_cwd_file(
+        self,
+    ) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             old_session_path = root / "old-pi-session.jsonl"
             new_session_path = root / "new-pi-session.jsonl"
             old_session_path.write_text(
-                '\n'.join(
+                "\n".join(
                     [
                         '{"type":"session","id":"pi-thread-old","cwd":"/tmp","timestamp":"2026-03-28T12:00:00Z"}',
                         '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"old reply"}]}}',
@@ -2816,7 +4750,7 @@ class TestPiMessageNormalization(unittest.TestCase):
                 encoding="utf-8",
             )
             new_session_path.write_text(
-                '\n'.join(
+                "\n".join(
                     [
                         '{"type":"session","id":"pi-thread-new","cwd":"/tmp","timestamp":"2026-03-28T12:05:00Z"}',
                         '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"new reply"}]}}',
@@ -2847,12 +4781,27 @@ class TestPiMessageNormalization(unittest.TestCase):
                 session_path=old_session_path,
                 busy=False,
             )
-            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: {
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
 
-            with patch("codoxear.server.time.time", return_value=2000.0), patch(
-                "codoxear.server._discover_pi_session_for_cwd", return_value=new_session_path
-            ) as discover, patch("codoxear.server._patch_metadata_session_path") as patch_meta:
-                payload = mgr.get_messages_page("pi-session", offset=old_session_path.stat().st_size, init=False, limit=20, before=0)
+            with (
+                patch("codoxear.server.time.time", return_value=2000.0),
+                patch(
+                    "codoxear.server._discover_pi_session_for_cwd",
+                    return_value=new_session_path,
+                ) as discover,
+                patch("codoxear.server._patch_metadata_session_path") as patch_meta,
+            ):
+                payload = mgr.get_messages_page(
+                    "pi-session",
+                    offset=old_session_path.stat().st_size,
+                    init=False,
+                    limit=20,
+                    before=0,
+                )
 
         self.assertEqual(mgr._sessions["pi-session"].session_path, old_session_path)
         self.assertEqual(payload["events"], [])

@@ -9,12 +9,25 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
-import { useSessionUiStore, useSessionUiStoreApi } from "../../app/providers";
+import { useLiveSessionStore, useLiveSessionStoreApi, useSessionUiStore, useSessionUiStoreApi } from "../../app/providers";
 import { api } from "../../lib/api";
 import type { SessionUiRequest, TodoSnapshot, TodoSnapshotItem } from "../../lib/types";
 
 type DraftValue = string | string[];
 type OptionInput = { label?: string; value?: string; title?: string; description?: string } | string;
+type AskUserBridgeQuestion = {
+  header: string;
+  question: string;
+  options: Array<{ label: string; description?: string; preview?: string }>;
+  multiSelect?: boolean;
+};
+type AskUserBridgeRequest = {
+  questions: AskUserBridgeQuestion[];
+  metadata?: Record<string, unknown>;
+};
+type AskUserBridgeAnswers = Record<string, string | string[]>;
+
+const ASK_USER_BRIDGE_PREFIX = "__codoxear_ask_user_bridge_v1__";
 
 function normalizeOption(option: OptionInput, index: number) {
   if (typeof option === "string") {
@@ -30,6 +43,81 @@ function normalizeOption(option: OptionInput, index: number) {
     value,
     key: value || String(index),
   };
+}
+
+function parseAskUserBridgeRequest(request: SessionUiRequest): AskUserBridgeRequest | null {
+  if (request.method !== "editor") {
+    return null;
+  }
+
+  const prefill = typeof request.prefill === "string" ? request.prefill : "";
+  if (!prefill.startsWith(`${ASK_USER_BRIDGE_PREFIX}\n`)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(prefill.slice(ASK_USER_BRIDGE_PREFIX.length + 1)) as {
+      questions?: unknown;
+      metadata?: Record<string, unknown>;
+    };
+    if (!Array.isArray(parsed.questions) || !parsed.questions.length) {
+      return null;
+    }
+
+    const questions: AskUserBridgeQuestion[] = [];
+    for (const question of parsed.questions) {
+      if (!question || typeof question !== "object") {
+        continue;
+      }
+      const row = question as Record<string, unknown>;
+      const header = typeof row.header === "string" ? row.header.trim() : "";
+      const prompt = typeof row.question === "string" ? row.question.trim() : "";
+      const options: AskUserBridgeQuestion["options"] = [];
+      if (Array.isArray(row.options)) {
+        for (const option of row.options) {
+          if (!option || typeof option !== "object") {
+            continue;
+          }
+          const value = option as Record<string, unknown>;
+          const label = typeof value.label === "string" ? value.label.trim() : "";
+          if (!label) {
+            continue;
+          }
+          options.push({
+            label,
+            description: typeof value.description === "string" ? value.description.trim() : undefined,
+            preview: typeof value.preview === "string" ? value.preview : undefined,
+          });
+        }
+      }
+
+      if (!header || !prompt || !options.length) {
+        continue;
+      }
+
+      questions.push({
+        header,
+        question: prompt,
+        options,
+        multiSelect: row.multiSelect === true,
+      });
+    }
+
+    if (!questions.length) {
+      return null;
+    }
+
+    return {
+      questions,
+      metadata: parsed.metadata,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function encodeAskUserBridgeResponse(answers: AskUserBridgeAnswers) {
+  return `${ASK_USER_BRIDGE_PREFIX}\n${JSON.stringify({ action: "answered", answers })}`;
 }
 
 function getInitialDraftValue(request: SessionUiRequest): DraftValue {
@@ -220,10 +308,24 @@ interface SessionWorkspaceProps {
 }
 
 export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
-  const { sessionId, diagnostics, queue, files, requests, loading } = useSessionUiStore();
+  const sessionUiState = useSessionUiStore() as {
+    sessionId: string | null;
+    diagnostics: Record<string, unknown> | null;
+    queue: Record<string, unknown> | null;
+    loading: boolean;
+    requests?: SessionUiRequest[];
+    files?: string[];
+  };
+  const { sessionId, diagnostics, queue, loading } = sessionUiState;
+  const liveSessionState = useLiveSessionStore();
+  const liveSessionStoreApi = useLiveSessionStoreApi();
+  const liveRequests = sessionId ? liveSessionState.requestsBySessionId[sessionId] ?? [] : [];
+  const requests = liveRequests.length ? liveRequests : Array.isArray(sessionUiState.requests) ? sessionUiState.requests : [];
+  const files = Array.isArray(sessionUiState.files) ? sessionUiState.files : [];
   const sessionUiStoreApi = useSessionUiStoreApi();
   const [drafts, setDrafts] = useState<Record<string, DraftValue>>({});
   const [freeformDrafts, setFreeformDrafts] = useState<Record<string, string>>({});
+  const [askUserBridgeDrafts, setAskUserBridgeDrafts] = useState<Record<string, AskUserBridgeAnswers>>({});
   const [requestSubmittingById, setRequestSubmittingById] = useState<Record<string, boolean>>({});
   const [requestErrorById, setRequestErrorById] = useState<Record<string, string>>({});
   const requestSubmittingIdsRef = useRef(new Set<string>());
@@ -235,7 +337,7 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
   const genericDetailEntries = detailEntries.filter(([key]) => !prioritizedDetailKeys.has(key));
   const queueItems = queueItemsFromValue(queue);
   const showDetails = mode === "details";
-  const hasWorkspaceData = diagnosticsEntries.length > 0 || queueItems.length > 0 || files.length > 0;
+  const hasWorkspaceData = diagnosticsEntries.length > 0 || queueItems.length > 0;
   const showTabs = showDetails || hasWorkspaceData || requests.length > 0;
   const defaultTab = showDetails
     ? "overview"
@@ -245,9 +347,7 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
         ? "diagnostics"
         : queueItems.length > 0
           ? "queue"
-          : files.length > 0
-            ? "files"
-            : "requests";
+          : "requests";
 
   const submitRequestResponse = async (requestId: string, payload: Record<string, unknown>) => {
     if (!sessionId || requestSubmittingIdsRef.current.has(requestId)) {
@@ -260,7 +360,10 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
 
     try {
       await api.submitUiResponse(sessionId, payload);
-      await sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" });
+      await Promise.all([
+        liveSessionStoreApi.loadInitial(sessionId),
+        sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" }),
+      ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit response";
       setRequestErrorById((current) => ({ ...current, [requestId]: message }));
@@ -295,7 +398,7 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                 <TabsTrigger value="requests">UI Requests</TabsTrigger>
                 <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>
                 <TabsTrigger value="queue">Queue</TabsTrigger>
-                <TabsTrigger value="files">Files</TabsTrigger>
+                {files.length ? <TabsTrigger value="files">Files</TabsTrigger> : null}
               </TabsList>
               <Separator className="bg-border/70" />
               <CardContent className="flex min-h-0 flex-1 flex-col p-0 pt-4">
@@ -345,8 +448,8 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                             <p className="text-sm text-muted-foreground">No queued items.</p>
                           )}
                         </WorkspaceSection>
-                        <WorkspaceSection title="Files" badge={files.length ? `${files.length}` : undefined}>
-                          {files.length ? (
+                        {files.length ? (
+                          <WorkspaceSection title="Files" badge={`${files.length}`}>
                             <ul className="workspaceCollection space-y-2 text-sm text-foreground">
                               {files.map((file) => (
                                 <li key={file} className="rounded-xl border border-border/60 bg-card/60 px-3 py-2 font-mono text-xs sm:text-sm">
@@ -354,10 +457,8 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                                 </li>
                               ))}
                             </ul>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">No tracked files.</p>
-                          )}
-                        </WorkspaceSection>
+                          </WorkspaceSection>
+                        ) : null}
                         <WorkspaceSection title="UI Requests" badge={requests.length ? `${requests.length}` : undefined}>
                           <p className="text-sm text-muted-foreground">
                             {requests.length ? "Review and respond in the dedicated tab." : "No pending requests."}
@@ -373,11 +474,19 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                       {requests.length ? (
                         requests.map((request, index) => {
                           const requestId = String(request.id ?? index);
+                          const askUserBridge = parseAskUserBridgeRequest(request);
                           const draftValue = drafts[requestId] ?? getInitialDraftValue(request);
                           const freeformValue = freeformDrafts[requestId] ?? "";
                           const options = Array.isArray(request.options) ? request.options : [];
                           const bodyText = getRequestBody(request);
                           const selectedValues = Array.isArray(draftValue) ? draftValue : [];
+                          const askUserBridgeAnswers = askUserBridgeDrafts[requestId] ?? {};
+                          const askUserBridgeReady = Boolean(
+                            askUserBridge && askUserBridge.questions.every((question) => {
+                              const answer = askUserBridgeAnswers[question.question];
+                              return Array.isArray(answer) ? answer.length > 0 : typeof answer === "string" && answer.trim().length > 0;
+                            })
+                          );
 
                           return (
                             <Card key={requestId} className="rounded-[1.2rem] border-border/70 bg-background/75 shadow-sm">
@@ -385,16 +494,78 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                                 <div className="space-y-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="secondary">{request.method || "request"}</Badge>
-                                    {request.allow_multiple ? <Badge variant="outline">multi-select</Badge> : null}
-                                    {request.allow_freeform ? <Badge variant="outline">freeform</Badge> : null}
+                                    {!askUserBridge && request.allow_multiple ? <Badge variant="outline">multi-select</Badge> : null}
+                                    {!askUserBridge && request.allow_freeform ? <Badge variant="outline">freeform</Badge> : null}
                                   </div>
                                   <div>
-                                    <h3 className="text-sm font-semibold text-foreground">{getRequestHeading(request)}</h3>
+                                    <h3 className="text-sm font-semibold text-foreground">{askUserBridge ? "AskUserQuestion" : getRequestHeading(request)}</h3>
                                     {bodyText ? <p className="mt-1 text-sm text-muted-foreground">{bodyText}</p> : null}
                                   </div>
                                 </div>
 
-                                {request.method === "confirm" ? null : options.length ? (
+                                {askUserBridge ? (
+                                  <div className="space-y-4">
+                                    {askUserBridge.questions.map((question) => {
+                                      const currentAnswer = askUserBridgeAnswers[question.question];
+                                      const selectedAnswer = Array.isArray(currentAnswer)
+                                        ? currentAnswer
+                                        : typeof currentAnswer === "string"
+                                          ? [currentAnswer]
+                                          : [];
+                                      return (
+                                        <section key={question.question} className="space-y-3 rounded-2xl border border-border/60 bg-card/60 p-3">
+                                          <div>
+                                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{question.header}</p>
+                                            <h4 className="text-sm font-semibold text-foreground">{question.question}</h4>
+                                          </div>
+                                          <div className="flex flex-wrap gap-2">
+                                            {question.options.map((option) => {
+                                              const isSelected = selectedAnswer.includes(option.label);
+                                              return (
+                                                <Button
+                                                  key={`${question.question}-${option.label}`}
+                                                  type="button"
+                                                  variant={isSelected ? "default" : "outline"}
+                                                  className="h-auto min-h-10 rounded-full px-4 py-2 text-left"
+                                                  onClick={() => {
+                                                    setAskUserBridgeDrafts((current) => {
+                                                      const existing = current[requestId] ?? {};
+                                                      const previous = existing[question.question];
+                                                      const previousValues = Array.isArray(previous)
+                                                        ? previous
+                                                        : typeof previous === "string"
+                                                          ? [previous]
+                                                          : [];
+                                                      const nextValue = question.multiSelect
+                                                        ? previousValues.includes(option.label)
+                                                          ? previousValues.filter((value) => value !== option.label)
+                                                          : [...previousValues, option.label]
+                                                        : option.label;
+                                                      return {
+                                                        ...current,
+                                                        [requestId]: {
+                                                          ...existing,
+                                                          [question.question]: nextValue,
+                                                        },
+                                                      };
+                                                    });
+                                                  }}
+                                                >
+                                                  <span className="flex flex-col items-start gap-1">
+                                                    <span>{option.label}</span>
+                                                    {option.description ? <span className="text-xs font-normal text-muted-foreground">{option.description}</span> : null}
+                                                  </span>
+                                                </Button>
+                                              );
+                                            })}
+                                          </div>
+                                        </section>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+
+                                {!askUserBridge && (request.method === "confirm" ? null : options.length ? (
                                   request.allow_multiple ? (
                                     <div className="space-y-2">
                                       {options.map((option, optionIndex) => {
@@ -446,9 +617,9 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                                     className="min-h-[8rem] rounded-2xl border-border/70 bg-background/80"
                                     onInput={(event) => setDrafts((current) => ({ ...current, [requestId]: event.currentTarget.value }))}
                                   />
-                                )}
+                                ))}
 
-                                {request.allow_freeform ? (
+                                {!askUserBridge && request.allow_freeform ? (
                                   <div className="space-y-2">
                                     <label className="text-sm font-medium text-foreground">Other response</label>
                                     <Textarea
@@ -467,14 +638,20 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                                     <div className="formActions gap-2">
                                       <Button
                                         type="button"
-                                        disabled={Boolean(requestSubmittingById[requestId])}
+                                        disabled={Boolean(requestSubmittingById[requestId]) || Boolean(askUserBridge && !askUserBridgeReady)}
                                         onClick={() => {
-                                          const normalizedValue = normalizeRequestValue(request, draftValue);
-                                          const finalValue = mergeFreeformValue(request, normalizedValue, freeformValue);
                                           const payload =
-                                            request.method === "confirm"
+                                            askUserBridge
+                                              ? {
+                                                  id: request.id,
+                                                  value: encodeAskUserBridgeResponse(askUserBridgeAnswers),
+                                                }
+                                              : request.method === "confirm"
                                               ? { id: request.id, confirmed: true }
-                                              : { id: request.id, value: finalValue };
+                                              : {
+                                                  id: request.id,
+                                                  value: mergeFreeformValue(request, normalizeRequestValue(request, draftValue), freeformValue),
+                                                };
                                           void submitRequestResponse(requestId, payload);
                                         }}
                                       >
@@ -561,10 +738,10 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                     </WorkspaceSection>
                   </ScrollArea>
                 </TabsContent>
-                <TabsContent value="files" className="min-h-0">
-                  <ScrollArea className="workspaceScroll h-full pr-1">
-                    <WorkspaceSection title="Files" badge={files.length ? `${files.length}` : undefined}>
-                      {files.length ? (
+                {files.length ? (
+                  <TabsContent value="files" className="min-h-0">
+                    <ScrollArea className="workspaceScroll h-full pr-1">
+                      <WorkspaceSection title="Files" badge={`${files.length}`}>
                         <ul className="workspaceCollection space-y-2 text-sm text-foreground">
                           {files.map((file) => (
                             <li key={file} className="rounded-xl border border-border/60 bg-card/60 px-3 py-2 font-mono text-xs sm:text-sm">
@@ -572,12 +749,10 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
                             </li>
                           ))}
                         </ul>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No tracked files.</p>
-                      )}
-                    </WorkspaceSection>
-                  </ScrollArea>
-                </TabsContent>
+                      </WorkspaceSection>
+                    </ScrollArea>
+                  </TabsContent>
+                ) : null}
               </CardContent>
             </Tabs>
           ) : (

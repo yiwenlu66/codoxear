@@ -15,6 +15,14 @@ from codoxear.pi_broker import State as PiBrokerState
 from codoxear.pi_broker import _tail_delta
 
 
+PI_ASK_USER_BRIDGE_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "codoxear"
+    / "pi_extensions"
+    / "ask_user_bridge.ts"
+).resolve()
+
+
 def _recv_line(sock: socket.socket) -> bytes:
     buf = b""
     while b"\n" not in buf:
@@ -28,7 +36,9 @@ def _recv_line(sock: socket.socket) -> bytes:
 def _roundtrip_json(broker: PiBroker, payload: dict[str, object]) -> dict[str, object]:
     server_sock, client_sock = socket.socketpair()
     try:
-        thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+        thread = threading.Thread(
+            target=broker._handle_conn, args=(server_sock,), daemon=True
+        )
         thread.start()
         client_sock.sendall((json.dumps(payload) + "\n").encode("utf-8"))
         resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -39,25 +49,48 @@ def _roundtrip_json(broker: PiBroker, payload: dict[str, object]) -> dict[str, o
 
 
 class TestPiLaunchDelegation(unittest.TestCase):
-    def test_broker_run_delegates_pi_launches_to_pi_broker_with_session_path(self) -> None:
+    def test_broker_run_delegates_pi_launches_to_pi_broker_with_session_path(
+        self,
+    ) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
-            "os.environ", {"PI_HOME": td}, clear=False
-        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
-            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch.dict("os.environ", {"PI_HOME": td}, clear=False),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
         ):
             sessions_dir = get_agent_backend("pi").sessions_dir()
             sessions_dir.mkdir(parents=True, exist_ok=True)
             session_path = sessions_dir / "resume.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
-            broker = Broker(cwd="/tmp/pi-work", codex_args=["--session", str(session_path)])
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
+            broker = Broker(
+                cwd="/tmp/pi-work", codex_args=["--session", str(session_path)]
+            )
 
-            with patch("codoxear.broker.PiBroker") as pi_broker_cls, patch(
-                "codoxear.broker._term_size", side_effect=AssertionError("PTY launch path should be skipped for Pi")
-            ), patch(
-                "codoxear.broker._require_proc", side_effect=AssertionError("PTY launch path should be skipped for Pi")
-            ), patch(
-                "codoxear.broker.pty.fork", side_effect=AssertionError("PTY launch path should be skipped for Pi")
+            with (
+                patch("codoxear.broker.PiBroker") as pi_broker_cls,
+                patch(
+                    "codoxear.broker._term_size",
+                    side_effect=AssertionError(
+                        "PTY launch path should be skipped for Pi"
+                    ),
+                ),
+                patch(
+                    "codoxear.broker._require_proc",
+                    side_effect=AssertionError(
+                        "PTY launch path should be skipped for Pi"
+                    ),
+                ),
+                patch(
+                    "codoxear.broker.pty.fork",
+                    side_effect=AssertionError(
+                        "PTY launch path should be skipped for Pi"
+                    ),
+                ),
             ):
                 pi_broker_cls.return_value.run.return_value = 23
 
@@ -66,7 +99,7 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd="/tmp/pi-work",
             session_path=session_path.resolve(),
-            agent_args=[],
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH)],
             resume_session_id="resume-a",
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
@@ -74,16 +107,30 @@ class TestPiLaunchDelegation(unittest.TestCase):
 
     def test_broker_run_forwards_non_session_pi_args_to_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
-            "os.environ", {"PI_HOME": td}, clear=False
-        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
-            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch.dict("os.environ", {"PI_HOME": td}, clear=False),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
         ):
             sessions_dir = get_agent_backend("pi").sessions_dir()
             sessions_dir.mkdir(parents=True, exist_ok=True)
             session_path = sessions_dir / "resume.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
-            broker = Broker(cwd="/tmp/pi-work", codex_args=["--session", str(session_path), "--model", "sonnet", "--fast"])
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
+            broker = Broker(
+                cwd="/tmp/pi-work",
+                codex_args=[
+                    "--session",
+                    str(session_path),
+                    "--model",
+                    "sonnet",
+                    "--fast",
+                ],
+            )
 
             with patch("codoxear.broker.PiBroker") as pi_broker_cls:
                 pi_broker_cls.return_value.run.return_value = 0
@@ -93,7 +140,13 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd="/tmp/pi-work",
             session_path=session_path.resolve(),
-            agent_args=["--model", "sonnet", "--fast"],
+            agent_args=[
+                "-e",
+                str(PI_ASK_USER_BRIDGE_PATH),
+                "--model",
+                "sonnet",
+                "--fast",
+            ],
             resume_session_id="resume-a",
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
@@ -101,43 +154,24 @@ class TestPiLaunchDelegation(unittest.TestCase):
 
     def test_broker_run_preserves_resume_id_session_arg_for_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
-            "os.environ", {"PI_HOME": td}, clear=False
-        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch.dict("os.environ", {"PI_HOME": td}, clear=False),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
+        ):
             sessions_dir = get_agent_backend("pi").sessions_dir()
             sessions_dir.mkdir(parents=True, exist_ok=True)
             session_dir = sessions_dir / "--tmp-pi-work--"
             session_dir.mkdir(parents=True, exist_ok=True)
             session_path = session_dir / "resume.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
-            broker = Broker(cwd="/tmp/pi-work", codex_args=["--session", "resume-a", "--fast"])
-
-            with patch("codoxear.broker.PiBroker") as pi_broker_cls:
-                pi_broker_cls.return_value.run.return_value = 0
-
-                exit_code = broker.run()
-
-        pi_broker_cls.assert_called_once_with(
-            cwd="/tmp/pi-work",
-            session_path=session_path,
-            agent_args=["--fast"],
-            resume_session_id="resume-a",
-        )
-        pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
-        self.assertEqual(exit_code, 0)
-
-    def test_broker_run_resolves_resume_id_from_custom_session_dir(self) -> None:
-        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
-            "os.environ", {"PI_HOME": td}, clear=False
-        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
-            custom_dir = Path(td) / "custom-sessions"
-            custom_dir.mkdir(parents=True, exist_ok=True)
-            session_path = custom_dir / "resume.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
             broker = Broker(
-                cwd="/tmp/pi-work",
-                codex_args=["--session", "resume-a", "--session-dir", str(custom_dir), "--fast"],
+                cwd="/tmp/pi-work", codex_args=["--session", "resume-a", "--fast"]
             )
 
             with patch("codoxear.broker.PiBroker") as pi_broker_cls:
@@ -148,7 +182,48 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd="/tmp/pi-work",
             session_path=session_path,
-            agent_args=["--fast"],
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH), "--fast"],
+            resume_session_id="resume-a",
+        )
+        pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
+        self.assertEqual(exit_code, 0)
+
+    def test_broker_run_resolves_resume_id_from_custom_session_dir(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch.dict("os.environ", {"PI_HOME": td}, clear=False),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
+        ):
+            custom_dir = Path(td) / "custom-sessions"
+            custom_dir.mkdir(parents=True, exist_ok=True)
+            session_path = custom_dir / "resume.jsonl"
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
+            broker = Broker(
+                cwd="/tmp/pi-work",
+                codex_args=[
+                    "--session",
+                    "resume-a",
+                    "--session-dir",
+                    str(custom_dir),
+                    "--fast",
+                ],
+            )
+
+            with patch("codoxear.broker.PiBroker") as pi_broker_cls:
+                pi_broker_cls.return_value.run.return_value = 0
+
+                exit_code = broker.run()
+
+        pi_broker_cls.assert_called_once_with(
+            cwd="/tmp/pi-work",
+            session_path=session_path,
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH), "--fast"],
             resume_session_id="resume-a",
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
@@ -156,8 +231,10 @@ class TestPiLaunchDelegation(unittest.TestCase):
 
     def test_broker_run_preserves_no_session_flag_for_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with patch("codoxear.broker.sys.stdin", fake_stdin), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
-            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        with (
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
         ):
             broker = Broker(cwd="/tmp/pi-work", codex_args=["--no-session", "--fast"])
 
@@ -169,7 +246,7 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd="/tmp/pi-work",
             session_path=None,
-            agent_args=["--no-session", "--fast"],
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH), "--no-session", "--fast"],
             resume_session_id=None,
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
@@ -177,12 +254,21 @@ class TestPiLaunchDelegation(unittest.TestCase):
 
     def test_broker_run_forwards_external_session_log_path_to_pi_broker(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
-            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
         ):
             session_path = Path(td) / "custom-session.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
-            broker = Broker(cwd="/tmp/pi-work", codex_args=["--session", str(session_path), "--fast"])
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
+            broker = Broker(
+                cwd="/tmp/pi-work",
+                codex_args=["--session", str(session_path), "--fast"],
+            )
 
             with patch("codoxear.broker.PiBroker") as pi_broker_cls:
                 pi_broker_cls.return_value.run.return_value = 0
@@ -192,24 +278,33 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd="/tmp/pi-work",
             session_path=session_path.resolve(),
-            agent_args=["--fast"],
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH), "--fast"],
             resume_session_id="resume-a",
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
         self.assertEqual(exit_code, 0)
 
-    def test_broker_run_resolves_relative_session_log_path_against_broker_cwd(self) -> None:
+    def test_broker_run_resolves_relative_session_log_path_against_broker_cwd(
+        self,
+    ) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
-            "os.environ", {"PI_HOME": td}, clear=False
-        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
-            "codoxear.broker.BACKEND", get_agent_backend("pi")
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.broker.sys.stdin", fake_stdin),
+            patch.dict("os.environ", {"PI_HOME": td}, clear=False),
+            patch("codoxear.broker.AGENT_BACKEND", "pi"),
+            patch("codoxear.broker.BACKEND", get_agent_backend("pi")),
         ):
             cwd = Path(td) / "project"
             cwd.mkdir(parents=True, exist_ok=True)
             session_path = cwd / "relative-session.jsonl"
-            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n', encoding="utf-8")
-            broker = Broker(cwd=str(cwd), codex_args=["--session", "relative-session.jsonl"])
+            session_path.write_text(
+                '{"type":"session","id":"resume-a","cwd":"/tmp/pi-work"}\n',
+                encoding="utf-8",
+            )
+            broker = Broker(
+                cwd=str(cwd), codex_args=["--session", "relative-session.jsonl"]
+            )
 
             with patch("codoxear.broker.PiBroker") as pi_broker_cls:
                 pi_broker_cls.return_value.run.return_value = 0
@@ -219,7 +314,7 @@ class TestPiLaunchDelegation(unittest.TestCase):
         pi_broker_cls.assert_called_once_with(
             cwd=str(cwd),
             session_path=session_path.resolve(),
-            agent_args=[],
+            agent_args=["-e", str(PI_ASK_USER_BRIDGE_PATH)],
             resume_session_id="resume-a",
         )
         pi_broker_cls.return_value.run.assert_called_once_with(foreground=True)
@@ -340,17 +435,23 @@ class TestPiBroker(unittest.TestCase):
 
             broker._write_meta()
 
-            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                sock_path.with_suffix(".json").read_text(encoding="utf-8")
+            )
 
         self.assertEqual(meta["transport"], "pi-rpc")
         self.assertTrue(meta["supports_live_ui"])
         self.assertEqual(meta["ui_protocol_version"], 1)
 
-    def test_write_meta_preserves_resume_session_id_for_agent_managed_sessions(self) -> None:
+    def test_write_meta_preserves_resume_session_id_for_agent_managed_sessions(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         with tempfile.TemporaryDirectory() as td:
             sock_path = Path(td) / "pi.sock"
-            broker = PiBroker(cwd="/tmp", agent_args=["--session", "resume-a", "--fast"])
+            broker = PiBroker(
+                cwd="/tmp", agent_args=["--session", "resume-a", "--fast"]
+            )
             broker.state = PiBrokerState(
                 session_id="pi-session-001",
                 codex_pid=123,
@@ -362,7 +463,9 @@ class TestPiBroker(unittest.TestCase):
 
             broker._write_meta()
 
-            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                sock_path.with_suffix(".json").read_text(encoding="utf-8")
+            )
 
         self.assertEqual(meta["resume_session_id"], "resume-a")
         self.assertNotIn("session_path", meta)
@@ -404,7 +507,9 @@ class TestPiBroker(unittest.TestCase):
 
             broker._write_meta()
 
-            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                sock_path.with_suffix(".json").read_text(encoding="utf-8")
+            )
 
         self.assertIsNone(meta["log_path"])
         self.assertEqual(meta["session_path"], str(session_path))
@@ -414,14 +519,18 @@ class TestPiBroker(unittest.TestCase):
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc)
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: None
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(PiBroker, "_sock_server", side_effect=lambda: None),
         ):
             exit_code = broker.run(foreground=False)
             assert broker.state is not None
-            meta = json.loads(broker.state.sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                broker.state.sock_path.with_suffix(".json").read_text(encoding="utf-8")
+            )
 
         self.assertEqual(exit_code, 0)
         self.assertIsNotNone(broker.state)
@@ -434,23 +543,31 @@ class TestPiBroker(unittest.TestCase):
         rpc = _ExitedProcRpc(exit_code=17)
         broker = PiBroker(cwd="/tmp", rpc=rpc)
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: broker._stop.wait(0.1)
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(
+                PiBroker, "_sock_server", side_effect=lambda: broker._stop.wait(0.1)
+            ),
         ):
             exit_code = broker.run(foreground=False)
 
         self.assertEqual(exit_code, 17)
 
-    def test_run_without_generated_session_path_when_agent_args_manage_session(self) -> None:
+    def test_run_without_generated_session_path_when_agent_args_manage_session(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc, agent_args=["--no-session"])
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: None
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(PiBroker, "_sock_server", side_effect=lambda: None),
         ):
             exit_code = broker.run(foreground=False)
 
@@ -461,14 +578,18 @@ class TestPiBroker(unittest.TestCase):
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc, agent_args=["--no-session"])
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: None
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(PiBroker, "_sock_server", side_effect=lambda: None),
         ):
             broker.run(foreground=False)
             assert broker.state is not None
-            meta = json.loads(broker.state.sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                broker.state.sock_path.with_suffix(".json").read_text(encoding="utf-8")
+            )
 
         self.assertFalse(meta["supports_web_control"])
         self.assertNotIn("session_path", meta)
@@ -489,13 +610,17 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "state"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
-            self.assertEqual(resp, {"busy": True, "queue_len": 0, "token": {"completion_tokens": 12}})
+            self.assertEqual(
+                resp, {"busy": True, "queue_len": 0, "token": {"completion_tokens": 12}}
+            )
         finally:
             client_sock.close()
 
@@ -622,13 +747,19 @@ class TestPiBroker(unittest.TestCase):
             },
         )
 
-        first = _roundtrip_json(broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"})
-        second = _roundtrip_json(broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Sidebar"})
+        first = _roundtrip_json(
+            broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}
+        )
+        second = _roundtrip_json(
+            broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Sidebar"}
+        )
 
         self.assertEqual(first, {"ok": True})
         self.assertEqual(rpc.ui_responses, [{"id": "ui-req-1", "value": "Details"}])
         self.assertEqual(second, {"error": "request already resolved"})
-        self.assertEqual(broker.state.pending_ui_requests["ui-req-1"]["status"], "resolved")
+        self.assertEqual(
+            broker.state.pending_ui_requests["ui-req-1"]["status"], "resolved"
+        )
 
     def test_ui_state_ignores_fire_and_forget_ui_requests(self) -> None:
         rpc = _FakeRpc()
@@ -712,17 +843,25 @@ class TestPiBroker(unittest.TestCase):
             },
         )
 
-        first = _roundtrip_json(broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"})
+        first = _roundtrip_json(
+            broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}
+        )
 
         self.assertEqual(first, {"error": "send failed"})
-        self.assertEqual(broker.state.pending_ui_requests["ui-req-1"]["status"], "pending")
+        self.assertEqual(
+            broker.state.pending_ui_requests["ui-req-1"]["status"], "pending"
+        )
 
-        retry = _roundtrip_json(broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"})
+        retry = _roundtrip_json(
+            broker, {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"}
+        )
 
         self.assertEqual(retry, {"ok": True})
         self.assertEqual(rpc.ui_responses, [{"id": "ui-req-1", "value": "Details"}])
 
-    def test_ui_response_forwards_confirmed_and_ui_state_hides_resolved_requests(self) -> None:
+    def test_ui_response_forwards_confirmed_and_ui_state_hides_resolved_requests(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp")
         broker.state = PiBrokerState(
@@ -745,7 +884,9 @@ class TestPiBroker(unittest.TestCase):
             },
         )
 
-        resp = _roundtrip_json(broker, {"cmd": "ui_response", "id": "ui-req-1", "confirmed": True})
+        resp = _roundtrip_json(
+            broker, {"cmd": "ui_response", "id": "ui-req-1", "confirmed": True}
+        )
         ui_state = _roundtrip_json(broker, {"cmd": "ui_state"})
 
         self.assertEqual(resp, {"ok": True})
@@ -775,23 +916,30 @@ class TestPiBroker(unittest.TestCase):
 
         broker._sync_output_from_rpc()
 
-        self.assertEqual(_roundtrip_json(broker, {"cmd": "ui_state"}), {"requests": [
+        self.assertEqual(
+            _roundtrip_json(broker, {"cmd": "ui_state"}),
             {
-                "id": "ui-confirm-1",
-                "method": "confirm",
-                "title": "Proceed?",
-                "message": "Continue with the action?",
-                "question": None,
-                "context": None,
-                "options": [],
-                "allow_freeform": False,
-                "allow_multiple": False,
-                "timeout_ms": None,
-                "status": "pending",
-            }
-        ]})
+                "requests": [
+                    {
+                        "id": "ui-confirm-1",
+                        "method": "confirm",
+                        "title": "Proceed?",
+                        "message": "Continue with the action?",
+                        "question": None,
+                        "context": None,
+                        "options": [],
+                        "allow_freeform": False,
+                        "allow_multiple": False,
+                        "timeout_ms": None,
+                        "status": "pending",
+                    }
+                ]
+            },
+        )
 
-    def test_message_end_retires_pending_request_when_pi_resolves_elsewhere(self) -> None:
+    def test_message_end_retires_pending_request_when_pi_resolves_elsewhere(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         rpc.events = [
             {
@@ -813,21 +961,26 @@ class TestPiBroker(unittest.TestCase):
         )
 
         broker._sync_output_from_rpc()
-        self.assertEqual(_roundtrip_json(broker, {"cmd": "ui_state"}), {"requests": [
+        self.assertEqual(
+            _roundtrip_json(broker, {"cmd": "ui_state"}),
             {
-                "id": "ui-req-1",
-                "method": "select",
-                "title": None,
-                "message": None,
-                "question": "Pick destinations",
-                "context": None,
-                "options": ["Details", "Sidebar"],
-                "allow_freeform": True,
-                "allow_multiple": False,
-                "timeout_ms": None,
-                "status": "pending",
-            }
-        ]})
+                "requests": [
+                    {
+                        "id": "ui-req-1",
+                        "method": "select",
+                        "title": None,
+                        "message": None,
+                        "question": "Pick destinations",
+                        "context": None,
+                        "options": ["Details", "Sidebar"],
+                        "allow_freeform": True,
+                        "allow_multiple": False,
+                        "timeout_ms": None,
+                        "status": "pending",
+                    }
+                ]
+            },
+        )
 
         rpc.events = [
             {
@@ -845,7 +998,9 @@ class TestPiBroker(unittest.TestCase):
 
         self.assertEqual(_roundtrip_json(broker, {"cmd": "ui_state"}), {"requests": []})
 
-    def test_turn_end_clears_stale_pending_requests_after_timeout_style_resolution(self) -> None:
+    def test_turn_end_clears_stale_pending_requests_after_timeout_style_resolution(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         rpc.events = [
             {
@@ -896,9 +1051,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -953,29 +1112,39 @@ class TestPiBroker(unittest.TestCase):
 
         self.assertEqual(_tail_delta(previous, current), "delta\n")
 
-    def test_foreground_run_registers_sigint_handler_for_terminal_interrupts(self) -> None:
+    def test_foreground_run_registers_sigint_handler_for_terminal_interrupts(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc)
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: broker._stop.set()
-        ), patch("codoxear.pi_broker.sys.stdin.isatty", return_value=True), patch(
-            "codoxear.pi_broker.sys.stdout.isatty", return_value=True
-        ), patch("codoxear.pi_broker.signal.getsignal", return_value="old-handler"), patch(
-            "codoxear.pi_broker.signal.signal"
-        ) as signal_mock:
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(
+                PiBroker, "_sock_server", side_effect=lambda: broker._stop.set()
+            ),
+            patch("codoxear.pi_broker.sys.stdin.isatty", return_value=True),
+            patch("codoxear.pi_broker.sys.stdout.isatty", return_value=True),
+            patch("codoxear.pi_broker.signal.getsignal", return_value="old-handler"),
+            patch("codoxear.pi_broker.signal.signal") as signal_mock,
+        ):
             broker.run(foreground=True)
 
         self.assertEqual(signal_mock.call_args_list[0].args[0], signal.SIGINT)
-        self.assertEqual(signal_mock.call_args_list[1].args, (signal.SIGINT, "old-handler"))
+        self.assertEqual(
+            signal_mock.call_args_list[1].args, (signal.SIGINT, "old-handler")
+        )
 
     def test_handle_sigint_delegates_to_previous_handler_when_idle(self) -> None:
         broker = PiBroker(cwd="/tmp")
         previous_calls: list[tuple[int, object | None]] = []
 
-        broker._previous_sigint_handler = lambda signum, frame: previous_calls.append((signum, frame))
+        broker._previous_sigint_handler = lambda signum, frame: previous_calls.append(
+            (signum, frame)
+        )
         broker._handle_sigint(signal.SIGINT, None)
 
         self.assertEqual(previous_calls, [(signal.SIGINT, None)])
@@ -994,7 +1163,9 @@ class TestPiBroker(unittest.TestCase):
             last_turn_id="turn-001",
         )
         previous_calls: list[tuple[int, object | None]] = []
-        broker._previous_sigint_handler = lambda signum, frame: previous_calls.append((signum, frame))
+        broker._previous_sigint_handler = lambda signum, frame: previous_calls.append(
+            (signum, frame)
+        )
 
         broker._handle_sigint(signal.SIGINT, None)
 
@@ -1010,7 +1181,9 @@ class TestPiBroker(unittest.TestCase):
 
         previous_handler.assert_called_once_with(signal.SIGINT, None)
 
-    def test_handle_sigint_uses_previous_handler_when_only_stale_turn_id_remains(self) -> None:
+    def test_handle_sigint_uses_previous_handler_when_only_stale_turn_id_remains(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc)
         broker.state = PiBrokerState(
@@ -1047,12 +1220,18 @@ class TestPiBroker(unittest.TestCase):
         state_server, state_client = socket.socketpair()
         state_client.settimeout(0.2)
         try:
-            send_thread = threading.Thread(target=broker._handle_conn, args=(send_server,), daemon=True)
+            send_thread = threading.Thread(
+                target=broker._handle_conn, args=(send_server,), daemon=True
+            )
             send_thread.start()
-            send_client.sendall((json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8"))
+            send_client.sendall(
+                (json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8")
+            )
             self.assertTrue(rpc.prompt_started.wait(0.2))
 
-            state_thread = threading.Thread(target=broker._handle_conn, args=(state_server,), daemon=True)
+            state_thread = threading.Thread(
+                target=broker._handle_conn, args=(state_server,), daemon=True
+            )
             state_thread.start()
             state_client.sendall((json.dumps({"cmd": "state"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(state_client).decode("utf-8"))
@@ -1089,9 +1268,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1120,9 +1303,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "send", "text": "hello pi"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1149,9 +1336,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1163,7 +1354,9 @@ class TestPiBroker(unittest.TestCase):
 
     def test_abort_does_not_block_tail_reads_while_abort_rpc_waits(self) -> None:
         rpc = _BlockingAbortRpc()
-        rpc.events = [{"type": "message.delta", "turn_id": "turn-001", "delta": "working"}]
+        rpc.events = [
+            {"type": "message.delta", "turn_id": "turn-001", "delta": "working"}
+        ]
         broker = PiBroker(cwd="/tmp")
         broker.state = PiBrokerState(
             session_id="pi-session-001",
@@ -1179,12 +1372,18 @@ class TestPiBroker(unittest.TestCase):
         tail_server, tail_client = socket.socketpair()
         tail_client.settimeout(0.2)
         try:
-            key_thread = threading.Thread(target=broker._handle_conn, args=(key_server,), daemon=True)
+            key_thread = threading.Thread(
+                target=broker._handle_conn, args=(key_server,), daemon=True
+            )
             key_thread.start()
-            key_client.sendall((json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8"))
+            key_client.sendall(
+                (json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8")
+            )
             self.assertTrue(rpc.abort_started.wait(0.2))
 
-            tail_thread = threading.Thread(target=broker._handle_conn, args=(tail_server,), daemon=True)
+            tail_thread = threading.Thread(
+                target=broker._handle_conn, args=(tail_server,), daemon=True
+            )
             tail_thread.start()
             tail_client.sendall((json.dumps({"cmd": "tail"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(tail_client).decode("utf-8"))
@@ -1206,7 +1405,9 @@ class TestPiBroker(unittest.TestCase):
     def test_state_refreshes_last_turn_id_from_stream_events(self) -> None:
         rpc = _FakeRpc()
         rpc.state["busy"] = True
-        rpc.events = [{"type": "message.delta", "turn_id": "turn-002", "delta": "working"}]
+        rpc.events = [
+            {"type": "message.delta", "turn_id": "turn-002", "delta": "working"}
+        ]
         broker = PiBroker(cwd="/tmp")
         broker.state = PiBrokerState(
             session_id="pi-session-001",
@@ -1225,7 +1426,9 @@ class TestPiBroker(unittest.TestCase):
         # Socket state command returns cached values without blocking
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "state"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -1253,7 +1456,9 @@ class TestPiBroker(unittest.TestCase):
 
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "tail"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -1281,7 +1486,9 @@ class TestPiBroker(unittest.TestCase):
 
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "tail"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -1310,7 +1517,9 @@ class TestPiBroker(unittest.TestCase):
 
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "tail"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -1324,7 +1533,9 @@ class TestPiBroker(unittest.TestCase):
     def test_tail_returns_cached_output_without_blocking(self) -> None:
         rpc = _FakeRpc()
         rpc.stderr_lines = ["startup failed\n"]
-        rpc.events = [{"type": "message.delta", "turn_id": "turn-002", "delta": "working"}]
+        rpc.events = [
+            {"type": "message.delta", "turn_id": "turn-002", "delta": "working"}
+        ]
         broker = PiBroker(cwd="/tmp")
         broker.state = PiBrokerState(
             session_id="pi-session-001",
@@ -1340,7 +1551,9 @@ class TestPiBroker(unittest.TestCase):
         server_sock, client_sock = socket.socketpair()
         client_sock.settimeout(0.2)
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
             client_sock.sendall((json.dumps({"cmd": "tail"}) + "\n").encode("utf-8"))
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
@@ -1369,9 +1582,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1447,7 +1664,9 @@ class TestPiBroker(unittest.TestCase):
 
         self.assertIn("ui-req-1", broker.state.pending_ui_requests)
 
-    def test_stale_turn_end_does_not_clear_inflight_prompt_without_turn_id_yet(self) -> None:
+    def test_stale_turn_end_does_not_clear_inflight_prompt_without_turn_id_yet(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         rpc.events = [{"type": "turn_end", "turn_id": "turn-001", "toolResults": []}]
         broker = PiBroker(cwd="/tmp")
@@ -1472,7 +1691,9 @@ class TestPiBroker(unittest.TestCase):
         self.assertEqual(broker.state.prompt_sent_at, 1.0)
         self.assertIn("ui-req-1", broker.state.pending_ui_requests)
 
-    def test_idless_turn_end_clears_current_turn_only_when_no_turn_id_is_known(self) -> None:
+    def test_idless_turn_end_clears_current_turn_only_when_no_turn_id_is_known(
+        self,
+    ) -> None:
         rpc = _FakeRpc()
         rpc.events = [{"type": "turn_end", "toolResults": []}]
         broker = PiBroker(cwd="/tmp")
@@ -1522,7 +1743,9 @@ class TestPiBroker(unittest.TestCase):
         self.assertEqual(broker.state.last_turn_id, "turn-002")
         self.assertIn("ui-req-1", broker.state.pending_ui_requests)
 
-    def test_submit_terminal_prompt_marks_broker_busy_before_prompt_returns(self) -> None:
+    def test_submit_terminal_prompt_marks_broker_busy_before_prompt_returns(
+        self,
+    ) -> None:
         rpc = _BlockingPromptRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc)
         broker.state = PiBrokerState(
@@ -1535,7 +1758,9 @@ class TestPiBroker(unittest.TestCase):
             busy=False,
         )
 
-        thread = threading.Thread(target=broker._submit_terminal_prompt, args=("hello from tty",), daemon=True)
+        thread = threading.Thread(
+            target=broker._submit_terminal_prompt, args=("hello from tty",), daemon=True
+        )
         thread.start()
         self.assertTrue(rpc.prompt_started.wait(0.2))
         self.assertTrue(broker.state.busy)
@@ -1546,10 +1771,14 @@ class TestPiBroker(unittest.TestCase):
         rpc = _FakeRpc()
         broker = PiBroker(cwd="/tmp", rpc=rpc)
 
-        with tempfile.TemporaryDirectory() as td, patch("codoxear.pi_broker.SOCK_DIR", Path(td)), patch(
-            "codoxear.pi_broker.PI_SESSION_DIR", Path(td)
-        ), patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None), patch.object(
-            PiBroker, "_sock_server", side_effect=lambda: broker._stop.set()
+        with (
+            tempfile.TemporaryDirectory() as td,
+            patch("codoxear.pi_broker.SOCK_DIR", Path(td)),
+            patch("codoxear.pi_broker.PI_SESSION_DIR", Path(td)),
+            patch.object(PiBroker, "_bg_sync_loop", side_effect=lambda: None),
+            patch.object(
+                PiBroker, "_sock_server", side_effect=lambda: broker._stop.set()
+            ),
         ):
             broker.run(foreground=False)
 
@@ -1569,9 +1798,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "keys", "seq": "\\x1b"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1596,9 +1829,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "keys", "seq": "\\x03"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "keys", "seq": "\\x03"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1620,9 +1857,13 @@ class TestPiBroker(unittest.TestCase):
         )
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "shutdown"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "shutdown"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
 
@@ -1668,9 +1909,13 @@ class TestPiBrokerPromptGrace(unittest.TestCase):
         # Send a prompt via socket
         server_sock, client_sock = socket.socketpair()
         try:
-            thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
             thread.start()
-            client_sock.sendall((json.dumps({"cmd": "send", "text": "hello"}) + "\n").encode("utf-8"))
+            client_sock.sendall(
+                (json.dumps({"cmd": "send", "text": "hello"}) + "\n").encode("utf-8")
+            )
             resp = json.loads(_recv_line(client_sock).decode("utf-8"))
             thread.join(1.0)
             self.assertEqual(resp, {"queued": False, "queue_len": 0})
@@ -1682,7 +1927,9 @@ class TestPiBrokerPromptGrace(unittest.TestCase):
         # Pi reports not-busy (hasn't started the turn yet) — sync should preserve busy
         rpc._report_busy = False
         broker._sync_state_from_rpc()
-        self.assertTrue(broker.state.busy, "busy should be preserved during prompt grace period")
+        self.assertTrue(
+            broker.state.busy, "busy should be preserved during prompt grace period"
+        )
 
     def test_sync_clears_busy_when_pi_confirms_idle_after_grace(self) -> None:
         """Once Pi truly becomes idle (after grace period), sync should clear busy."""
@@ -1699,11 +1946,14 @@ class TestPiBrokerPromptGrace(unittest.TestCase):
         )
         # Simulate prompt sent long ago (grace period expired)
         import time
+
         broker.state.prompt_sent_at = time.monotonic() - 10.0
 
         rpc._report_busy = False
         broker._sync_state_from_rpc()
-        self.assertFalse(broker.state.busy, "busy should be cleared after grace period expires")
+        self.assertFalse(
+            broker.state.busy, "busy should be cleared after grace period expires"
+        )
 
 
 if __name__ == "__main__":

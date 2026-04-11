@@ -38,7 +38,9 @@ def test_ask_user_tool_call_and_result_emit_single_event() -> None:
         },
     ]
 
-    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
 
     assert len(events) == 1
     assert events[0]["type"] == "ask_user"
@@ -72,7 +74,9 @@ def test_ask_user_without_result_stays_unresolved() -> None:
         }
     ]
 
-    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
 
     assert len(events) == 1
     assert events[0]["type"] == "ask_user"
@@ -109,7 +113,9 @@ def test_ask_user_snake_case_flags_are_respected() -> None:
         }
     ]
 
-    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
 
     assert len(events) == 1
     assert events[0]["type"] == "ask_user"
@@ -154,7 +160,9 @@ def test_ask_user_multiselect_result_preserves_answer_list() -> None:
         },
     ]
 
-    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
 
     assert len(events) == 1
     assert events[0]["type"] == "ask_user"
@@ -186,7 +194,9 @@ def test_ask_user_without_usable_id_degrades_to_request_event() -> None:
         }
     ]
 
-    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries, include_system=True)
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
 
     assert len(events) == 1
     assert events[0]["type"] == "ask_user"
@@ -197,3 +207,191 @@ def test_ask_user_without_usable_id_degrades_to_request_event() -> None:
     assert events[0]["allow_multiple"] is True
     assert events[0]["resolved"] is False
     assert events[0]["ts"] == 0.0
+
+
+def test_ask_user_question_tool_call_and_result_emit_single_event() -> None:
+    entries = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_ask_q_1",
+                        "name": "AskUserQuestion",
+                        "arguments": {
+                            "questions": [
+                                {
+                                    "header": "Pi list",
+                                    "question": "How should Pi use ~/.pi/agent/models.json?",
+                                    "options": [
+                                        {
+                                            "label": "Provider-linked model list",
+                                            "description": "Provider drives the suggested model list.",
+                                        },
+                                        {
+                                            "label": "Defaults only",
+                                            "description": "Use models.json as a suggestion source only.",
+                                        },
+                                    ],
+                                    "multiSelect": False,
+                                }
+                            ],
+                            "metadata": {"source": "brainstorming"},
+                        },
+                    }
+                ],
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "toolResult",
+                "toolCallId": "call_ask_q_1",
+                "toolName": "AskUserQuestion",
+                "details": {
+                    "questions": [
+                        {
+                            "header": "Pi list",
+                            "question": "How should Pi use ~/.pi/agent/models.json?",
+                            "options": [
+                                {
+                                    "label": "Provider-linked model list",
+                                    "description": "Provider drives the suggested model list.",
+                                },
+                                {
+                                    "label": "Defaults only",
+                                    "description": "Use models.json as a suggestion source only.",
+                                },
+                            ],
+                            "multiSelect": False,
+                        }
+                    ],
+                    "answers": {
+                        "How should Pi use ~/.pi/agent/models.json?": "Provider-linked model list"
+                    },
+                    "action": "answered",
+                    "planMode": False,
+                    "usedPrefilledAnswers": False,
+                    "metadataSource": "brainstorming",
+                },
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "User has answered your questions: "
+                            '"How should Pi use ~/.pi/agent/models.json?"='
+                            '"Provider-linked model list". '
+                            "You can now continue with the user's answers in mind."
+                        ),
+                    }
+                ],
+            },
+        },
+    ]
+
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
+
+    assert len(events) == 1
+    assert events[0]["type"] == "ask_user"
+    assert events[0]["tool_call_id"] == "call_ask_q_1"
+    assert events[0]["question"] == "How should Pi use ~/.pi/agent/models.json?"
+    assert events[0]["context"] == "Pi list"
+    assert events[0]["questions"] == [
+        {
+            "header": "Pi list",
+            "question": "How should Pi use ~/.pi/agent/models.json?",
+            "options": [
+                {
+                    "label": "Provider-linked model list",
+                    "description": "Provider drives the suggested model list.",
+                },
+                {
+                    "label": "Defaults only",
+                    "description": "Use models.json as a suggestion source only.",
+                },
+            ],
+            "multiSelect": False,
+        }
+    ]
+    assert events[0]["options"] == [
+        {
+            "label": "Provider-linked model list",
+            "description": "Provider drives the suggested model list.",
+        },
+        {
+            "label": "Defaults only",
+            "description": "Use models.json as a suggestion source only.",
+        },
+    ]
+    assert events[0]["allow_multiple"] is False
+    assert events[0]["allow_freeform"] is True
+    assert events[0]["answer"] == "Provider-linked model list"
+    assert events[0]["answers_by_question"] == {
+        "How should Pi use ~/.pi/agent/models.json?": "Provider-linked model list"
+    }
+    assert events[0]["resolved"] is True
+
+
+def test_ask_user_question_rpc_custom_ui_failure_exposes_prompt_fallback() -> None:
+    entries = [
+        {
+            "type": "message",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "toolCall",
+                        "id": "call_ask_q_rpc_fallback",
+                        "name": "AskUserQuestion",
+                        "arguments": {
+                            "questions": [
+                                {
+                                    "header": "展示位置",
+                                    "question": "这个 `claude-todo-v2-state` 你希望优先展示在哪一层？",
+                                    "options": [
+                                        {"label": "Composer 上方 (Recommended)"},
+                                        {"label": "会话详情"},
+                                    ],
+                                    "multiSelect": False,
+                                }
+                            ]
+                        },
+                    }
+                ],
+            },
+        },
+        {
+            "type": "message",
+            "message": {
+                "role": "toolResult",
+                "toolCallId": "call_ask_q_rpc_fallback",
+                "toolName": "AskUserQuestion",
+                "isError": True,
+                "details": {},
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Cannot read properties of undefined (reading 'answers')",
+                    }
+                ],
+            },
+        },
+    ]
+
+    events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(
+        entries, include_system=True
+    )
+
+    assert len(events) == 1
+    assert events[0]["type"] == "ask_user"
+    assert (
+        events[0]["question"] == "这个 `claude-todo-v2-state` 你希望优先展示在哪一层？"
+    )
+    assert events[0]["context"] == "展示位置"
+    assert events[0]["resolved"] is True
+    assert events[0]["answer"] is None
+    assert events[0]["prompt_fallback_available"] is True

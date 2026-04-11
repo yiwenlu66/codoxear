@@ -4,10 +4,7 @@ import { createSessionUiStore } from "./store";
 
 vi.mock("../../lib/api", () => ({
   api: {
-    getSessionUiState: vi.fn(),
-    getDiagnostics: vi.fn(),
-    getQueue: vi.fn(),
-    getFiles: vi.fn(),
+    getWorkspace: vi.fn(),
   },
 }));
 
@@ -27,119 +24,100 @@ describe("createSessionUiStore", () => {
   }
 
   it("refreshes all workspace panels and emits loading transitions", async () => {
-    vi.mocked(api.getSessionUiState).mockResolvedValue({ requests: [{ id: "r1" }] });
-    vi.mocked(api.getDiagnostics).mockResolvedValue({ status: "ok" });
-    vi.mocked(api.getQueue).mockResolvedValue({ items: [] });
+    vi.mocked(api.getWorkspace).mockResolvedValue({ diagnostics: { status: "ok" }, queue: { items: [] } } as any);
 
     const store = createSessionUiStore();
-    await store.refresh("s1", { agentBackend: "pi" });
+    await store.refresh("s1");
 
-    expect(api.getSessionUiState).toHaveBeenCalledWith("s1");
-    expect(api.getFiles).not.toHaveBeenCalled();
+    expect(api.getWorkspace).toHaveBeenCalledWith("s1");
     expect(store.getState()).toEqual({
       sessionId: "s1",
-      requests: [{ id: "r1" }],
       diagnostics: { status: "ok" },
       queue: { items: [] },
-      files: [],
       loading: false,
     });
   });
 
-  it("skips ui_state fetches for non-pi sessions", async () => {
-    vi.mocked(api.getDiagnostics).mockResolvedValue({ status: "ok" });
-    vi.mocked(api.getQueue).mockResolvedValue({ items: [] });
+  it("refreshes workspace data the same way for non-pi sessions", async () => {
+    vi.mocked(api.getWorkspace).mockResolvedValue({ diagnostics: { status: "ok" }, queue: { items: [] } } as any);
 
     const store = createSessionUiStore();
     await store.refresh("s1", { agentBackend: "codex" });
 
-    expect(api.getSessionUiState).not.toHaveBeenCalled();
-    expect(api.getFiles).not.toHaveBeenCalled();
-    expect(store.getState().requests).toEqual([]);
+    expect(api.getWorkspace).toHaveBeenCalledWith("s1");
+    expect(store.getState().diagnostics).toEqual({ status: "ok" });
   });
 
   it("keeps same-session workspace data visible while a refresh is in flight", async () => {
-    vi.mocked(api.getSessionUiState).mockResolvedValueOnce({ requests: [{ id: "r1" }] });
-    vi.mocked(api.getDiagnostics).mockResolvedValueOnce({ todo_snapshot: { progress_text: "1/2 completed" } });
-    vi.mocked(api.getQueue).mockResolvedValueOnce({ items: [] });
+    vi.mocked(api.getWorkspace).mockResolvedValueOnce({
+      diagnostics: { todo_snapshot: { progress_text: "1/2 completed" } },
+      queue: { items: [] },
+    } as any);
 
-    const nextUiState = createDeferred<{ requests: Array<{ id: string }> }>();
-    const nextDiagnostics = createDeferred<Record<string, unknown>>();
-    const nextQueue = createDeferred<Record<string, unknown>>();
+    const nextWorkspace = createDeferred<Record<string, unknown>>();
 
-    vi.mocked(api.getSessionUiState).mockReturnValueOnce(nextUiState.promise as any);
-    vi.mocked(api.getDiagnostics).mockReturnValueOnce(nextDiagnostics.promise as any);
-    vi.mocked(api.getQueue).mockReturnValueOnce(nextQueue.promise as any);
+    vi.mocked(api.getWorkspace).mockReturnValueOnce(nextWorkspace.promise as any);
 
     const store = createSessionUiStore();
 
-    await store.refresh("s1", { agentBackend: "pi" });
+    await store.refresh("s1");
 
-    const refreshPromise = store.refresh("s1", { agentBackend: "pi" });
+    const refreshPromise = store.refresh("s1");
 
     expect(store.getState()).toEqual({
       sessionId: "s1",
-      requests: [{ id: "r1" }],
       diagnostics: { todo_snapshot: { progress_text: "1/2 completed" } },
       queue: { items: [] },
-      files: [],
       loading: true,
     });
 
-    nextUiState.resolve({ requests: [{ id: "r2" }] });
-    nextDiagnostics.resolve({ todo_snapshot: { progress_text: "2/2 completed" } });
-    nextQueue.resolve({ items: ["queued"] });
+    nextWorkspace.resolve({
+      diagnostics: { todo_snapshot: { progress_text: "2/2 completed" } },
+      queue: { items: ["queued"] },
+    });
     await refreshPromise;
 
     expect(store.getState()).toEqual({
       sessionId: "s1",
-      requests: [{ id: "r2" }],
       diagnostics: { todo_snapshot: { progress_text: "2/2 completed" } },
       queue: { items: ["queued"] },
-      files: [],
       loading: false,
     });
   });
 
   it("clears workspace data immediately when switching sessions", async () => {
-    vi.mocked(api.getSessionUiState).mockResolvedValueOnce({ requests: [{ id: "r1" }] });
-    vi.mocked(api.getDiagnostics).mockResolvedValueOnce({ todo_snapshot: { progress_text: "1/2 completed" } });
-    vi.mocked(api.getQueue).mockResolvedValueOnce({ items: [] });
+    vi.mocked(api.getWorkspace).mockResolvedValueOnce({
+      diagnostics: { todo_snapshot: { progress_text: "1/2 completed" } },
+      queue: { items: [] },
+    } as any);
 
-    const nextUiState = createDeferred<{ requests: Array<{ id: string }> }>();
-    const nextDiagnostics = createDeferred<Record<string, unknown>>();
-    const nextQueue = createDeferred<Record<string, unknown>>();
+    const nextWorkspace = createDeferred<Record<string, unknown>>();
 
-    vi.mocked(api.getSessionUiState).mockReturnValueOnce(nextUiState.promise as any);
-    vi.mocked(api.getDiagnostics).mockReturnValueOnce(nextDiagnostics.promise as any);
-    vi.mocked(api.getQueue).mockReturnValueOnce(nextQueue.promise as any);
+    vi.mocked(api.getWorkspace).mockReturnValueOnce(nextWorkspace.promise as any);
 
     const store = createSessionUiStore();
 
-    await store.refresh("s1", { agentBackend: "pi" });
+    await store.refresh("s1");
 
-    const refreshPromise = store.refresh("s2", { agentBackend: "pi" });
+    const refreshPromise = store.refresh("s2");
 
     expect(store.getState()).toEqual({
       sessionId: "s2",
-      requests: [],
       diagnostics: null,
       queue: null,
-      files: [],
       loading: true,
     });
 
-    nextUiState.resolve({ requests: [{ id: "r2" }] });
-    nextDiagnostics.resolve({ todo_snapshot: { progress_text: "0/1 completed" } });
-    nextQueue.resolve({ items: [] });
+    nextWorkspace.resolve({
+      diagnostics: { todo_snapshot: { progress_text: "0/1 completed" } },
+      queue: { items: [] },
+    });
     await refreshPromise;
 
     expect(store.getState()).toEqual({
       sessionId: "s2",
-      requests: [{ id: "r2" }],
       diagnostics: { todo_snapshot: { progress_text: "0/1 completed" } },
       queue: { items: [] },
-      files: [],
       loading: false,
     });
   });

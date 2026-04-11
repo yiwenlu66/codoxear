@@ -68,6 +68,10 @@ function createSessionsStore(initialState: any) {
       }
       listeners.forEach((listener) => listener());
     },
+    async refreshBootstrap() {
+      state = { ...state, bootstrapLoaded: true };
+      listeners.forEach((listener) => listener());
+    },
     select: vi.fn((sessionId: string) => {
       state = { ...state, activeSessionId: sessionId };
       listeners.forEach((listener) => listener());
@@ -91,9 +95,9 @@ describe("NewSessionDialog", () => {
     }
   });
 
-  it("creates a session and selects the matching broker pid", async () => {
+  it("creates a session and selects the returned session id", async () => {
     const { api } = await import("../../lib/api");
-    vi.mocked(api.createSession).mockResolvedValue({ broker_pid: 42, backend: "codex", ok: true });
+    vi.mocked(api.createSession).mockResolvedValue({ session_id: "new", broker_pid: 42, backend: "codex", ok: true } as any);
     vi.mocked(api.getSessionResumeCandidates).mockResolvedValue({
       exists: true,
       will_create: false,
@@ -103,11 +107,12 @@ describe("NewSessionDialog", () => {
     vi.mocked(api.renameSession).mockResolvedValue({ ok: true } as any);
     const sessionsStore = createSessionsStore({
       items: [
-        { session_id: "old", broker_pid: 11 },
-        { session_id: "new", broker_pid: 42 },
+        { session_id: "old" },
+        { session_id: "new" },
       ],
       activeSessionId: "old",
       loading: false,
+      bootstrapLoaded: true,
       recentCwds: ["/tmp/project"],
       tmuxAvailable: true,
       newSessionDefaults: {
@@ -205,9 +210,45 @@ describe("NewSessionDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("prefills the working directory from the active session", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [
+        { session_id: "active", cwd: "/Users/demo/current-project" },
+        { session_id: "other", cwd: "/Users/demo/other-project" },
+      ],
+      activeSessionId: "active",
+      loading: false,
+      bootstrapLoaded: true,
+      recentCwds: ["/tmp/project"],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "codex",
+        backends: {
+          codex: { provider_choice: "chatgpt" },
+          pi: {},
+        },
+      },
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
+    expect(cwdInput.value).toBe("/Users/demo/current-project");
+  });
+
   it("still selects and closes when rename fails after launch", async () => {
     const { api } = await import("../../lib/api");
-    vi.mocked(api.createSession).mockResolvedValue({ broker_pid: 42, backend: "codex", ok: true });
+    vi.mocked(api.createSession).mockResolvedValue({ session_id: "new", broker_pid: 42, backend: "codex", ok: true } as any);
     vi.mocked(api.getSessionResumeCandidates).mockResolvedValue({
       exists: true,
       will_create: false,
@@ -217,11 +258,12 @@ describe("NewSessionDialog", () => {
     vi.mocked(api.renameSession).mockRejectedValue(new Error("rename failed"));
     const sessionsStore = createSessionsStore({
       items: [
-        { session_id: "old", broker_pid: 11 },
-        { session_id: "new", broker_pid: 42 },
+        { session_id: "old" },
+        { session_id: "new" },
       ],
       activeSessionId: "old",
       loading: false,
+      bootstrapLoaded: true,
       recentCwds: ["/tmp/project"],
       tmuxAvailable: false,
       newSessionDefaults: {
@@ -277,9 +319,10 @@ describe("NewSessionDialog", () => {
       sessions: [],
     } as any);
     const sessionsStore = createSessionsStore({
-      items: [{ session_id: "pending", broker_pid: 11 }],
+      items: [{ session_id: "pending" }],
       activeSessionId: "pending",
       loading: false,
+      bootstrapLoaded: true,
       recentCwds: ["/tmp/project"],
       tmuxAvailable: false,
       newSessionDefaults: {
@@ -316,7 +359,7 @@ describe("NewSessionDialog", () => {
 
     expect(api.createSession).toHaveBeenCalledTimes(1);
 
-    resolveCreate({ broker_pid: 12, backend: "codex", ok: true });
+    resolveCreate({ session_id: "pending-new", broker_pid: 12, backend: "codex", ok: true });
     await flush();
   });
 
@@ -389,7 +432,7 @@ describe("NewSessionDialog", () => {
 
   it("falls back to preferNewest when no broker pid match is found", async () => {
     const { api } = await import("../../lib/api");
-    vi.mocked(api.createSession).mockResolvedValue({ broker_pid: 99, backend: "codex", ok: true });
+    vi.mocked(api.createSession).mockResolvedValue({ session_id: "newest", broker_pid: 99, backend: "codex", ok: true } as any);
     vi.mocked(api.getSessionResumeCandidates).mockResolvedValue({
       exists: true,
       will_create: false,
@@ -398,8 +441,8 @@ describe("NewSessionDialog", () => {
     } as any);
     const sessionsStore = createSessionsStore({
       items: [
-        { session_id: "newest", broker_pid: 11 },
-        { session_id: "older", broker_pid: 10 },
+        { session_id: "newest" },
+        { session_id: "older" },
       ],
       activeSessionId: "older",
       loading: false,
@@ -439,6 +482,173 @@ describe("NewSessionDialog", () => {
 
     expect(api.createSession).toHaveBeenCalled();
     expect(sessionsStore.getState().activeSessionId).toBe("newest");
+  });
+
+  it("updates Pi model suggestions when the provider changes", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [],
+      activeSessionId: null,
+      loading: false,
+      recentCwds: [],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "pi",
+        backends: {
+          pi: {
+            provider_choice: "macaron",
+            provider_choices: ["macaron", "anthropic"],
+            model: "gpt-5.4",
+            models: ["gpt-5.4", "gpt-5.3-codex"],
+            provider_models: {
+              macaron: ["gpt-5.4", "gpt-5.3-codex"],
+              anthropic: ["claude-sonnet-4-6", "claude-opus-4-6"],
+            },
+            reasoning_effort: "high",
+            reasoning_efforts: ["medium", "high"],
+          } as any,
+          codex: { provider_choice: "chatgpt" },
+        },
+      },
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const providerSelect = root.querySelector('select[name="providerChoice"]') as HTMLSelectElement;
+    expect(Array.from(root.querySelectorAll('#new-session-models option')).map((option) => option.getAttribute("value"))).toEqual([
+      "gpt-5.4",
+      "gpt-5.3-codex",
+    ]);
+
+    await setSelectValue(providerSelect, "anthropic");
+    await flush();
+
+    expect(Array.from(root.querySelectorAll('#new-session-models option')).map((option) => option.getAttribute("value"))).toEqual([
+      "claude-sonnet-4-6",
+      "claude-opus-4-6",
+    ]);
+  });
+
+  it("only replaces the Pi model value on provider change when the model input is untouched", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [],
+      activeSessionId: null,
+      loading: false,
+      recentCwds: [],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "pi",
+        backends: {
+          pi: {
+            provider_choice: "macaron",
+            provider_choices: ["macaron", "anthropic"],
+            model: "gpt-5.4",
+            models: ["gpt-5.4", "gpt-5.3-codex"],
+            provider_models: {
+              macaron: ["gpt-5.4", "gpt-5.3-codex"],
+              anthropic: ["claude-sonnet-4-6", "claude-opus-4-6"],
+            },
+            reasoning_effort: "high",
+            reasoning_efforts: ["medium", "high"],
+          } as any,
+          codex: { provider_choice: "chatgpt" },
+        },
+      },
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const modelInput = root.querySelector('input[name="model"]') as HTMLInputElement;
+    const providerSelect = root.querySelector('select[name="providerChoice"]') as HTMLSelectElement;
+
+    expect(modelInput.value).toBe("gpt-5.4");
+    await setSelectValue(providerSelect, "anthropic");
+    await flush();
+    expect(modelInput.value).toBe("claude-sonnet-4-6");
+
+    await setInputValue(modelInput, "custom-model");
+    await setSelectValue(providerSelect, "macaron");
+    await flush();
+    expect(modelInput.value).toBe("custom-model");
+  });
+
+  it("keeps Pi provider changes auto-updating the model until the user edits it after switching backends", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [],
+      activeSessionId: null,
+      loading: false,
+      recentCwds: [],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "codex",
+        backends: {
+          codex: { provider_choice: "chatgpt", model: "gpt-5" },
+          pi: {
+            provider_choice: "macaron",
+            provider_choices: ["macaron", "anthropic"],
+            model: "gpt-5.4",
+            models: ["gpt-5.4", "gpt-5.3-codex"],
+            provider_models: {
+              macaron: ["gpt-5.4", "gpt-5.3-codex"],
+              anthropic: ["claude-sonnet-4-6", "claude-opus-4-6"],
+            },
+            reasoning_effort: "high",
+            reasoning_efforts: ["medium", "high"],
+          } as any,
+        },
+      },
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const piTab = root.querySelector('[data-testid="backend-tab-pi"]') as HTMLButtonElement;
+    await act(async () => {
+      piTab.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    const modelInput = root.querySelector('input[name="model"]') as HTMLInputElement;
+    const providerSelect = root.querySelector('select[name="providerChoice"]') as HTMLSelectElement;
+
+    expect(modelInput.value).toBe("gpt-5.4");
+    await setSelectValue(providerSelect, "anthropic");
+    await flush();
+    expect(modelInput.value).toBe("claude-sonnet-4-6");
+
+    await setInputValue(modelInput, "custom-model");
+    await setSelectValue(providerSelect, "macaron");
+    await flush();
+    expect(modelInput.value).toBe("custom-model");
   });
 
   it("keeps the working directory when session defaults refresh while the dialog is open", async () => {

@@ -10,7 +10,7 @@ vi.mock("../../lib/api", () => ({
 
 describe("createMessagesStore", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("loads initial messages for a session and clears loading state", async () => {
@@ -51,6 +51,12 @@ describe("createMessagesStore", () => {
       },
       loadingOlderBySessionId: {
         s1: false,
+      },
+      loadingBySessionId: {
+        s1: false,
+      },
+      loadedBySessionId: {
+        s1: true,
       },
       loading: false,
     });
@@ -100,6 +106,14 @@ describe("createMessagesStore", () => {
         s1: false,
         s2: false,
       },
+      loadingBySessionId: {
+        s1: false,
+        s2: false,
+      },
+      loadedBySessionId: {
+        s1: true,
+        s2: true,
+      },
       loading: false,
     });
   });
@@ -115,11 +129,15 @@ describe("createMessagesStore", () => {
       hasOlderBySessionId: {},
       olderBeforeBySessionId: {},
       loadingOlderBySessionId: {},
+      loadingBySessionId: {
+        s1: false,
+      },
+      loadedBySessionId: {},
       loading: false,
     });
   });
 
-  it("ignores stale message responses", async () => {
+  it("ignores stale message responses when a newer explicit reload supersedes them", async () => {
     let resolveFirst: (v: any) => void;
     let resolveSecond: (v: any) => void;
     vi.mocked(api.listMessages)
@@ -127,16 +145,36 @@ describe("createMessagesStore", () => {
       .mockReturnValueOnce(new Promise((r) => { resolveSecond = r; }));
     const store = createMessagesStore();
 
-    const firstPromise = store.poll("s1");
-    const secondPromise = store.poll("s1");
+    const firstPromise = store.loadInitial("s1");
+    const secondPromise = store.loadInitial("s1");
 
-    resolveSecond!({ events: [{ id: "m2" }] });
+    resolveSecond!({ events: [{ id: "m2" }], offset: 2 });
     await secondPromise;
     expect(store.getState().bySessionId.s1).toEqual([{ id: "m2" }]);
 
-    resolveFirst!({ events: [{ id: "m1" }] });
+    resolveFirst!({ events: [{ id: "m1" }], offset: 1 });
     await firstPromise;
     expect(store.getState().bySessionId.s1).toEqual([{ id: "m2" }]);
+  });
+
+  it("does not start an overlapping poll while the same session is still loading", async () => {
+    let resolveFirst: (value: any) => void;
+    vi.mocked(api.listMessages).mockReturnValueOnce(new Promise((resolve) => {
+      resolveFirst = resolve;
+    }) as never);
+    const store = createMessagesStore();
+
+    const initialPromise = store.loadInitial("s1");
+    const pollPromise = store.poll("s1");
+
+    expect(api.listMessages).toHaveBeenCalledTimes(1);
+    expect(api.listMessages).toHaveBeenCalledWith("s1", true, undefined, undefined);
+
+    resolveFirst!({ events: [{ id: "m1" }], offset: 1 });
+    await Promise.all([initialPromise, pollPromise]);
+
+    expect(store.getState().bySessionId.s1).toEqual([{ id: "m1" }]);
+    expect(store.getState().offsetsBySessionId.s1).toBe(1);
   });
 
   it("passes the saved offset when polling", async () => {
@@ -150,6 +188,17 @@ describe("createMessagesStore", () => {
 
     expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", false, undefined, 4);
     expect(store.getState().bySessionId.s1).toEqual([{ id: "m1" }, { id: "m2" }]);
+  });
+
+  it("applies live payloads by replacing then appending messages", () => {
+    const store = createMessagesStore();
+
+    store.applyLive("s1", [{ id: "m1" } as any], { replace: true, offset: 4 });
+    store.applyLive("s1", [{ id: "m2" } as any], { replace: false, offset: 5 });
+
+    expect(store.getState().bySessionId.s1).toEqual([{ id: "m1" }, { id: "m2" }]);
+    expect(store.getState().offsetsBySessionId.s1).toBe(5);
+    expect(store.getState().loadedBySessionId.s1).toBe(true);
   });
 
   it("prepends older replay pages and tracks the next history cursor", async () => {

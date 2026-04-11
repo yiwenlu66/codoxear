@@ -2,6 +2,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppProviders } from "../../app/providers";
+import { api } from "../../lib/api";
 
 const { todoPanelRenderLog } = vi.hoisted(() => ({
   todoPanelRenderLog: [] as Array<{ expanded: boolean; progressText: unknown }>,
@@ -68,6 +69,31 @@ function createStore<TState extends object, TActions extends Record<string, (...
   };
 }
 
+function mockViewportMatchMedia(matches: boolean) {
+  const originalMatchMedia = window.matchMedia;
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(max-width: 880px)" ? matches : false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn().mockReturnValue(false),
+    })),
+  });
+
+  return () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+  };
+}
+
 function renderComposer(options: RenderComposerOptions = {}) {
   const {
     activeSessionId = "sess-1",
@@ -104,20 +130,33 @@ function renderComposer(options: RenderComposerOptions = {}) {
 
   root = document.createElement("div");
   document.body.appendChild(root);
-  render(
-    <AppProviders sessionsStore={sessionsStore as any} composerStore={composerStore as any} sessionUiStore={sessionUiStore as any}>
-      <Composer />
-    </AppProviders>,
-    root,
-  );
+  act(() => {
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} composerStore={composerStore as any} sessionUiStore={sessionUiStore as any}>
+        <Composer />
+      </AppProviders>,
+      root!,
+    );
+  });
 
   return { submit, sessionsStore, composerStore, sessionUiStore };
+}
+
+async function flushEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
+  });
 }
 
 describe("Composer", () => {
   afterEach(() => {
     window.localStorage.clear();
     todoPanelRenderLog.length = 0;
+    vi.restoreAllMocks();
     if (root) {
       render(null, root);
       root.remove();
@@ -167,6 +206,165 @@ describe("Composer", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it("shows Pi slash command suggestions and applies the highlighted command", async () => {
+    const getSessionCommands = vi.spyOn(api, "getSessionCommands").mockResolvedValue({
+      commands: [
+        { name: "reload", description: "Reload Pi runtime" },
+        { name: "resume", description: "Resume a session" },
+      ],
+    });
+    renderComposer({ draft: "/rel" });
+    const composerRoot = getRoot();
+
+    await flushEffects();
+    await act(async () => {
+      await getSessionCommands.mock.results[0]?.value;
+    });
+    await flushEffects();
+
+    expect(composerRoot.textContent).toContain("/reload");
+    expect(composerRoot.textContent).not.toContain("/resume");
+
+    const textarea = composerRoot.querySelector("textarea") as HTMLTextAreaElement;
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(event, "isComposing", { value: false });
+    act(() => {
+      textarea.dispatchEvent(event);
+    });
+
+    expect(textarea.value).toBe("/reload ");
+  });
+
+  it("does not request slash commands for non-pi sessions", async () => {
+    const getSessionCommands = vi.spyOn(api, "getSessionCommands").mockResolvedValue({
+      commands: [{ name: "reload" }],
+    });
+    renderComposer({
+      draft: "/re",
+      items: [{ session_id: "sess-1", agent_backend: "codex", busy: false }],
+    });
+
+    await flushEffects();
+
+    expect(getSessionCommands).not.toHaveBeenCalled();
+    expect(getRoot().querySelector("[data-testid='composer-command-menu']")).toBeNull();
+  });
+
+  it("caches Pi slash commands per session within the current page lifetime", async () => {
+    const getSessionCommands = vi.spyOn(api, "getSessionCommands").mockResolvedValue({
+      commands: [{ name: "reload", description: "Reload Pi runtime" }],
+    });
+    const { composerStore } = renderComposer({ draft: "/re" });
+
+    await flushEffects();
+    await act(async () => {
+      await getSessionCommands.mock.results[0]?.value;
+    });
+    await flushEffects();
+
+    expect(getSessionCommands).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      composerStore.setDraft("hello");
+    });
+    await flushEffects();
+
+    act(() => {
+      composerStore.setDraft("/re");
+    });
+    await flushEffects();
+
+    expect(getSessionCommands).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the input above a dedicated controls row for stacked mobile layout", () => {
+    renderComposer({ items: [] });
+    const composerRoot = getRoot();
+
+    const form = composerRoot.querySelector("form.composerShell");
+    const inputWrap = form?.querySelector(".composerInputWrap");
+    const controlsRow = form?.querySelector(".composerControlsRow");
+
+    expect(form?.firstElementChild).toBe(inputWrap ?? null);
+    expect(controlsRow).not.toBeNull();
+    expect(controlsRow?.querySelector(".composerAttachButton")).not.toBeNull();
+    expect(controlsRow?.querySelector(".composerQueueButton")).not.toBeNull();
+    expect(controlsRow?.querySelector(".sendButton")).not.toBeNull();
+  });
+
+  it("starts with two rows on mobile and caps textarea growth after the mobile max height", async () => {
+    const restoreMatchMedia = mockViewportMatchMedia(true);
+
+    try {
+      renderComposer({ items: [], draft: "" });
+      const composerRoot = getRoot();
+      const textarea = composerRoot.querySelector("textarea") as HTMLTextAreaElement;
+
+      expect(textarea.getAttribute("rows")).toBe("2");
+      expect(textarea.style.minHeight).toBe("56px");
+      expect(textarea.style.height).toBe("56px");
+
+      Object.defineProperty(textarea, "scrollHeight", {
+        configurable: true,
+        get: () => 240,
+      });
+
+      act(() => {
+        textarea.value = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n");
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await flushEffects();
+
+      expect(textarea.style.height).toBe("176px");
+      expect(textarea.style.overflowY).toBe("auto");
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("uploads a selected file for codex sessions and shows the attachment count", async () => {
+    const attachSessionFile = vi.spyOn(api, "attachSessionFile").mockResolvedValue({ ok: true, path: "/tmp/notes.txt" } as any);
+    renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "codex", busy: false }],
+      draft: "Hello",
+    });
+    const composerRoot = getRoot();
+
+    const attachButton = composerRoot.querySelector(".composerAttachButton") as HTMLButtonElement;
+    const fileInput = composerRoot.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+    Object.defineProperty(fileInput, "files", {
+      configurable: true,
+      value: [file],
+    });
+
+    act(() => {
+      attachButton.click();
+      fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await flushEffects();
+
+    expect(attachSessionFile).toHaveBeenCalledWith("sess-1", {
+      filename: "notes.txt",
+      data_b64: "aGVsbG8=",
+      attachment_index: 1,
+    });
+    expect(composerRoot.querySelector(".composerAttachBadge")?.textContent).toBe("1");
+  });
+
+  it("disables attachments for pi sessions", () => {
+    renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
+    });
+    const composerRoot = getRoot();
+
+    const attachButton = composerRoot.querySelector(".composerAttachButton") as HTMLButtonElement;
+
+    expect(attachButton.disabled).toBe(true);
+    expect(attachButton.title).toContain("Pi");
+  });
+
   it("shows a todo summary bar above the composer for a current pi session with todo items", () => {
     renderComposer({
       diagnostics: {
@@ -184,6 +382,90 @@ describe("Composer", () => {
     expect(composerRoot.querySelector(".composerTodoBar + [data-testid='composer-card']")).not.toBeNull();
     expect(composerRoot.querySelector(".composerTodoBar")?.nextElementSibling?.getAttribute("data-testid")).toBe("composer-card");
     expect(composerRoot.textContent).toContain("2/3 completed");
+  });
+
+  it("renders an aggregated Claude Todo V2 snapshot through the existing composer todo bar", async () => {
+    renderComposer({
+      diagnostics: {
+        todo_snapshot: {
+          available: true,
+          error: false,
+          progress_text: "1/2 completed",
+          items: [
+            {
+              id: "3",
+              title: "Explore current todo implementation",
+              description: "Inspect the existing web session todo feature.",
+              status: "in-progress",
+              owner: "Codex",
+              assigned_by: "team-lead",
+              source: "claude-todo-v2",
+            },
+            {
+              id: "1",
+              title: "Clarify compatibility goal",
+              status: "completed",
+              source: "claude-todo-v2",
+            },
+          ],
+        },
+      },
+    });
+    const composerRoot = getRoot();
+
+    expect(composerRoot.textContent).toContain("1/2 completed");
+
+    const toggle = composerRoot.querySelector(".composerTodoBarButton") as HTMLButtonElement | null;
+    expect(toggle).not.toBeNull();
+
+    toggle?.click();
+    await Promise.resolve();
+
+    expect(composerRoot.textContent).toContain("Explore current todo implementation");
+    expect(composerRoot.textContent).toContain("Inspect the existing web session todo feature.");
+    expect(composerRoot.textContent).toContain("Clarify compatibility goal");
+  });
+
+  it("renders a Claude Todo V2 current-state snapshot through the existing composer todo bar", async () => {
+    renderComposer({
+      diagnostics: {
+        todo_snapshot: {
+          available: true,
+          error: false,
+          progress_text: "1/2 completed",
+          items: [
+            {
+              id: "1",
+              title: "Explore project context for todo state rendering",
+              description: "Exploring project context for todo state rendering",
+              status: "completed",
+              source: "claude-todo-v2",
+            },
+            {
+              id: "2",
+              title: "Transition from design into implementation planning",
+              description: "Transitioning from design into implementation planning",
+              status: "not-started",
+              source: "claude-todo-v2",
+            },
+          ],
+        },
+      },
+    });
+    const composerRoot = getRoot();
+
+    expect(composerRoot.textContent).toContain("1/2 completed");
+
+    const toggle = composerRoot.querySelector(".composerTodoBarButton") as HTMLButtonElement | null;
+    expect(toggle).not.toBeNull();
+
+    toggle?.click();
+    await Promise.resolve();
+
+    expect(composerRoot.textContent).toContain("Explore project context for todo state rendering");
+    expect(composerRoot.textContent).toContain("Exploring project context for todo state rendering");
+    expect(composerRoot.textContent).toContain("Transition from design into implementation planning");
+    expect(composerRoot.textContent).toContain("not-started");
   });
 
   it("expands and collapses the todo panel when the summary bar is clicked", async () => {

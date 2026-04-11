@@ -1,3 +1,4 @@
+import json
 import threading
 import unittest
 from pathlib import Path
@@ -28,6 +29,12 @@ class _FakeClient:
         return b"fake-audio"
 
 
+class _SummaryFailingClient(_FakeClient):
+    def summarize(self, **kwargs):
+        self.summary_calls.append(kwargs)
+        raise ValueError("summary failed")
+
+
 class _FakeHLS:
     def __init__(self) -> None:
         self.append_calls = []
@@ -48,13 +55,21 @@ class _FakeHLS:
         self.reset_calls += 1
 
     def snapshot(self):
-        return {"segment_count": len(self.append_calls), "last_error": self.last_error, "media_sequence": 1}
+        return {
+            "segment_count": len(self.append_calls),
+            "last_error": self.last_error,
+            "media_sequence": 1,
+        }
 
 
 class TestDeliveryExtraction(unittest.TestCase):
     def test_dedupes_event_msg_and_response_item_with_same_text(self) -> None:
         rows = [
-            {"type": "event_msg", "payload": {"type": "agent_message", "message": "Working on it"}, "ts": 1.25},
+            {
+                "type": "event_msg",
+                "payload": {"type": "agent_message", "message": "Working on it"},
+                "ts": 1.25,
+            },
             {
                 "type": "response_item",
                 "payload": {
@@ -94,9 +109,14 @@ class TestDeliveryExtraction(unittest.TestCase):
             },
         ]
         messages = _extract_delivery_messages(rows)
-        self.assertEqual([item.message_class for item in messages], ["final_response", "final_response"])
+        self.assertEqual(
+            [item.message_class for item in messages],
+            ["final_response", "final_response"],
+        )
 
-    def test_dedupes_adjacent_assistant_messages_with_same_text_but_different_timestamps(self) -> None:
+    def test_dedupes_adjacent_assistant_messages_with_same_text_but_different_timestamps(
+        self,
+    ) -> None:
         rows = [
             {
                 "type": "response_item",
@@ -124,7 +144,9 @@ class TestDeliveryExtraction(unittest.TestCase):
         self.assertEqual(messages[0].message_class, "final_response")
         self.assertEqual(messages[0].text, "same final text")
 
-    def test_dedupes_final_response_when_response_item_only_adds_memory_citation(self) -> None:
+    def test_dedupes_final_response_when_response_item_only_adds_memory_citation(
+        self,
+    ) -> None:
         rows = [
             {
                 "type": "event_msg",
@@ -204,7 +226,12 @@ class TestVoicePushCoordinator(unittest.TestCase):
                                 "type": "message",
                                 "role": "assistant",
                                 "phase": "final_answer",
-                                "content": [{"type": "output_text", "text": "Longer final answer body"}],
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": "Longer final answer body",
+                                    }
+                                ],
                             },
                             "ts": 4.0,
                         }
@@ -263,13 +290,20 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "Long and verbose narration body"}],
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "Long and verbose narration body",
+                                }
+                            ],
                         },
                         "ts": 4.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[message]
+            )
             with coord._lock:
                 task = coord._queue[0]
             self.assertEqual(task.summary_word_target, 15)
@@ -282,9 +316,14 @@ class TestVoicePushCoordinator(unittest.TestCase):
             coord._append_prepared(prepared)
             self.assertEqual(len(fake_client.summary_calls), 1)
             self.assertEqual(fake_client.summary_calls[0]["target_words"], 15)
-            self.assertEqual(fake_client.summary_calls[0]["source_label"], "Narration updates")
+            self.assertEqual(
+                fake_client.summary_calls[0]["source_label"], "Narration updates"
+            )
             self.assertEqual(len(fake_client.speech_calls), 1)
-            self.assertEqual(fake_client.speech_calls[0]["text"], "From Repo. short narration summary")
+            self.assertEqual(
+                fake_client.speech_calls[0]["text"],
+                "From Repo. short narration summary",
+            )
             row = coord._delivery_ledger[message.message_id]
             self.assertEqual(row["summary_status"], "sent")
             self.assertEqual(row["summary_text"], "short narration summary")
@@ -321,7 +360,12 @@ class TestVoicePushCoordinator(unittest.TestCase):
                                 "type": "message",
                                 "role": "assistant",
                                 "phase": "final_answer",
-                                "content": [{"type": "output_text", "text": "Line one.\n\nLine two."}],
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": "Line one.\n\nLine two.",
+                                    }
+                                ],
                             },
                             "ts": 4.0,
                         }
@@ -465,13 +509,20 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "Long and verbose narration body"}],
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "Long and verbose narration body",
+                                }
+                            ],
                         },
                         "ts": 4.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[message]
+            )
             with coord._lock:
                 self.assertEqual(coord._queue, [])
             row = coord._delivery_ledger[message.message_id]
@@ -479,7 +530,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(row["narrated_status"], "skipped")
             self.assertEqual(row["last_error"], "no active listener")
 
-    def test_final_response_without_listener_skips_voice_but_keeps_summary(self) -> None:
+    def test_final_response_without_listener_skips_voice_but_keeps_summary(
+        self,
+    ) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()
             stop_event.set()
@@ -509,13 +562,20 @@ class TestVoicePushCoordinator(unittest.TestCase):
                             "type": "message",
                             "role": "assistant",
                             "phase": "final_answer",
-                            "content": [{"type": "output_text", "text": "Longer final answer body"}],
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "Longer final answer body",
+                                }
+                            ],
                         },
                         "ts": 4.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[message]
+            )
             with coord._lock:
                 self.assertEqual(coord._queue, [])
             row = coord._delivery_ledger[message.message_id]
@@ -524,6 +584,107 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(row["narrated_status"], "skipped")
             self.assertEqual(row["push_status"], "skipped")
             self.assertEqual(row["last_error"], "no active listener")
+
+    def test_mobile_push_uses_fixed_text_even_when_summary_fails(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _SummaryFailingClient()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": False,
+                    "tts_enabled_for_final_response": False,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.upsert_subscription(
+                subscription={
+                    "endpoint": "https://push.example.test/device/1",
+                    "keys": {"p256dh": "abc", "auth": "def"},
+                },
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)",
+                device_label="phone",
+                device_class="mobile",
+            )
+            message = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "phase": "final_answer",
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "Longer final answer body",
+                                }
+                            ],
+                        },
+                        "ts": 4.0,
+                    }
+                ]
+            )[0]
+
+            with patch(
+                "codoxear.voice_push.webpush", return_value=object()
+            ) as webpush_mock:
+                coord.observe_messages(
+                    session_id="sid-1", session_display_name="Repo", messages=[message]
+                )
+
+            payload = json.loads(webpush_mock.call_args.kwargs["data"])
+            self.assertEqual(payload["notification_text"], "回复完成")
+            row = coord._delivery_ledger[message.message_id]
+            self.assertEqual(row["summary_status"], "error")
+            self.assertEqual(row["narrated_status"], "skipped")
+            self.assertEqual(row["push_status"], "sent")
+
+    def test_send_test_push_notification_targets_enabled_mobile_subscriptions(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            coord.upsert_subscription(
+                subscription={
+                    "endpoint": "https://push.example.test/mobile/1",
+                    "keys": {"p256dh": "abc", "auth": "def"},
+                },
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)",
+                device_label="phone",
+                device_class="mobile",
+            )
+
+            with patch(
+                "codoxear.voice_push.webpush", return_value=object()
+            ) as webpush_mock:
+                payload = coord.send_test_push_notification(
+                    session_display_name="Codoxear test"
+                )
+
+            self.assertEqual(payload["sent_count"], 1)
+            sent = json.loads(webpush_mock.call_args.kwargs["data"])
+            self.assertEqual(sent["session_display_name"], "Codoxear test")
+            self.assertEqual(sent["notification_text"], "回复完成")
 
     def test_voice_mapping_is_stable_for_session_id(self) -> None:
         with TemporaryDirectory() as td:
@@ -537,7 +698,10 @@ class TestVoicePushCoordinator(unittest.TestCase):
                 delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
                 vapid_private_key_path=Path(td) / "vapid.pem",
             )
-            self.assertEqual(coord._voice_for_session("sid-1", "alpha"), coord._voice_for_session("sid-1", "beta"))
+            self.assertEqual(
+                coord._voice_for_session("sid-1", "alpha"),
+                coord._voice_for_session("sid-1", "beta"),
+            )
             self.assertNotEqual(coord._voice_for_session("sid-1", "alpha"), "")
 
     def test_voice_pool_contains_all_verified_audio_speech_voices(self) -> None:
@@ -545,11 +709,28 @@ class TestVoicePushCoordinator(unittest.TestCase):
 
         self.assertEqual(
             DEFAULT_VOICES,
-            ("alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse"),
+            (
+                "alloy",
+                "ash",
+                "ballad",
+                "cedar",
+                "coral",
+                "echo",
+                "fable",
+                "marin",
+                "nova",
+                "onyx",
+                "sage",
+                "shimmer",
+                "verse",
+            ),
         )
 
     def test_default_vapid_subject_prefers_tailscale_dns(self) -> None:
-        with patch("codoxear.voice_push.subprocess.check_output", return_value='{"Self":{"DNSName":"demo.tail.ts.net."}}'):
+        with patch(
+            "codoxear.voice_push.subprocess.check_output",
+            return_value='{"Self":{"DNSName":"demo.tail.ts.net."}}',
+        ):
             self.assertEqual(_default_vapid_subject(), "https://demo.tail.ts.net")
 
     def test_latest_narration_merges_pending_message_for_same_session(self) -> None:
@@ -580,7 +761,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "older narration"}],
+                            "content": [
+                                {"type": "output_text", "text": "older narration"}
+                            ],
                         },
                         "ts": 1.0,
                     }
@@ -593,20 +776,30 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "newer narration"}],
+                            "content": [
+                                {"type": "output_text", "text": "newer narration"}
+                            ],
                         },
                         "ts": 2.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[older])
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[newer])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[older]
+            )
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[newer]
+            )
             with coord._lock:
                 self.assertEqual(len(coord._queue), 1)
                 current = coord._queue[0]
                 self.assertEqual(current.message_class, "narration")
-                self.assertEqual(current.source_message_ids, (older.message_id, newer.message_id))
-                self.assertEqual(current.source_text, "older narration\n\nnewer narration")
+                self.assertEqual(
+                    current.source_message_ids, (older.message_id, newer.message_id)
+                )
+                self.assertEqual(
+                    current.source_text, "older narration\n\nnewer narration"
+                )
             older_row = coord._delivery_ledger[older.message_id]
             newer_row = coord._delivery_ledger[newer.message_id]
             self.assertEqual(older_row["summary_status"], "pending")
@@ -651,7 +844,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                             "payload": {
                                 "type": "message",
                                 "role": "assistant",
-                                "content": [{"type": "output_text", "text": "older narration"}],
+                                "content": [
+                                    {"type": "output_text", "text": "older narration"}
+                                ],
                             },
                             "ts": 1.0,
                         }
@@ -668,13 +863,17 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "newer narration"}],
+                            "content": [
+                                {"type": "output_text", "text": "newer narration"}
+                            ],
                         },
                         "ts": 2.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[newer])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[newer]
+            )
             coord._process_task(old_task)
             with coord._lock:
                 prepared = coord._prepared
@@ -686,7 +885,11 @@ class TestVoicePushCoordinator(unittest.TestCase):
                 current = coord._queue[0]
                 self.assertEqual(current.source_message_ids, (newer.message_id,))
                 self.assertEqual(current.source_text, "newer narration")
-            old_row = [row for row in coord._delivery_ledger.values() if row["preview_text"] == "older narration"][0]
+            old_row = [
+                row
+                for row in coord._delivery_ledger.values()
+                if row["preview_text"] == "older narration"
+            ][0]
             self.assertEqual(old_row["summary_status"], "sent")
             self.assertEqual(old_row["narrated_status"], "sent")
 
@@ -768,7 +971,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                     }
                 coord._queue = [queued]
                 coord._generating_task = generating
-                coord._prepared = GeneratedAnnouncement(task=prepared, audio_bytes=b"ready")
+                coord._prepared = GeneratedAnnouncement(
+                    task=prepared, audio_bytes=b"ready"
+                )
             payload = coord.listener_heartbeat(client_id="listener-1", enabled=False)
             self.assertEqual(payload["active_listener_count"], 0)
             self.assertEqual(fake_hls.reset_calls, 1)
@@ -814,13 +1019,20 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "Long and verbose narration body"}],
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": "Long and verbose narration body",
+                                }
+                            ],
                         },
                         "ts": 4.0,
                     }
                 ]
             )[0]
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[message]
+            )
             with coord._lock:
                 task = coord._queue.pop(0)
             coord.listener_heartbeat(client_id="listener-1", enabled=False)
@@ -864,7 +1076,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                             "type": "message",
                             "role": "assistant",
                             "phase": "final_answer",
-                            "content": [{"type": "output_text", "text": "older final response"}],
+                            "content": [
+                                {"type": "output_text", "text": "older final response"}
+                            ],
                         },
                         "ts": 1.0,
                     }
@@ -877,17 +1091,26 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "newer narration"}],
+                            "content": [
+                                {"type": "output_text", "text": "newer narration"}
+                            ],
                         },
                         "ts": 2.0,
                     }
                 ]
             )
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[older])
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=newer)
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=[older]
+            )
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=newer
+            )
             with coord._lock:
                 self.assertEqual(len(coord._queue), 2)
-                self.assertEqual([task.message_class for task in coord._queue], ["final_response", "narration"])
+                self.assertEqual(
+                    [task.message_class for task in coord._queue],
+                    ["final_response", "narration"],
+                )
                 self.assertEqual(coord._queue[1].source_text, "newer narration")
             old_row = coord._delivery_ledger[older.message_id]
             self.assertEqual(old_row["summary_status"], "sent")
@@ -988,8 +1211,12 @@ class TestVoicePushCoordinator(unittest.TestCase):
                 self.assertEqual(coord._generating_task.message_id, "gen-1")
                 self.assertEqual(coord._playing_task.message_id, "play-1")
                 self.assertEqual(len(coord._queue), 1)
-                self.assertEqual(coord._queue[0].source_message_ids, ("queue-1", "queue-2"))
-                self.assertEqual(coord._queue[0].source_text, "old queued\n\nnew queued")
+                self.assertEqual(
+                    coord._queue[0].source_message_ids, ("queue-1", "queue-2")
+                )
+                self.assertEqual(
+                    coord._queue[0].source_text, "old queued\n\nnew queued"
+                )
             old_row = coord._delivery_ledger["queue-1"]
             self.assertEqual(old_row["summary_status"], "pending")
             self.assertEqual(old_row["narrated_status"], "pending")
@@ -1026,7 +1253,9 @@ class TestVoicePushCoordinator(unittest.TestCase):
                             "type": "message",
                             "role": "assistant",
                             "phase": "final_answer",
-                            "content": [{"type": "output_text", "text": "older final response"}],
+                            "content": [
+                                {"type": "output_text", "text": "older final response"}
+                            ],
                         },
                         "ts": 1.0,
                     },
@@ -1035,18 +1264,29 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "newer narration"}],
+                            "content": [
+                                {"type": "output_text", "text": "newer narration"}
+                            ],
                         },
                         "ts": 2.0,
                     },
                 ]
             )
-            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=mixed)
+            coord.observe_messages(
+                session_id="sid-1", session_display_name="Repo", messages=mixed
+            )
             with coord._lock:
                 self.assertEqual(len(coord._queue), 2)
-                self.assertEqual([task.message_class for task in coord._queue], ["final_response", "narration"])
+                self.assertEqual(
+                    [task.message_class for task in coord._queue],
+                    ["final_response", "narration"],
+                )
                 self.assertEqual(coord._queue[1].source_text, "newer narration")
-            final_row = [row for row in coord._delivery_ledger.values() if row["message_class"] == "final_response"][0]
+            final_row = [
+                row
+                for row in coord._delivery_ledger.values()
+                if row["message_class"] == "final_response"
+            ][0]
             self.assertEqual(final_row["summary_status"], "sent")
             self.assertEqual(final_row["narrated_status"], "pending")
             self.assertEqual(final_row["last_error"], "")
@@ -1054,15 +1294,32 @@ class TestVoicePushCoordinator(unittest.TestCase):
     def test_hls_segments_are_written_in_sequence_order(self) -> None:
         with TemporaryDirectory() as td:
             stream = MergedHLSStream(root_dir=Path(td))
-            stream._store_segment(seq=2, segment_name="000002-b.ts", segment_path=Path(td) / "000002-b.ts", duration=1.0)
-            stream._store_segment(seq=1, segment_name="000001-a.ts", segment_path=Path(td) / "000001-a.ts", duration=1.0)
+            stream._store_segment(
+                seq=2,
+                segment_name="000002-b.ts",
+                segment_path=Path(td) / "000002-b.ts",
+                duration=1.0,
+            )
+            stream._store_segment(
+                seq=1,
+                segment_name="000001-a.ts",
+                segment_path=Path(td) / "000001-a.ts",
+                duration=1.0,
+            )
             playlist = stream.playlist_bytes().decode("utf-8")
-            self.assertLess(playlist.index("000001-a.ts"), playlist.index("000002-b.ts"))
+            self.assertLess(
+                playlist.index("000001-a.ts"), playlist.index("000002-b.ts")
+            )
 
     def test_hls_target_duration_tracks_longest_segment(self) -> None:
         with TemporaryDirectory() as td:
             stream = MergedHLSStream(root_dir=Path(td))
-            stream._store_segment(seq=1, segment_name="000001-a.ts", segment_path=Path(td) / "000001-a.ts", duration=27.2)
+            stream._store_segment(
+                seq=1,
+                segment_name="000001-a.ts",
+                segment_path=Path(td) / "000001-a.ts",
+                duration=27.2,
+            )
             playlist = stream.playlist_bytes().decode("utf-8")
             self.assertIn("#EXT-X-TARGETDURATION:28", playlist)
 
@@ -1071,7 +1328,12 @@ class TestVoicePushCoordinator(unittest.TestCase):
             stream = MergedHLSStream(root_dir=Path(td))
             segment_path = Path(td) / "000001-a.ts"
             segment_path.write_bytes(b"audio")
-            stream._store_segment(seq=1, segment_name="000001-a.ts", segment_path=segment_path, duration=1.0)
+            stream._store_segment(
+                seq=1,
+                segment_name="000001-a.ts",
+                segment_path=segment_path,
+                duration=1.0,
+            )
             self.assertIn("000001-a.ts", stream.playlist_bytes().decode("utf-8"))
             stream.reset()
             playlist = stream.playlist_bytes().decode("utf-8")
@@ -1094,10 +1356,16 @@ class TestVoicePushCoordinator(unittest.TestCase):
                     return 1.25
                 raise RuntimeError("invalid ffprobe duration: N/A")
 
-            with patch("codoxear.voice_push.shutil.which", return_value="/usr/bin/fake"), \
-                patch("codoxear.voice_push.subprocess.run", side_effect=fake_run), \
-                patch.object(stream, "_segment_duration_seconds", side_effect=fake_duration):
-                total = stream.append_audio(message_id=prefix, audio_bytes=b"fake-audio")
+            with (
+                patch("codoxear.voice_push.shutil.which", return_value="/usr/bin/fake"),
+                patch("codoxear.voice_push.subprocess.run", side_effect=fake_run),
+                patch.object(
+                    stream, "_segment_duration_seconds", side_effect=fake_duration
+                ),
+            ):
+                total = stream.append_audio(
+                    message_id=prefix, audio_bytes=b"fake-audio"
+                )
 
             self.assertEqual(total, 1.25)
             playlist = stream.playlist_bytes().decode("utf-8")

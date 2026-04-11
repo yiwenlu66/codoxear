@@ -48,6 +48,12 @@ function uniqueStrings(values: Array<string | null | undefined>) {
   return result;
 }
 
+function initialCwdForDialog(activeSessionCwd: string | null | undefined, recentCwds: string[]) {
+  const active = activeSessionCwd?.trim();
+  if (active) return active;
+  return recentCwds.find((cwd) => typeof cwd === "string" && cwd.trim())?.trim() || "";
+}
+
 function providerChoicesForDefaults(defaults: LaunchBackendDefaults) {
   return uniqueStrings([...(defaults.provider_choices ?? []), defaults.provider_choice, ...(defaults.model_providers ?? [])]);
 }
@@ -56,8 +62,24 @@ function reasoningChoicesForDefaults(defaults: LaunchBackendDefaults) {
   return uniqueStrings([...(defaults.reasoning_efforts ?? []), defaults.reasoning_effort]);
 }
 
-function modelChoicesForDefaults(defaults: LaunchBackendDefaults) {
+function modelChoicesForDefaults(defaults: LaunchBackendDefaults, backend: string, providerChoice: string) {
+  if (backend === "pi") {
+    const scopedModels = defaults.provider_models?.[providerChoice] ?? [];
+    const configuredModel = defaults.provider_choice === providerChoice ? defaults.model : undefined;
+    return uniqueStrings([...scopedModels, configuredModel]);
+  }
   return uniqueStrings([...(defaults.models ?? []), defaults.model]);
+}
+
+function defaultPiModelForProvider(defaults: LaunchBackendDefaults, providerChoice: string) {
+  const scopedModels = uniqueStrings(defaults.provider_models?.[providerChoice] ?? []);
+  if (defaults.provider_choice === providerChoice) {
+    const configuredModel = defaults.model?.trim();
+    if (configuredModel) {
+      return configuredModel;
+    }
+  }
+  return scopedModels[0] || "";
 }
 
 function resumeOptionLabel(item: SessionResumeCandidate) {
@@ -108,7 +130,7 @@ function ToggleField({
 }
 
 export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
-  const { newSessionDefaults, recentCwds, tmuxAvailable } = useSessionsStore();
+  const { activeSessionId, bootstrapLoaded, items, newSessionDefaults, recentCwds, tmuxAvailable } = useSessionsStore();
   const sessionsStoreApi = useSessionsStoreApi();
   const [cwd, setCwd] = useState("");
   const [backend, setBackend] = useState("codex");
@@ -152,10 +174,14 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
   const backendDefaults = newSessionDefaults?.backends?.[backend] || {};
   const providerChoices = useMemo(() => providerChoicesForDefaults(backendDefaults), [backendDefaults]);
   const reasoningChoices = useMemo(() => reasoningChoicesForDefaults(backendDefaults), [backendDefaults]);
-  const modelChoices = useMemo(() => modelChoicesForDefaults(backendDefaults), [backendDefaults]);
+  const modelChoices = useMemo(() => modelChoicesForDefaults(backendDefaults, backend, providerChoice), [backendDefaults, backend, providerChoice]);
   const supportsFast = !!backendDefaults.supports_fast;
   const supportsTmux = backend === "codex" && tmuxAvailable;
   const supportsWorktree = backend === "codex";
+  const activeSession = useMemo(
+    () => items.find((session) => session.session_id === activeSessionId) ?? null,
+    [activeSessionId, items],
+  );
   const sessionNamePlaceholder = baseName(cwd) || "session-name";
   const dialogTitleId = "new-session-dialog-title";
 
@@ -182,7 +208,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     const initialProviders = providerChoicesForDefaults(initialDefaults);
     const initialReasoning = reasoningChoicesForDefaults(initialDefaults);
     hydratedDefaultsRef.current = Object.keys(newSessionDefaults?.backends || {}).length > 0;
-    setCwd("");
+    setCwd(initialCwdForDialog(activeSession?.cwd, recentCwds));
     setBackend(initialBackend);
     setSessionName("");
     setModel(initialDefaults.model?.trim() || "");
@@ -199,7 +225,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     setSubmitting(false);
     setError("");
     setLookupError("");
-  }, [open, newSessionDefaults, tmuxAvailable]);
+  }, [activeSession?.cwd, newSessionDefaults, open, recentCwds, tmuxAvailable]);
 
   useEffect(() => {
     if (!open || hydratedDefaultsRef.current) {
@@ -256,6 +282,13 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
       setWorktreeBranch("");
     }
   }, [supportsWorktree]);
+
+  useEffect(() => {
+    if (!open || bootstrapLoaded) {
+      return;
+    }
+    sessionsStoreApi.refreshBootstrap().catch(() => undefined);
+  }, [bootstrapLoaded, open, sessionsStoreApi]);
 
   useEffect(() => {
     if (!open) return;
@@ -340,11 +373,11 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     );
 
     if (hasLaunchDefaults) {
-      touchedLaunchSettingsRef.current.model = true;
-      touchedLaunchSettingsRef.current.providerChoice = true;
-      touchedLaunchSettingsRef.current.reasoningEffort = true;
-      touchedLaunchSettingsRef.current.createInTmux = true;
-      touchedLaunchSettingsRef.current.fastMode = true;
+      touchedLaunchSettingsRef.current.model = false;
+      touchedLaunchSettingsRef.current.providerChoice = false;
+      touchedLaunchSettingsRef.current.reasoningEffort = false;
+      touchedLaunchSettingsRef.current.createInTmux = false;
+      touchedLaunchSettingsRef.current.fastMode = false;
     }
     setBackend(nextBackend);
     setProviderChoice(nextDefaults.provider_choice?.trim() || nextProviders[0] || "");
@@ -356,6 +389,15 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     setUseWorktree(false);
     setWorktreeBranch("");
     setError("");
+  };
+
+  const applyProviderChoice = (nextProviderChoice: string) => {
+    markLaunchSettingTouched("providerChoice");
+    setProviderChoice(nextProviderChoice);
+    if (backend !== "pi" || touchedLaunchSettingsRef.current.model) {
+      return;
+    }
+    setModel(defaultPiModelForProvider(backendDefaults, nextProviderChoice));
   };
 
   return (
@@ -432,14 +474,28 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
                   service_tier: supportsFast && fastMode ? "fast" : undefined,
                 });
                 await sessionsStoreApi.refresh();
-                let createdSession = sessionsStoreApi
-                  .getState()
-                  .items.find((session) => session.broker_pid === response.broker_pid);
+                const returnedSessionId = String(response.session_id || "").trim();
+                let createdSession = returnedSessionId
+                  ? sessionsStoreApi
+                    .getState()
+                    .items.find((session) => session.session_id === returnedSessionId)
+                  : undefined;
+                if (!createdSession) {
+                  createdSession = sessionsStoreApi
+                    .getState()
+                    .items.find((session) => session.broker_pid === response.broker_pid);
+                }
                 if (!createdSession) {
                   await sessionsStoreApi.refresh({ preferNewest: true });
                   const state = sessionsStoreApi.getState();
-                  createdSession = state.items.find((session) => session.session_id === state.activeSessionId) ?? state.items[0];
+                  createdSession = (returnedSessionId
+                    ? state.items.find((session) => session.session_id === returnedSessionId)
+                    : undefined)
+                    ?? state.items.find((session) => session.broker_pid === response.broker_pid)
+                    ?? state.items.find((session) => session.session_id === state.activeSessionId)
+                    ?? state.items[0];
                 }
+                await sessionsStoreApi.refreshBootstrap();
                 if (createdSession && sessionName.trim()) {
                   try {
                     await api.renameSession(createdSession.session_id, sessionName.trim());
@@ -595,12 +651,10 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
                       name="providerChoice"
                       value={providerChoice}
                       onInput={(event) => {
-                        markLaunchSettingTouched("providerChoice");
-                        setProviderChoice(event.currentTarget.value);
+                        applyProviderChoice(event.currentTarget.value);
                       }}
                       onChange={(event) => {
-                        markLaunchSettingTouched("providerChoice");
-                        setProviderChoice(event.currentTarget.value);
+                        applyProviderChoice(event.currentTarget.value);
                       }}
                     >
                       {providerChoices.map((value) => (

@@ -3,6 +3,7 @@ export interface LaunchBackendDefaults {
   provider_choices?: string[];
   model?: string | null;
   models?: string[];
+  provider_models?: Record<string, string[]>;
   model_provider?: string | null;
   model_providers?: string[];
   preferred_auth_method?: string | null;
@@ -19,6 +20,8 @@ export interface NewSessionDefaults {
 
 export interface SessionSummary {
   session_id: string;
+  thread_id?: string | null;
+  resume_session_id?: string | null;
   title?: string;
   alias?: string;
   first_user_message?: string;
@@ -41,20 +44,30 @@ export interface SessionSummary {
   dependency_session_id?: string | null;
   blocked?: boolean;
   snoozed?: boolean;
+  historical?: boolean;
 }
 
 export interface SessionsResponse {
-  app_version?: string;
   sessions: SessionSummary[];
+  remaining_by_group?: Record<string, number>;
+  omitted_group_count?: number;
+}
+
+export interface SessionBootstrapResponse {
   recent_cwds?: string[];
   cwd_groups?: Record<string, CwdGroupMeta>;
   new_session_defaults?: NewSessionDefaults;
   tmux_available?: boolean;
-  tmux_session_name?: string;
+}
+
+export interface SessionDetailsResponse {
+  ok?: boolean;
+  session: SessionSummary;
 }
 
 export interface CreateSessionResponse {
   ok?: boolean;
+  session_id?: string;
   backend?: string;
   broker_pid?: number;
 }
@@ -77,6 +90,10 @@ export interface EditSessionResponse extends RenameSessionResponse {
 export interface CwdGroupMeta {
   label?: string;
   collapsed?: boolean;
+}
+
+export interface LoginResponse {
+  ok?: boolean;
 }
 
 export interface EditCwdGroupResponse {
@@ -171,8 +188,11 @@ export interface MessageEvent {
   role?: string;
   ts?: number;
   text?: string;
+  display?: boolean;
   name?: string;
   summary?: string;
+  subject?: string;
+  description?: string;
   details?: Record<string, unknown>;
   is_error?: boolean;
   answer?: string | string[];
@@ -185,6 +205,11 @@ export interface MessageEvent {
   output?: string | null;
   progress_text?: string;
   operation?: string;
+  custom_type?: string;
+  task_id?: string;
+  task_list_id?: string;
+  owner?: string;
+  assigned_by?: string;
   items?: TodoSnapshotItem[];
   options?: Array<{ label?: string; value?: string; title?: string; description?: string } | string>;
   allow_freeform?: boolean;
@@ -196,7 +221,10 @@ export interface MessageEvent {
   };
   question?: string;
   context?: string;
+  questions?: Array<{ header?: string; question?: string; options?: Array<{ label?: string; description?: string; preview?: string }>; multiSelect?: boolean }>;
+  answers_by_question?: Record<string, string | string[]>;
   toolName?: string;
+  prompt_fallback_available?: boolean;
   [key: string]: unknown;
 }
 
@@ -216,6 +244,7 @@ export interface SessionUiRequest {
   message?: string;
   question?: string;
   context?: string;
+  prefill?: string;
   value?: string | string[];
   confirmed?: boolean;
   cancelled?: boolean;
@@ -227,6 +256,42 @@ export interface SessionUiRequest {
 
 export interface SessionUiStateResponse {
   requests: SessionUiRequest[];
+}
+
+export interface LiveSessionResponse {
+  ok?: boolean;
+  session_id?: string;
+  offset?: number;
+  busy?: boolean;
+  requests_version?: string;
+  events: MessageEvent[];
+  requests?: SessionUiRequest[];
+}
+
+export interface WorkspaceResponse {
+  ok?: boolean;
+  session_id?: string;
+  diagnostics?: Record<string, unknown> | null;
+  queue?: {
+    items?: Array<string | { text?: string }>;
+  } | null;
+}
+
+export interface SessionCommand {
+  name: string;
+  description?: string;
+  source?: string;
+}
+
+export interface SessionCommandsResponse {
+  commands: SessionCommand[];
+}
+
+export interface AttachmentInjectResponse {
+  ok?: boolean;
+  path?: string;
+  inject_text?: string;
+  broker?: Record<string, unknown>;
 }
 
 export interface SessionFileListEntry {
@@ -280,6 +345,10 @@ export interface TodoSnapshotItem {
   title?: string;
   status?: string;
   description?: string;
+  owner?: string;
+  assigned_by?: string;
+  updated_at?: string;
+  source?: string;
 }
 
 export interface TodoSnapshot {

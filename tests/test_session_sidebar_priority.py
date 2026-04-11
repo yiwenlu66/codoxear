@@ -33,10 +33,18 @@ def _make_manager() -> SessionManager:
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_cwd_groups = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._include_historical_sessions = False
     return mgr
 
 
-def _session(*, sid: str, start_ts: float, last_chat_ts: float | None = None, owned: bool = False) -> Session:
+def _write_jsonl(path: Path, objs: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(obj) + "\n" for obj in objs), encoding="utf-8")
+
+
+def _session(
+    *, sid: str, start_ts: float, last_chat_ts: float | None = None, owned: bool = False
+) -> Session:
     return Session(
         session_id=sid,
         thread_id=sid,
@@ -91,11 +99,196 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertIsNone(rows[0]["snooze_until"])
         self.assertIsNone(rows[0]["dependency_session_id"])
 
+    def test_list_sessions_includes_historical_resumable_sessions_when_no_live_sessions(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr._include_historical_sessions = True
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            codex_log = root / "rollout-2026-04-10T01-00-00-history-a.jsonl"
+            pi_root = root / "pi-native"
+            pi_session = pi_root / "--repo--" / "2026-04-10T01-00-00-000Z_pi.jsonl"
+            _write_jsonl(
+                codex_log,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "resume-codex",
+                            "cwd": "/repo",
+                            "timestamp": "2026-04-10T01:00:00Z",
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            _write_jsonl(
+                pi_session,
+                [
+                    {
+                        "type": "session",
+                        "id": "resume-pi",
+                        "cwd": "/repo",
+                        "timestamp": "2026-04-10T01:00:05Z",
+                    }
+                ],
+            )
+
+            with (
+                patch("codoxear.server._iter_session_logs", return_value=[codex_log]),
+                patch("codoxear.server.PI_NATIVE_SESSIONS_DIR", pi_root),
+            ):
+                rows = mgr.list_sessions()
+
+        self.assertEqual(
+            [(row["agent_backend"], row.get("resume_session_id")) for row in rows],
+            [("pi", "resume-pi"), ("codex", "resume-codex")],
+        )
+        self.assertTrue(all(row.get("historical") is True for row in rows))
+        self.assertTrue(
+            all(str(row["session_id"]).startswith("history:") for row in rows)
+        )
+        self.assertEqual({row["cwd"] for row in rows}, {"/repo"})
+
+    def test_list_sessions_skips_historical_entry_when_matching_live_session_exists(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr._include_historical_sessions = True
+        live = Session(
+            session_id="live-broker",
+            thread_id="resume-codex",
+            broker_pid=100,
+            codex_pid=200,
+            agent_backend="codex",
+            owned=False,
+            start_ts=time.time() - 20,
+            cwd="/repo",
+            log_path=None,
+            sock_path=Path("/tmp/live-broker.sock"),
+        )
+        mgr._sessions = {live.session_id: live}
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            live_log = root / "rollout-2026-04-10T01-00-00-live.jsonl"
+            other_log = root / "rollout-2026-04-10T01-00-01-other.jsonl"
+            pi_root = root / "pi-native"
+            _write_jsonl(
+                live_log,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "resume-codex",
+                            "cwd": "/repo",
+                            "timestamp": "2026-04-10T01:00:00Z",
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            _write_jsonl(
+                other_log,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "resume-other",
+                            "cwd": "/repo",
+                            "timestamp": "2026-04-10T01:00:01Z",
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+
+            with (
+                patch(
+                    "codoxear.server._iter_session_logs",
+                    return_value=[other_log, live_log],
+                ),
+                patch("codoxear.server.PI_NATIVE_SESSIONS_DIR", pi_root),
+            ):
+                rows = mgr.list_sessions()
+
+        self.assertEqual(
+            [row["session_id"] for row in rows],
+            ["history:codex:resume-other", "live-broker"],
+        )
+        self.assertEqual(rows[0]["resume_session_id"], "resume-other")
+        self.assertTrue(rows[0]["historical"])
+        self.assertFalse(rows[1].get("historical", False))
+
+    def test_list_sessions_dedupes_live_rows_for_same_backend_thread(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        newest = Session(
+            session_id="broker-new",
+            thread_id="shared-thread",
+            broker_pid=100,
+            codex_pid=200,
+            agent_backend="pi",
+            backend="pi",
+            owned=True,
+            start_ts=now - 20,
+            cwd="/tmp/repo",
+            log_path=None,
+            sock_path=Path("/tmp/broker-new.sock"),
+            last_chat_ts=now - 5,
+        )
+        duplicate = Session(
+            session_id="broker-old",
+            thread_id="shared-thread",
+            broker_pid=101,
+            codex_pid=201,
+            agent_backend="pi",
+            backend="pi",
+            owned=True,
+            start_ts=now - 200,
+            cwd="/tmp/repo",
+            log_path=None,
+            sock_path=Path("/tmp/broker-old.sock"),
+            last_chat_ts=now - 100,
+        )
+        distinct = Session(
+            session_id="broker-other",
+            thread_id="other-thread",
+            broker_pid=102,
+            codex_pid=202,
+            agent_backend="pi",
+            backend="pi",
+            owned=True,
+            start_ts=now - 40,
+            cwd="/tmp/repo",
+            log_path=None,
+            sock_path=Path("/tmp/broker-other.sock"),
+            last_chat_ts=now - 10,
+        )
+        mgr._sessions = {
+            newest.session_id: newest,
+            duplicate.session_id: duplicate,
+            distinct.session_id: distinct,
+        }
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual(
+            [row["session_id"] for row in rows],
+            ["broker-new", "broker-other"],
+        )
+        self.assertEqual(
+            [row["thread_id"] for row in rows],
+            ["shared-thread", "other-thread"],
+        )
+
     def test_delete_session_kills_terminal_owned_and_clears_dependents(self) -> None:
         mgr = _make_manager()
         now = time.time()
         blocked = _session(sid="blocked", start_ts=now - 100, last_chat_ts=now - 10)
-        target = _session(sid="target", start_ts=now - 200, last_chat_ts=now - 20, owned=False)
+        target = _session(
+            sid="target", start_ts=now - 200, last_chat_ts=now - 20, owned=False
+        )
         mgr._sessions = {blocked.session_id: blocked, target.session_id: target}
         mgr._sidebar_meta = {
             "blocked": {"priority_offset": 0.0, "dependency_session_id": "target"},
@@ -125,7 +318,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
     def test_kill_session_falls_back_to_pid_teardown_when_socket_is_dead(self) -> None:
         mgr = _make_manager()
-        s = _session(sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False)
+        s = _session(
+            sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False
+        )
         mgr._sessions = {s.session_id: s}
 
         def _sock_call(*args, **kwargs):
@@ -133,7 +328,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         mgr._sock_call = _sock_call  # type: ignore[method-assign]
 
-        with patch.object(mgr, "_kill_session_via_pids", return_value=True) as kill_via_pids:
+        with patch.object(
+            mgr, "_kill_session_via_pids", return_value=True
+        ) as kill_via_pids:
             ok = mgr.kill_session("target")
 
         self.assertTrue(ok)
@@ -141,7 +338,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
     def test_kill_session_via_pids_prunes_stale_metadata_without_signals(self) -> None:
         mgr = _make_manager()
-        s = _session(sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False)
+        s = _session(
+            sid="target", start_ts=time.time() - 10, last_chat_ts=None, owned=False
+        )
 
         with patch("codoxear.server._process_group_alive", return_value=False):
             with patch("codoxear.server._pid_alive", return_value=False):
@@ -175,10 +374,14 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(mgr._aliases["edit"], "old name")
         self.assertEqual(mgr._sidebar_meta["edit"]["priority_offset"], 0.1)
 
-    def test_list_sessions_uses_start_ts_when_log_has_no_sidebar_relevant_message(self) -> None:
+    def test_list_sessions_uses_start_ts_when_log_has_no_sidebar_relevant_message(
+        self,
+    ) -> None:
         mgr = _make_manager()
         mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
-        with unittest.mock.patch("codoxear.server._last_conversation_ts_from_tail", return_value=None):
+        with patch(
+            "codoxear.server._last_conversation_ts_from_tail", return_value=None
+        ):
             s = _session(sid="nologmsg", start_ts=123.0, last_chat_ts=None)
             s.log_path = Path("/tmp/fake-rollout.jsonl")
             mgr._sessions = {s.session_id: s}
@@ -189,23 +392,42 @@ class TestSessionSidebarPriority(unittest.TestCase):
                     return True
                 return original_exists(path_obj)
 
-            with unittest.mock.patch("pathlib.Path.exists", _exists):
+            with patch("pathlib.Path.exists", _exists):
                 rows = mgr.list_sessions()
 
         self.assertEqual(rows[0]["updated_ts"], 123.0)
 
-    def test_list_sessions_backfills_updated_ts_from_large_preexisting_log(self) -> None:
+    def test_list_sessions_backfills_updated_ts_from_large_preexisting_log(
+        self,
+    ) -> None:
         mgr = _make_manager()
         mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout-2026-03-17T00-00-00-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee.jsonl"
+            log_path = (
+                Path(td)
+                / "rollout-2026-03-17T00-00-00-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee.jsonl"
+            )
             now = time.time()
             user_ts = now - 30
             log_path.write_text(
                 "\n".join(
                     [
-                        json.dumps({"type": "session_meta", "payload": {"id": "current", "source": "cli"}}),
-                        json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "real turn"}, "ts": user_ts}),
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "current", "source": "cli"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "real turn",
+                                },
+                                "ts": user_ts,
+                            }
+                        ),
                         json.dumps(
                             {
                                 "type": "response_item",
@@ -217,7 +439,13 @@ class TestSessionSidebarPriority(unittest.TestCase):
                                 "ts": now - 20,
                             }
                         ),
-                        json.dumps({"type": "response_item", "payload": {"type": "reasoning"}, "ts": now - 10}),
+                        json.dumps(
+                            {
+                                "type": "response_item",
+                                "payload": {"type": "reasoning"},
+                                "ts": now - 10,
+                            }
+                        ),
                     ]
                 )
                 + "\n",
@@ -235,12 +463,26 @@ class TestSessionSidebarPriority(unittest.TestCase):
         mgr = _make_manager()
         mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
         with tempfile.TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout-2026-03-17T00-00-00-ffffffff-ffff-ffff-ffff-ffffffffffff.jsonl"
+            log_path = (
+                Path(td)
+                / "rollout-2026-03-17T00-00-00-ffffffff-ffff-ffff-ffff-ffffffffffff.jsonl"
+            )
             log_path.write_text(
                 "\n".join(
                     [
-                        json.dumps({"type": "session_meta", "payload": {"id": "current", "source": "cli"}}),
-                        json.dumps({"type": "event_msg", "payload": {"type": "agent_reasoning"}, "ts": time.time()}),
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {"id": "current", "source": "cli"},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {"type": "agent_reasoning"},
+                                "ts": time.time(),
+                            }
+                        ),
                     ]
                 )
                 + "\n",
@@ -250,7 +492,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
             current.log_path = log_path
             mgr._sessions = {current.session_id: current}
 
-            with patch("codoxear.server._last_conversation_ts_from_tail", return_value=None) as backfill:
+            with patch(
+                "codoxear.server._last_conversation_ts_from_tail", return_value=None
+            ) as backfill:
                 rows1 = mgr.list_sessions()
                 rows2 = mgr.list_sessions()
 
@@ -268,7 +512,10 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         mgr.list_sessions()
 
-        self.assertEqual(mgr.recent_cwds(limit=4), [str(Path("/tmp/current").resolve(strict=False)), "/repo/ended"])
+        self.assertEqual(
+            mgr.recent_cwds(limit=4),
+            [str(Path("/tmp/current").resolve(strict=False)), "/repo/ended"],
+        )
 
     def test_list_sessions_exposes_model_and_reasoning_effort(self) -> None:
         mgr = _make_manager()
@@ -305,7 +552,10 @@ class TestSessionSidebarPriority(unittest.TestCase):
         now = time.time()
         current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
         with tempfile.TemporaryDirectory() as td:
-            log_path = Path(td) / "rollout-2026-03-17T00-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            log_path = (
+                Path(td)
+                / "rollout-2026-03-17T00-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            )
             log_path.write_text(
                 "\n".join(
                     [
@@ -356,7 +606,10 @@ class TestSessionSidebarPriority(unittest.TestCase):
             groups_path.write_text(
                 json.dumps(
                     {
-                        truthy_string_cwd: {"label": "Truthy String", "collapsed": "false"},
+                        truthy_string_cwd: {
+                            "label": "Truthy String",
+                            "collapsed": "false",
+                        },
                         zero_string_cwd: {"label": "Zero String", "collapsed": "0"},
                         integer_cwd: {"label": "Integer", "collapsed": 1},
                         unlabeled_cwd: {"collapsed": "true"},
@@ -372,9 +625,18 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(
             mgr.cwd_groups_get(),
             {
-                str(Path(truthy_string_cwd).resolve(strict=False)): {"label": "Truthy String", "collapsed": False},
-                str(Path(zero_string_cwd).resolve(strict=False)): {"label": "Zero String", "collapsed": False},
-                str(Path(integer_cwd).resolve(strict=False)): {"label": "Integer", "collapsed": False},
+                str(Path(truthy_string_cwd).resolve(strict=False)): {
+                    "label": "Truthy String",
+                    "collapsed": False,
+                },
+                str(Path(zero_string_cwd).resolve(strict=False)): {
+                    "label": "Zero String",
+                    "collapsed": False,
+                },
+                str(Path(integer_cwd).resolve(strict=False)): {
+                    "label": "Integer",
+                    "collapsed": False,
+                },
             },
         )
 
@@ -385,7 +647,10 @@ class TestSessionSidebarPriority(unittest.TestCase):
             groups_path = Path(td) / "cwd_groups.json"
             groups_path.write_text("{not valid json\n", encoding="utf-8")
 
-            with patch("codoxear.server.CWD_GROUPS_PATH", groups_path), patch("codoxear.server.LOG.warning") as warning:
+            with (
+                patch("codoxear.server.CWD_GROUPS_PATH", groups_path),
+                patch("codoxear.server.LOG.warning") as warning,
+            ):
                 mgr._load_cwd_groups()
 
         self.assertEqual(mgr.cwd_groups_get(), {})
@@ -409,7 +674,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
         mgr._recent_cwds = {"/tmp/project/bar": time.time()}
         cwd_raw = "/tmp/project/foo/../bar"
         expected_normalized = str(Path(cwd_raw).resolve(strict=False))
-        normalized, meta = mgr.cwd_group_set(cwd=cwd_raw, label=" My Project ", collapsed=True)
+        normalized, meta = mgr.cwd_group_set(
+            cwd=cwd_raw, label=" My Project ", collapsed=True
+        )
 
         self.assertEqual(normalized, expected_normalized)
         self.assertEqual(meta, {"label": "My Project", "collapsed": True})
@@ -424,7 +691,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
         expected_normalized = str(Path(cwd_raw.strip()).resolve(strict=False))
         mgr._recent_cwds = {expected_normalized: time.time()}
 
-        normalized, meta = mgr.cwd_group_set(cwd=cwd_raw, label="Trimmed", collapsed=True)
+        normalized, meta = mgr.cwd_group_set(
+            cwd=cwd_raw, label="Trimmed", collapsed=True
+        )
 
         self.assertEqual(normalized, expected_normalized)
         self.assertEqual(meta, {"label": "Trimmed", "collapsed": True})
@@ -447,7 +716,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
     def test_cwd_group_set_returns_meta_copy(self) -> None:
         mgr = _make_manager()
         mgr._recent_cwds = {"/tmp/project": time.time()}
-        normalized, meta = mgr.cwd_group_set(cwd="/tmp/project", label="Project", collapsed=True)
+        normalized, meta = mgr.cwd_group_set(
+            cwd="/tmp/project", label="Project", collapsed=True
+        )
 
         meta["label"] = "Mutated"
         meta["collapsed"] = False
@@ -481,15 +752,22 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(meta, {"label": "Foo", "collapsed": True})
         self.assertEqual(mgr.cwd_groups_get()[normalized], meta)
 
-    def test_cwd_group_set_drops_empty_default_entries_from_serialized_store(self) -> None:
+    def test_cwd_group_set_drops_empty_default_entries_from_serialized_store(
+        self,
+    ) -> None:
         mgr = _make_manager()
         cwd = "/tmp/foo"
         with tempfile.TemporaryDirectory() as td:
             groups_path = Path(td) / "cwd_groups.json"
             mgr._recent_cwds = {cwd: time.time()}
-            mgr._save_cwd_groups = SessionManager._save_cwd_groups.__get__(mgr, SessionManager)
+            mgr._save_cwd_groups = SessionManager._save_cwd_groups.__get__(
+                mgr, SessionManager
+            )
 
-            with patch("codoxear.server.APP_DIR", Path(td)), patch("codoxear.server.CWD_GROUPS_PATH", groups_path):
+            with (
+                patch("codoxear.server.APP_DIR", Path(td)),
+                patch("codoxear.server.CWD_GROUPS_PATH", groups_path),
+            ):
                 normalized, _ = mgr.cwd_group_set(cwd=cwd, label="Foo", collapsed=True)
                 self.assertEqual(
                     json.loads(groups_path.read_text(encoding="utf-8")),
@@ -498,7 +776,9 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
                 mgr.cwd_group_set(cwd=cwd, label="", collapsed=False)
 
-                self.assertEqual(json.loads(groups_path.read_text(encoding="utf-8")), {})
+                self.assertEqual(
+                    json.loads(groups_path.read_text(encoding="utf-8")), {}
+                )
 
         self.assertNotIn(normalized, mgr.cwd_groups_get())
 
@@ -506,7 +786,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         mgr = _make_manager()
         mgr._recent_cwds = {"/tmp": time.time()}
         with self.assertRaisesRegex(ValueError, "collapsed must be a boolean"):
-            mgr.cwd_group_set(cwd="/tmp", collapsed="not-a-bool") # type: ignore
+            mgr.cwd_group_set(cwd="/tmp", collapsed="not-a-bool")  # type: ignore
 
     def test_cwd_group_set_rejects_non_string_label(self) -> None:
         mgr = _make_manager()
@@ -519,16 +799,22 @@ class TestSessionSidebarPriority(unittest.TestCase):
         mgr = _make_manager()
         mgr._recent_cwds = {"/tmp/known": time.time()}
 
-        with self.assertRaisesRegex(ValueError, "cwd is not a known session working directory"):
+        with self.assertRaisesRegex(
+            ValueError, "cwd is not a known session working directory"
+        ):
             mgr.cwd_group_set(cwd="/tmp/unknown", label="Unknown")
 
     def test_cwd_group_set_accepts_known_live_session_cwd(self) -> None:
         mgr = _make_manager()
-        current = _session(sid="current", start_ts=time.time() - 10, last_chat_ts=time.time() - 5)
+        current = _session(
+            sid="current", start_ts=time.time() - 10, last_chat_ts=time.time() - 5
+        )
         mgr._sessions = {current.session_id: current}
         expected_normalized = str(Path(current.cwd).resolve(strict=False))
 
-        normalized, meta = mgr.cwd_group_set(cwd=current.cwd, label="Current", collapsed=True)
+        normalized, meta = mgr.cwd_group_set(
+            cwd=current.cwd, label="Current", collapsed=True
+        )
 
         self.assertEqual(normalized, expected_normalized)
         self.assertEqual(meta, {"label": "Current", "collapsed": True})
