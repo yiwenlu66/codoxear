@@ -2272,7 +2272,16 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v5.${sid}`;
+          return `codexweb.cache.v6.${sid}`;
+        }
+
+        function countChatEvents(events) {
+          let count = 0;
+          for (const ev of events || []) {
+            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            count += 1;
+          }
+          return count;
         }
 
         function normalizeCacheEvent(ev) {
@@ -3390,8 +3399,22 @@
              }
 	
 		            offset = data.offset;
-              setCacheMeta(sid, { threadId: tid || activeThreadId, logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
+              const nextHasOlder = Boolean(data.has_older);
+              if (reqOffset === 0) {
+                olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+                setOlderState({ hasMore: nextHasOlder, isLoading: false });
+              } else {
+                const polledEventCount = countChatEvents(evs);
+                if (polledEventCount > 0) olderBefore += polledEventCount;
+              }
+              setCacheMeta(sid, {
+                threadId: tid || activeThreadId,
+                logPath: activeLogPath || lp || null,
+                offset,
+                olderBefore,
+                hasOlder: nextHasOlder,
+              });
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
             } else {
@@ -3495,9 +3518,11 @@
           if (pollGen !== gen || selected !== sid) return null;
           const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
           const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
-          const nextOlderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+          const nextOlderBeforeBase = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
           const nextHasOlder = Boolean(data.has_older);
           const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;
+          const nextOlderBefore =
+            rerender || identityChanged ? nextOlderBeforeBase : Math.max(Math.max(0, Number(olderBefore) || 0), nextOlderBeforeBase);
 
           activeLogPath = nextLogPath;
           activeThreadId = nextThreadId;

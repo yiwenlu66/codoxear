@@ -73,7 +73,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_cache_metadata_tracks_thread_identity(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("return `codexweb.cache.v5.${sid}`;", source)
+        self.assertIn("return `codexweb.cache.v6.${sid}`;", source)
         start = source.index("function setCacheMeta(")
         end = source.index("function cacheMatchesSession(", start)
         block = source[start:end]
@@ -81,12 +81,22 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("cache.events = [];", block)
         self.assertIn("cache.offset = 0;", block)
 
+    def test_polling_advances_tail_skip_cursor_when_live_events_append(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function pollMessages(")
+        end = source.index("async function pollLoop()", start)
+        block = source[start:end]
+        self.assertIn("const polledEventCount = countChatEvents(evs);", block)
+        self.assertIn("if (polledEventCount > 0) olderBefore += polledEventCount;", block)
+        self.assertIn("hasOlder: nextHasOlder,", block)
+
     def test_refresh_init_rerenders_when_thread_or_log_identity_changes(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function refreshInitPageState(")
         end = source.index("async function jumpToLatest()", start)
         block = source[start:end]
         self.assertIn("const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;", block)
+        self.assertIn("Math.max(Math.max(0, Number(olderBefore) || 0), nextOlderBeforeBase)", block)
         self.assertIn("if (rerender || identityChanged) {", block)
         self.assertIn("else replaceCacheEvents(sid, []);", block)
 
