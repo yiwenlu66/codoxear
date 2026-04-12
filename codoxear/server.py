@@ -3070,7 +3070,10 @@ class SessionManager:
             # Prefer metadata file written by sessiond.
             meta_path = sock.with_suffix(".json")
             if not meta_path.exists():
-                raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+                # A stale socket can outlive its metadata sidecar briefly; skip it so one bad
+                # entry does not break session discovery for the whole UI.
+                _unlink_quiet(sock)
+                continue
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if not isinstance(meta, dict):
                 raise ValueError(f"invalid metadata json for socket {sock}")
@@ -3532,7 +3535,12 @@ class SessionManager:
             sock = s.sock_path
         meta_path = sock.with_suffix(".json")
         if not meta_path.exists():
-            raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+            with self._lock:
+                self._sessions.pop(session_id, None)
+            self._clear_deleted_session_state(session_id)
+            _unlink_quiet(sock)
+            _unlink_quiet(meta_path)
+            return
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not isinstance(meta, dict):
             raise ValueError(f"invalid metadata json for socket {sock}")
