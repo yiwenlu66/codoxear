@@ -1402,6 +1402,32 @@ select {
         background: #ffffff;
         object-fit: contain;
       }
+      .filePdf {
+        display: none;
+        flex: 1 1 auto;
+        min-height: 360px;
+        width: 100%;
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        border-radius: 12px;
+        background: #ffffff;
+      }
+      .fileBlockedNotice {
+        min-height: 100%;
+        padding: 20px 22px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 10px;
+        color: var(--text);
+      }
+      .fileBlockedNotice .title {
+        font-weight: 600;
+      }
+      .fileBlockedNotice p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.5;
+      }
       .fileStatus {
         flex: 0 0 auto;
         min-height: 0;

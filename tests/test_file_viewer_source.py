@@ -171,6 +171,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("syncFileDiffSelectionMode()", source)
         self.assertIn("? { enabled: false }", source)
         self.assertIn('function bindFileTouchPress(button, handler)', source)
+        self.assertIn('function bindFileTouchClick(button, handler)', source)
         self.assertIn('button.addEventListener("pointerdown"', source)
         self.assertIn('"touchstart"', source)
         self.assertIn("let sawPointerTouchAt = 0;", source)
@@ -184,9 +185,10 @@ class TestFileViewerSource(unittest.TestCase):
 
     def test_delete_backspace_can_remove_selection_in_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('function deleteActiveFileSelection()', source)
-        self.assertIn('editor.executeEdits("file-touch-delete"', source)
-        self.assertIn('(key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file"', source)
+        self.assertIn('const allowEditorDelete = (key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file";', source)
+        self.assertIn("if (allowEditorDelete) {", source)
+        self.assertNotIn('editor.executeEdits("file-touch-delete"', source)
+        self.assertIn("if (fileTouchSelectMode) resetFileTouchSelectionState();", source)
 
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -200,18 +202,53 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
+        self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("cancelPendingFileOpen();\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
+    def test_file_viewer_handles_pdf_and_download_only_kinds(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn('const filePdf = el("iframe", { id: "filePdf", class: "filePdf", title: "PDF preview" });', source)
+        self.assertIn('res.kind === "pdf"', source)
+        self.assertIn('res.kind === "download_only"', source)
+        self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
+        self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
+        self.assertIn(".filePdf {", css_source)
+        self.assertIn(".fileBlockedNotice {", css_source)
+
+    def test_attach_limit_comes_from_server_constant(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("window.CODOXEAR_ATTACH_MAX_BYTES", source)
+        self.assertIn("const ATTACH_UPLOAD_MAX_BYTES = (() => {", source)
+        self.assertIn("Attach file (max", source)
+        self.assertIn("/inject_file", source)
+        self.assertIn('throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);', source)
+
+    def test_clickable_file_extensions_include_pdf_and_archives(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('"pdf"', source)
+        self.assertIn('"zip"', source)
+        self.assertIn('"tar"', source)
+
     def test_touch_paste_tries_direct_clipboard_before_bridge(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("navigator.clipboard", source)
         self.assertIn("readText", source)
         self.assertIn('setToast("pasted")', source)
-        self.assertIn('filePasteDialog.style.display = "flex";', source)
+        self.assertIn('function pasteFromClipboardIntoActiveFile()', source)
+        self.assertIn('setToast("paste unavailable")', source)
+        self.assertIn('setToast("clipboard empty")', source)
+        self.assertIn('bindFileTouchClick(fileTouchPasteBtn, () => {', source)
+        self.assertNotIn('bindFileTouchPress(fileTouchPasteBtn, () => {', source)
+
+    def test_touch_copy_uses_click_activation_not_press_wrapper(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('bindFileTouchClick(fileTouchCopyBtn, () => {', source)
+        self.assertNotIn('bindFileTouchPress(fileTouchCopyBtn, () => {', source)
 
 
 if __name__ == "__main__":

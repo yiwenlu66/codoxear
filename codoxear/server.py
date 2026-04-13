@@ -117,6 +117,7 @@ def _strip_url_prefix(prefix: str, path: str) -> str | None:
 APP_DIR = _default_app_dir()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
+STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
 STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
@@ -189,8 +190,59 @@ GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
 GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
-ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(10 * 1024 * 1024)))
+ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(16 * 1024 * 1024)))
+ATTACH_UPLOAD_BODY_MAX_BYTES = int(
+    os.environ.get(
+        "CODEX_WEB_ATTACH_BODY_MAX_BYTES",
+        str((4 * ((ATTACH_UPLOAD_MAX_BYTES + 2) // 3)) + (64 * 1024)),
+    )
+)
 FILE_LIST_IGNORED_DIRS = frozenset({".git", ".hg", ".mypy_cache", ".pytest_cache", ".svn", "__pycache__", "build", "dist", "node_modules", "venv", ".venv"})
+MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
+TEXTUAL_EXTENSIONS = frozenset(
+    {
+        "bash",
+        "c",
+        "cc",
+        "cfg",
+        "conf",
+        "cpp",
+        "css",
+        "csv",
+        "diff",
+        "go",
+        "h",
+        "hpp",
+        "htm",
+        "html",
+        "ini",
+        "java",
+        "js",
+        "json",
+        "jsonl",
+        "log",
+        "md",
+        "markdown",
+        "mdown",
+        "mkd",
+        "patch",
+        "py",
+        "rs",
+        "scss",
+        "sh",
+        "sql",
+        "svg",
+        "toml",
+        "ts",
+        "tsx",
+        "txt",
+        "xml",
+        "yaml",
+        "yml",
+        "zsh",
+    }
+)
+TEXTUAL_FILENAMES = frozenset({"dockerfile", "license", "makefile", "readme"})
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
@@ -482,10 +534,19 @@ def _image_content_type(path: Path, raw: bytes) -> str | None:
     return None
 
 
+def _pdf_content_type(path: Path, raw: bytes) -> str | None:
+    if path.suffix.lower() == ".pdf" or raw.startswith(b"%PDF-"):
+        return "application/pdf"
+    return None
+
+
 def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
     ctype = _image_content_type(path, raw)
     if ctype is not None:
         return "image", ctype
+    ctype = _pdf_content_type(path, raw)
+    if ctype is not None:
+        return "pdf", ctype
     return "text", None
 
 
@@ -651,6 +712,18 @@ def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
 _PASSWORD_CACHE: str | None = None
 
 
+@dataclass(frozen=True)
+class ClientFileView:
+    kind: str
+    size: int
+    content_type: str | None = None
+    text: str | None = None
+    editable: bool = False
+    version: str | None = None
+    blocked_reason: str | None = None
+    viewer_max_bytes: int | None = None
+
+
 def _require_password() -> str:
     global _PASSWORD_CACHE
     if _PASSWORD_CACHE is not None:
@@ -697,11 +770,52 @@ def _file_content_version(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _file_extension(path: Path) -> str:
+    suffix = str(path.suffix or "").lower()
+    if not suffix.startswith("."):
+        return ""
+    return suffix[1:]
+
+
+def _markdown_kind(path: Path) -> str:
+    return "markdown" if _file_extension(path) in MARKDOWN_EXTENSIONS else "text"
+
+
+def _path_looks_textual(path: Path) -> bool:
+    ext = _file_extension(path)
+    if ext in TEXTUAL_EXTENSIONS:
+        return True
+    return str(path.name or "").strip().lower() in TEXTUAL_FILENAMES
+
+
+def _looks_like_text_bytes(raw: bytes) -> bool:
+    if b"\x00" in raw:
+        return False
+    for b in raw:
+        if b < 32 and b not in (9, 10, 12, 13, 27):
+            return False
+    return True
+
+
 def _decode_text_for_client(raw: bytes) -> tuple[str, bool]:
     try:
         return raw.decode("utf-8"), True
     except UnicodeDecodeError:
         return raw.decode("utf-8", errors="replace"), False
+
+
+def _decode_text_view_for_client(path: Path, raw: bytes) -> tuple[str, bool, str] | None:
+    if b"\x00" in raw:
+        return None
+    try:
+        text = raw.decode("utf-8")
+        editable = True
+    except UnicodeDecodeError:
+        if not _path_looks_textual(path) and not _looks_like_text_bytes(raw):
+            return None
+        text = raw.decode("utf-8", errors="replace")
+        editable = False
+    return text, editable, _file_content_version(raw)
 
 
 def _read_text_file_for_client(path: Path, *, max_bytes: int) -> tuple[str, int, bool, str]:
@@ -1223,7 +1337,7 @@ def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_byte
         raise ValueError("file bytes required")
     data = bytes(raw)
     if len(data) > int(max_bytes):
-        raise ValueError("file too large")
+        raise ValueError(f"file too large (max {int(max_bytes)} bytes)")
     safe_name = _safe_filename(filename, default="file")
     subdir = (UPLOAD_DIR / session_id).resolve()
     subdir.mkdir(parents=True, exist_ok=True)
@@ -1411,50 +1525,65 @@ def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
 
 
 def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
-    if not path_obj.exists():
-        raise FileNotFoundError("file not found")
-    if not path_obj.is_file():
+    view = _read_client_file_view(path_obj)
+    if view.kind == "directory":
         raise ValueError("path is not a file")
-    try:
-        raw = path_obj.read_bytes()
-    except PermissionError as e:
-        raise PermissionError("permission denied") from e
-    size = len(raw)
-    if size > FILE_READ_MAX_BYTES:
-        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
-    kind, image_ctype = _file_kind(path_obj, raw)
-    if kind != "image" and b"\x00" in raw:
+    if view.kind == "download_only":
+        if view.blocked_reason == "too_large":
+            raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
         raise ValueError("binary file not supported")
-    return raw, size, kind, image_ctype
+    raw = path_obj.read_bytes()
+    return raw, view.size, view.kind, view.content_type
 
 
 def _inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
+    view = _read_client_file_view(path_obj)
+    return view.size, view.kind, view.content_type
+
+
+def _read_client_file_view(path_obj: Path) -> ClientFileView:
     if not path_obj.exists():
         raise FileNotFoundError("file not found")
+    if path_obj.is_dir():
+        return ClientFileView(kind="directory", size=0)
     if not path_obj.is_file():
         raise ValueError("path is not a file")
     try:
-        size = path_obj.stat().st_size
+        size = int(path_obj.stat().st_size)
         with path_obj.open("rb") as f:
-            prefix = f.read(64)
+            prefix = f.read(4096)
     except PermissionError as e:
         raise PermissionError("permission denied") from e
-    kind, image_ctype = _file_kind(path_obj, prefix)
-    if kind == "image":
-        return size, kind, image_ctype
-    if b"\x00" in prefix:
-        raise ValueError("binary file not supported")
+    kind, content_type = _file_kind(path_obj, prefix)
+    if kind in {"image", "pdf"}:
+        return ClientFileView(kind=kind, size=size, content_type=content_type)
     if size > FILE_READ_MAX_BYTES:
-        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
-    return size, kind, image_ctype
+        return ClientFileView(
+            kind="download_only",
+            size=size,
+            blocked_reason="too_large",
+            viewer_max_bytes=FILE_READ_MAX_BYTES,
+        )
+    raw = path_obj.read_bytes()
+    text_payload = _decode_text_view_for_client(path_obj, raw)
+    if text_payload is None:
+        return ClientFileView(kind="download_only", size=size, blocked_reason="binary")
+    text, editable, version = text_payload
+    return ClientFileView(
+        kind=_markdown_kind(path_obj),
+        size=size,
+        text=text,
+        editable=editable,
+        version=version,
+    )
 
 
 def _read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
-    size, kind, image_ctype = _inspect_path_metadata(path_obj)
-    if kind == "image":
-        return kind, size, image_ctype, None
+    view = _read_client_file_view(path_obj)
+    if view.kind in {"image", "pdf", "download_only", "directory"}:
+        return view.kind, view.size, view.content_type, None
     raw = path_obj.read_bytes()
-    return kind, size, image_ctype, raw
+    return view.kind, view.size, view.content_type, raw
 
 
 def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
@@ -1470,11 +1599,8 @@ def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
 
 
 def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
-    if not path_obj.exists():
-        raise FileNotFoundError("file not found")
-    if path_obj.is_dir():
-        return 0, "directory", None
-    return _inspect_path_metadata(path_obj)
+    view = _read_client_file_view(path_obj)
+    return view.size, view.kind, view.content_type
 
 
 def _download_disposition(path_obj: Path) -> str:
@@ -4304,11 +4430,14 @@ def _read_static_bytes(path: Path) -> bytes:
     data = path.read_bytes()
     if path.suffix != ".html":
         return data
-    placeholder = STATIC_ASSET_VERSION_PLACEHOLDER.encode("ascii")
-    if placeholder not in data:
-        return data
-    version = _static_asset_version(path.parent).encode("ascii")
-    return data.replace(placeholder, version)
+    replacements = {
+        STATIC_ASSET_VERSION_PLACEHOLDER.encode("ascii"): _static_asset_version(path.parent).encode("ascii"),
+        STATIC_ATTACH_MAX_BYTES_PLACEHOLDER.encode("ascii"): str(ATTACH_UPLOAD_MAX_BYTES).encode("ascii"),
+    }
+    for placeholder, value in replacements.items():
+        if placeholder in data:
+            data = data.replace(placeholder, value)
+    return data
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -4699,7 +4828,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
                 try:
-                    kind, size, image_ctype, raw = _read_text_or_image(p)
+                    view = _read_client_file_view(p)
                 except PermissionError as e:
                     _json_response(self, 403, {"error": str(e)})
                     return
@@ -4710,34 +4839,63 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
                     pass
-                if kind == "image":
+                if view.kind == "image":
                     _json_response(
                         self,
                         200,
                         {
                             "ok": True,
                             "kind": "image",
-                            "content_type": image_ctype,
+                            "content_type": view.content_type,
                             "path": str(p),
                             "rel": str(rel),
-                            "size": int(size),
+                            "size": int(view.size),
                             "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
                         },
                     )
                     return
-                text, _size2, editable, version = _read_text_file_for_client(p, max_bytes=FILE_READ_MAX_BYTES)
+                if view.kind == "pdf":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "pdf",
+                            "content_type": view.content_type,
+                            "path": str(p),
+                            "rel": str(rel),
+                            "size": int(view.size),
+                            "pdf_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                        },
+                    )
+                    return
+                if view.kind == "download_only":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "download_only",
+                            "path": str(p),
+                            "rel": str(rel),
+                            "size": int(view.size),
+                            "reason": view.blocked_reason,
+                            "viewer_max_bytes": view.viewer_max_bytes,
+                        },
+                    )
+                    return
                 _json_response(
                     self,
                     200,
                     {
                         "ok": True,
-                        "kind": "text",
+                        "kind": view.kind,
                         "path": str(p),
                         "rel": str(rel),
-                        "size": int(size),
-                        "text": text,
-                        "editable": bool(editable),
-                        "version": version,
+                        "size": int(view.size),
+                        "text": view.text,
+                        "editable": bool(view.editable),
+                        "version": view.version,
                     },
                 )
                 return
@@ -4862,12 +5020,45 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 raw = p.read_bytes()
                 _kind, ctype = _file_kind(p, raw)
-                if ctype is None:
-                    _json_response(self, 400, {"error": "file is not a supported image"})
+                if _kind not in {"image", "pdf"} or ctype is None:
+                    _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(p.name, safe='')}")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
+            if path == "/api/files/blob":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                path_obj = Path(path_q[0]).expanduser().resolve()
+                if not path_obj.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not path_obj.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                raw = path_obj.read_bytes()
+                _kind, ctype = _file_kind(path_obj, raw)
+                if _kind not in {"image", "pdf"} or ctype is None:
+                    _json_response(self, 400, {"error": "file is not previewable inline"})
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
@@ -5633,7 +5824,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    kind, size, image_ctype, raw = _read_text_or_image(path_obj)
+                    view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5648,23 +5839,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         MANAGER.files_add(session_id, str(path_obj))
                     except KeyError:
                         pass
-                if kind == "image":
+                if view.kind == "image":
                     _json_response(
                         self,
                         200,
                         {
                             "ok": True,
                             "kind": "image",
-                            "content_type": image_ctype,
+                            "content_type": view.content_type,
                             "path": str(path_obj),
-                            "size": int(size),
+                            "size": int(view.size),
                             "image_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
                         },
                     )
                     return
-                assert raw is not None
-                text = raw.decode("utf-8", errors="replace")
-                _json_response(self, 200, {"ok": True, "kind": "text", "path": str(path_obj), "size": int(size), "text": text})
+                if view.kind == "pdf":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "pdf",
+                            "content_type": view.content_type,
+                            "path": str(path_obj),
+                            "size": int(view.size),
+                            "pdf_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
+                        },
+                    )
+                    return
+                if view.kind == "download_only":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "download_only",
+                            "path": str(path_obj),
+                            "size": int(view.size),
+                            "reason": view.blocked_reason,
+                            "viewer_max_bytes": view.viewer_max_bytes,
+                        },
+                    )
+                    return
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        "kind": view.kind,
+                        "path": str(path_obj),
+                        "size": int(view.size),
+                        "text": view.text,
+                        "editable": bool(view.editable),
+                        "version": view.version,
+                    },
+                )
                 return
 
             if path == "/api/files/inspect":
@@ -5686,7 +5915,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    size, kind, image_ctype = _inspect_client_path(path_obj)
+                    view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5702,9 +5931,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     {
                         "ok": True,
                         "path": str(path_obj),
-                        "kind": kind,
-                        "content_type": image_ctype,
-                        "size": int(size),
+                        "kind": view.kind,
+                        "content_type": view.content_type,
+                        "size": int(view.size),
+                        "reason": view.blocked_reason,
+                        "viewer_max_bytes": view.viewer_max_bytes,
                     },
                 )
                 return
@@ -5727,12 +5958,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 raw = path_obj.read_bytes()
                 _kind, ctype = _file_kind(path_obj, raw)
-                if ctype is None:
-                    _json_response(self, 400, {"error": "file is not a supported image"})
+                if _kind not in {"image", "pdf"} or ctype is None:
+                    _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Pragma", "no-cache")
                 self.send_header("Expires", "0")
@@ -6110,7 +6342,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 parts = path.split("/")
                 session_id = parts[3] if len(parts) >= 4 else ""
-                body = _read_body(self, limit=20 * 1024 * 1024)
+                try:
+                    body = _read_body(self, limit=ATTACH_UPLOAD_BODY_MAX_BYTES)
+                except ValueError:
+                    _json_response(self, 413, {"error": f"file too large (max {ATTACH_UPLOAD_MAX_BYTES} bytes)"})
+                    return
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
                     raise ValueError("empty request body")
@@ -6136,7 +6372,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 try:
                     out_path = _stage_uploaded_file(session_id, filename, raw)
                 except ValueError as e:
-                    status = 413 if str(e) == "file too large" else 400
+                    status = 413 if str(e).startswith("file too large") else 400
                     _json_response(self, status, {"error": str(e)})
                     return
 
