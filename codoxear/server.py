@@ -3498,17 +3498,80 @@ def _session_live_payload(
             requests = [item for item in live_requests if isinstance(item, dict)]
     current_requests_version = _ui_requests_version(requests)
     events = page.get("events")
+    merged_events = events if isinstance(events, list) else []
+    if _session_supports_live_pi_ui(s):
+        streamed_payload = _pi_live_messages_payload(manager, s, offset=offset)
+        merged_events = _merge_pi_live_message_events(
+            merged_events,
+            streamed_payload.get("events")
+            if isinstance(streamed_payload.get("events"), list)
+            else [],
+        )
     payload: dict[str, Any] = {
         "ok": True,
         "session_id": s.session_id,
         "offset": int(page.get("offset", max(0, int(offset))) or 0),
         "busy": bool(busy),
-        "events": events if isinstance(events, list) else [],
+        "events": merged_events,
         "requests_version": current_requests_version,
     }
     if requests_version != current_requests_version:
         payload["requests"] = requests
     return payload
+
+
+def _pi_live_messages_payload(
+    manager: "SessionManager", session: Session, *, offset: int = 0
+) -> dict[str, Any]:
+    if not _session_supports_live_pi_ui(session):
+        return {"offset": max(0, int(offset)), "events": []}
+    try:
+        payload = manager._sock_call(
+            session.sock_path,
+            {"cmd": "live_messages", "offset": max(0, int(offset))},
+            timeout_s=1.5,
+        )
+    except Exception:
+        return {"offset": max(0, int(offset)), "events": []}
+    events = payload.get("events")
+    return {
+        "offset": int(payload.get("offset", max(0, int(offset))) or 0),
+        "events": [item for item in events if isinstance(item, dict)]
+        if isinstance(events, list)
+        else [],
+    }
+
+
+def _merge_pi_live_message_events(
+    durable_events: list[dict[str, Any]], streamed_events: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    merged = list(durable_events)
+    durable_turn_ids = {
+        str(event.get("turn_id"))
+        for event in durable_events
+        if event.get("role") == "assistant"
+        and isinstance(event.get("turn_id"), str)
+        and str(event.get("turn_id") or "")
+    }
+    durable_texts = {
+        str(event.get("text") or "").strip()
+        for event in durable_events
+        if event.get("role") == "assistant" and isinstance(event.get("text"), str)
+    }
+    for event in streamed_events:
+        if event.get("role") != "assistant":
+            merged.append(event)
+            continue
+        turn_id = (
+            event.get("turn_id") if isinstance(event.get("turn_id"), str) else None
+        )
+        text = str(event.get("text") or "").strip()
+        if turn_id and turn_id in durable_turn_ids:
+            continue
+        if text and text in durable_texts:
+            continue
+        merged.append(event)
+    return merged
 
 
 def _supports_web_control(meta: dict[str, Any]) -> bool:

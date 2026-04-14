@@ -103,4 +103,30 @@ describe("createLiveSessionStore", () => {
     expect(messagesStore.getState().bySessionId.s1).toEqual([{ id: "m1" }]);
     expect(liveStore.getState().loadingBySessionId.s1).toBe(false);
   });
+
+  it("passes streamed pi assistant events through repeated live polls without duplication", async () => {
+    vi.mocked(api.getLiveSession)
+      .mockResolvedValueOnce({
+        events: [{ role: "assistant", text: "hel", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" }],
+        requests: [],
+        busy: true,
+        offset: 1,
+      } as never)
+      .mockResolvedValueOnce({
+        events: [{ role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" }],
+        requests: [],
+        busy: true,
+        offset: 2,
+      } as never);
+    const messagesStore = createMessagesStore();
+    const liveStore = createLiveSessionStore(messagesStore);
+
+    await liveStore.loadInitial("s1");
+    await liveStore.poll("s1");
+
+    expect(messagesStore.getState().bySessionId.s1).toEqual([
+      { role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" },
+    ]);
+    expect(liveStore.getState().offsetsBySessionId.s1).toBe(2);
+  });
 });

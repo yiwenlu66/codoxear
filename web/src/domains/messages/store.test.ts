@@ -201,6 +201,36 @@ describe("createMessagesStore", () => {
     expect(store.getState().loadedBySessionId.s1).toBe(true);
   });
 
+  it("upserts one streamed assistant row per stream_id and replaces it with durable history", () => {
+    const store = createMessagesStore();
+
+    store.applyLive(
+      "s1",
+      [{ role: "assistant", text: "hel", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" } as any],
+      { replace: true, offset: 1 },
+    );
+
+    store.applyLive(
+      "s1",
+      [{ role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" } as any],
+      { replace: false, offset: 2 },
+    );
+
+    expect(store.getState().bySessionId.s1).toEqual([
+      { role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" },
+    ]);
+
+    store.applyLive(
+      "s1",
+      [{ role: "assistant", text: "hello", turn_id: "turn-001" } as any],
+      { replace: false, offset: 3 },
+    );
+
+    expect(store.getState().bySessionId.s1).toEqual([
+      { role: "assistant", text: "hello", turn_id: "turn-001" },
+    ]);
+  });
+
   it("prepends older replay pages and tracks the next history cursor", async () => {
     vi.mocked(api.listMessages)
       .mockResolvedValueOnce({

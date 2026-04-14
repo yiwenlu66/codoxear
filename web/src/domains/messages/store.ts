@@ -21,6 +21,57 @@ export interface MessagesStore {
   loadOlder(sessionId: string, limit?: number): Promise<void>;
 }
 
+function isStreamingAssistantEvent(event: MessageEvent | undefined): event is MessageEvent {
+  return Boolean(
+    event
+    && event.role === "assistant"
+    && event.streaming === true
+    && typeof event.stream_id === "string"
+    && event.stream_id.length > 0,
+  );
+}
+
+function streamedAssistantMatchesDurable(streamingEvent: MessageEvent, durableEvent: MessageEvent): boolean {
+  if (durableEvent.role !== "assistant" || durableEvent.streaming === true) {
+    return false;
+  }
+  if (
+    typeof streamingEvent.turn_id === "string"
+    && streamingEvent.turn_id.length > 0
+    && streamingEvent.turn_id === durableEvent.turn_id
+  ) {
+    return true;
+  }
+  return Boolean(
+    streamingEvent.completed === true
+    && typeof streamingEvent.text === "string"
+    && streamingEvent.text.length > 0
+    && streamingEvent.text === durableEvent.text,
+  );
+}
+
+function mergeLiveEvents(priorEvents: MessageEvent[], incomingEvents: MessageEvent[]): MessageEvent[] {
+  const next = [...priorEvents];
+
+  for (const incomingEvent of incomingEvents) {
+    if (isStreamingAssistantEvent(incomingEvent)) {
+      const existingIndex = next.findIndex((event) => event.stream_id === incomingEvent.stream_id);
+      if (existingIndex >= 0) {
+        next[existingIndex] = { ...next[existingIndex], ...incomingEvent };
+      } else {
+        next.push(incomingEvent);
+      }
+      continue;
+    }
+
+    const filtered = next.filter((event) => !isStreamingAssistantEvent(event) || !streamedAssistantMatchesDurable(event, incomingEvent));
+    filtered.push(incomingEvent);
+    next.splice(0, next.length, ...filtered);
+  }
+
+  return next;
+}
+
 export function createMessagesStore(): MessagesStore {
   let state: MessagesState = {
     bySessionId: {},
@@ -206,11 +257,12 @@ export function createMessagesStore(): MessagesStore {
       ...state.loadingBySessionId,
       [sessionId]: false,
     };
+    const nextEvents = options.replace ? mergeLiveEvents([], events) : mergeLiveEvents(priorEvents, events);
     state = {
       ...state,
       bySessionId: {
         ...state.bySessionId,
-        [sessionId]: options.replace ? events : [...priorEvents, ...events],
+        [sessionId]: nextEvents,
       },
       offsetsBySessionId: {
         ...state.offsetsBySessionId,

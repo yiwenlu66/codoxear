@@ -853,6 +853,37 @@ describe("ConversationPane", () => {
     expect(liveLoadInitial).toHaveBeenCalledWith("sess-9");
   });
 
+  it("renders one assistant bubble for a streamed pi reply", () => {
+    const sessionsStore = createStaticStore(
+      { items: [{ session_id: "sess-stream", agent_backend: "pi" }], activeSessionId: "sess-stream", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-stream": [
+            { role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" },
+          ],
+        },
+        offsetsBySessionId: { "sess-stream": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    const assistantRows = Array.from(root.querySelectorAll(".messageRow")).filter((row) => row.textContent?.includes("hello"));
+    expect(assistantRows).toHaveLength(1);
+  });
+
   it("shows a floating previous-user button only after scrolling above an earlier user message", async () => {
     const sessionsStore = createStaticStore(
       { items: [{ session_id: "sess-jump", agent_backend: "pi" }], activeSessionId: "sess-jump", loading: false, newSessionDefaults: null },

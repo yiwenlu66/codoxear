@@ -226,6 +226,44 @@ def _resolved_ui_request_ids(event: dict[str, Any]) -> set[str]:
     return resolved_ids
 
 
+def _live_stream_id(turn_id: str | None) -> str:
+    return f"pi-stream:{turn_id or 'active'}"
+
+
+def _live_event_ts(st: "State", event: dict[str, Any]) -> float:
+    raw_ts = event.get("ts")
+    if isinstance(raw_ts, (int, float)):
+        return float(raw_ts)
+    return float(st.start_ts)
+
+
+def _append_live_message_event(st: "State", event: dict[str, Any]) -> None:
+    st.live_message_offset += 1
+    st.live_message_events.append({"offset": st.live_message_offset, "event": event})
+
+
+def _coalesce_live_message_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    coalesced: list[dict[str, Any]] = []
+    latest_open_index_by_stream: dict[str, int] = {}
+    for row in rows:
+        stream_id = (
+            row.get("stream_id") if isinstance(row.get("stream_id"), str) else ""
+        )
+        completed = row.get("completed") is True
+        if stream_id and not completed:
+            existing_index = latest_open_index_by_stream.get(stream_id)
+            if existing_index is not None:
+                coalesced[existing_index] = row
+            else:
+                latest_open_index_by_stream[stream_id] = len(coalesced)
+                coalesced.append(row)
+            continue
+        coalesced.append(row)
+        if stream_id and completed:
+            latest_open_index_by_stream.pop(stream_id, None)
+    return coalesced
+
+
 @dataclass
 class State:
     session_id: str | None
@@ -245,6 +283,9 @@ class State:
     # Pi has acknowledged the new turn.
     prompt_sent_at: float = 0.0
     pending_ui_requests: dict[str, dict[str, Any]] = field(default_factory=dict)
+    live_message_offset: int = 0
+    live_message_events: list[dict[str, Any]] = field(default_factory=list)
+    live_message_snapshots: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 class PiBroker:
@@ -389,11 +430,31 @@ class PiBroker:
             events = []
         for event in events:
             event_type = _extract_event_type(event)
+            event_turn_id = _extract_turn_id(event)
+            stream_id = _live_stream_id(event_turn_id)
+            if event_type == "message.delta":
+                delta = (
+                    event.get("delta") if isinstance(event.get("delta"), str) else ""
+                )
+                if delta:
+                    snapshot = st.live_message_snapshots.get(stream_id)
+                    if snapshot is None:
+                        snapshot = {
+                            "role": "assistant",
+                            "text": "",
+                            "streaming": True,
+                            "stream_id": stream_id,
+                            "turn_id": event_turn_id,
+                            "ts": _live_event_ts(st, event),
+                        }
+                        st.live_message_snapshots[stream_id] = snapshot
+                    snapshot["text"] = f"{snapshot.get('text') or ''}{delta}"
+                    snapshot["turn_id"] = event_turn_id
+                    _append_live_message_event(st, dict(snapshot))
             if event_type == "extension_ui_request":
                 _record_ui_request(st, event)
             for request_id in _resolved_ui_request_ids(event):
                 st.pending_ui_requests.pop(request_id, None)
-            event_turn_id = _extract_turn_id(event)
             terminal_event_matches_active_turn = (
                 event_type in _TERMINAL_TURN_EVENT_TYPES
                 and (
@@ -407,6 +468,16 @@ class PiBroker:
             )
             if terminal_event_matches_active_turn:
                 st.pending_ui_requests.clear()
+            if event_type in _TERMINAL_TURN_EVENT_TYPES:
+                snapshot = st.live_message_snapshots.get(stream_id)
+                if (
+                    snapshot is not None
+                    and isinstance(snapshot.get("text"), str)
+                    and snapshot.get("text")
+                ):
+                    completed_snapshot = dict(snapshot)
+                    completed_snapshot["completed"] = True
+                    _append_live_message_event(st, completed_snapshot)
             output = _event_output_text(event)
             if output:
                 st.output_tail = (st.output_tail + output)[-st.output_tail_max :]
@@ -602,6 +673,28 @@ class PiBroker:
                     if st is not None:
                         self._drain_rpc_output_locked(st)
                     resp = {"tail": st.output_tail if st else ""}
+                _send_socket_json_line(conn, resp)
+                return
+
+            if cmd == "live_messages":
+                raw_offset = req.get("offset")
+                since_offset = int(raw_offset) if isinstance(raw_offset, int) else 0
+                with self._lock:
+                    st = self.state
+                    if st is not None:
+                        self._drain_rpc_output_locked(st)
+                        events = [
+                            dict(row.get("event", {}))
+                            for row in st.live_message_events
+                            if int(row.get("offset", 0)) > since_offset
+                            and isinstance(row.get("event"), dict)
+                        ]
+                        resp = {
+                            "offset": st.live_message_offset,
+                            "events": _coalesce_live_message_events(events),
+                        }
+                    else:
+                        resp = {"offset": 0, "events": []}
                 _send_socket_json_line(conn, resp)
                 return
 

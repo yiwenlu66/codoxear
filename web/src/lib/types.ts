@@ -225,6 +225,10 @@ export interface MessageEvent {
   answers_by_question?: Record<string, string | string[]>;
   toolName?: string;
   prompt_fallback_available?: boolean;
+  streaming?: boolean;
+  completed?: boolean;
+  stream_id?: string;
+  turn_id?: string;
   [key: string]: unknown;
 }
 

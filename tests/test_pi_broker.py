@@ -1548,6 +1548,113 @@ class TestPiBroker(unittest.TestCase):
         finally:
             client_sock.close()
 
+    def test_live_messages_returns_one_accumulating_assistant_stream(self) -> None:
+        rpc = _FakeRpc()
+        rpc.events = [
+            {
+                "type": "turn.started",
+                "turn_id": "turn-001",
+                "role": "user",
+                "text": "hello",
+            },
+            {
+                "type": "message.delta",
+                "turn_id": "turn-001",
+                "role": "assistant",
+                "delta": "hel",
+            },
+            {
+                "type": "message.delta",
+                "turn_id": "turn-001",
+                "role": "assistant",
+                "delta": "lo",
+            },
+        ]
+        broker = PiBroker(cwd="/tmp")
+        broker.state = PiBrokerState(
+            session_id="pi-session-001",
+            codex_pid=123,
+            sock_path=Path("/tmp/pi.sock"),
+            session_path=Path("/tmp/pi-session.jsonl"),
+            start_ts=0.0,
+            rpc=rpc,
+        )
+
+        resp = _roundtrip_json(broker, {"cmd": "live_messages"})
+
+        self.assertEqual(
+            resp,
+            {
+                "offset": 2,
+                "events": [
+                    {
+                        "role": "assistant",
+                        "text": "hello",
+                        "streaming": True,
+                        "stream_id": "pi-stream:turn-001",
+                        "turn_id": "turn-001",
+                        "ts": 0.0,
+                    }
+                ],
+            },
+        )
+
+    def test_live_messages_honors_offset_and_marks_completed_streams(self) -> None:
+        rpc = _FakeRpc()
+        rpc.events = [
+            {
+                "type": "message.delta",
+                "turn_id": "turn-001",
+                "role": "assistant",
+                "delta": "hi",
+            },
+            {
+                "type": "turn.completed",
+                "turn_id": "turn-001",
+                "role": "assistant",
+                "text": "hi",
+            },
+        ]
+        broker = PiBroker(cwd="/tmp")
+        broker.state = PiBrokerState(
+            session_id="pi-session-001",
+            codex_pid=123,
+            sock_path=Path("/tmp/pi.sock"),
+            session_path=Path("/tmp/pi-session.jsonl"),
+            start_ts=0.0,
+            rpc=rpc,
+        )
+
+        first = _roundtrip_json(broker, {"cmd": "live_messages", "offset": 0})
+        second = _roundtrip_json(broker, {"cmd": "live_messages", "offset": 2})
+
+        self.assertEqual(
+            first,
+            {
+                "offset": 2,
+                "events": [
+                    {
+                        "role": "assistant",
+                        "text": "hi",
+                        "streaming": True,
+                        "stream_id": "pi-stream:turn-001",
+                        "turn_id": "turn-001",
+                        "ts": 0.0,
+                    },
+                    {
+                        "role": "assistant",
+                        "text": "hi",
+                        "streaming": True,
+                        "completed": True,
+                        "stream_id": "pi-stream:turn-001",
+                        "turn_id": "turn-001",
+                        "ts": 0.0,
+                    },
+                ],
+            },
+        )
+        self.assertEqual(second, {"offset": 2, "events": []})
+
     def test_tail_includes_pi_stderr_diagnostics(self) -> None:
         rpc = _FakeRpc()
         rpc.stderr_lines = ["startup failed\n"]
