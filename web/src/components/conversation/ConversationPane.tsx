@@ -672,7 +672,6 @@ function ChatMessageCard({
           }}
         >
           <CopyMessageIcon />
-          <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
     </MessageSurface>

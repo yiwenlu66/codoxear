@@ -3880,6 +3880,46 @@ class SessionManager:
         )
         os.replace(tmp, HIDDEN_SESSIONS_PATH)
 
+    def _hidden_session_keys(
+        self,
+        session_id: str | None,
+        thread_id: str | None,
+        resume_session_id: str | None,
+        backend: str | None,
+    ) -> set[str]:
+        keys: set[str] = set()
+        session_clean = _clean_optional_text(session_id)
+        thread_clean = _clean_optional_text(thread_id)
+        resume_clean = _clean_optional_text(resume_session_id)
+        backend_clean = normalize_agent_backend(backend, default="codex")
+        if session_clean:
+            keys.add(session_clean)
+            keys.add(f"session:{session_clean}")
+        if thread_clean:
+            keys.add(f"thread:{backend_clean}:{thread_clean}")
+        if resume_clean:
+            keys.add(f"resume:{backend_clean}:{resume_clean}")
+            keys.add(_historical_session_id(backend_clean, resume_clean))
+        return keys
+
+    def _session_is_hidden(
+        self,
+        session_id: str | None,
+        thread_id: str | None,
+        resume_session_id: str | None,
+        backend: str | None,
+    ) -> bool:
+        with self._lock:
+            hidden = set(getattr(self, "_hidden_sessions", set()))
+        return bool(
+            hidden
+            and hidden.intersection(
+                self._hidden_session_keys(
+                    session_id, thread_id, resume_session_id, backend
+                )
+            )
+        )
+
     def _hide_session(self, session_id: str) -> None:
         with self._lock:
             hidden = getattr(self, "_hidden_sessions", None)
@@ -3887,6 +3927,21 @@ class SessionManager:
                 self._hidden_sessions = set()
                 hidden = self._hidden_sessions
             hidden.add(session_id)
+        self._save_hidden_sessions()
+
+    def _hide_session_identity(self, s: Session) -> None:
+        hidden_keys = self._hidden_session_keys(
+            s.session_id,
+            s.thread_id,
+            s.resume_session_id,
+            s.agent_backend or s.backend,
+        )
+        with self._lock:
+            hidden = getattr(self, "_hidden_sessions", None)
+            if not isinstance(hidden, set):
+                self._hidden_sessions = set()
+                hidden = self._hidden_sessions
+            hidden.update(hidden_keys)
         self._save_hidden_sessions()
 
     def _unhide_session(self, session_id: str) -> None:
@@ -5054,9 +5109,13 @@ class SessionManager:
                 _unlink_quiet(sock)
                 _unlink_quiet(meta_path)
                 continue
-            with self._lock:
-                hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
-            if session_id in hidden_sessions:
+            resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
+            if self._session_is_hidden(
+                session_id,
+                thread_id,
+                resume_session_id,
+                agent_backend,
+            ):
                 if (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
                     self._unhide_session(session_id)
                     _unlink_quiet(sock)
@@ -5081,8 +5140,6 @@ class SessionManager:
                 cwd, ts=meta.get("updated_ts", meta.get("start_ts"))
             ):
                 recent_cwd_dirty = True
-
-            resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
 
             # Validate socket is responsive.
             # If the broker is still bootstrapping, keep the session visible with
@@ -5319,6 +5376,7 @@ class SessionManager:
             items: list[dict[str, Any]] = []
             qmap = getattr(self, "_queues", None)
             meta_map = getattr(self, "_sidebar_meta", None)
+            hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
             active_ids = set(self._sessions.keys())
             live_resume_keys: set[tuple[str, str]] = set()
             for s in self._sessions.values():
@@ -5534,12 +5592,20 @@ class SessionManager:
                 )
 
             if bool(getattr(self, "_include_historical_sessions", False)):
-                items.extend(
-                    _historical_sidebar_items(
-                        live_resume_keys=live_resume_keys,
-                        now_ts=now_ts,
-                    )
-                )
+                for hist in _historical_sidebar_items(
+                    live_resume_keys=live_resume_keys,
+                    now_ts=now_ts,
+                ):
+                    if hidden_sessions.intersection(
+                        self._hidden_session_keys(
+                            hist.get("session_id"),
+                            hist.get("thread_id"),
+                            hist.get("resume_session_id"),
+                            hist.get("agent_backend"),
+                        )
+                    ):
+                        continue
+                    items.append(hist)
 
         out: list[dict[str, Any]] = []
         for it in items:
@@ -6746,7 +6812,7 @@ class SessionManager:
         if ok:
             # Hide the session immediately so stale sidecars do not repopulate the
             # sidebar before the broker and child process have fully exited.
-            self._hide_session(session_id)
+            self._hide_session_identity(s)
             self.files_clear(session_id)
             self._clear_deleted_session_state(session_id)
             with self._lock:

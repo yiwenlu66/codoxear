@@ -337,8 +337,12 @@ class _FakeRpc:
             raise self.state_error
         return dict(self.state)
 
-    def prompt(self, text: str) -> dict[str, object]:
-        self.calls.append(("prompt", text))
+    def prompt(
+        self, text: str, *, streaming_behavior: str | None = None
+    ) -> dict[str, object]:
+        self.calls.append(
+            ("prompt", {"text": text, "streaming_behavior": streaming_behavior})
+        )
         self.state["busy"] = True
         return {"turn_id": "turn-001", "queued": False}
 
@@ -371,8 +375,12 @@ class _BlockingPromptRpc(_FakeRpc):
         self.prompt_started = threading.Event()
         self.release_prompt = threading.Event()
 
-    def prompt(self, text: str) -> dict[str, object]:
-        self.calls.append(("prompt", text))
+    def prompt(
+        self, text: str, *, streaming_behavior: str | None = None
+    ) -> dict[str, object]:
+        self.calls.append(
+            ("prompt", {"text": text, "streaming_behavior": streaming_behavior})
+        )
         self.prompt_started.set()
         self.release_prompt.wait(1.0)
         self.state["busy"] = True
@@ -1062,7 +1070,9 @@ class TestPiBroker(unittest.TestCase):
             thread.join(1.0)
 
             self.assertEqual(resp, {"queued": False, "queue_len": 0})
-            self.assertIn(("prompt", "hello pi"), rpc.calls)
+            self.assertIn(
+                ("prompt", {"text": "hello pi", "streaming_behavior": None}), rpc.calls
+            )
             self.assertEqual(broker.state.last_turn_id, "turn-001")
             self.assertTrue(broker.state.busy)
         finally:
@@ -1082,7 +1092,10 @@ class TestPiBroker(unittest.TestCase):
 
         broker._submit_terminal_prompt("hello from tty")
 
-        self.assertIn(("prompt", "hello from tty"), rpc.calls)
+        self.assertIn(
+            ("prompt", {"text": "hello from tty", "streaming_behavior": None}),
+            rpc.calls,
+        )
         self.assertTrue(broker.state.busy)
         self.assertEqual(broker.state.last_turn_id, "turn-001")
 
@@ -1252,8 +1265,18 @@ class TestPiBroker(unittest.TestCase):
 
     def test_send_surfaces_rpc_error_payload(self) -> None:
         class _ErrorRpc(_FakeRpc):
-            def prompt(self, text: str) -> dict[str, object]:
-                self.calls.append(("prompt", text))
+            def prompt(
+                self, text: str, *, streaming_behavior: str | None = None
+            ) -> dict[str, object]:
+                self.calls.append(
+                    (
+                        "prompt",
+                        {
+                            "text": text,
+                            "streaming_behavior": streaming_behavior,
+                        },
+                    )
+                )
                 return {"error": "prompt rejected"}
 
         rpc = _ErrorRpc()
@@ -1279,16 +1302,67 @@ class TestPiBroker(unittest.TestCase):
             thread.join(1.0)
 
             self.assertEqual(resp, {"error": "prompt rejected"})
-            self.assertIn(("prompt", "hello pi"), rpc.calls)
+            self.assertIn(
+                ("prompt", {"text": "hello pi", "streaming_behavior": None}), rpc.calls
+            )
             self.assertIsNone(broker.state.last_turn_id)
             self.assertFalse(broker.state.busy)
         finally:
             client_sock.close()
 
+    def test_send_uses_steer_when_broker_is_already_busy(self) -> None:
+        rpc = _FakeRpc()
+        broker = PiBroker(cwd="/tmp")
+        broker.state = PiBrokerState(
+            session_id="pi-session-001",
+            codex_pid=123,
+            sock_path=Path("/tmp/pi.sock"),
+            session_path=Path("/tmp/pi-session.jsonl"),
+            start_ts=0.0,
+            rpc=rpc,
+            busy=True,
+            last_turn_id="turn-active",
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            thread = threading.Thread(
+                target=broker._handle_conn, args=(server_sock,), daemon=True
+            )
+            thread.start()
+            client_sock.sendall(
+                (
+                    json.dumps({"cmd": "send", "text": "interrupt with steer"}) + "\n"
+                ).encode("utf-8")
+            )
+            resp = json.loads(_recv_line(client_sock).decode("utf-8"))
+            thread.join(1.0)
+
+            self.assertEqual(resp, {"queued": False, "queue_len": 0})
+            self.assertIn(
+                (
+                    "prompt",
+                    {"text": "interrupt with steer", "streaming_behavior": "steer"},
+                ),
+                rpc.calls,
+            )
+            self.assertTrue(broker.state.busy)
+        finally:
+            client_sock.close()
+
     def test_send_surfaces_rpc_exception_message(self) -> None:
         class _ErrorRpc(_FakeRpc):
-            def prompt(self, text: str) -> dict[str, object]:
-                self.calls.append(("prompt", text))
+            def prompt(
+                self, text: str, *, streaming_behavior: str | None = None
+            ) -> dict[str, object]:
+                self.calls.append(
+                    (
+                        "prompt",
+                        {
+                            "text": text,
+                            "streaming_behavior": streaming_behavior,
+                        },
+                    )
+                )
                 raise RuntimeError("prompt rejected")
 
         rpc = _ErrorRpc()
@@ -1315,7 +1389,10 @@ class TestPiBroker(unittest.TestCase):
 
             self.assertEqual(resp.get("error"), "prompt rejected")
             self.assertNotEqual(resp.get("error"), "exception")
-            self.assertIn(("prompt", "hello pi"), rpc.calls)
+            self.assertIn(
+                ("prompt", {"text": "hello pi", "streaming_behavior": None}),
+                rpc.calls,
+            )
             self.assertIsNone(broker.state.last_turn_id)
             self.assertFalse(broker.state.busy)
         finally:
@@ -1880,8 +1957,15 @@ class _SlowBusyRpc(_FakeRpc):
         super().__init__()
         self._report_busy = False
 
-    def prompt(self, text: str) -> dict[str, object]:
-        self.calls.append(("prompt", text))
+    def prompt(
+        self, text: str, *, streaming_behavior: str | None = None
+    ) -> dict[str, object]:
+        self.calls.append(
+            (
+                "prompt",
+                {"text": text, "streaming_behavior": streaming_behavior},
+            )
+        )
         # Pi accepts the prompt but doesn't set busy yet in its internal state
         return {"turn_id": "turn-001", "queued": False}
 

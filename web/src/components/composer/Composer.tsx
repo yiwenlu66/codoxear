@@ -9,6 +9,7 @@ import {
   useComposerStore,
   useComposerStoreApi,
   useSessionUiStore,
+  useSessionUiStoreApi,
   useSessionsStore,
   useSessionsStoreApi,
 } from "../../app/providers";
@@ -183,6 +184,7 @@ export function Composer() {
   const { sessionId: sessionUiSessionId, diagnostics } = useSessionUiStore();
   const sessionsStoreApi = useSessionsStoreApi();
   const composerStoreApi = useComposerStoreApi();
+  const sessionUiStoreApi = useSessionUiStoreApi();
   const [todoExpandedBySessionId, setTodoExpandedBySessionId] = useState<Record<string, boolean>>({});
   const [commandsBySessionId, setCommandsBySessionId] = useState<Record<string, SessionCommand[]>>({});
   const [commandsLoadedBySessionId, setCommandsLoadedBySessionId] = useState<Record<string, boolean>>({});
@@ -374,6 +376,23 @@ export function Composer() {
         clearAttachmentCount(activeSessionId);
       })
       .catch(() => undefined);
+  };
+
+  const queueCurrentDraft = () => {
+    if (!activeSessionId || !draft.trim() || sending) {
+      return;
+    }
+
+    const queuedText = draft;
+    composerStoreApi.setDraft("");
+    api.enqueueMessage(activeSessionId, queuedText)
+      .then(() => {
+        clearAttachmentCount(activeSessionId);
+        return sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend });
+      })
+      .catch(() => {
+        composerStoreApi.setDraft(queuedText);
+      });
   };
 
   const handleAttachClick = () => {
@@ -596,6 +615,8 @@ export function Composer() {
                 size="sm"
                 className="composerQueueButton"
                 aria-label="Queued messages"
+                disabled={sending || !draft.trim()}
+                onClick={queueCurrentDraft}
               >
                 Queue
               </Button>

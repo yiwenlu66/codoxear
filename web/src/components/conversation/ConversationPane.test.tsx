@@ -327,7 +327,8 @@ describe("ConversationPane", () => {
     });
 
     expect(writeText).toHaveBeenCalledWith("Copy me please");
-    expect(copyButton?.textContent).toContain("Copied");
+    expect(copyButton?.textContent?.trim()).toBe("");
+    expect(copyButton?.className).toContain("isCopied");
   });
 
   it("only binds the newest duplicate ask_user card to a matching live request", () => {

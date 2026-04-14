@@ -365,6 +365,27 @@ describe("Composer", () => {
     expect(attachButton.title).toContain("Pi");
   });
 
+  it("queues the current draft through the queue button and refreshes workspace state", async () => {
+    const enqueueMessage = vi.spyOn(api, "enqueueMessage").mockResolvedValue({ ok: true } as any);
+    const { composerStore, sessionUiStore } = renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: true }],
+      draft: "After this turn, also inspect logs",
+    });
+    const composerRoot = getRoot();
+
+    const queueButton = composerRoot.querySelector(".composerQueueButton") as HTMLButtonElement;
+
+    await act(async () => {
+      queueButton.click();
+      await Promise.resolve();
+    });
+    await flushEffects();
+
+    expect(enqueueMessage).toHaveBeenCalledWith("sess-1", "After this turn, also inspect logs");
+    expect(sessionUiStore.refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
+    expect(composerStore.getState().draft).toBe("");
+  });
+
   it("shows a todo summary bar above the composer for a current pi session with todo items", () => {
     renderComposer({
       diagnostics: {

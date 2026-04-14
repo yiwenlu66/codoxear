@@ -136,7 +136,9 @@ class TestPiRpc(unittest.TestCase):
         client = PiRpcClient(proc=proc)
         try:
             with self.assertRaises(BrokenPipeError):
-                client.send_command("prompt", payload={"message": "hello"}, request_id="cmd-broken")
+                client.send_command(
+                    "prompt", payload={"message": "hello"}, request_id="cmd-broken"
+                )
 
             self.assertNotIn("cmd-broken", client._pending)
         finally:
@@ -149,11 +151,23 @@ class TestPiRpc(unittest.TestCase):
             result_box: dict[str, object] = {}
 
             def _call() -> None:
-                result_box["result"] = client.send_command("prompt", request_id="cmd-prompt-empty")
+                result_box["result"] = client.send_command(
+                    "prompt", request_id="cmd-prompt-empty"
+                )
 
             thread = threading.Thread(target=_call)
             thread.start()
-            proc.stdout.put_line(json.dumps({"type": "response", "id": "cmd-prompt-empty", "command": "prompt", "success": True}) + "\n")
+            proc.stdout.put_line(
+                json.dumps(
+                    {
+                        "type": "response",
+                        "id": "cmd-prompt-empty",
+                        "command": "prompt",
+                        "success": True,
+                    }
+                )
+                + "\n"
+            )
             thread.join(1.0)
 
             self.assertFalse(thread.is_alive())
@@ -161,7 +175,9 @@ class TestPiRpc(unittest.TestCase):
         finally:
             client.close()
 
-    def test_send_command_raises_timeout_error_when_response_never_arrives(self) -> None:
+    def test_send_command_raises_timeout_error_when_response_never_arrives(
+        self,
+    ) -> None:
         proc = _FakeProc()
         client = PiRpcClient(proc=proc)
         try:
@@ -200,7 +216,55 @@ class TestPiRpc(unittest.TestCase):
         finally:
             client.close()
 
-    def test_event_reader_collects_async_events_without_blocking_responses(self) -> None:
+    def test_prompt_includes_streaming_behavior_when_requested(self) -> None:
+        proc = _FakeProc()
+        client = PiRpcClient(proc=proc)
+        try:
+            result_box: dict[str, object] = {}
+
+            def _call() -> None:
+                result_box["result"] = client.prompt(
+                    "redirect current work", streaming_behavior="steer"
+                )
+
+            thread = threading.Thread(target=_call)
+            thread.start()
+            stdin_value = ""
+            deadline = time.time() + 1.0
+            while not stdin_value:
+                stdin_value = proc.stdin.getvalue()
+                if stdin_value:
+                    break
+                if time.time() >= deadline:
+                    self.fail("pi rpc prompt payload was not written")
+                time.sleep(0.01)
+
+            written = json.loads(stdin_value)
+            proc.stdout.put_line(
+                json.dumps(
+                    {
+                        "type": "response",
+                        "id": written["id"],
+                        "command": "prompt",
+                        "success": True,
+                        "result": {"queued": False},
+                    }
+                )
+                + "\n"
+            )
+            thread.join(1.0)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(written["type"], "prompt")
+            self.assertEqual(written["message"], "redirect current work")
+            self.assertEqual(written["streamingBehavior"], "steer")
+            self.assertEqual(result_box["result"], {"queued": False})
+        finally:
+            client.close()
+
+    def test_event_reader_collects_async_events_without_blocking_responses(
+        self,
+    ) -> None:
         proc = _FakeProc()
         client = PiRpcClient(proc=proc)
         try:
@@ -266,7 +330,9 @@ class TestPiRpc(unittest.TestCase):
         try:
             client.send_ui_response("ui-req-1", value="Details")
 
-            self.assertEqual(json.loads(proc.stdin.getvalue()), pi_ui_response_payload())
+            self.assertEqual(
+                json.loads(proc.stdin.getvalue()), pi_ui_response_payload()
+            )
         finally:
             client.close()
 
@@ -330,7 +396,9 @@ class TestPiRpc(unittest.TestCase):
             result_box: dict[str, object] = {}
 
             def _send_command() -> None:
-                result_box["result"] = client.send_command("prompt", request_id="cmd-lock")
+                result_box["result"] = client.send_command(
+                    "prompt", request_id="cmd-lock"
+                )
 
             command_thread = threading.Thread(target=_send_command)
             command_thread.start()
@@ -340,7 +408,9 @@ class TestPiRpc(unittest.TestCase):
                 target=lambda: client.send_ui_response("ui-req-1", confirmed=True)
             )
             ui_thread.start()
-            self.assertTrue(client._stdin_lock.contended_acquire_attempted.wait(timeout=1.0))
+            self.assertTrue(
+                client._stdin_lock.contended_acquire_attempted.wait(timeout=1.0)
+            )
 
             proc.stdin.allow_first_write.set()
             proc.stdout.put_line(
@@ -383,7 +453,9 @@ class TestPiRpc(unittest.TestCase):
         with patch("codoxear.pi_rpc.subprocess.Popen") as popen:
             popen.return_value = _FakeProc()
 
-            PiRpcClient._spawn(client, cwd="/tmp", session_path=Path("/tmp/test-pi-session.jsonl"))
+            PiRpcClient._spawn(
+                client, cwd="/tmp", session_path=Path("/tmp/test-pi-session.jsonl")
+            )
 
         argv = popen.call_args.args[0]
         self.assertIn("--session", argv)

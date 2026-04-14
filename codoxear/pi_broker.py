@@ -455,12 +455,15 @@ class PiBroker:
         st = self._get_state_snapshot()
         if not st:
             raise RuntimeError("no state")
+        streaming_behavior: str | None = None
         with self._lock:
             if self.state is st:
+                if st.busy:
+                    streaming_behavior = "steer"
                 st.busy = True
                 st.prompt_sent_at = time.monotonic()
         try:
-            result = st.rpc.prompt(text)
+            result = st.rpc.prompt(text, streaming_behavior=streaming_behavior)
         except Exception:
             with self._lock:
                 if self.state is st:

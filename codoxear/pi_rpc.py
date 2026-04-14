@@ -227,8 +227,13 @@ class PiRpcClient:
             raise RuntimeError(f"pi rpc {command_type} returned invalid result")
         return result
 
-    def prompt(self, text: str) -> dict[str, Any]:
-        return self.send_command("prompt", payload={"message": text})
+    def prompt(
+        self, text: str, *, streaming_behavior: str | None = None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"message": text}
+        if isinstance(streaming_behavior, str) and streaming_behavior:
+            payload["streamingBehavior"] = streaming_behavior
+        return self.send_command("prompt", payload=payload)
 
     def abort(self, turn_id: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] | None = None

@@ -104,6 +104,9 @@ export const api = {
   async sendMessage(sessionId: string, text: string) {
     return postJson(`/api/sessions/${sessionId}/send`, { text });
   },
+  async enqueueMessage(sessionId: string, text: string) {
+    return postJson(`/api/sessions/${sessionId}/enqueue`, { text });
+  },
   deleteSession(sessionId: string) {
     return postJson<DeleteSessionResponse>(`/api/sessions/${sessionId}/delete`, {});
   },
