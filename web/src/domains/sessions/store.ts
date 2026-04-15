@@ -68,6 +68,39 @@ function dedupeSessions(items: SessionSummary[]) {
   return { sessions: unique, representativeBySessionId };
 }
 
+function orderedGroupKeys(items: SessionSummary[]) {
+  const seen = new Set<string>();
+  const keys: string[] = [];
+  for (const session of items) {
+    const key = sessionGroupKey(session);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    keys.push(key);
+  }
+  return keys;
+}
+
+function replaceGroupRows(items: SessionSummary[], groupKey: string, groupRows: SessionSummary[]) {
+  const next: SessionSummary[] = [];
+  let inserted = false;
+  for (const session of items) {
+    if (sessionGroupKey(session) === groupKey) {
+      if (!inserted) {
+        next.push(...groupRows);
+        inserted = true;
+      }
+      continue;
+    }
+    next.push(session);
+  }
+  if (!inserted && groupRows.length > 0) {
+    next.push(...groupRows);
+  }
+  return next;
+}
+
 export function createSessionsStore(): SessionsStore {
   let state: SessionsState = {
     items: [],
@@ -85,6 +118,8 @@ export function createSessionsStore(): SessionsStore {
   let currentRefreshId = 0;
   let currentBootstrapRefreshId = 0;
   let hasResolvedInitialSelection = false;
+  let revealedGroupKeys: string[] = [];
+  let loadedGroupLimits: Record<string, number> = {};
 
   const emit = () => {
     for (const listener of listeners) {
@@ -110,8 +145,61 @@ export function createSessionsStore(): SessionsStore {
         if (refreshId !== currentRefreshId) {
           return;
         }
-        const { sessions, representativeBySessionId } = dedupeSessions(Array.isArray(data.sessions) ? data.sessions : []);
-        const sessionIds = new Set(sessions.map((session) => session.session_id));
+        const baseDeduped = dedupeSessions(Array.isArray(data.sessions) ? data.sessions : []);
+        let sessions = baseDeduped.sessions;
+        const representativeBySessionId = new Map(baseDeduped.representativeBySessionId);
+        const remainingByGroup: Record<string, number> = { ...(data.remaining_by_group ?? {}) };
+        const baseGroupKeys = new Set(orderedGroupKeys(sessions));
+        const extraGroupKeys = revealedGroupKeys.filter((groupKey) => !baseGroupKeys.has(groupKey));
+        const groupKeysToRefresh = Array.from(new Set([
+          ...Object.keys(loadedGroupLimits),
+          ...extraGroupKeys,
+        ]));
+
+        if (groupKeysToRefresh.length > 0) {
+          const groupResponses = await Promise.all(groupKeysToRefresh.map(async (groupKey) => {
+            const desiredLimit = Math.max(GROUP_PAGE_SIZE, Number(loadedGroupLimits[groupKey] || 0) || GROUP_PAGE_SIZE);
+            const response = await api.listSessions({ groupKey, offset: 0, limit: desiredLimit });
+            const deduped = dedupeSessions(Array.isArray(response.sessions) ? response.sessions : []);
+            for (const [sessionId, representativeId] of deduped.representativeBySessionId.entries()) {
+              representativeBySessionId.set(sessionId, representativeId);
+            }
+            return {
+              groupKey,
+              sessions: deduped.sessions,
+              remaining: Number(response.remaining_by_group?.[groupKey] || 0),
+            };
+          }));
+
+          const aliveRevealedGroupKeys: string[] = [];
+          for (const response of groupResponses) {
+            if (response.sessions.length > 0) {
+              sessions = replaceGroupRows(sessions, response.groupKey, response.sessions);
+              if (revealedGroupKeys.includes(response.groupKey) && !baseGroupKeys.has(response.groupKey)) {
+                aliveRevealedGroupKeys.push(response.groupKey);
+              }
+            }
+            if (response.remaining > 0) {
+              remainingByGroup[response.groupKey] = response.remaining;
+            } else {
+              delete remainingByGroup[response.groupKey];
+            }
+            if (response.sessions.length <= 0) {
+              delete loadedGroupLimits[response.groupKey];
+            }
+          }
+
+          revealedGroupKeys = revealedGroupKeys.filter((groupKey) => {
+            if (baseGroupKeys.has(groupKey)) {
+              return true;
+            }
+            return aliveRevealedGroupKeys.includes(groupKey);
+          });
+        }
+
+        const combinedSessions = dedupeSessions(sessions).sessions;
+        const revealedHiddenGroupCount = extraGroupKeys.filter((groupKey) => revealedGroupKeys.includes(groupKey)).length;
+        const sessionIds = new Set(combinedSessions.map((session) => session.session_id));
         const activeRepresentativeSessionId = state.activeSessionId
           ? representativeBySessionId.get(state.activeSessionId) ?? state.activeSessionId
           : null;
@@ -127,11 +215,11 @@ export function createSessionsStore(): SessionsStore {
         }
         state = {
           ...state,
-          items: sessions,
+          items: combinedSessions,
           activeSessionId: nextActiveSessionId,
           loading: false,
-          remainingByGroup: data.remaining_by_group ?? {},
-          omittedGroupCount: typeof data.omitted_group_count === "number" ? data.omitted_group_count : 0,
+          remainingByGroup,
+          omittedGroupCount: Math.max(0, Number(data.omitted_group_count || 0) - revealedHiddenGroupCount),
         };
         emit();
       } catch (error) {
@@ -166,6 +254,7 @@ export function createSessionsStore(): SessionsStore {
       const appended = Array.isArray(data.sessions) ? data.sessions : [];
       const existingIds = new Set(state.items.map((session) => session.session_id));
       const uniqueAppended = appended.filter((session) => !existingIds.has(session.session_id));
+      loadedGroupLimits[groupKey] = offset + appended.length;
       const nextRemaining = { ...state.remainingByGroup };
       const reportedRemaining = data.remaining_by_group?.[groupKey] ?? 0;
       if (reportedRemaining > 0) {
@@ -189,6 +278,11 @@ export function createSessionsStore(): SessionsStore {
       const appended = Array.isArray(data.sessions) ? data.sessions : [];
       const existingIds = new Set(state.items.map((session) => session.session_id));
       const uniqueAppended = appended.filter((session) => !existingIds.has(session.session_id));
+      for (const groupKey of orderedGroupKeys(uniqueAppended)) {
+        if (!revealedGroupKeys.includes(groupKey)) {
+          revealedGroupKeys.push(groupKey);
+        }
+      }
       state = {
         ...state,
         items: [...state.items, ...uniqueAppended],

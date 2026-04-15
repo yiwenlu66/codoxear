@@ -150,6 +150,67 @@ describe("createSessionsStore", () => {
     expect(store.getState().omittedGroupCount).toBe(0);
   });
 
+  it("preserves revealed groups and expanded group rows across refreshes", async () => {
+    vi.mocked(api.listSessions)
+      .mockResolvedValueOnce({
+        sessions: [
+          { session_id: "docs-1", cwd: "/work/docs" },
+          { session_id: "docs-2", cwd: "/work/docs" },
+          { session_id: "ops-1", cwd: "/work/ops" },
+          { session_id: "lab-1", cwd: "/work/lab" },
+        ],
+        remaining_by_group: { "/work/docs": 1 },
+        omitted_group_count: 1,
+      } as never)
+      .mockResolvedValueOnce({
+        sessions: [{ session_id: "play-1", cwd: "/work/play" }],
+        omitted_group_count: 0,
+      } as never)
+      .mockResolvedValueOnce({
+        sessions: [{ session_id: "docs-3", cwd: "/work/docs" }],
+        remaining_by_group: {},
+      } as never)
+      .mockResolvedValueOnce({
+        sessions: [
+          { session_id: "docs-1", cwd: "/work/docs", busy: true },
+          { session_id: "docs-2", cwd: "/work/docs" },
+          { session_id: "ops-1", cwd: "/work/ops" },
+          { session_id: "lab-1", cwd: "/work/lab" },
+        ],
+        remaining_by_group: { "/work/docs": 1 },
+        omitted_group_count: 1,
+      } as never)
+      .mockResolvedValueOnce({
+        sessions: [
+          { session_id: "docs-1", cwd: "/work/docs", busy: true },
+          { session_id: "docs-2", cwd: "/work/docs" },
+          { session_id: "docs-3", cwd: "/work/docs" },
+        ],
+        remaining_by_group: {},
+      } as never)
+      .mockResolvedValueOnce({
+        sessions: [{ session_id: "play-1", cwd: "/work/play", busy: true }],
+        remaining_by_group: {},
+      } as never);
+    const store = createSessionsStore();
+
+    await store.refresh();
+    await store.loadMoreGroups(1);
+    await store.loadMoreGroup("/work/docs", 5);
+    await store.refresh();
+
+    expect(store.getState().items).toEqual([
+      { session_id: "docs-1", cwd: "/work/docs", busy: true },
+      { session_id: "docs-2", cwd: "/work/docs" },
+      { session_id: "docs-3", cwd: "/work/docs" },
+      { session_id: "ops-1", cwd: "/work/ops" },
+      { session_id: "lab-1", cwd: "/work/lab" },
+      { session_id: "play-1", cwd: "/work/play", busy: true },
+    ]);
+    expect(store.getState().remainingByGroup).toEqual({});
+    expect(store.getState().omittedGroupCount).toBe(0);
+  });
+
   it("keeps an explicit selection across refreshes", async () => {
     vi.mocked(api.listSessions)
       .mockResolvedValueOnce({
