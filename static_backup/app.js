@@ -1,5 +1,10 @@
 	      const $ = (q) => document.querySelector(q);
 	      const UI_VERSION = String(window.CODOXEAR_ASSET_VERSION || "dev");
+	      const ATTACH_UPLOAD_MAX_BYTES = (() => {
+	        const raw = Number(window.CODOXEAR_ATTACH_MAX_BYTES);
+	        if (!Number.isFinite(raw) || raw <= 0) return 16 * 1024 * 1024;
+	        return Math.max(1, Math.floor(raw));
+	      })();
 	      let latestUiVersion = UI_VERSION;
 	      let uiReloadPending = false;
 	      function isTextEntryElement(target) {
@@ -537,7 +542,10 @@
       }
 
       const CLICKABLE_FILE_EXTENSIONS = new Set([
+        "7z",
         "bash",
+        "bin",
+        "bz2",
         "c",
         "cc",
         "cfg",
@@ -547,6 +555,7 @@
         "csv",
         "gif",
         "go",
+        "gz",
         "h",
         "hpp",
         "html",
@@ -561,6 +570,7 @@
         "jsonl",
         "log",
         "md",
+        "pdf",
         "patch",
         "png",
         "py",
@@ -569,14 +579,18 @@
         "sh",
         "sql",
         "svg",
+        "tar",
+        "tgz",
         "toml",
         "ts",
         "tsx",
         "txt",
         "webp",
         "xml",
+        "xz",
         "yaml",
         "yml",
+        "zip",
         "zsh",
       ]);
 
@@ -596,6 +610,23 @@
         const n = Number(value);
         if (!Number.isFinite(n) || n <= 0) return null;
         return Math.max(1, Math.floor(n));
+      }
+
+      function isTextFileKind(kind) {
+        return kind === "text" || kind === "markdown";
+      }
+
+      function isDiffableFileKind(kind) {
+        return isTextFileKind(kind);
+      }
+
+      function blockedFileMessage(rel, reason, viewerMaxBytes, size) {
+        const name = String(rel || "file");
+        if (reason === "too_large") {
+          const maxText = viewerMaxBytes ? fmtBytes(viewerMaxBytes) : "the viewer limit";
+          return `${name} is ${fmtBytes(size)}. The viewer refuses to render text beyond ${maxText}. Use Download instead.`;
+        }
+        return `${name} is not renderable as text, markdown, image, or PDF. Use Download instead.`;
       }
 
       function formatPriorityOffset(value) {
@@ -1753,6 +1784,7 @@
         ]);
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
+        const filePdf = el("iframe", { id: "filePdf", class: "filePdf", title: "PDF preview" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
@@ -1762,6 +1794,7 @@
           fileStatus,
           fileDiff,
           fileImage,
+          filePdf,
           fileTouchToolbar,
         ]);
         root.appendChild(fileBackdrop);
@@ -2592,7 +2625,16 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v5.${sid}`;
+          return `codexweb.cache.v6.${sid}`;
+        }
+
+        function countChatEvents(events) {
+          let count = 0;
+          for (const ev of events || []) {
+            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            count += 1;
+          }
+          return count;
         }
 
         function normalizeCacheEvent(ev) {
@@ -4581,6 +4623,21 @@
 		            offset = data.offset;
 	            setCacheMeta(sid, { threadId: tid || activeThreadId, logPath: activeLogPath || lp || null, offset });
 	            const evs = Array.isArray(data.events) ? data.events : [];
+              const nextHasOlder = Boolean(data.has_older);
+              if (reqOffset === 0) {
+                olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+                setOlderState({ hasMore: nextHasOlder, isLoading: false });
+              } else {
+                const polledEventCount = countChatEvents(evs);
+                if (polledEventCount > 0) olderBefore += polledEventCount;
+              }
+              setCacheMeta(sid, {
+                threadId: tid || activeThreadId,
+                logPath: activeLogPath || lp || null,
+                offset,
+                olderBefore,
+                hasOlder: nextHasOlder,
+              });
 	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
               refreshTodoDockFromEvents(evs, { replace: true, allowDiagnostics: true, sid });
@@ -4691,9 +4748,11 @@
           uiStateBySession.set(sid, uiState && typeof uiState === "object" ? uiState : { requests: [] });
           const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
           const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
-          const nextOlderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+          const nextOlderBeforeBase = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
           const nextHasOlder = Boolean(data.has_older);
           const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;
+          const nextOlderBefore =
+            rerender || identityChanged ? nextOlderBeforeBase : Math.max(Math.max(0, Number(olderBefore) || 0), nextOlderBeforeBase);
 
           activeLogPath = nextLogPath;
           activeThreadId = nextThreadId;
@@ -6906,6 +6965,8 @@
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
+          filePdf.removeAttribute("src");
+          filePdf.style.display = "none";
           fileDiff.style.display = "block";
         }
 
@@ -6926,14 +6987,21 @@
           const preferred = preferredFileSelectionForSession(sid);
           if (preferred.path) {
             setFilePath(preferred.path, { line: preferred.line });
-            await openFilePath(preferred.path, { line: preferred.line });
+            try {
+              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line });
+            } catch (e) {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            }
             return true;
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
           if (first) {
-            setFileViewMode("diff");
             setFilePath(first, { line: null });
-            await openFilePath(first, { line: null });
+            try {
+              await openFilePathWithResolvedMode(first, { line: null });
+            } catch (e) {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            }
             return true;
           }
           resetFileViewerPanel();
@@ -7010,7 +7078,7 @@
 
         function activeFileCanEnterEditMode() {
           if (!activeFilePath || fileSavePending) return false;
-          if (activeFileKind && activeFileKind !== "text") return false;
+          if (activeFileKind && !isTextFileKind(activeFileKind)) return false;
           if (fileViewMode === "file") return Boolean(activeFileEditable);
           return Boolean(activeFileEditable);
         }
@@ -7093,7 +7161,7 @@
           return Boolean(
             useTouchFileEditorControls() &&
             isFileViewerOpen() &&
-            activeFileKind === "text" &&
+            isTextFileKind(activeFileKind) &&
             fileViewMode !== "preview" &&
             getActiveFileCodeEditor()
           );
@@ -7220,18 +7288,13 @@
           });
         }
 
-        function deleteActiveFileSelection() {
-          const editor = getActiveFileCodeEditor();
-          if (!editor || !monacoNs || typeof editor.executeEdits !== "function" || typeof editor.getSelection !== "function") return false;
-          const selection = editor.getSelection();
-          if (isCollapsedFileSelection(selection)) return false;
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          editor.executeEdits("file-touch-delete", [{ range: selection, text: "", forceMoveMarkers: true }]);
-          if (typeof editor.pushUndoStop === "function") editor.pushUndoStop();
-          resetFileTouchSelectionState({ collapse: true });
-          setFileDirty(getFileEditorText() !== String(activeFileText || ""));
-          focusActiveFileCodeEditor();
-          return true;
+        function bindFileTouchClick(button, handler) {
+          if (!button || typeof handler !== "function") return;
+          button.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handler();
+          });
         }
 
         async function copyActiveFileSelection() {
@@ -7256,28 +7319,30 @@
           filePasteInput.value = "";
         }
 
-        async function showFilePasteDialog() {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && activeFileKind === "text" && !fileSavePending)) return;
-          if (
-            window.isSecureContext &&
-            navigator.clipboard &&
-            typeof navigator.clipboard.readText === "function"
-          ) {
-            try {
-              const text = await navigator.clipboard.readText();
-              if (text) {
-                if (insertIntoActiveFileEditor(text)) {
-                  setToast("pasted");
-                  focusActiveFileCodeEditor();
-                  return;
-                }
-              }
-            } catch (_) {}
+        async function pasteFromClipboardIntoActiveFile() {
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending)) return;
+          if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
+            setToast("paste unavailable");
+            focusActiveFileCodeEditor();
+            return;
           }
-          filePasteInput.value = "";
-          filePasteBackdrop.style.display = "block";
-          filePasteDialog.style.display = "flex";
-          setTimeout(() => filePasteInput.focus({ preventScroll: true }), 0);
+          try {
+            const text = await navigator.clipboard.readText();
+            if (!text) {
+              setToast("clipboard empty");
+              focusActiveFileCodeEditor();
+              return;
+            }
+            if (!insertIntoActiveFileEditor(text)) {
+              setToast("paste unavailable");
+              focusActiveFileCodeEditor();
+              return;
+            }
+            setToast("pasted");
+          } catch (e) {
+            setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
+          }
+          focusActiveFileCodeEditor();
         }
 
         function positionAfterInsertedText(start, text) {
@@ -7497,6 +7562,7 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
             fileEditorModels = [fileEditor.getModel()].filter(Boolean);
             fileEditorChangeDisposable = fileEditor.onDidChangeModelContent(() => {
               if (fileEditorProgrammaticChange) return;
+              if (fileTouchSelectMode) resetFileTouchSelectionState();
               setFileDirty(getFileEditorText() !== String(activeFileText || ""));
             });
           } else {
@@ -7613,8 +7679,19 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
           updateFileTouchToolbar();
         }
 
+        function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
+          disposeFileEditor();
+          fileDiff.innerHTML = "";
+          const body = el("div", { class: "fileBlockedNotice" }, [
+            el("div", { class: "title", text: "Preview unavailable" }),
+            el("p", { text: blockedFileMessage(rel, reason, viewerMaxBytes, size) }),
+          ]);
+          fileDiff.appendChild(body);
+          updateFileTouchToolbar();
+        }
+
         function setFileEditMode(nextMode) {
-          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && activeFileKind === "text" && activeFileEditable;
+          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable;
           syncFileEditorReadOnly();
           updateFileEditButton();
         }
@@ -7643,7 +7720,7 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
         }
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
-          if (!fileViewerSessionId || !activeFilePath || activeFileKind !== "text" || !activeFileEditable) return false;
+          if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
           if (!fileDirty && !activeFileDraft) {
             if (exitEditMode) setFileEditMode(false);
             return true;
@@ -7769,13 +7846,15 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
 
         function applyFileMode() {
           const hasPath = Boolean(activeFilePath);
+          const entry = hasPath ? fileEntryMap.get(activeFilePath) : null;
           const canToggleMode = hasPath && !activeFileDraft;
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
-          const previewable = !activeFileDraft && isMarkdownPreviewable(activeFilePath);
+          const diffable = canToggleMode && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
+          const previewable = !activeFileDraft && activeFileKind === "markdown";
           fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
           fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
-          fileModeDiffBtn.disabled = !canToggleMode;
+          fileModeDiffBtn.disabled = !diffable;
           fileModePreviewBtn.disabled = !canToggleMode;
           fileDownloadBtn.disabled = !hasPath || activeFileDraft;
           fileModePreviewBtn.style.display = previewable ? "" : "none";
@@ -7829,6 +7908,21 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
             if (e && e.status === 404) return { exists: false };
             throw e;
           }
+        }
+
+        async function resolveFileOpenMode(path, { changed = null } = {}) {
+          const inspect = await inspectSessionFilePath(path);
+          if (!inspect || !inspect.exists) throw new Error("file not found");
+          const kind = String(inspect.kind || "").trim();
+          const isChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
+          if (isChanged && isDiffableFileKind(kind)) return "diff";
+          if (kind === "markdown" && fileNonDiffMode === "preview") return "preview";
+          return "file";
+        }
+
+        async function openFilePathWithResolvedMode(path, { line = null, changed = null } = {}) {
+          const mode = await resolveFileOpenMode(path, { changed });
+          return await openFilePathWithGuard(path, { line, mode });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
@@ -8262,14 +8356,16 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
               btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
             }
             btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = () => {
+            btn.onclick = async () => {
               if (entry.createNew) {
                 void openDraftFilePathWithGuard(path);
                 return;
               }
-              const selectedEntry = fileEntryMap.get(path);
-              const mode = selectedEntry && selectedEntry.changed ? "diff" : isMarkdownPreviewable(path) && fileNonDiffMode === "preview" ? "preview" : "file";
-              void openFilePathWithGuard(path, { line: null, mode });
+              try {
+                await openFilePathWithResolvedMode(path, { line: null, changed: Boolean(fileEntryMap.get(path)?.changed) });
+              } catch (e) {
+                fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+              }
             };
             filePickerMenu.appendChild(btn);
           }
@@ -8424,14 +8520,17 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
           if (preferred) {
             setFilePath(preferred, { line: preferredLine });
-            void openFilePath(preferred, { line: preferredLine });
+            void openFilePathWithResolvedMode(preferred, { line: preferredLine }).catch((e) => {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            });
             return;
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
           if (first) {
-            setFileViewMode("diff");
             setFilePath(first, { line: null });
-            void openFilePath(first, { line: null });
+            void openFilePathWithResolvedMode(first, { line: null }).catch((e) => {
+              fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
+            });
             return;
           }
           resetFileViewerPanel();
@@ -8470,6 +8569,8 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
+          filePdf.removeAttribute("src");
+          filePdf.style.display = "none";
           fileDiff.style.display = "block";
           try {
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
@@ -8492,6 +8593,7 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
                 if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 fileStatus.textContent = `${rel} - diff`;
               }
+              applyFileMode();
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
               const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}`, {
@@ -8508,13 +8610,26 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
                 fileImage.style.display = "block";
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - ${fmtBytes(size)}`;
+              } else if (res.kind === "pdf") {
+                activeFileKind = "pdf";
+                if (typeof res.pdf_url !== "string" || !res.pdf_url) throw new Error("invalid pdf response");
+                fileDiff.style.display = "none";
+                filePdf.src = resolveAppUrl(res.pdf_url);
+                filePdf.style.display = "block";
+                const size = typeof res.size === "number" ? res.size : 0;
+                fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
+              } else if (res.kind === "download_only") {
+                activeFileKind = "download_only";
+                const size = typeof res.size === "number" ? res.size : 0;
+                renderBlockedFileNotice(rel, String(res.reason || ""), Number(res.viewer_max_bytes || 0), size);
+                fileStatus.textContent = `${rel} - download only - ${fmtBytes(size)}`;
               } else {
                 if (typeof res.text !== "string") throw new Error("invalid response");
-                activeFileKind = "text";
+                activeFileKind = res.kind === "markdown" ? "markdown" : "text";
                 activeFileText = res.text;
                 activeFileEditable = Boolean(res.editable);
                 activeFileVersion = typeof res.version === "string" ? res.version : "";
-                if (viewMode === "preview" && isMarkdownPreviewable(rel)) {
+                if (viewMode === "preview" && activeFileKind === "markdown") {
                   renderMarkdownPreview(rel, res.text);
                 } else {
                   const rendered = await renderMonacoFile(rel, res.text, request.line, "", request);
@@ -8522,11 +8637,12 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
                 }
                 const size = typeof res.size === "number" ? res.size : res.text.length;
                 const statusParts = [rel];
-                if (viewMode === "preview" && isMarkdownPreviewable(rel)) statusParts.push("preview");
+                if (viewMode === "preview" && activeFileKind === "markdown") statusParts.push("preview");
                 if (!activeFileEditable) statusParts.push("read-only");
                 statusParts.push(fmtBytes(size));
                 fileStatus.textContent = statusParts.join(" - ");
               }
+              applyFileMode();
               rememberOpenedFile(rel, typeof res.path === "string" ? res.path : null);
             }
             rememberActiveFileSelection();
@@ -8613,8 +8729,9 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
               void openDraftFilePathWithGuard(active.path);
               return;
             }
-            const mode = active.changed ? "diff" : isMarkdownPreviewable(active.path) && fileNonDiffMode === "preview" ? "preview" : "file";
-            void openFilePathWithGuard(active.path, { line: null, mode });
+            void openFilePathWithResolvedMode(active.path, { line: null, changed: Boolean(active.changed) }).catch((err) => {
+              fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
+            });
             return;
           }
           if (e.key === "Escape" && fileMenuOpen) {
@@ -8650,7 +8767,7 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
             const changed = await setFileViewModeWithGuard("file");
             if (!changed) return;
           }
-          if (!activeFileEditable || activeFileKind !== "text") return;
+          if (!activeFileEditable || !isTextFileKind(activeFileKind)) return;
           setFileEditMode(true);
         };
         fileDownloadBtn.onclick = (e) => {
@@ -8669,11 +8786,11 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
         bindFileTouchPress(fileTouchSelectBtn, () => {
           toggleFileTouchSelectionMode();
         });
-        bindFileTouchPress(fileTouchCopyBtn, () => {
+        bindFileTouchClick(fileTouchCopyBtn, () => {
           void copyActiveFileSelection();
         });
-        bindFileTouchPress(fileTouchPasteBtn, () => {
-          void showFilePasteDialog();
+        bindFileTouchClick(fileTouchPasteBtn, () => {
+          void pasteFromClipboardIntoActiveFile();
         });
         bindFileTouchPress(fileTouchUpBtn, () => {
           focusActiveFileCodeEditor();
@@ -8821,20 +8938,18 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
             resetFileTouchSelectionState({ collapse: true });
             return;
           }
-          if ((key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file") {
-            e.preventDefault();
-            e.stopPropagation();
-            if (deleteActiveFileSelection()) return;
+          const allowEditorDelete = (key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file";
+          if (allowEditorDelete) {
             return;
           }
           const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
           if (!direction) {
             const blocksEdit =
               key === "enter" ||
-              key === "backspace" ||
-              key === "delete" ||
               key === "tab" ||
               key === " " ||
+              key === "backspace" ||
+              key === "delete" ||
               (key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey);
             if (!blocksEdit) return;
             e.preventDefault();
@@ -9465,6 +9580,9 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
           }
         };
         setAttachCount(0);
+        const attachHint = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+        attachBtn.title = attachHint;
+        attachBtn.setAttribute("aria-label", attachHint);
         updateQueueBadge();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
@@ -9612,7 +9730,7 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
 	            }
 
 	            setToast("uploading file...");
-	            const maxBytes = 10 * 1024 * 1024;
+	            const maxBytes = ATTACH_UPLOAD_MAX_BYTES;
 	            let uploadBlob = f;
 	            let uploadName = f.name || "file";
 	            if (looksLikeImage(f) && (f.size > maxBytes || isLikelyHeic(f))) {
@@ -9632,14 +9750,14 @@ importScripts(${JSON.stringify(base + "/vs/base/worker/workerMain.js")});
 	                blob = await toJpegBlob(f, t);
 	                if (blob.size <= maxBytes) break;
 	              }
-	              if (!blob || blob.size > maxBytes) throw new Error("image too large");
+	              if (!blob || blob.size > maxBytes) throw new Error(`image too large (max ${fmtBytes(maxBytes)})`);
 	              uploadBlob = blob;
 	            }
 
 	            const ab = await uploadBlob.arrayBuffer();
-	            if (ab.byteLength > maxBytes) throw new Error("file too large");
+	            if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
 		            const b64 = b64FromBytes(new Uint8Array(ab));
-			            const res = await api(`/api/sessions/${selected}/inject_image`, {
+			            const res = await api(`/api/sessions/${selected}/inject_file`, {
 		              method: "POST",
 		              body: { filename: uploadName, data_b64: b64, attachment_index: attachedFiles + 1 },
 		            });
