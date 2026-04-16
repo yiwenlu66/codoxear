@@ -1167,7 +1167,8 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const activeSessionLoading = activeSessionId ? loadingBySessionId[activeSessionId] === true : false;
   const activeSessionLoaded = activeSessionId ? loadedBySessionId[activeSessionId] === true : false;
   const showHistoryControls = Boolean(activeSessionId && messages.length && (hasOlder || olderCursor > 0 || olderLoading));
-  const showLoadingState = activeSessionLoading && messages.length === 0 && !activeSessionLoaded;
+  const waitingForInitialHistoricalReplay = activeSessionIsHistoricalPi && messages.length === 0 && !activeSessionLoaded;
+  const showLoadingState = (activeSessionLoading || waitingForInitialHistoricalReplay) && messages.length === 0 && !activeSessionLoaded;
   const markdownOptions: MarkdownRenderOptions = {
     sessionId: activeSessionId || undefined,
     cwd: activeSession?.cwd,
