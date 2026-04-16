@@ -1,5 +1,4 @@
 import { useEffect, useState } from "preact/hooks";
-import type { MessagesStore } from "../../domains/messages/store";
 import type { LiveSessionStore } from "../../domains/live-session/store";
 import type { SessionUiStore } from "../../domains/session-ui/store";
 import type { SessionsStore } from "../../domains/sessions/store";
@@ -12,7 +11,6 @@ interface UseAppShellSessionEffectsOptions {
   activeSessionLiveBusy: boolean;
   items: SessionSummary[];
   liveSessionStoreApi: LiveSessionStore;
-  messagesStoreApi: MessagesStore;
   replySoundEnabled: boolean;
   sessionUiStoreApi: SessionUiStore;
   sessionsStoreApi: SessionsStore;
@@ -43,7 +41,6 @@ export function useAppShellSessionEffects({
   activeSessionLiveBusy,
   items,
   liveSessionStoreApi,
-  messagesStoreApi,
   replySoundEnabled,
   sessionUiStoreApi,
   sessionsStoreApi,
@@ -85,7 +82,6 @@ export function useAppShellSessionEffects({
     }
 
     if (activeSessionHistorical && activeSessionBackend === "pi") {
-      messagesStoreApi.loadInitial(activeSessionId).catch(() => undefined);
       return undefined;
     }
 
@@ -112,7 +108,7 @@ export function useAppShellSessionEffects({
         });
     }, activeLiveRefreshIntervalMs);
     return () => window.clearInterval(intervalId);
-  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionReplySoundPrimingRef, liveSessionStoreApi, messagesStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
+  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionReplySoundPrimingRef, liveSessionStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !workspaceOpen || !activeSessionId) {

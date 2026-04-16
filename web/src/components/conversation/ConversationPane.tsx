@@ -1252,6 +1252,16 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
     await messagesStoreApi.loadOlder(activeSessionId);
   };
 
+  useEffect(() => {
+    if (!activeSessionId || !activeSessionIsHistoricalPi) {
+      return;
+    }
+    if (activeSessionLoaded || activeSessionLoading) {
+      return;
+    }
+    void messagesStoreApi.loadInitial(activeSessionId);
+  }, [activeSessionId, activeSessionIsHistoricalPi, activeSessionLoaded, activeSessionLoading, messagesStoreApi]);
+
   const handleJumpToLatest = async () => {
     if (!activeSessionId) return;
     historyAnchorRef.current = null;

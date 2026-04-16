@@ -1450,4 +1450,44 @@ describe("ConversationPane", () => {
     expect(root.textContent).toContain("Loaded message");
     expect(root.querySelector("[data-kind='loading']")).toBeNull();
   });
+
+  it("loads historical pi messages when the synthetic history session becomes active", async () => {
+    const sessionsStore = createStaticStore(
+      {
+        items: [{ session_id: "history:pi:resume-hist", agent_backend: "pi", historical: true }],
+        activeSessionId: "history:pi:resume-hist",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const loadInitial = vi.fn().mockResolvedValue(undefined);
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {},
+        offsetsBySessionId: {},
+        hasOlderBySessionId: {},
+        olderBeforeBySessionId: {},
+        loadingOlderBySessionId: {},
+        loadingBySessionId: {},
+        loadedBySessionId: {},
+        loading: false,
+      },
+      { loadInitial, poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+          <ConversationPane />
+        </AppProviders>,
+        root,
+      );
+      await Promise.resolve();
+    });
+
+    expect(loadInitial).toHaveBeenCalledWith("history:pi:resume-hist");
+  });
 });
