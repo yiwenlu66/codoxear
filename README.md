@@ -13,6 +13,8 @@ Currently supported agent backends:
 - Codex
 - Pi
 
+It now also includes an MVP Pi backend for browser-created `pi-coding-agent` sessions. The Pi path currently focuses on web-owned sessions started from the UI; it does not yet attach to an already-running interactive Pi TUI session.
+
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
 Not affiliated with OpenAI or the Pi Coding Agent project. "Codex" and "Pi" are referenced only for CLI compatibility.
@@ -36,6 +38,11 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 - `python3 -m pip install .`
 
+If you are running from a source checkout and want the latest frontend bundle, build the web app before starting the server:
+
+- `cd web && npm install && npm run build`
+- `npm run build` writes the production bundle to `web/dist/` and copies it into `codoxear/static/dist/`, which is what `codoxear-server` serves
+
 1. Create `.env`:
 
    - Copy `.env.example` to `.env`
@@ -47,6 +54,8 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    - `codoxear-server`
     - Default bind: `::` (IPv6, usually reachable on LAN)
     - Default port: `8743`
+
+   For Pi support, make sure `pi` is installed and available in `PATH` on the same machine that runs the server.
 
 3. Add separate wrappers for terminal-owned brokered sessions (zsh/bash function, not an alias):
 
@@ -69,6 +78,8 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 4. Use `codox` for terminal-owned Codex sessions and `piox` for terminal-owned Pi sessions when you want them registered with Codoxear. Leave plain `codex` and `pi` unwrapped.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
+
+   The New session dialog can start either a Codex-backed session or a Pi-backed session. Codex remains the default.
 
 6. (Optional) Enable Harness mode for a session:
 
@@ -147,7 +158,7 @@ Codoxear cannot drive Codex confirmation prompts in `default` mode or `plan` mod
 
 For full remote interaction, run Codex in YOLO mode so confirmations do not block on interactive terminal prompts.
 
-### Codex `/new` may show as pending until first prompt
+### `/new` may show as pending until first prompt
 
 Codex does not always materialize (open) the new `rollout-*.jsonl` file immediately after `/new`. Codoxear tracks the active rollout by scanning the Codex process tree for open rollout-log file descriptors, so the UI may show the session as pending until the first prompt is sent and the rollout file is created/opened.
 
@@ -195,6 +206,13 @@ Backend-specific session logs live under the backend home:
 
 - Codex: `~/.codex/sessions/rollout-*.jsonl`
 - Pi: `~/.pi/agent/sessions/*.jsonl`
+
+### Frontend development
+
+1. Start the Python server: `python3 -m codoxear.server`
+2. Start Vite: `cd web && npm install && npm run dev`
+3. Open the Vite URL for frontend work; `/api/*` is proxied to Python.
+4. Build production assets with `cd web && npm run build`.
 
 ## License
 

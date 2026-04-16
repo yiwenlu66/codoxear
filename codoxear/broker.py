@@ -24,9 +24,13 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
+from codoxear.agent_backend import resolve_agent_backend
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from codoxear.pi_broker import PiBroker
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
-from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
+from codoxear.pi_log import (
+    pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end,
+)
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
 from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_use_count
 from codoxear.pi_log import pi_message_role as _pi_message_role
@@ -35,7 +39,9 @@ from codoxear.pi_log import pi_user_text as _pi_user_text
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
-from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
+from codoxear.util import (
+    find_session_log_for_session_id as _find_session_log_for_session_id,
+)
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
@@ -49,14 +55,20 @@ APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 PROC_ROOT = Path("/proc")
 
-AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
+AGENT_BACKEND = resolve_agent_backend(
+    os.environ.get("CODEX_WEB_AGENT_BACKEND"), env=os.environ, default="codex"
+)
 BACKEND = get_agent_backend(AGENT_BACKEND)
 AGENT_BIN = BACKEND.cli_bin()
 OWNER_TAG = os.environ.get("CODEX_WEB_OWNER", "")
 MODEL_PROVIDER_OVERRIDE = os.environ.get("CODEX_WEB_MODEL_PROVIDER", "").strip()
-PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD", "").strip()
+PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get(
+    "CODEX_WEB_PREFERRED_AUTH_METHOD", ""
+).strip()
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
-REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
+REASONING_EFFORT_OVERRIDE = (
+    os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
+)
 SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
 DEFAULT_AGENT_HOME = BACKEND.home()
 DEBUG = os.environ.get("CODEX_WEB_BROKER_DEBUG", "0") == "1"
@@ -74,9 +86,14 @@ INTERRUPT_HINT_TAIL_MAX = 4096
 _BRACKETED_PASTE_START = b"\x1b[200~"
 _BRACKETED_PASTE_END = b"\x1b[201~"
 
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
-_ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
-_ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
+_SESSION_ID_RE = re.compile(
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I
+)
+_ANSI_OSC_RE = re.compile("\x1b\\][^\x07]*(?:\x07|\x1b\\\\)")
+_ANSI_CSI_RE = re.compile("\x1b(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
+_PI_ASK_USER_BRIDGE_PATH = (
+    Path(__file__).resolve().parent / "pi_extensions" / "ask_user_bridge.ts"
+).resolve()
 
 
 def _dprint(msg: str) -> None:
@@ -88,6 +105,21 @@ def _dprint(msg: str) -> None:
 
 def _now() -> float:
     return time.time()
+
+
+def _ensure_pi_extension_arg(args: list[str]) -> list[str]:
+    if AGENT_BACKEND != "pi":
+        return list(args)
+
+    bridge_path = str(_PI_ASK_USER_BRIDGE_PATH)
+    for index, token in enumerate(args):
+        if token != "-e":
+            continue
+        if (index + 1) < len(args) and str(
+            args[index + 1] or ""
+        ).strip() == bridge_path:
+            return list(args)
+    return ["-e", bridge_path, *args]
 
 
 def _resume_session_id_from_args(args: list[str]) -> str | None:
@@ -102,7 +134,9 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
                 return None
             if resume_id.endswith(".jsonl"):
                 try:
-                    payload = _read_session_meta_payload(Path(resume_id), agent_backend="pi", timeout_s=0.0)
+                    payload = _read_session_meta_payload(
+                        Path(resume_id), agent_backend="pi", timeout_s=0.0
+                    )
                 except Exception:
                     return None
                 if isinstance(payload, dict):
@@ -122,7 +156,9 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
     return None
 
 
-def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions_dir: Path) -> Path | None:
+def _session_log_path_from_args(
+    *, args: list[str], agent_backend: str, sessions_dir: Path, cwd: str | None = None
+) -> Path | None:
     if normalize_agent_backend(agent_backend) != "pi":
         return None
     for idx, token in enumerate(args):
@@ -134,23 +170,24 @@ def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions
         if (not raw) or (not raw.endswith(".jsonl")):
             return None
         path = Path(raw).expanduser()
+        if cwd and not path.is_absolute():
+            path = Path(cwd) / path
         try:
             resolved = path.resolve()
         except Exception:
             resolved = path
-        try:
-            resolved.relative_to(sessions_dir.resolve())
-        except Exception:
-            return None
         return resolved
     return None
 
 
 def _pi_session_dir_name(cwd: str) -> str:
-    return f"--{cwd.lstrip('/\\\\').replace('/', '-').replace('\\\\', '-').replace(':', '-')}--"
+    slug = cwd.lstrip("/\\").replace("/", "-").replace("\\", "-").replace(":", "-")
+    return f"--{slug}--"
 
 
-def _pi_session_dir_from_args(*, args: list[str], cwd: str, sessions_dir: Path) -> Path | None:
+def _pi_session_dir_from_args(
+    *, args: list[str], cwd: str, sessions_dir: Path
+) -> Path | None:
     for idx, token in enumerate(args):
         if token == "--no-session":
             return None
@@ -171,16 +208,24 @@ def _pi_session_dir_from_args(*, args: list[str], cwd: str, sessions_dir: Path) 
 def _pi_new_session_log_path(*, cwd: str, sessions_dir: Path) -> Path:
     session_dir = sessions_dir / _pi_session_dir_name(cwd)
     session_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    timestamp = (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
     filename = f"{timestamp.replace(':', '-').replace('.', '-')}_{uuid.uuid4()}.jsonl"
     return session_dir / filename
 
 
-def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path) -> list[str]:
+def _ensure_pi_session_arg(
+    *, args: list[str], cwd: str, sessions_dir: Path
+) -> list[str]:
     if AGENT_BACKEND != "pi":
         return list(args)
     out = list(args)
-    session_dir = _pi_session_dir_from_args(args=out, cwd=cwd, sessions_dir=sessions_dir)
+    session_dir = _pi_session_dir_from_args(
+        args=out, cwd=cwd, sessions_dir=sessions_dir
+    )
     if session_dir is None:
         return out
     for token in out:
@@ -190,8 +235,14 @@ def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path) -> 
         log_path = _pi_new_session_log_path(cwd=cwd, sessions_dir=sessions_dir)
     else:
         session_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
-        filename = f"{timestamp.replace(':', '-').replace('.', '-')}_{uuid.uuid4()}.jsonl"
+        timestamp = (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+        filename = (
+            f"{timestamp.replace(':', '-').replace('.', '-')}_{uuid.uuid4()}.jsonl"
+        )
         log_path = session_dir / filename
     out.extend(["--session", str(log_path)])
     return out
@@ -224,7 +275,6 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-
 def _process_group_alive(root_pid: int) -> bool:
     if root_pid <= 0:
         return False
@@ -240,12 +290,16 @@ def _process_group_alive(root_pid: int) -> bool:
 def _require_proc() -> None:
     if sys.platform.startswith("linux"):
         if not (PROC_ROOT / "self" / "fd").is_dir():
-            sys.stderr.write("error: codoxear-broker requires /proc (missing /proc/self/fd).\n")
+            sys.stderr.write(
+                "error: codoxear-broker requires /proc (missing /proc/self/fd).\n"
+            )
             raise SystemExit(2)
     elif sys.platform == "darwin":
         pass  # macOS is supported via lsof/pgrep
     else:
-        sys.stderr.write(f"error: codoxear-broker requires Linux or macOS (unsupported: {sys.platform}).\n")
+        sys.stderr.write(
+            f"error: codoxear-broker requires Linux or macOS (unsupported: {sys.platform}).\n"
+        )
         raise SystemExit(2)
 
 
@@ -282,6 +336,7 @@ def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
     argv = [AGENT_BIN, *agent_args]
     os.chdir(cwd)
     os.execvpe(argv[0], argv, os.environ)
+
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
     q = shlex.quote
@@ -347,6 +402,7 @@ def _term_size() -> tuple[int, int]:
     except Exception:
         return 40, 120
 
+
 def _paths_match(a: Path, b: Path) -> bool:
     try:
         return a.resolve() == b.resolve()
@@ -357,7 +413,9 @@ def _paths_match(a: Path, b: Path) -> bool:
             return str(a) == str(b)
 
 
-def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | None = None) -> set[Path]:
+def _claimed_log_paths_from_sock_meta(
+    *, sock_dir: Path, exclude_sock: Path | None = None
+) -> set[Path]:
     out: set[Path] = set()
     if not sock_dir.exists():
         return out
@@ -374,9 +432,19 @@ def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | No
         log_path_raw = meta.get("log_path")
         if not isinstance(log_path_raw, str) or not log_path_raw.strip():
             continue
-        broker_pid = int(meta.get("broker_pid")) if isinstance(meta.get("broker_pid"), int) else 0
-        agent_pid = int(meta.get("codex_pid")) if isinstance(meta.get("codex_pid"), int) else 0
-        if (broker_pid > 0 or agent_pid > 0) and (not _pid_alive(broker_pid)) and (not _pid_alive(agent_pid)):
+        broker_pid = (
+            int(meta.get("broker_pid"))
+            if isinstance(meta.get("broker_pid"), int)
+            else 0
+        )
+        agent_pid = (
+            int(meta.get("codex_pid")) if isinstance(meta.get("codex_pid"), int) else 0
+        )
+        if (
+            (broker_pid > 0 or agent_pid > 0)
+            and (not _pid_alive(broker_pid))
+            and (not _pid_alive(agent_pid))
+        ):
             continue
         path = Path(log_path_raw)
         try:
@@ -386,7 +454,13 @@ def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | No
     return out
 
 
-_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {"codex": ("To continue this session, run ",)}
+_DETACH_TRIGGER_PHRASES: dict[str, tuple[str, ...]] = {
+    "codex": ("To continue this session, run ",),
+    "pi": (
+        "To continue this conversation, run ",
+        "To continue this session, run ",
+    ),
+}
 
 
 def _detach_current_session_binding(st: "State") -> None:
@@ -408,14 +482,20 @@ def _detach_trigger_seen(*, agent_backend: str, tail: str, cleaned: str) -> bool
     return False
 
 
-def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: str, agent_backend: str) -> bool:
-    if not _detach_trigger_seen(agent_backend=agent_backend, tail=tail, cleaned=cleaned):
+def _maybe_detach_on_session_switch_trigger(
+    *, st: "State", tail: str, cleaned: str, agent_backend: str
+) -> bool:
+    if not _detach_trigger_seen(
+        agent_backend=agent_backend, tail=tail, cleaned=cleaned
+    ):
         return False
     _detach_current_session_binding(st)
     return True
 
 
-def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
+def _read_jsonl_from_offset(
+    path: Path, offset: int, max_bytes: int = 256 * 1024
+) -> tuple[list[dict[str, Any]], int]:
     try:
         with path.open("rb") as f:
             f.seek(offset)
@@ -458,9 +538,10 @@ def _interrupt_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
 
 
 def _compacting_hint_seen_in_new_text(*, tail: str, cleaned: str) -> bool:
-    return (
-        _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="compacting context")
-        or _hint_seen_in_new_text(tail=tail, cleaned=cleaned, phrase="compacting conversation")
+    return _hint_seen_in_new_text(
+        tail=tail, cleaned=cleaned, phrase="compacting context"
+    ) or _hint_seen_in_new_text(
+        tail=tail, cleaned=cleaned, phrase="compacting conversation"
     )
 
 
@@ -469,7 +550,9 @@ def _update_busy_from_pty_text(st: "State", text: str, now_ts: float) -> None:
     if not cleaned:
         return
     tail = st.interrupt_hint_tail
-    st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[-st.interrupt_hint_tail_max :]
+    st.interrupt_hint_tail = (st.interrupt_hint_tail + cleaned)[
+        -st.interrupt_hint_tail_max :
+    ]
     if _interrupt_hint_seen_in_new_text(tail=tail, cleaned=cleaned):
         st.busy = True
         st.last_interrupt_hint_ts = now_ts
@@ -506,7 +589,10 @@ def _should_clear_busy_state(st: "State", now_ts: float) -> bool:
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
         return False
-    if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < BUSY_INTERRUPT_GRACE_SECONDS:
+    if (
+        st.last_interrupt_hint_ts > 0.0
+        and (now_ts - st.last_interrupt_hint_ts) < BUSY_INTERRUPT_GRACE_SECONDS
+    ):
         return False
     if st.last_turn_activity_ts <= 0.0:
         return False
@@ -529,7 +615,9 @@ def _close_turn_state(st: "State") -> None:
     st.last_turn_activity_ts = 0.0
 
 
-def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
+def _apply_rollout_obj_to_state(
+    st: "State", obj: dict[str, Any], now_ts: float
+) -> None:
     typ = obj.get("type")
 
     if typ == "event_msg":
@@ -702,25 +790,37 @@ class State:
 class Broker:
     def __init__(self, *, cwd: str, codex_args: list[str]) -> None:
         self.cwd = cwd
-        base_args = _ensure_pi_session_arg(args=codex_args, cwd=self.cwd, sessions_dir=BACKEND.sessions_dir())
+        base_args = _ensure_pi_session_arg(
+            args=codex_args, cwd=self.cwd, sessions_dir=BACKEND.sessions_dir()
+        )
+        base_args = _ensure_pi_extension_arg(base_args)
         # Headless web sessions need different defaults for robust injection and log discovery.
         # These flags are only for the interactive Codex CLI.
         if OWNER_TAG == "web" and AGENT_BACKEND == "codex":
-            forced = ["-c", "disable_response_storage=false", "-c", "disable_paste_burst=true"]
+            forced = [
+                "-c",
+                "disable_response_storage=false",
+                "-c",
+                "disable_paste_burst=true",
+            ]
             self.codex_args = forced + base_args
         else:
             self.codex_args = base_args
         self._stop = threading.Event()
         self._lock = threading.Lock()
         self.state: State | None = None
-        self._emulate_terminal = (os.environ.get("CODEX_WEB_EMULATE_TERMINAL", "0") == "1") or (not sys.stdin.isatty())
+        self._emulate_terminal = (
+            os.environ.get("CODEX_WEB_EMULATE_TERMINAL", "0") == "1"
+        ) or (not sys.stdin.isatty())
         self._term_query_buf = b""
         self._stdin_termios: list[Any] | None = None
 
         self.codex_home = DEFAULT_AGENT_HOME
         self.sessions_dir = BACKEND.sessions_dir()
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
-        self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
+        self._resume_session_id = resume_env or _resume_session_id_from_args(
+            self.codex_args
+        )
 
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
@@ -747,6 +847,30 @@ class Broker:
         except ProcessLookupError:
             return
 
+    def _pi_scan_sessions_dir(self) -> Path:
+        if AGENT_BACKEND != "pi":
+            return self.sessions_dir
+        declared_log_path = _session_log_path_from_args(
+            args=self.codex_args,
+            agent_backend=AGENT_BACKEND,
+            sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
+        )
+        if declared_log_path is not None:
+            candidate = declared_log_path.parent
+        else:
+            candidate = _pi_session_dir_from_args(
+                args=self.codex_args, cwd=self.cwd, sessions_dir=self.sessions_dir
+            )
+        if candidate is None:
+            return self.sessions_dir
+        try:
+            if candidate.exists() and candidate.is_dir():
+                return candidate.resolve()
+        except Exception:
+            return self.sessions_dir
+        return self.sessions_dir
+
     def _discover_log_watcher(self) -> None:
         try:
             while not self._stop.is_set():
@@ -755,11 +879,12 @@ class Broker:
                     if not st:
                         return
                     current_log_path = st.log_path
-                    need = (current_log_path is None) or (not current_log_path.exists())
                     root_pid = int(st.codex_pid)
                     sock_path = st.sock_path
                     known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
+                    if current_log_path is not None:
+                        ignored_paths.add(current_log_path)
                 if root_pid > 0:
                     lp = _proc_find_open_rollout_log(
                         proc_root=PROC_ROOT,
@@ -769,14 +894,21 @@ class Broker:
                         ignored_paths=ignored_paths,
                     )
                     if lp and lp.exists():
-                        if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                        if current_log_path is None or (
+                            not _paths_match(lp, current_log_path)
+                        ):
                             self._maybe_register_or_switch_rollout(log_path=lp)
                             time.sleep(0.25)
                             continue
-                    if AGENT_BACKEND == "pi":
-                        claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
+                    if AGENT_BACKEND == "pi" and current_log_path is None:
+                        # Once Pi is already bound to a concrete session log, avoid
+                        # rescanning the whole sessions tree on every watcher tick.
+                        scan_sessions_dir = self._pi_scan_sessions_dir()
+                        claimed_paths = _claimed_log_paths_from_sock_meta(
+                            sock_dir=SOCK_DIR, exclude_sock=sock_path
+                        )
                         discovered = _find_new_session_log(
-                            sessions_dir=self.sessions_dir,
+                            sessions_dir=scan_sessions_dir,
                             agent_backend="pi",
                             cwd=self.cwd,
                             after_ts=0.0,
@@ -787,7 +919,9 @@ class Broker:
                         if discovered is not None:
                             _sid, lp = discovered
                             if lp.exists():
-                                if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                                if current_log_path is None or (
+                                    not _paths_match(lp, current_log_path)
+                                ):
                                     self._maybe_register_or_switch_rollout(log_path=lp)
                                     time.sleep(0.25)
                                     continue
@@ -802,7 +936,9 @@ class Broker:
                         raise
                 time.sleep(0.25)
         except Exception:
-            sys.stderr.write(f"error: log discover watcher crashed: {traceback.format_exc()}\n")
+            sys.stderr.write(
+                f"error: log discover watcher crashed: {traceback.format_exc()}\n"
+            )
             try:
                 self._teardown_managed_process_group()
             except Exception:
@@ -811,7 +947,9 @@ class Broker:
     def _register_from_log(self, *, log_path: Path) -> bool:
         sid = self._session_id_from_rollout_path(log_path)
         if sid is None:
-            raise RuntimeError(f"unable to determine session_id from rollout filename: {log_path}")
+            raise RuntimeError(
+                f"unable to determine session_id from rollout filename: {log_path}"
+            )
         if not sid:
             _dprint(f"broker: register_from_log: no session id: {log_path}")
             return False
@@ -821,7 +959,7 @@ class Broker:
         except Exception:
             off = 0
 
-        headless = (OWNER_TAG == "web")
+        headless = OWNER_TAG == "web"
         sock_path = SOCK_DIR / f"{sid}-{os.getpid()}.sock"
         with self._lock:
             st = self.state
@@ -833,7 +971,9 @@ class Broker:
                 st.sock_path = sock_path
             st.log_off = off
 
-        _dprint(f"broker: registered session_id={sid} log_path={log_path} sock_path={sock_path}")
+        _dprint(
+            f"broker: registered session_id={sid} log_path={log_path} sock_path={sock_path}"
+        )
         self._write_meta()
         if not headless:
             threading.Thread(target=self._sock_server, daemon=True).start()
@@ -905,12 +1045,21 @@ class Broker:
                     with self._lock:
                         st2 = self.state
                         if st2:
-                            st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
+                            st2.output_tail = (st2.output_tail + s)[
+                                -st2.output_tail_max :
+                            ]
                             _update_busy_from_pty_text(st2, s, now_ts=_now())
                             cleaned = _strip_ansi(s)
                             tail = st2.detach_trigger_tail
-                            st2.detach_trigger_tail = (tail + cleaned)[-st2.detach_trigger_tail_max :]
-                            if _maybe_detach_on_session_switch_trigger(st=st2, tail=tail, cleaned=cleaned, agent_backend=AGENT_BACKEND):
+                            st2.detach_trigger_tail = (tail + cleaned)[
+                                -st2.detach_trigger_tail_max :
+                            ]
+                            if _maybe_detach_on_session_switch_trigger(
+                                st=st2,
+                                tail=tail,
+                                cleaned=cleaned,
+                                agent_backend=AGENT_BACKEND,
+                            ):
                                 self._write_meta()
             except OSError:
                 break
@@ -956,6 +1105,7 @@ class Broker:
                 continue
 
             objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
+
             def maybe_drain_one_if_idle() -> None:
                 fd: int | None = None
                 kq: list[bytes] = []
@@ -994,7 +1144,13 @@ class Broker:
                 clear_meta = False
                 with self._lock:
                     st3 = self.state
-                    if st3 and st3.resume_session_id and (not st3.busy) and (not st3.turn_open) and (not st3.pending_calls):
+                    if (
+                        st3
+                        and st3.resume_session_id
+                        and (not st3.busy)
+                        and (not st3.turn_open)
+                        and (not st3.pending_calls)
+                    ):
                         st3.resume_session_id = None
                         clear_meta = True
                 if clear_meta:
@@ -1026,7 +1182,9 @@ class Broker:
                     pt = p.get("type")
                     if pt == "token_count":
                         info = p.get("info")
-                        if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
+                        if isinstance(info, dict) and isinstance(
+                            info.get("total_token_usage"), dict
+                        ):
                             ctx = info.get("model_context_window")
                             last = info.get("last_token_usage")
                             if isinstance(ctx, int) and isinstance(last, dict):
@@ -1036,9 +1194,13 @@ class Broker:
                                         "context_window": ctx,
                                         "tokens_in_context": tt,
                                         "tokens_remaining": max(ctx - tt, 0),
-                                        "percent_remaining": _context_percent_remaining(tokens_in_context=tt, context_window=ctx),
+                                        "percent_remaining": _context_percent_remaining(
+                                            tokens_in_context=tt, context_window=ctx
+                                        ),
                                         "baseline_tokens": CONTEXT_WINDOW_BASELINE_TOKENS,
-                                        "as_of": obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                                        "as_of": obj.get("timestamp")
+                                        if isinstance(obj.get("timestamp"), str)
+                                        else None,
                                     }
                                     with self._lock:
                                         if self.state:
@@ -1058,7 +1220,9 @@ class Broker:
             return
         meta = {
             "session_id": st.session_id,
+            "backend": AGENT_BACKEND,
             "owner": OWNER_TAG if OWNER_TAG else None,
+            "supports_web_control": True,
             "broker_pid": os.getpid(),
             "sessiond_pid": os.getpid(),
             "codex_pid": st.codex_pid,
@@ -1074,9 +1238,12 @@ class Broker:
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
             "service_tier": SERVICE_TIER_OVERRIDE or None,
             "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
-            "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
-            "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
-            "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
+            "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip()
+            or None,
+            "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip()
+            or None,
+            "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip()
+            or None,
         }
         meta_path = st.sock_path.with_suffix(".json")
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
@@ -1102,13 +1269,17 @@ class Broker:
             except socket.timeout:
                 continue
             except Exception:
-                sys.stderr.write(f"error: broker socket server crashed: {traceback.format_exc()}\n")
+                sys.stderr.write(
+                    f"error: broker socket server crashed: {traceback.format_exc()}\n"
+                )
                 try:
                     self._teardown_managed_process_group()
                 except Exception:
                     traceback.print_exc()
                 break
-            threading.Thread(target=self._handle_conn, args=(conn,), daemon=True).start()
+            threading.Thread(
+                target=self._handle_conn, args=(conn,), daemon=True
+            ).start()
 
         s.close()
 
@@ -1145,7 +1316,9 @@ class Broker:
                     _send_socket_json_line(conn, resp)
                     return
                 seq_raw = req.get("enter_seq")
-                seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+                seq = (
+                    _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+                )
                 fd: int | None = None
                 with self._lock:
                     st = self.state
@@ -1183,7 +1356,12 @@ class Broker:
                             resp = {"error": "no state"}
                         else:
                             fd = st.pty_master_fd
-                            resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
+                            resp = {
+                                "ok": True,
+                                "queued": False,
+                                "n": len(b),
+                                "key_queue_len": len(st.key_queue),
+                            }
                     if fd is not None:
                         try:
                             _write_all(fd, b)
@@ -1202,7 +1380,9 @@ class Broker:
             if _socket_peer_disconnected(exc):
                 return
             try:
-                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
+                _send_socket_json_line(
+                    conn, {"error": "exception", "trace": traceback.format_exc()}
+                )
             except Exception as send_exc:
                 if not _socket_peer_disconnected(send_exc):
                     traceback.print_exc()
@@ -1241,17 +1421,23 @@ class Broker:
         elif lp.suffix != ".jsonl":
             return
 
-        payload = _read_session_meta_payload(lp, agent_backend=AGENT_BACKEND, timeout_s=1.5)
+        payload = _read_session_meta_payload(
+            lp, agent_backend=AGENT_BACKEND, timeout_s=1.5
+        )
         if not payload:
             return
         if AGENT_BACKEND == "codex" and _is_subagent_session_meta(payload):
             parent = _subagent_parent_thread_id(payload)
             if not parent:
                 return
-            parent_log = _find_session_log_for_session_id(self.sessions_dir, parent, agent_backend=AGENT_BACKEND)
+            parent_log = _find_session_log_for_session_id(
+                self.sessions_dir, parent, agent_backend=AGENT_BACKEND
+            )
             if not parent_log:
                 return
-            parent_payload = _read_session_meta_payload(parent_log, agent_backend=AGENT_BACKEND, timeout_s=0.2)
+            parent_payload = _read_session_meta_payload(
+                parent_log, agent_backend=AGENT_BACKEND, timeout_s=0.2
+            )
             if not parent_payload:
                 return
             if _is_subagent_session_meta(parent_payload):
@@ -1263,7 +1449,9 @@ class Broker:
         if not isinstance(sid, str) or not sid:
             sid = self._session_id_from_rollout_path(lp)
             if sid is None:
-                raise RuntimeError(f"unable to determine session_id from rollout filename: {lp}")
+                raise RuntimeError(
+                    f"unable to determine session_id from rollout filename: {lp}"
+                )
         if not sid:
             return
 
@@ -1274,9 +1462,15 @@ class Broker:
             last = st.last_rollout_path
             if last is not None and _paths_match(last, lp):
                 return
-            st.last_rollout_path = lp
             have_sock = st.sock_path is not None
             prev_lp = st.log_path
+            if prev_lp is not None and not _paths_match(prev_lp, lp):
+                try:
+                    st.ignored_rollout_paths.add(prev_lp.resolve())
+                except Exception:
+                    st.ignored_rollout_paths.add(prev_lp)
+            st.last_detected_rollout_path = lp
+            st.last_rollout_path = lp
             st.session_id = sid
             st.log_path = lp
             st.known_rollout_paths.add(lp)
@@ -1289,18 +1483,74 @@ class Broker:
             try:
                 self._register_from_log(log_path=lp)
             except Exception:
-                _dprint(f"broker: register_from_rollout failed: {traceback.format_exc()}")
+                _dprint(
+                    f"broker: register_from_rollout failed: {traceback.format_exc()}"
+                )
                 return
         elif prev_lp is None or not _paths_match(prev_lp, lp):
             self._write_meta()
 
+    def _run_pi_foreground_broker(self) -> int:
+        session_path = _session_log_path_from_args(
+            args=self.codex_args,
+            agent_backend=AGENT_BACKEND,
+            sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
+        )
+        resume_session_id = self._resume_session_id
+        if session_path is not None and resume_session_id is None:
+            try:
+                payload = _read_session_meta_payload(
+                    session_path, agent_backend="pi", timeout_s=0.0
+                )
+            except Exception:
+                payload = None
+            if isinstance(payload, dict):
+                sid = payload.get("id")
+                if isinstance(sid, str) and sid:
+                    resume_session_id = sid
+        if session_path is None and resume_session_id:
+            search_dir = _pi_session_dir_from_args(
+                args=self.codex_args, cwd=self.cwd, sessions_dir=self.sessions_dir
+            )
+            if search_dir is None:
+                search_dir = self.sessions_dir
+            session_path = _find_session_log_for_session_id(
+                search_dir, resume_session_id, agent_backend="pi"
+            )
+        forwarded_args = list(self.codex_args)
+        if session_path is not None:
+            trimmed: list[str] = []
+            skip_next = False
+            for arg in self.codex_args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if arg == "--session":
+                    skip_next = True
+                    continue
+                if arg == "--session-dir":
+                    skip_next = True
+                    continue
+                trimmed.append(arg)
+            forwarded_args = trimmed
+        return PiBroker(
+            cwd=self.cwd,
+            session_path=session_path,
+            agent_args=forwarded_args,
+            resume_session_id=resume_session_id,
+        ).run(foreground=True)
+
     def run(self) -> int:
+        if AGENT_BACKEND == "pi":
+            return self._run_pi_foreground_broker()
+
         rows, cols = _term_size()
         _require_proc()
 
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         start_ts = _now()
-        headless = (OWNER_TAG == "web")
+        headless = OWNER_TAG == "web"
         local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
         pid, master_fd = pty.fork()
@@ -1326,7 +1576,9 @@ class Broker:
                             traceback.print_exc()
                 if headless:
                     os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                    _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args)
+                    _exec_agent_via_login_shell(
+                        cwd=self.cwd, agent_args=self.codex_args
+                    )
                 else:
                     os.environ[BACKEND.home_env_var] = str(self.codex_home)
                     _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
@@ -1359,10 +1611,17 @@ class Broker:
             resume_session_id=self._resume_session_id,
         )
         if AGENT_BACKEND == "pi":
-            st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
+            st.known_rollout_paths = set(
+                _iter_session_logs(self._pi_scan_sessions_dir(), agent_backend="pi")
+            )
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
-        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
+        declared_log_path = _session_log_path_from_args(
+            args=self.codex_args,
+            agent_backend=AGENT_BACKEND,
+            sessions_dir=self.sessions_dir,
+            cwd=self.cwd,
+        )
         if declared_log_path is not None and declared_log_path.exists():
             self._maybe_register_or_switch_rollout(log_path=declared_log_path)
 
@@ -1402,7 +1661,9 @@ class Broker:
         finally:
             if self._stdin_termios is not None:
                 try:
-                    termios.tcsetattr(sys.stdin.fileno(), termios.TCSANOW, self._stdin_termios)
+                    termios.tcsetattr(
+                        sys.stdin.fileno(), termios.TCSANOW, self._stdin_termios
+                    )
                 except Exception:
                     traceback.print_exc()
                 self._stdin_termios = None
@@ -1431,8 +1692,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Foreground PTY broker for Codoxear CLI agents: preserves terminal UX and registers a control socket."
     )
-    ap.add_argument("--cwd", default=os.getcwd(), help="Directory to run the agent in (default: current directory)")
-    ap.add_argument("args", nargs=argparse.REMAINDER, help="Arguments after -- are passed to the selected agent CLI")
+    ap.add_argument(
+        "--cwd",
+        default=os.getcwd(),
+        help="Directory to run the agent in (default: current directory)",
+    )
+    ap.add_argument(
+        "args",
+        nargs=argparse.REMAINDER,
+        help="Arguments after -- are passed to the selected agent CLI",
+    )
     ns = ap.parse_args()
 
     args = list(ns.args)

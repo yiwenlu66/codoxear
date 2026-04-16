@@ -1,0 +1,32 @@
+{
+  "name": "codoxear-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build && rm -rf ../codoxear/static/dist && mkdir -p ../codoxear/static/dist && cp -R dist/. ../codoxear/static/dist/",
+    "preview": "vite preview",
+    "test": "tsc --noEmit -p tsconfig.test.json && vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "monaco-editor": "^0.55.1",
+    "preact": "^10.26.4",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "@types/node": "^24.1.0",
+    "autoprefixer": "^10.4.21",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4"
+  }
+}

@@ -8,6 +8,11 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+node_modules/
+web/node_modules/
+web/dist/
+web/.tsbuild/
+codoxear/static/dist/
 
 server.log
 *.log
@@ -19,3 +24,14 @@ root-repo/
 codex-homes/
 socks/
 generated_imgs/
+# CocoIndex Code (ccc)
+/.cocoindex_code/
+/openclaw-main
+/.playwright-cli
+.playwright-mcp
+.pytest_cache
+.venv
+.ruff_cache
+.tmp
+.pi
+.superpowers

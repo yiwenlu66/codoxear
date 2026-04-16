@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import urlparse
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -26,7 +27,22 @@ DEFAULT_SUMMARIZATION_MODEL = "gpt-4.1-mini"
 DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_TTS_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_VAPID_SUBJECT = "https://localhost"
-DEFAULT_VOICES = ("alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx", "sage", "shimmer", "verse")
+DEFAULT_PUSH_NOTIFICATION_TEXT = "回复完成"
+DEFAULT_VOICES = (
+    "alloy",
+    "ash",
+    "ballad",
+    "cedar",
+    "coral",
+    "echo",
+    "fable",
+    "marin",
+    "nova",
+    "onyx",
+    "sage",
+    "shimmer",
+    "verse",
+)
 HLS_TARGET_DURATION_SECONDS = 12
 HLS_MAX_SEGMENTS = 18
 HLS_KEEPALIVE_SECONDS = 6.0
@@ -49,6 +65,17 @@ def _compact_text(raw: str) -> str:
     return " ".join(str(raw or "").split()).strip()
 
 
+def _is_stale_push_subscription_endpoint(endpoint: Any) -> bool:
+    raw = str(endpoint or "").strip()
+    if not raw:
+        return False
+    try:
+        host = (urlparse(raw).hostname or "").strip().lower()
+    except Exception:
+        return False
+    return host.endswith(".invalid")
+
+
 def _normalize_base_url(raw: Any) -> str:
     value = str(raw or "").strip() or DEFAULT_TTS_BASE_URL
     if not value.startswith(("http://", "https://")):
@@ -69,7 +96,9 @@ def _normalize_vapid_subject(raw: Any) -> str:
 
 def _tailscale_https_subject() -> str | None:
     try:
-        raw = subprocess.check_output(["tailscale", "status", "--json"], text=True, timeout=5.0)
+        raw = subprocess.check_output(
+            ["tailscale", "status", "--json"], text=True, timeout=5.0
+        )
         obj = json.loads(raw)
     except Exception:
         return None
@@ -92,14 +121,28 @@ def _default_vapid_subject() -> str:
     return DEFAULT_VAPID_SUBJECT
 
 
+def _should_drop_push_subscription(endpoint: Any, error: Exception) -> bool:
+    if _is_stale_push_subscription_endpoint(endpoint):
+        return True
+    if isinstance(error, WebPushException):
+        status = getattr(getattr(error, "response", None), "status_code", None)
+        return status in {404, 410}
+    return False
+
+
 def _clean_voice_settings(raw: Any) -> dict[str, Any]:
     obj = dict(raw) if isinstance(raw, dict) else {}
     narration = bool(obj.get("tts_enabled_for_narration"))
     final_response = bool(obj.get("tts_enabled_for_final_response"))
     base_url = _normalize_base_url(obj.get("tts_base_url"))
     api_key = str(obj.get("tts_api_key") or "").strip()
-    summarization_model = str(obj.get("summarization_model") or DEFAULT_SUMMARIZATION_MODEL).strip() or DEFAULT_SUMMARIZATION_MODEL
-    tts_model = str(obj.get("tts_model") or DEFAULT_TTS_MODEL).strip() or DEFAULT_TTS_MODEL
+    summarization_model = (
+        str(obj.get("summarization_model") or DEFAULT_SUMMARIZATION_MODEL).strip()
+        or DEFAULT_SUMMARIZATION_MODEL
+    )
+    tts_model = (
+        str(obj.get("tts_model") or DEFAULT_TTS_MODEL).strip() or DEFAULT_TTS_MODEL
+    )
     return {
         "tts_enabled_for_narration": narration,
         "tts_enabled_for_final_response": final_response,
@@ -133,7 +176,13 @@ def _clean_subscription(raw: Any) -> dict[str, Any]:
 
 def _device_class_from_user_agent(raw: Any) -> str:
     ua = str(raw or "").strip().lower()
-    if "mobile" in ua or "android" in ua or "iphone" in ua or "ipad" in ua or "ipod" in ua:
+    if (
+        "mobile" in ua
+        or "android" in ua
+        or "iphone" in ua
+        or "ipad" in ua
+        or "ipod" in ua
+    ):
         return "mobile"
     return "desktop"
 
@@ -168,8 +217,12 @@ def _clean_subscription_record(raw: Any) -> dict[str, Any] | None:
         "notifications_enabled": enabled,
         "created_ts": created_ts,
         "updated_ts": updated_ts,
-        "last_success_ts": float(last_success_ts) if isinstance(last_success_ts, (int, float)) else None,
-        "last_failure_ts": float(last_failure_ts) if isinstance(last_failure_ts, (int, float)) else None,
+        "last_success_ts": float(last_success_ts)
+        if isinstance(last_success_ts, (int, float))
+        else None,
+        "last_failure_ts": float(last_failure_ts)
+        if isinstance(last_failure_ts, (int, float))
+        else None,
         "last_error": last_error,
         "user_agent": user_agent,
         "device_label": device_label,
@@ -247,7 +300,9 @@ class OpenAICompatibleClient:
     def __init__(self, *, timeout_seconds: float = 30.0) -> None:
         self._timeout_seconds = float(timeout_seconds)
 
-    def _request_json(self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _request_json(
+        self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         if not api_key:
             raise ValueError("tts_api_key is required")
         body = json.dumps(payload).encode("utf-8")
@@ -272,7 +327,9 @@ class OpenAICompatibleClient:
             raise ValueError(f"{route} returned non-object json")
         return obj
 
-    def _request_bytes(self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]) -> bytes:
+    def _request_bytes(
+        self, *, base_url: str, api_key: str, route: str, payload: dict[str, Any]
+    ) -> bytes:
         if not api_key:
             raise ValueError("tts_api_key is required")
         body = json.dumps(payload).encode("utf-8")
@@ -348,7 +405,11 @@ class OpenAICompatibleClient:
         elif isinstance(content, list):
             parts = []
             for item in content:
-                if isinstance(item, dict) and item.get("type") in {"text", "output_text"} and isinstance(item.get("text"), str):
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") in {"text", "output_text"}
+                    and isinstance(item.get("text"), str)
+                ):
                     parts.append(item["text"])
             summary = " ".join("".join(parts).split()).strip()
         else:
@@ -357,7 +418,9 @@ class OpenAICompatibleClient:
             raise ValueError("empty summary response")
         return summary
 
-    def synthesize(self, *, base_url: str, api_key: str, model: str, voice: str, text: str) -> bytes:
+    def synthesize(
+        self, *, base_url: str, api_key: str, model: str, voice: str, text: str
+    ) -> bytes:
         audio = self._request_bytes(
             base_url=base_url,
             api_key=api_key,
@@ -392,19 +455,28 @@ class MergedHLSStream:
             return {
                 "segment_count": len(self._segments),
                 "last_error": self._last_error,
-                "media_sequence": self._segments[0]["seq"] if self._segments else self._next_seq,
+                "media_sequence": self._segments[0]["seq"]
+                if self._segments
+                else self._next_seq,
             }
 
     def playlist_bytes(self) -> bytes:
         with self._lock:
-            return self._playlist_path.read_bytes() if self._playlist_path.exists() else b"#EXTM3U\n"
+            return (
+                self._playlist_path.read_bytes()
+                if self._playlist_path.exists()
+                else b"#EXTM3U\n"
+            )
 
     def segment_path(self, segment_name: str) -> Path:
         name = Path(segment_name).name
         if name != segment_name or not name.endswith(".ts"):
             raise FileNotFoundError(segment_name)
         path = (self._segments_dir / name).resolve()
-        if not str(path).startswith(str(self._segments_dir.resolve())) or not path.exists():
+        if (
+            not str(path).startswith(str(self._segments_dir.resolve()))
+            or not path.exists()
+        ):
             raise FileNotFoundError(segment_name)
         return path
 
@@ -444,7 +516,9 @@ class MergedHLSStream:
                 capture_output=True,
             )
             total_duration = 0.0
-            chunk_paths = sorted(self._segments_dir.glob(f"{message_id[:12] or 'audio'}-part-*.ts"))
+            chunk_paths = sorted(
+                self._segments_dir.glob(f"{message_id[:12] or 'audio'}-part-*.ts")
+            )
             if not chunk_paths:
                 raise RuntimeError("ffmpeg produced no HLS segments")
             for chunk_path in chunk_paths:
@@ -458,10 +532,17 @@ class MergedHLSStream:
                     except FileNotFoundError:
                         pass
                     continue
-                seq, segment_name, segment_path = self._reserve_segment(f"{message_id[:12] or 'audio'}")
+                seq, segment_name, segment_path = self._reserve_segment(
+                    f"{message_id[:12] or 'audio'}"
+                )
                 chunk_path.replace(segment_path)
                 total_duration += duration
-                self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
+                self._store_segment(
+                    seq=seq,
+                    segment_name=segment_name,
+                    segment_path=segment_path,
+                    duration=duration,
+                )
             if total_duration <= 0.0:
                 raise RuntimeError("ffmpeg produced no valid HLS segments")
         except subprocess.CalledProcessError as e:
@@ -472,7 +553,9 @@ class MergedHLSStream:
                 input_path.unlink()
             except FileNotFoundError:
                 pass
-            for chunk_path in self._segments_dir.glob(f"{message_id[:12] or 'audio'}-part-*.ts"):
+            for chunk_path in self._segments_dir.glob(
+                f"{message_id[:12] or 'audio'}-part-*.ts"
+            ):
                 try:
                     chunk_path.unlink()
                 except FileNotFoundError:
@@ -484,7 +567,11 @@ class MergedHLSStream:
         if shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None:
             raise RuntimeError("ffmpeg and ffprobe are required for merged HLS output")
         with self._lock:
-            if (not force) and self._last_append_ts and (time.time() - self._last_append_ts) < HLS_KEEPALIVE_SECONDS:
+            if (
+                (not force)
+                and self._last_append_ts
+                and (time.time() - self._last_append_ts) < HLS_KEEPALIVE_SECONDS
+            ):
                 return False
         os.makedirs(self._segments_dir, exist_ok=True)
         seq, segment_name, segment_path = self._reserve_segment("silence")
@@ -517,7 +604,12 @@ class MergedHLSStream:
         except subprocess.CalledProcessError as e:
             detail = e.stderr.decode("utf-8", errors="replace")
             raise RuntimeError(f"ffmpeg failed: {detail}") from e
-        self._store_segment(seq=seq, segment_name=segment_name, segment_path=segment_path, duration=duration)
+        self._store_segment(
+            seq=seq,
+            segment_name=segment_name,
+            segment_path=segment_path,
+            duration=duration,
+        )
         return True
 
     def reset(self) -> None:
@@ -541,9 +633,18 @@ class MergedHLSStream:
         segment_path = self._segments_dir / segment_name
         return seq, segment_name, segment_path
 
-    def _store_segment(self, *, seq: int, segment_name: str, segment_path: Path, duration: float) -> None:
+    def _store_segment(
+        self, *, seq: int, segment_name: str, segment_path: Path, duration: float
+    ) -> None:
         with self._lock:
-            self._segments.append({"seq": seq, "name": segment_name, "duration": duration, "path": segment_path})
+            self._segments.append(
+                {
+                    "seq": seq,
+                    "name": segment_name,
+                    "duration": duration,
+                    "path": segment_path,
+                }
+            )
             self._segments.sort(key=lambda item: int(item["seq"]))
             while len(self._segments) > HLS_MAX_SEGMENTS:
                 old = self._segments.pop(0)
@@ -584,7 +685,14 @@ class MergedHLSStream:
     def _rewrite_playlist(self) -> None:
         target_duration = max(
             HLS_TARGET_DURATION_SECONDS,
-            int(math.ceil(max((float(item["duration"]) for item in self._segments), default=0.0))),
+            int(
+                math.ceil(
+                    max(
+                        (float(item["duration"]) for item in self._segments),
+                        default=0.0,
+                    )
+                )
+            ),
         )
         lines = [
             "#EXTM3U",
@@ -637,9 +745,13 @@ class VoicePushCoordinator:
         self._load_subscriptions()
         self._load_delivery_ledger()
         self._ensure_vapid_keys()
-        self._worker = threading.Thread(target=self._worker_loop, name="voice-push", daemon=True)
+        self._worker = threading.Thread(
+            target=self._worker_loop, name="voice-push", daemon=True
+        )
         self._worker.start()
-        self._keepalive = threading.Thread(target=self._keepalive_loop, name="voice-push-keepalive", daemon=True)
+        self._keepalive = threading.Thread(
+            target=self._keepalive_loop, name="voice-push-keepalive", daemon=True
+        )
         self._keepalive.start()
 
     def settings_snapshot(self) -> dict[str, Any]:
@@ -649,10 +761,17 @@ class VoicePushCoordinator:
             enabled_devices = sum(
                 1
                 for item in self._subscriptions.values()
-                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
+                if item.get("notifications_enabled")
+                and item.get("device_class") == "mobile"
             )
-            total_devices = sum(1 for item in self._subscriptions.values() if item.get("device_class") == "mobile")
-            active_listener_count = self._active_listener_count_locked(now_ts=time.time())
+            total_devices = sum(
+                1
+                for item in self._subscriptions.values()
+                if item.get("device_class") == "mobile"
+            )
+            active_listener_count = self._active_listener_count_locked(
+                now_ts=time.time()
+            )
         audio_state = self._hls.snapshot()
         return {
             **settings,
@@ -704,6 +823,138 @@ class VoicePushCoordinator:
             self._hls.reset()
         return {"active_listener_count": count}
 
+    def enqueue_test_announcement(
+        self, *, session_display_name: str = "Codoxear"
+    ) -> dict[str, Any]:
+        settings = self.settings_snapshot()
+        if not str(settings.get("tts_base_url") or "").strip():
+            raise ValueError("tts_base_url is required")
+        if not str(settings.get("tts_api_key") or "").strip():
+            raise ValueError("tts_api_key is required")
+
+        now_ts = float(time.time())
+        message_id = f"test-{int(now_ts * 1000)}-{_sha256_hex(str(now_ts))[:8]}"
+        voice = self._voice_for_session("test-session", session_display_name)
+        task = AnnouncementTask(
+            message_id=message_id,
+            source_message_ids=(message_id,),
+            session_id="test-session",
+            session_display_name=session_display_name,
+            message_class="final_response",
+            source_text="This is a Codoxear announcement test.",
+            spoken_text="This is a Codoxear announcement test.",
+            notification_text="Codoxear announcement test",
+            voice=voice,
+            ts=now_ts,
+            summary_word_target=None,
+            listener_epoch=0,
+        )
+
+        with self._lock:
+            listener_count = self._active_listener_count_locked(now_ts=now_ts)
+            if listener_count <= 0:
+                raise ValueError("no active listener")
+            task = AnnouncementTask(
+                message_id=task.message_id,
+                source_message_ids=task.source_message_ids,
+                session_id=task.session_id,
+                session_display_name=task.session_display_name,
+                message_class=task.message_class,
+                source_text=task.source_text,
+                spoken_text=task.spoken_text,
+                notification_text=task.notification_text,
+                voice=task.voice,
+                ts=task.ts,
+                summary_word_target=task.summary_word_target,
+                listener_epoch=self._listener_epoch,
+            )
+            self._delivery_ledger[message_id] = {
+                "message_id": message_id,
+                "session_id": task.session_id,
+                "session_display_name": session_display_name,
+                "message_class": task.message_class,
+                "preview_text": task.source_text,
+                "notification_text": task.notification_text,
+                "summary_text": "",
+                "summary_status": "skipped",
+                "narrated_status": "pending",
+                "push_status": "skipped",
+                "voice": voice,
+                "created_ts": now_ts,
+                "updated_ts": now_ts,
+                "last_error": "",
+            }
+            self._enqueue_task_locked(task)
+            self._trim_locked()
+            self._queue_ready.notify_all()
+            queue_depth = len(self._queue)
+
+        self._save_delivery_ledger()
+        return {
+            "message_id": message_id,
+            "queue_depth": queue_depth,
+            "voice": voice,
+        }
+
+    def send_test_push_notification(
+        self, *, session_display_name: str = "Codoxear"
+    ) -> dict[str, Any]:
+        with self._lock:
+            subscriptions = [
+                dict(item)
+                for item in self._subscriptions.values()
+                if item.get("notifications_enabled")
+                and item.get("device_class") == "mobile"
+            ]
+        if not subscriptions:
+            raise ValueError("no enabled mobile subscriptions")
+
+        payload = json.dumps(
+            {
+                "session_display_name": str(session_display_name or "Codoxear").strip()
+                or "Codoxear",
+                "notification_text": DEFAULT_PUSH_NOTIFICATION_TEXT,
+                "timestamp": time.time(),
+            }
+        )
+        vapid = Vapid.from_file(str(self._vapid_private_key_path))
+        sent_count = 0
+        failed_count = 0
+        for record in subscriptions:
+            try:
+                response = webpush(
+                    subscription_info=record["subscription"],
+                    data=payload,
+                    vapid_private_key=vapid,
+                    vapid_claims={"sub": self._vapid_subject},
+                    ttl=300,
+                    timeout=10.0,
+                )
+                now_ts = float(time.time())
+                with self._lock:
+                    current = self._subscriptions.get(record["id"])
+                    if isinstance(current, dict):
+                        current["last_success_ts"] = now_ts
+                        current["last_error"] = ""
+                        current["updated_ts"] = now_ts
+                        self._subscriptions[record["id"]] = current
+                sent_count += 1
+                _ = response
+            except Exception as e:
+                self._mark_subscription_failure(record_id=record["id"], error=str(e))
+                if _should_drop_push_subscription(
+                    record.get("subscription", {}).get("endpoint"), e
+                ):
+                    self._drop_subscription(record["id"])
+                failed_count += 1
+        self._save_subscriptions()
+        return {
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "target_count": len(subscriptions),
+            "notification_text": DEFAULT_PUSH_NOTIFICATION_TEXT,
+        }
+
     def set_settings(self, raw: Any) -> dict[str, Any]:
         settings = _clean_voice_settings(raw)
         with self._lock:
@@ -745,7 +996,9 @@ class VoicePushCoordinator:
         now_ts = float(time.time())
         sid = _subscription_id(cleaned)
         user_agent_clean = str(user_agent or "").strip()
-        device_class_clean = _clean_device_class(device_class, user_agent=user_agent_clean)
+        device_class_clean = _clean_device_class(
+            device_class, user_agent=user_agent_clean
+        )
         with self._lock:
             current = dict(self._subscriptions.get(sid) or {})
             record = {
@@ -769,10 +1022,15 @@ class VoicePushCoordinator:
         endpoint_clean = str(endpoint or "").strip()
         if not endpoint_clean:
             raise ValueError("endpoint required")
-        target_id = _subscription_id({"endpoint": endpoint_clean, "keys": {"p256dh": "x", "auth": "x"}})
+        target_id = _subscription_id(
+            {"endpoint": endpoint_clean, "keys": {"p256dh": "x", "auth": "x"}}
+        )
         with self._lock:
             record = self._subscriptions.get(target_id)
-            if not isinstance(record, dict) or record.get("subscription", {}).get("endpoint") != endpoint_clean:
+            if (
+                not isinstance(record, dict)
+                or record.get("subscription", {}).get("endpoint") != endpoint_clean
+            ):
                 raise KeyError("unknown subscription")
             record["notifications_enabled"] = bool(enabled)
             record["updated_ts"] = float(time.time())
@@ -792,7 +1050,9 @@ class VoicePushCoordinator:
             now_ts = float(time.time())
             observed_serial = 0
             slot_key = (session_id, msg.message_class)
-            narration_enabled = bool(self._voice_settings.get("tts_enabled_for_narration"))
+            narration_enabled = bool(
+                self._voice_settings.get("tts_enabled_for_narration")
+            )
             listener_epoch = 0
             listener_count = 0
             with self._lock:
@@ -811,9 +1071,15 @@ class VoicePushCoordinator:
                     "preview_text": _clip_text(msg.text, limit=160),
                     "notification_text": "",
                     "summary_text": "",
-                    "summary_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
-                    "narrated_status": "pending" if (msg.message_class == "final_response" or narration_enabled) else "skipped",
-                    "push_status": "pending" if msg.message_class == "final_response" else "skipped",
+                    "summary_status": "pending"
+                    if (msg.message_class == "final_response" or narration_enabled)
+                    else "skipped",
+                    "narrated_status": "pending"
+                    if (msg.message_class == "final_response" or narration_enabled)
+                    else "skipped",
+                    "push_status": "pending"
+                    if msg.message_class == "final_response"
+                    else "skipped",
                     "voice": "",
                     "created_ts": now_ts,
                     "updated_ts": now_ts,
@@ -849,14 +1115,23 @@ class VoicePushCoordinator:
                 self._mark_tasks_skipped_no_listener([task])
                 continue
             with self._lock:
-                current_listener_count = self._active_listener_count_locked(now_ts=time.time())
-                if current_listener_count <= 0 or task.listener_epoch != self._listener_epoch:
+                current_listener_count = self._active_listener_count_locked(
+                    now_ts=time.time()
+                )
+                if (
+                    current_listener_count <= 0
+                    or task.listener_epoch != self._listener_epoch
+                ):
                     drop_for_listener = True
                 else:
                     drop_for_listener = False
                 if drop_for_listener:
                     pass
-                elif msg.message_class == "final_response" and self._latest_observed_serial_by_slot.get(slot_key) != observed_serial:
+                elif (
+                    msg.message_class == "final_response"
+                    and self._latest_observed_serial_by_slot.get(slot_key)
+                    != observed_serial
+                ):
                     self._mark_task_replaced_locked(task)
                 else:
                     self._enqueue_task_locked(task)
@@ -915,12 +1190,20 @@ class VoicePushCoordinator:
                 {
                     "message_id": str(row.get("message_id") or ""),
                     "session_id": str(row.get("session_id") or ""),
-                    "session_display_name": str(row.get("session_display_name") or "").strip() or "Session",
+                    "session_display_name": str(
+                        row.get("session_display_name") or ""
+                    ).strip()
+                    or "Session",
                     "notification_text": text,
                     "updated_ts": updated_ts,
                 }
             )
-        out.sort(key=lambda item: (float(item.get("updated_ts") or 0.0), str(item.get("message_id") or "")))
+        out.sort(
+            key=lambda item: (
+                float(item.get("updated_ts") or 0.0),
+                str(item.get("message_id") or ""),
+            )
+        )
         return out
 
     def _keepalive_loop(self) -> None:
@@ -956,7 +1239,10 @@ class VoicePushCoordinator:
                     now_wall = time.time()
                     now_mono = time.monotonic()
                     listener_count = self._active_listener_count_locked(now_ts=now_wall)
-                    if self._playing_task is not None and now_mono >= self._playing_until_monotonic:
+                    if (
+                        self._playing_task is not None
+                        and now_mono >= self._playing_until_monotonic
+                    ):
                         self._playing_task = None
                         self._playing_until_monotonic = 0.0
                     if (
@@ -969,19 +1255,30 @@ class VoicePushCoordinator:
                         self._prepared = None
                         action = "append"
                         break
-                    if listener_count > 0 and self._prepared is not None and self._prepared.task.listener_epoch != self._listener_epoch:
+                    if (
+                        listener_count > 0
+                        and self._prepared is not None
+                        and self._prepared.task.listener_epoch != self._listener_epoch
+                    ):
                         stale_task = self._prepared.task
                         self._prepared = None
                         self._queue_ready.notify_all()
                         continue
-                    if listener_count > 0 and self._generating_task is None and self._prepared is None and self._queue:
+                    if (
+                        listener_count > 0
+                        and self._generating_task is None
+                        and self._prepared is None
+                        and self._queue
+                    ):
                         task = self._queue.pop(0)
                         self._generating_task = task
                         action = "generate"
                         break
                     timeout = 0.25
                     if self._playing_task is not None:
-                        timeout = min(timeout, max(0.0, self._playing_until_monotonic - now_mono))
+                        timeout = min(
+                            timeout, max(0.0, self._playing_until_monotonic - now_mono)
+                        )
                     self._queue_ready.wait(timeout=timeout)
                 if self._stop.is_set():
                     return
@@ -1000,7 +1297,10 @@ class VoicePushCoordinator:
                 self._hls.set_last_error(str(e))
             finally:
                 with self._lock:
-                    if self._generating_task is not None and self._generating_task.message_id == task.message_id:
+                    if (
+                        self._generating_task is not None
+                        and self._generating_task.message_id == task.message_id
+                    ):
                         self._generating_task = None
                     self._queue_ready.notify_all()
 
@@ -1018,10 +1318,15 @@ class VoicePushCoordinator:
                 text=task.source_text,
                 target_words=task.summary_word_target,
             )
-            self._set_task_ledger_fields(task, {"summary_status": "sent", "summary_text": summary_text})
+            self._set_task_ledger_fields(
+                task, {"summary_status": "sent", "summary_text": summary_text}
+            )
             spoken_text = f"From {task.session_display_name}. {summary_text}"
         with self._lock:
-            if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+            if (
+                task.listener_epoch != self._listener_epoch
+                or self._active_listener_count_locked(now_ts=time.time()) <= 0
+            ):
                 stale = True
             else:
                 stale = False
@@ -1037,7 +1342,10 @@ class VoicePushCoordinator:
             text=spoken_text,
         )
         with self._lock:
-            if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+            if (
+                task.listener_epoch != self._listener_epoch
+                or self._active_listener_count_locked(now_ts=time.time()) <= 0
+            ):
                 self._queue_ready.notify_all()
                 stale = True
             else:
@@ -1050,14 +1358,19 @@ class VoicePushCoordinator:
 
     def _append_prepared(self, prepared: GeneratedAnnouncement) -> None:
         with self._lock:
-            if prepared.task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
+            if (
+                prepared.task.listener_epoch != self._listener_epoch
+                or self._active_listener_count_locked(now_ts=time.time()) <= 0
+            ):
                 stale = True
             else:
                 stale = False
         if stale:
             self._mark_tasks_skipped_no_listener([prepared.task])
             return
-        duration = self._hls.append_audio(message_id=prepared.task.message_id, audio_bytes=prepared.audio_bytes)
+        duration = self._hls.append_audio(
+            message_id=prepared.task.message_id, audio_bytes=prepared.audio_bytes
+        )
         self._hls.set_last_error("")
         with self._lock:
             self._playing_task = prepared.task
@@ -1077,6 +1390,8 @@ class VoicePushCoordinator:
         settings = self.settings_snapshot()
         summary_text = ""
         notification_text = _clip_text(source_text, limit=120)
+        push_notification_text = DEFAULT_PUSH_NOTIFICATION_TEXT
+        summary_failed = False
         if settings.get("tts_api_key"):
             try:
                 summary_text = self._client.summarize(
@@ -1089,27 +1404,32 @@ class VoicePushCoordinator:
                     target_words=30,
                 )
             except Exception as e:
+                summary_failed = True
                 self._set_ledger_fields(
                     message.message_id,
                     {
                         "summary_status": "error",
-                        "push_status": "error",
-                        "narrated_status": "error" if settings.get("tts_enabled_for_final_response") else "skipped",
+                        "notification_text": notification_text,
+                        "narrated_status": "error"
+                        if settings.get("tts_enabled_for_final_response")
+                        else "skipped",
                         "last_error": _clip_text(str(e), limit=400),
                     },
                 )
                 self._hls.set_last_error(str(e))
-                return None
-            self._set_ledger_fields(
-                message.message_id,
-                {
-                    "notification_text": notification_text,
-                    "summary_status": "sent",
-                    "summary_text": summary_text,
-                },
-            )
-            notification_text = _clip_text(_compact_text(summary_text), limit=120)
-            self._set_ledger_field(message.message_id, "notification_text", notification_text)
+            else:
+                self._set_ledger_fields(
+                    message.message_id,
+                    {
+                        "notification_text": notification_text,
+                        "summary_status": "sent",
+                        "summary_text": summary_text,
+                    },
+                )
+                notification_text = _clip_text(_compact_text(summary_text), limit=120)
+                self._set_ledger_field(
+                    message.message_id, "notification_text", notification_text
+                )
         else:
             self._set_ledger_fields(
                 message.message_id,
@@ -1122,9 +1442,11 @@ class VoicePushCoordinator:
             session_id=session_id,
             session_display_name=session_display_name,
             message_id=message.message_id,
-            notification_text=notification_text,
+            notification_text=push_notification_text,
             timestamp=message.ts,
         )
+        if summary_failed:
+            return None
         if not settings.get("tts_enabled_for_final_response"):
             self._set_ledger_field(message.message_id, "narrated_status", "skipped")
             return None
@@ -1153,12 +1475,21 @@ class VoicePushCoordinator:
             listener_epoch=listener_epoch,
         )
 
-    def _send_push_notifications(self, *, session_id: str, session_display_name: str, message_id: str, notification_text: str, timestamp: float | None) -> None:
+    def _send_push_notifications(
+        self,
+        *,
+        session_id: str,
+        session_display_name: str,
+        message_id: str,
+        notification_text: str,
+        timestamp: float | None,
+    ) -> None:
         with self._lock:
             subscriptions = [
                 dict(item)
                 for item in self._subscriptions.values()
-                if item.get("notifications_enabled") and item.get("device_class") == "mobile"
+                if item.get("notifications_enabled")
+                and item.get("device_class") == "mobile"
             ]
         if not subscriptions:
             self._set_ledger_field(message_id, "push_status", "skipped")
@@ -1194,13 +1525,16 @@ class VoicePushCoordinator:
                         self._subscriptions[record["id"]] = current
                 any_success = True
                 _ = response
-            except WebPushException as e:
-                status = getattr(getattr(e, "response", None), "status_code", None)
+            except Exception as e:
                 self._mark_subscription_failure(record_id=record["id"], error=str(e))
-                if status in {404, 410}:
+                if _should_drop_push_subscription(
+                    record.get("subscription", {}).get("endpoint"), e
+                ):
                     self._drop_subscription(record["id"])
         self._save_subscriptions()
-        self._set_ledger_field(message_id, "push_status", "sent" if any_success else "error")
+        self._set_ledger_field(
+            message_id, "push_status", "sent" if any_success else "error"
+        )
 
     def _voice_for_session(self, session_id: str, session_name: str) -> str:
         token = _sha256_hex(session_id)
@@ -1221,8 +1555,12 @@ class VoicePushCoordinator:
                 row["push_status"] = "skipped"
             self._delivery_ledger[message_id] = row
 
-    def _merge_narration_tasks_locked(self, older: AnnouncementTask, newer: AnnouncementTask) -> AnnouncementTask:
-        source_message_ids = tuple(dict.fromkeys((*older.source_message_ids, *newer.source_message_ids)))
+    def _merge_narration_tasks_locked(
+        self, older: AnnouncementTask, newer: AnnouncementTask
+    ) -> AnnouncementTask:
+        source_message_ids = tuple(
+            dict.fromkeys((*older.source_message_ids, *newer.source_message_ids))
+        )
         parts = [part for part in (older.source_text, newer.source_text) if part]
         return AnnouncementTask(
             message_id=newer.message_id,
@@ -1247,14 +1585,19 @@ class VoicePushCoordinator:
         insert_index: int | None = None
         task_to_enqueue = new_task
         for queued in self._queue:
-            same_slot = queued.session_id == new_task.session_id and queued.message_class == new_task.message_class
+            same_slot = (
+                queued.session_id == new_task.session_id
+                and queued.message_class == new_task.message_class
+            )
             if not same_slot:
                 kept.append(queued)
                 continue
             if insert_index is None:
                 insert_index = len(kept)
             if new_task.message_class == "narration":
-                task_to_enqueue = self._merge_narration_tasks_locked(queued, task_to_enqueue)
+                task_to_enqueue = self._merge_narration_tasks_locked(
+                    queued, task_to_enqueue
+                )
             else:
                 self._mark_task_replaced_locked(queued)
         if insert_index is None:
@@ -1303,13 +1646,17 @@ class VoicePushCoordinator:
     def _set_ledger_field(self, message_id: str, key: str, value: Any) -> None:
         self._set_ledger_fields(message_id, {key: value})
 
-    def _set_task_ledger_fields(self, task: AnnouncementTask, patch: dict[str, Any]) -> None:
+    def _set_task_ledger_fields(
+        self, task: AnnouncementTask, patch: dict[str, Any]
+    ) -> None:
         self._set_ledger_fields_many(task.source_message_ids, patch)
 
     def _set_ledger_fields(self, message_id: str, patch: dict[str, Any]) -> None:
         self._set_ledger_fields_many((message_id,), patch)
 
-    def _set_ledger_fields_many(self, message_ids: tuple[str, ...], patch: dict[str, Any]) -> None:
+    def _set_ledger_fields_many(
+        self, message_ids: tuple[str, ...], patch: dict[str, Any]
+    ) -> None:
         with self._lock:
             now_ts = float(time.time())
             dirty = False
@@ -1341,7 +1688,11 @@ class VoicePushCoordinator:
             self._subscriptions.pop(record_id, None)
 
     def _prune_listeners_locked(self, *, now_ts: float) -> None:
-        stale = [cid for cid, seen_at in self._listeners.items() if (now_ts - float(seen_at)) > LISTENER_TTL_SECONDS]
+        stale = [
+            cid
+            for cid, seen_at in self._listeners.items()
+            if (now_ts - float(seen_at)) > LISTENER_TTL_SECONDS
+        ]
         for cid in stale:
             self._listeners.pop(cid, None)
 
@@ -1357,7 +1708,10 @@ class VoicePushCoordinator:
             vapid.generate_keys()
             os.makedirs(self._vapid_private_key_path.parent, exist_ok=True)
             self._vapid_private_key_path.write_bytes(vapid.private_pem())
-        public_bytes = vapid.public_key.public_bytes(
+        public_key = vapid.public_key
+        if public_key is None:
+            raise ValueError("missing VAPID public key")
+        public_bytes = public_key.public_bytes(
             encoding=serialization.Encoding.X962,
             format=serialization.PublicFormat.UncompressedPoint,
         )
@@ -1368,7 +1722,9 @@ class VoicePushCoordinator:
             return
         doomed = sorted(
             self._delivery_ledger.values(),
-            key=lambda row: float(row.get("updated_ts") or row.get("created_ts") or 0.0),
+            key=lambda row: float(
+                row.get("updated_ts") or row.get("created_ts") or 0.0
+            ),
         )[: len(self._delivery_ledger) - DELIVERY_LEDGER_MAX]
         for row in doomed:
             message_id = row.get("message_id")
@@ -1386,8 +1742,17 @@ class VoicePushCoordinator:
         os.makedirs(self._settings_path.parent, exist_ok=True)
         with self._lock:
             payload = dict(self._voice_settings)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._settings_path.parent, prefix=self._settings_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self._settings_path.parent,
+            prefix=self._settings_path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            )
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, self._settings_path)
 
@@ -1408,8 +1773,17 @@ class VoicePushCoordinator:
         os.makedirs(self._subscriptions_path.parent, exist_ok=True)
         with self._lock:
             payload = list(self._subscriptions.values())
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._subscriptions_path.parent, prefix=self._subscriptions_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self._subscriptions_path.parent,
+            prefix=self._subscriptions_path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            )
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, self._subscriptions_path)
 
@@ -1425,7 +1799,16 @@ class VoicePushCoordinator:
         with self._lock:
             self._trim_locked()
             payload = dict(self._delivery_ledger)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._delivery_ledger_path.parent, prefix=self._delivery_ledger_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=self._delivery_ledger_path.parent,
+            prefix=self._delivery_ledger_path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp.write(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+            )
             tmp_path = Path(tmp.name)
         os.replace(tmp_path, self._delivery_ledger_path)

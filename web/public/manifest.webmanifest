@@ -1,0 +1,28 @@
+{
+  "name": "Codoxear",
+  "short_name": "Codoxear",
+  "description": "Continue and monitor local CLI agent sessions from a browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e9eef5",
+  "theme_color": "#1d4ed8",
+  "icons": [
+    {
+      "src": "codoxear-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "codoxear-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "codoxear-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ]
+}

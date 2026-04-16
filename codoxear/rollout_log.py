@@ -391,6 +391,11 @@ def _extract_chat_events(
                     tool_names.add(nm)
                     last_tool = nm
                 total_tools += 1
+                tool_ev: dict[str, Any] = {"type": "tool", "name": nm or "tool"}
+                ets_t = event_ts(obj)
+                if ets_t is not None:
+                    tool_ev["ts"] = ets_t
+                events.append(tool_ev)
                 continue
             if pt in (
                 "function_call_output",
