@@ -214,13 +214,7 @@ describe("SessionsPane", () => {
     expect(sessionsStore.select).toHaveBeenCalledWith("sess-2");
   });
 
-  it("resumes historical sessions instead of selecting synthetic ids", async () => {
-    vi.mocked(api.getSessionDetails).mockResolvedValue({
-      ok: true,
-      session: { session_id: "history:pi:resume-hist", cwd: "/tmp/project", agent_backend: "pi", historical: true, resume_session_id: "resume-hist" },
-    } as any);
-    vi.mocked(api.createSession).mockResolvedValue({ ok: true, session_id: "live-pi-1", broker_pid: 77, backend: "pi" } as any);
-
+  it("selects historical pi sessions without resuming them immediately", async () => {
     const sessionsStore = renderSessionsPane({
       items: [{ session_id: "history:pi:resume-hist", alias: "Recovered planning thread", cwd: "/tmp/project", agent_backend: "pi", historical: true }],
       activeSessionId: null,
@@ -231,20 +225,13 @@ describe("SessionsPane", () => {
       tmuxAvailable: false,
     });
 
-    sessionsStore.refresh = vi.fn(async () => {
-      sessionsStore.setState({
-        ...sessionsStore.getState(),
-        items: [{ session_id: "live-pi-1", alias: "Recovered planning thread", cwd: "/tmp/project", agent_backend: "pi" }],
-      });
-    });
-
     const sessionButton = root?.querySelector<HTMLButtonElement>(".sessionCardButton");
     expect(sessionButton).not.toBeNull();
     await click(sessionButton!);
     await flush();
 
-    expect(api.createSession).toHaveBeenCalledWith({ cwd: "/tmp/project", backend: "pi", resume_session_id: "resume-hist" });
-    expect(sessionsStore.select).toHaveBeenCalledWith("live-pi-1");
+    expect(api.createSession).not.toHaveBeenCalled();
+    expect(sessionsStore.select).toHaveBeenCalledWith("history:pi:resume-hist");
   });
 
   it("opens edit dialog from icon action and saves fields", async () => {

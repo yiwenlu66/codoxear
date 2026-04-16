@@ -12,10 +12,12 @@ function Harness(props: Parameters<typeof useAppShellSessionEffects>[0]) {
 function baseProps(overrides: Partial<Parameters<typeof useAppShellSessionEffects>[0]> = {}): Parameters<typeof useAppShellSessionEffects>[0] {
   return {
     activeSessionBackend: "pi",
+    activeSessionHistorical: false,
     activeSessionId: "sess-1",
     activeSessionLiveBusy: false,
     items: [{ session_id: "sess-1", busy: false }] as any,
     liveSessionStoreApi: { loadInitial: vi.fn().mockResolvedValue(undefined), poll: vi.fn().mockResolvedValue(undefined) } as any,
+    messagesStoreApi: { loadInitial: vi.fn().mockResolvedValue(undefined) } as any,
     replySoundEnabled: false,
     sessionUiStoreApi: { refresh: vi.fn().mockResolvedValue(undefined) } as any,
     sessionsStoreApi: { refresh: vi.fn().mockResolvedValue(undefined) } as any,
@@ -65,6 +67,7 @@ it("refreshes sessions immediately and every 5 seconds while any session is busy
         activeSessionLiveBusy={false}
         items={[{ session_id: "sess-1", busy: true }] as any}
         liveSessionStoreApi={{ loadInitial: vi.fn(), poll: vi.fn() } as any}
+        messagesStoreApi={{ loadInitial: vi.fn() } as any}
         replySoundEnabled={false}
         sessionUiStoreApi={{ refresh: vi.fn() } as any}
         sessionsStoreApi={sessionsStoreApi}
@@ -107,6 +110,7 @@ it("polls the active busy session every 2 seconds and workspace every 15 seconds
         activeSessionLiveBusy={false}
         items={[{ session_id: "sess-1", busy: true }] as any}
         liveSessionStoreApi={liveSessionStoreApi}
+        messagesStoreApi={{ loadInitial: vi.fn().mockResolvedValue(undefined) } as any}
         replySoundEnabled={false}
         sessionUiStoreApi={sessionUiStoreApi}
         sessionsStoreApi={{ refresh: vi.fn().mockResolvedValue(undefined) } as any}
@@ -155,6 +159,7 @@ it("slows active idle live polling to every 12 seconds", async () => {
         activeSessionLiveBusy={false}
         items={[{ session_id: "sess-1", busy: false }] as any}
         liveSessionStoreApi={liveSessionStoreApi}
+        messagesStoreApi={{ loadInitial: vi.fn().mockResolvedValue(undefined) } as any}
         replySoundEnabled={false}
         sessionUiStoreApi={{ refresh: vi.fn() } as any}
         sessionsStoreApi={{ refresh: vi.fn().mockResolvedValue(undefined) } as any}
@@ -210,6 +215,56 @@ it("switches to fast live polling as soon as live state reports the active sessi
   expect(liveSessionStoreApi.poll).toHaveBeenCalledWith("sess-1");
 });
 
+it("loads message history instead of live polling for historical pi sessions", async () => {
+  vi.useFakeTimers();
+  const liveSessionStoreApi = {
+    loadInitial: vi.fn().mockResolvedValue(undefined),
+    poll: vi.fn().mockResolvedValue(undefined),
+  } as any;
+  const messagesStoreApi = {
+    loadInitial: vi.fn().mockResolvedValue(undefined),
+  } as any;
+  const sessionUiStoreApi = { refresh: vi.fn().mockResolvedValue(undefined) } as any;
+
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+
+  await act(async () => {
+    render(
+      <Harness
+        activeSessionBackend="pi"
+        activeSessionHistorical={true}
+        activeSessionId="history:pi:resume-hist"
+        activeSessionLiveBusy={false}
+        items={[{ session_id: "history:pi:resume-hist", busy: false, historical: true, agent_backend: "pi" }] as any}
+        liveSessionStoreApi={liveSessionStoreApi}
+        messagesStoreApi={messagesStoreApi}
+        replySoundEnabled={false}
+        sessionUiStoreApi={sessionUiStoreApi}
+        sessionsStoreApi={{ refresh: vi.fn().mockResolvedValue(undefined) } as any}
+        workspaceOpen={true}
+        activeSessionReplySoundPrimingRef={{ current: null }}
+        backgroundReplySoundPrimedSessionIdsRef={{ current: new Set<string>() }}
+        suppressedReplySoundSessionIdsRef={{ current: new Set<string>() }}
+      />,
+      root,
+    );
+    await flush();
+  });
+
+  expect(messagesStoreApi.loadInitial).toHaveBeenCalledWith("history:pi:resume-hist");
+  expect(liveSessionStoreApi.loadInitial).not.toHaveBeenCalled();
+  expect(liveSessionStoreApi.poll).not.toHaveBeenCalled();
+  expect(sessionUiStoreApi.refresh).not.toHaveBeenCalled();
+
+  await act(async () => {
+    vi.advanceTimersByTime(12000);
+    await Promise.resolve();
+  });
+
+  expect(liveSessionStoreApi.poll).not.toHaveBeenCalled();
+});
+
 it("pauses live and workspace polling while hidden and refreshes immediately on resume", async () => {
   vi.useFakeTimers();
   setDocumentVisibility("hidden");
@@ -231,6 +286,7 @@ it("pauses live and workspace polling while hidden and refreshes immediately on 
         activeSessionLiveBusy={false}
         items={[{ session_id: "sess-1", busy: true }] as any}
         liveSessionStoreApi={liveSessionStoreApi}
+        messagesStoreApi={{ loadInitial: vi.fn().mockResolvedValue(undefined) } as any}
         replySoundEnabled={false}
         sessionUiStoreApi={sessionUiStoreApi}
         sessionsStoreApi={sessionsStoreApi}
@@ -280,6 +336,7 @@ it("primes and polls background busy sessions every 5 seconds when reply sounds 
           { session_id: "sess-2", busy: true },
         ] as any}
         liveSessionStoreApi={liveSessionStoreApi}
+        messagesStoreApi={{ loadInitial: vi.fn().mockResolvedValue(undefined) } as any}
         replySoundEnabled={true}
         sessionUiStoreApi={{ refresh: vi.fn() } as any}
         sessionsStoreApi={{ refresh: vi.fn().mockResolvedValue(undefined) } as any}

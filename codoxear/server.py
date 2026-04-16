@@ -2363,6 +2363,14 @@ def _parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
     resume_session_id = _clean_optional_resume_session_id(obj.get("resume_session_id"))
 
     if backend == "pi":
+        create_in_tmux_raw = obj.get("create_in_tmux")
+        if create_in_tmux_raw is None:
+            create_in_tmux = False
+        elif isinstance(create_in_tmux_raw, bool):
+            create_in_tmux = create_in_tmux_raw
+        else:
+            raise ValueError("create_in_tmux must be a boolean")
+
         pi_provider_choices = {
             str(value)
             for value in (_read_pi_launch_defaults().get("provider_choices") or [])
@@ -2387,7 +2395,7 @@ def _parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
             "model": model,
             "reasoning_effort": reasoning_effort,
             "service_tier": None,
-            "create_in_tmux": False,
+            "create_in_tmux": create_in_tmux,
         }
 
     allowed_providers = set(
@@ -3019,6 +3027,43 @@ def _iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
 
 def _historical_session_id(backend: str, resume_session_id: str) -> str:
     return f"history:{backend}:{resume_session_id}"
+
+
+def _parse_historical_session_id(session_id: str) -> tuple[str, str] | None:
+    raw = str(session_id or "").strip()
+    if not raw.startswith("history:"):
+        return None
+    _prefix, backend, resume_session_id = (
+        raw.split(":", 2) if raw.count(":") >= 2 else ("", "", "")
+    )
+    backend_clean = normalize_agent_backend(backend, default="codex")
+    resume_clean = _clean_optional_text(resume_session_id)
+    if not resume_clean:
+        return None
+    return backend_clean, resume_clean
+
+
+def _historical_session_row(session_id: str) -> dict[str, Any] | None:
+    parsed = _parse_historical_session_id(session_id)
+    if parsed is None:
+        return None
+    backend, resume_session_id = parsed
+    for row in _iter_all_resume_candidates():
+        if (
+            normalize_agent_backend(
+                row.get("agent_backend", row.get("backend")), default="codex"
+            )
+            != backend
+        ):
+            continue
+        if _clean_optional_text(row.get("session_id")) != resume_session_id:
+            continue
+        out = dict(row)
+        out["session_id"] = _historical_session_id(backend, resume_session_id)
+        out["resume_session_id"] = resume_session_id
+        out["historical"] = True
+        return out
+    return None
 
 
 def _historical_sidebar_items(
@@ -6433,6 +6478,73 @@ class SessionManager:
         before: int,
         view: str = "conversation",
     ) -> dict[str, Any]:
+        historical_row = _historical_session_row(session_id)
+        if historical_row is not None:
+            historical_backend = normalize_agent_backend(
+                historical_row.get("agent_backend", historical_row.get("backend")),
+                default="codex",
+            )
+            if historical_backend != "pi":
+                raise KeyError("unknown session")
+            session_path_raw = historical_row.get("session_path")
+            session_path = (
+                Path(session_path_raw)
+                if isinstance(session_path_raw, str) and session_path_raw
+                else None
+            )
+            if session_path is None or (not session_path.exists()):
+                return {
+                    "thread_id": historical_row.get("resume_session_id"),
+                    "log_path": str(session_path) if session_path is not None else None,
+                    "offset": 0,
+                    "events": [],
+                    "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                    "turn_start": False,
+                    "turn_end": False,
+                    "turn_aborted": False,
+                    "diag": {"pending_log": True},
+                    "busy": False,
+                    "queue_len": 0,
+                    "token": None,
+                    "has_older": False,
+                    "next_before": 0,
+                }
+            if init and offset == 0:
+                events, new_off, has_older, next_before, diag = (
+                    _pi_messages.read_pi_message_page(
+                        session_path,
+                        limit=limit,
+                        before=before,
+                    )
+                )
+                meta_delta = {"thinking": 0, "tool": 0, "system": 0}
+                flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
+            else:
+                events, new_off, meta_delta, flags, diag = (
+                    _pi_messages.read_pi_message_delta(
+                        session_path,
+                        offset=offset,
+                    )
+                )
+                has_older = False
+                next_before = 0
+            return {
+                "thread_id": historical_row.get("resume_session_id"),
+                "log_path": str(session_path),
+                "offset": int(new_off),
+                "events": events,
+                "meta_delta": meta_delta,
+                "turn_start": bool(flags.get("turn_start")),
+                "turn_end": bool(flags.get("turn_end")),
+                "turn_aborted": bool(flags.get("turn_aborted")),
+                "diag": diag,
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+                "has_older": bool(has_older),
+                "next_before": int(next_before),
+            }
+
         self.refresh_session_meta(session_id, strict=False)
         s = self.get_session(session_id)
         if not s:
@@ -6761,6 +6873,86 @@ class SessionManager:
                     env.setdefault(k, v)
             env["CODEX_WEB_OWNER"] = "web"
             env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
+            env.setdefault("PI_HOME", str(PI_HOME))
+            if create_in_tmux:
+                tmux_bin = shutil.which("tmux")
+                if tmux_bin is None:
+                    raise ValueError("tmux is unavailable on this host")
+                tmux_window = _safe_filename(
+                    f"{Path(cwd3).name or 'session'}-{spawn_nonce[:6]}",
+                    default="session",
+                )
+                env["CODEX_WEB_TRANSPORT"] = "tmux"
+                env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
+                env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
+                inline_env = {
+                    "CODEX_WEB_OWNER": "web",
+                    "CODEX_WEB_AGENT_BACKEND": "pi",
+                    "CODEX_WEB_TRANSPORT": "tmux",
+                    "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
+                    "CODEX_WEB_TMUX_WINDOW": tmux_window,
+                    "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+                    "PI_HOME": str(env["PI_HOME"]),
+                }
+                repo_root = Path(__file__).resolve().parent.parent
+                inline_argv = [
+                    "env",
+                    *[f"{key}={value}" for key, value in inline_env.items()],
+                    *argv,
+                ]
+                shell_cmd = f"cd {shlex.quote(str(repo_root))} && exec {shlex.join(inline_argv)}"
+                has_session = subprocess.run(
+                    [tmux_bin, "has-session", "-t", TMUX_SESSION_NAME],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    check=False,
+                )
+                if has_session.returncode == 0:
+                    tmux_argv = [
+                        tmux_bin,
+                        "new-window",
+                        "-d",
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                        "-t",
+                        f"{TMUX_SESSION_NAME}:",
+                        "-n",
+                        tmux_window,
+                        shell_cmd,
+                    ]
+                else:
+                    tmux_argv = [
+                        tmux_bin,
+                        "new-session",
+                        "-d",
+                        "-P",
+                        "-F",
+                        "#{pane_id}",
+                        "-s",
+                        TMUX_SESSION_NAME,
+                        "-n",
+                        tmux_window,
+                        shell_cmd,
+                    ]
+                tmux_proc = subprocess.run(
+                    tmux_argv, capture_output=True, text=True, env=env, check=False
+                )
+                if tmux_proc.returncode != 0:
+                    detail = (
+                        tmux_proc.stderr
+                        or tmux_proc.stdout
+                        or f"exit status {tmux_proc.returncode}"
+                    ).strip()
+                    raise RuntimeError(f"tmux launch failed: {detail}")
+                meta = _wait_for_spawned_broker_meta(spawn_nonce)
+                payload = _spawn_result_from_meta(meta)
+                return {
+                    **payload,
+                    "tmux_session": TMUX_SESSION_NAME,
+                    "tmux_window": tmux_window,
+                }
             try:
                 proc = subprocess.Popen(
                     argv,
@@ -7025,6 +7217,35 @@ class SessionManager:
         return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
+        historical_row = _historical_session_row(session_id)
+        if historical_row is not None:
+            backend = normalize_agent_backend(
+                historical_row.get("agent_backend", historical_row.get("backend")),
+                default="codex",
+            )
+            if backend != "pi":
+                raise KeyError("unknown session")
+            cwd = _clean_optional_text(historical_row.get("cwd"))
+            resume_session_id = _clean_optional_text(
+                historical_row.get("resume_session_id")
+            )
+            if cwd is None or resume_session_id is None:
+                raise ValueError("historical session is missing resume metadata")
+            spawn_res = self.spawn_web_session(
+                cwd=cwd,
+                backend="pi",
+                resume_session_id=resume_session_id,
+            )
+            self.list_sessions()
+            live_session_id = _clean_optional_text(spawn_res.get("session_id"))
+            if live_session_id is None:
+                raise RuntimeError("spawned session did not return a session id")
+            resp = self.send(live_session_id, text)
+            out = dict(resp)
+            out["session_id"] = live_session_id
+            out["backend"] = "pi"
+            return out
+
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -7064,6 +7285,35 @@ class SessionManager:
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        historical_row = _historical_session_row(session_id)
+        if historical_row is not None:
+            backend = normalize_agent_backend(
+                historical_row.get("agent_backend", historical_row.get("backend")),
+                default="codex",
+            )
+            if backend != "pi":
+                raise KeyError("unknown session")
+            cwd = _clean_optional_text(historical_row.get("cwd"))
+            resume_session_id = _clean_optional_text(
+                historical_row.get("resume_session_id")
+            )
+            if cwd is None or resume_session_id is None:
+                raise ValueError("historical session is missing resume metadata")
+            spawn_res = self.spawn_web_session(
+                cwd=cwd,
+                backend="pi",
+                resume_session_id=resume_session_id,
+            )
+            self.list_sessions()
+            live_session_id = _clean_optional_text(spawn_res.get("session_id"))
+            if live_session_id is None:
+                raise RuntimeError("spawned session did not return a session id")
+            resp = self.enqueue(live_session_id, text)
+            out = dict(resp)
+            out["session_id"] = live_session_id
+            out["backend"] = "pi"
+            return out
+
         # Persist queued messages on the server so they survive broker restarts.
         return self._queue_enqueue_local(session_id, text)
 

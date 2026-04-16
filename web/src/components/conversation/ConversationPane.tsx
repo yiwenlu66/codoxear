@@ -1146,6 +1146,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const messagesStoreApi = useMessagesStoreApi();
   const liveSessionStoreApi = useLiveSessionStoreApi();
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
+  const activeSessionIsHistoricalPi = activeSession?.historical === true && activeSession?.agent_backend === "pi";
   const allowLegacyAskUserFallback = Boolean(activeSession?.agent_backend === "pi" && activeSession?.transport !== "pi-rpc");
   const isBusy = Boolean(
     (activeSessionId && busyBySessionId[activeSessionId] === true)
@@ -1255,6 +1256,10 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
     if (!activeSessionId) return;
     historyAnchorRef.current = null;
     scrollModeRef.current = "bottom";
+    if (activeSessionIsHistoricalPi) {
+      await messagesStoreApi.loadInitial(activeSessionId);
+      return;
+    }
     await liveSessionStoreApi.loadInitial(activeSessionId);
   };
 

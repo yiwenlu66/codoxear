@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import type { MessagesStore } from "../../domains/messages/store";
 import type { LiveSessionStore } from "../../domains/live-session/store";
 import type { SessionUiStore } from "../../domains/session-ui/store";
 import type { SessionsStore } from "../../domains/sessions/store";
@@ -6,10 +7,12 @@ import type { SessionSummary } from "../../lib/types";
 
 interface UseAppShellSessionEffectsOptions {
   activeSessionBackend?: string;
+  activeSessionHistorical?: boolean;
   activeSessionId: string | null;
   activeSessionLiveBusy: boolean;
   items: SessionSummary[];
   liveSessionStoreApi: LiveSessionStore;
+  messagesStoreApi: MessagesStore;
   replySoundEnabled: boolean;
   sessionUiStoreApi: SessionUiStore;
   sessionsStoreApi: SessionsStore;
@@ -35,10 +38,12 @@ function isDocumentVisible() {
 
 export function useAppShellSessionEffects({
   activeSessionBackend,
+  activeSessionHistorical,
   activeSessionId,
   activeSessionLiveBusy,
   items,
   liveSessionStoreApi,
+  messagesStoreApi,
   replySoundEnabled,
   sessionUiStoreApi,
   sessionsStoreApi,
@@ -79,6 +84,11 @@ export function useAppShellSessionEffects({
       return undefined;
     }
 
+    if (activeSessionHistorical && activeSessionBackend === "pi") {
+      messagesStoreApi.loadInitial(activeSessionId).catch(() => undefined);
+      return undefined;
+    }
+
     const recoverMissingSession = (error: unknown) => {
       if (!error || typeof error !== "object" || (error as { status?: unknown }).status !== 404) {
         return;
@@ -102,10 +112,14 @@ export function useAppShellSessionEffects({
         });
     }, activeLiveRefreshIntervalMs);
     return () => window.clearInterval(intervalId);
-  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionId, activeSessionReplySoundPrimingRef, liveSessionStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
+  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionReplySoundPrimingRef, liveSessionStoreApi, messagesStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !workspaceOpen || !activeSessionId) {
+      return undefined;
+    }
+
+    if (activeSessionHistorical && activeSessionBackend === "pi") {
       return undefined;
     }
 
@@ -121,7 +135,7 @@ export function useAppShellSessionEffects({
       sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend }).catch(recoverMissingSession);
     }, WORKSPACE_REFRESH_MS);
     return () => window.clearInterval(intervalId);
-  }, [activeSessionBackend, activeSessionId, pageVisible, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
+  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, pageVisible, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !replySoundEnabled) {

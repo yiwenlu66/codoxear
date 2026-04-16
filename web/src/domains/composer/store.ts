@@ -19,7 +19,7 @@ export interface ComposerStore {
   getState(): ComposerState;
   subscribe(listener: () => void): () => void;
   setDraft(value: string): void;
-  submit(sessionId: string): Promise<void>;
+  submit(sessionId: string): Promise<unknown>;
   clearAcknowledgedPending(sessionId: string, persistedEvents: MessageEvent[]): void;
 }
 
@@ -70,12 +70,13 @@ export function createComposerStore(): ComposerStore {
       emit();
 
       try {
-        await api.sendMessage(sessionId, text);
+        const response = await api.sendMessage(sessionId, text);
         state = {
           ...state,
           sending: false,
         };
         emit();
+        return response;
       } catch (error) {
         state = {
           ...state,

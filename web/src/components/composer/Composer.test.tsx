@@ -32,10 +32,11 @@ import { Composer } from "./Composer";
 
 interface RenderComposerOptions {
   activeSessionId?: string | null;
-  items?: Array<{ session_id: string; agent_backend: string; busy: boolean }>;
+  items?: Array<{ session_id: string; agent_backend: string; busy: boolean; historical?: boolean }>;
   sessionUiSessionId?: string | null;
   diagnostics?: Record<string, unknown> | null;
   draft?: string;
+  submitResult?: unknown;
 }
 
 let root: HTMLDivElement | null = null;
@@ -101,8 +102,9 @@ function renderComposer(options: RenderComposerOptions = {}) {
     sessionUiSessionId = activeSessionId,
     diagnostics = null,
     draft = "Hello",
+    submitResult,
   } = options;
-  const submit = vi.fn().mockResolvedValue(undefined);
+  const submit = vi.fn().mockResolvedValue(submitResult);
   const liveSessionStore = createStore(
     { offsetsBySessionId: {}, liveOffsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: {}, loadingBySessionId: {} },
     () => ({ loadInitial: vi.fn(), poll: vi.fn() }),
@@ -163,6 +165,7 @@ async function flushEffects() {
 
 describe("Composer", () => {
   afterEach(() => {
+    vi.useRealTimers();
     window.localStorage.clear();
     todoPanelRenderLog.length = 0;
     vi.restoreAllMocks();
@@ -203,6 +206,52 @@ describe("Composer", () => {
     expect(liveSessionStore.loadInitial).toHaveBeenCalledWith("sess-1");
     expect(sessionUiStore.refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
     expect(sessionsStore.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("switches from a historical pi session to the resumed live session after send", async () => {
+    const { submit, liveSessionStore, sessionUiStore, sessionsStore } = renderComposer({
+      activeSessionId: "history:pi:resume-hist",
+      items: [{ session_id: "history:pi:resume-hist", agent_backend: "pi", busy: false, historical: true }],
+      submitResult: { ok: true, session_id: "live-pi-1" },
+    });
+    const composerRoot = getRoot();
+
+    await act(async () => {
+      (composerRoot.querySelector("button[type='submit']") as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(submit).toHaveBeenCalledWith("history:pi:resume-hist");
+    expect(sessionsStore.refresh).toHaveBeenCalledTimes(2);
+    expect(sessionsStore.select).toHaveBeenCalledWith("live-pi-1");
+    expect(liveSessionStore.loadInitial).toHaveBeenCalledWith("live-pi-1");
+    expect(sessionUiStore.refresh).toHaveBeenCalledWith("live-pi-1", { agentBackend: "pi" });
+  });
+
+  it("continues polling after a successful send so new messages appear without a full refresh", async () => {
+    vi.useFakeTimers();
+    const { liveSessionStore, sessionUiStore, sessionsStore } = renderComposer();
+    const composerRoot = getRoot();
+
+    await act(async () => {
+      (composerRoot.querySelector("button[type='submit']") as HTMLButtonElement).click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(liveSessionStore.loadInitial).toHaveBeenCalledWith("sess-1");
+    expect(liveSessionStore.poll).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1500);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(liveSessionStore.poll).toHaveBeenCalledWith("sess-1");
+    expect(sessionUiStore.refresh).toHaveBeenCalledTimes(2);
+    expect(sessionsStore.refresh).toHaveBeenCalledTimes(2);
   });
 
   it("submits on ctrl+enter when enter-to-send is disabled", () => {

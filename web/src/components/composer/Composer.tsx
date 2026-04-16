@@ -39,6 +39,7 @@ function formatSlashCommandValue(commandName: string) {
 const MOBILE_COMPOSER_QUERY = "(max-width: 880px)";
 const MOBILE_COMPOSER_MIN_HEIGHT_PX = 56;
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 176;
+const POST_SEND_REFRESH_DELAYS_MS = [1500, 4000, 8000];
 
 function shouldUseMobileComposerAutosize() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -198,8 +199,10 @@ export function Composer() {
   const [mobileComposerAutosize, setMobileComposerAutosize] = useState(() => shouldUseMobileComposerAutosize());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const postSendRefreshTimeoutsRef = useRef<number[]>([]);
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
   const activeSessionIsPi = activeSession?.agent_backend === "pi";
+  const activeSessionIsHistoricalPi = activeSessionIsPi && activeSession?.historical === true;
   const activeAttachmentCount = activeSessionId ? attachedFilesBySessionId[activeSessionId] ?? 0 : 0;
   const attachmentsSupported = Boolean(activeSessionId && activeSession?.agent_backend !== "pi");
   const slashQuery = getSlashDraftQuery(draft);
@@ -263,6 +266,13 @@ export function Composer() {
         mediaQuery.removeListener?.(update);
       }
     };
+  }, []);
+
+  useEffect(() => () => {
+    for (const timeoutId of postSendRefreshTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    postSendRefreshTimeoutsRef.current = [];
   }, []);
 
   useLayoutEffect(() => {
@@ -368,19 +378,55 @@ export function Composer() {
     });
   };
 
+  const refreshSessionAfterSend = (sessionId: string, agentBackend?: string) => {
+    const refreshNow = () => Promise.allSettled([
+      liveSessionStoreApi.loadInitial(sessionId),
+      sessionUiStoreApi.refresh(sessionId, { agentBackend }),
+      sessionsStoreApi.refresh(),
+    ]);
+
+    for (const timeoutId of postSendRefreshTimeoutsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    postSendRefreshTimeoutsRef.current = [];
+
+    for (const delayMs of POST_SEND_REFRESH_DELAYS_MS) {
+      const timeoutId = window.setTimeout(() => {
+        void Promise.allSettled([
+          liveSessionStoreApi.poll(sessionId),
+          sessionUiStoreApi.refresh(sessionId, { agentBackend }),
+          sessionsStoreApi.refresh(),
+        ]);
+      }, delayMs);
+      postSendRefreshTimeoutsRef.current.push(timeoutId);
+    }
+
+    return refreshNow();
+  };
+
+  const resolvePostSendSessionId = async (response: unknown, fallbackSessionId: string) => {
+    const nextSessionId = response && typeof response === "object"
+      ? String((response as { session_id?: unknown }).session_id || "").trim()
+      : "";
+    if (!nextSessionId || nextSessionId === fallbackSessionId) {
+      return fallbackSessionId;
+    }
+
+    await sessionsStoreApi.refresh();
+    sessionsStoreApi.select(nextSessionId);
+    return nextSessionId;
+  };
+
   const submitCurrentDraft = () => {
     if (!activeSessionId || !draft.trim() || sending) {
       return;
     }
 
     composerStoreApi.submit(activeSessionId)
-      .then(async () => {
+      .then(async (response) => {
         clearAttachmentCount(activeSessionId);
-        await Promise.allSettled([
-          liveSessionStoreApi.loadInitial(activeSessionId),
-          sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend }),
-          sessionsStoreApi.refresh(),
-        ]);
+        const targetSessionId = await resolvePostSendSessionId(response, activeSessionId);
+        await refreshSessionAfterSend(targetSessionId, activeSession?.agent_backend);
       })
       .catch(() => undefined);
   };
@@ -393,9 +439,13 @@ export function Composer() {
     const queuedText = draft;
     composerStoreApi.setDraft("");
     api.enqueueMessage(activeSessionId, queuedText)
-      .then(() => {
+      .then(async (response) => {
         clearAttachmentCount(activeSessionId);
-        return sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend });
+        const targetSessionId = await resolvePostSendSessionId(response, activeSessionId);
+        if (activeSessionIsHistoricalPi && targetSessionId !== activeSessionId) {
+          return refreshSessionAfterSend(targetSessionId, activeSession?.agent_backend);
+        }
+        return sessionUiStoreApi.refresh(targetSessionId, { agentBackend: activeSession?.agent_backend });
       })
       .catch(() => {
         composerStoreApi.setDraft(queuedText);

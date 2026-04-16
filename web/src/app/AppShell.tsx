@@ -11,7 +11,7 @@ import { VoiceSettingsDialog } from "./app-shell/VoiceSettingsDialog";
 import { useAppShellAudio } from "./app-shell/useAppShellAudio";
 import { useAppShellNotifications } from "./app-shell/useAppShellNotifications";
 import { useAppShellSessionEffects } from "./app-shell/useAppShellSessionEffects";
-import { useLiveSessionStore, useLiveSessionStoreApi, useMessagesStore, useSessionUiStore, useSessionUiStoreApi, useSessionsStore, useSessionsStoreApi } from "./providers";
+import { useLiveSessionStore, useLiveSessionStoreApi, useMessagesStore, useMessagesStoreApi, useSessionUiStore, useSessionUiStoreApi, useSessionsStore, useSessionsStoreApi } from "./providers";
 import {
   shouldUseMobileWorkspaceSheet,
   shortSessionId,
@@ -49,6 +49,7 @@ export function AppShell() {
   const { activeSessionId, items } = useSessionsStore();
   const { busyBySessionId } = useLiveSessionStore();
   const { sessionId: sessionUiSessionId } = useSessionUiStore();
+  const messagesStoreApi = useMessagesStoreApi();
   const sessionsStoreApi = useSessionsStoreApi();
   const liveSessionStoreApi = useLiveSessionStoreApi();
   const sessionUiStoreApi = useSessionUiStoreApi();
@@ -153,11 +154,13 @@ export function AppShell() {
 
   useAppShellSessionEffects({
     activeSessionBackend: activeSession?.agent_backend,
+    activeSessionHistorical: activeSession?.historical === true,
     activeSessionId,
     activeSessionLiveBusy: activeSessionId ? busyBySessionId[activeSessionId] === true : false,
     backgroundReplySoundPrimedSessionIdsRef,
     items,
     liveSessionStoreApi,
+    messagesStoreApi,
     replySoundEnabled,
     sessionUiStoreApi,
     sessionsStoreApi,

@@ -257,7 +257,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
                       session={session}
                       active={session.session_id === activeSessionId}
                       onSelect={() => {
-                        if (session.historical) {
+                        if (session.historical && normalizeLaunchBackend(session.agent_backend) !== "pi") {
                           void resumeHistoricalSession(session);
                           return;
                         }
