@@ -100,6 +100,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('tabCompletion: "off"', source)
         self.assertIn('wordBasedSuggestions: "off"', source)
 
+    def test_monaco_assets_are_local_vendor_files(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('resolveAppUrl("/static/vendor/monaco-0.52.2/vs")', source)
+        self.assertIn('resolveAppUrl("/static/vendor/monaco-0.52.2/vs/loader.js")', source)
+        self.assertNotIn("cdn.jsdelivr.net/npm/monaco-editor", source)
+        self.assertNotIn("unpkg.com/monaco-editor", source)
+
     def test_client_reload_checks_server_ui_version(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("window.CODOXEAR_ASSET_VERSION", source)
