@@ -1,5 +1,9 @@
-import { Fragment, type ComponentChildren } from "preact";
+import { Fragment, h, type ComponentChildren } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,23 +52,10 @@ const EVENT_LABELS: Record<string, string> = {
   event: "Event",
 };
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 interface MarkdownRenderOptions {
   sessionId?: string;
   cwd?: string;
   onOpenLocalFile?: (path: string, line?: number | null) => void;
-}
-
-function escapeHtmlAttr(value: string): string {
-  return escapeHtml(value);
 }
 
 function baseName(value: string): string {
@@ -141,92 +132,9 @@ function fileBlobHref(sessionId: string, path: string): string {
   return `api/sessions/${encodeURIComponent(sessionId)}/file/blob?path=${encodeURIComponent(path)}`;
 }
 
-function renderImageNode(altText: string, target: string, options: MarkdownRenderOptions): string {
-  const resolvedPath = resolvePathTarget(target, options.cwd);
-  const src = options.sessionId && !isProbablyUrl(resolvedPath) ? fileBlobHref(options.sessionId, resolvedPath) : resolvedPath;
-  return `<img class="messageImage max-h-80 rounded-2xl border border-border/60 bg-background/70 object-contain" src="${escapeHtmlAttr(src)}" alt="${escapeHtmlAttr(altText)}" loading="lazy" />`;
-}
-
-function renderLinkNode(label: string, target: string, options: MarkdownRenderOptions): string {
-  const fileRef = parseLocalFileRef(target, options.cwd);
-  if (fileRef && options.sessionId) {
-    const displayLabel = label.trim() || baseName(fileRef.path);
-    const text = fileRef.line && displayLabel === baseName(fileRef.path) ? `${displayLabel}#L${fileRef.line}` : displayLabel;
-    return `<a class="messageFileLink underline decoration-dotted underline-offset-4" data-file-path="${escapeHtmlAttr(fileRef.path)}"${fileRef.line ? ` data-file-line="${fileRef.line}"` : ""} href="${escapeHtmlAttr(fileBlobHref(options.sessionId, fileRef.path))}" target="_blank" rel="noreferrer">${escapeHtml(text)}</a>`;
-  }
-
-  const href = resolvePathTarget(target, options.cwd);
-  return `<a class="messageInlineLink underline decoration-dotted underline-offset-4" href="${escapeHtmlAttr(href)}" target="_blank" rel="noreferrer">${escapeHtml(label.trim() || target.trim())}</a>`;
-}
-
-function renderInlineMarkdown(value: string, options: MarkdownRenderOptions = {}): string {
-  const tokenRegex = /!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)|(`[^`]+`)/g;
-  let html = "";
-  let lastIndex = 0;
-
-  for (const match of value.matchAll(tokenRegex)) {
-    const index = match.index ?? 0;
-    if (index > lastIndex) {
-      html += escapeHtml(value.slice(lastIndex, index));
-    }
-
-    if (typeof match[1] === "string" && typeof match[2] === "string") {
-      html += renderImageNode(match[1], match[2], options);
-    } else if (typeof match[3] === "string" && typeof match[4] === "string") {
-      html += renderLinkNode(match[3], match[4], options);
-    } else if (typeof match[5] === "string") {
-      html += `<code>${escapeHtml(match[5].slice(1, -1))}</code>`;
-    }
-    lastIndex = index + match[0].length;
-  }
-
-  if (lastIndex < value.length) {
-    html += escapeHtml(value.slice(lastIndex));
-  }
-
-  return html;
-}
-
-function isTableSeparator(line: string): boolean {
-  const trimmed = line.trim();
-  return /^\|?(\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?$/.test(trimmed);
-}
-
-function splitTableRow(line: string): string[] {
-  const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
-  return trimmed.split("|").map((cell) => cell.trim());
-}
-
-function tableAlignments(separatorLine: string): Array<"left" | "right" | "center" | null> {
-  return splitTableRow(separatorLine).map((cell) => {
-    const trimmed = cell.trim();
-    const left = trimmed.startsWith(":");
-    const right = trimmed.endsWith(":");
-    if (left && right) return "center";
-    if (right) return "right";
-    if (left) return "left";
-    return null;
-  });
-}
-
-function renderTable(lines: string[], options: MarkdownRenderOptions): string {
-  const headerCells = splitTableRow(lines[0] || "");
-  const alignments = tableAlignments(lines[1] || "");
-  const bodyRows = lines.slice(2).map((line) => splitTableRow(line));
-  const headerHtml = headerCells
-    .map((cell, index) => {
-      const style = alignments[index] ? ` style="text-align:${alignments[index]}"` : "";
-      return `<th${style}>${renderInlineMarkdown(cell, options)}</th>`;
-    })
-    .join("");
-  const bodyHtml = bodyRows
-    .map((row) => `<tr>${row.map((cell, index) => {
-      const style = alignments[index] ? ` style="text-align:${alignments[index]}"` : "";
-      return `<td${style}>${renderInlineMarkdown(cell, options)}</td>`;
-    }).join("")}</tr>`)
-    .join("");
-
-  return `<div class="mdTableWrap overflow-x-auto rounded-2xl border border-border/60 bg-background/70"><table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></div>`;
+function normalizeLineNumber(value: string | null): number | undefined {
+  const line = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(line) && line > 0 ? line : undefined;
 }
 
 function rewriteOaiMemCitations(rawText: string): string {
@@ -276,63 +184,239 @@ function rewriteOaiMemCitations(rawText: string): string {
   });
 }
 
-function renderMessageHtml(value: string, options: MarkdownRenderOptions = {}): string {
-  const normalized = rewriteOaiMemCitations(value).replace(/\r\n?/g, "\n");
-  const lines = normalized.split("\n");
-  const blocks: string[] = [];
-  let index = 0;
+type MarkdownNode = {
+  type: string;
+  alt?: string | null;
+  checked?: boolean | null;
+  children?: MarkdownNode[];
+  depth?: number;
+  identifier?: string;
+  lang?: string | null;
+  ordered?: boolean;
+  start?: number | null;
+  title?: string | null;
+  url?: string;
+  value?: string;
+  align?: Array<"left" | "right" | "center" | null>;
+};
 
-  while (index < lines.length) {
-    const line = lines[index] || "";
-    if (!line.trim()) {
-      index += 1;
+type MarkdownDefinition = {
+  title?: string | null;
+  url: string;
+};
+
+const markdownProcessor = unified().use(remarkParse).use(remarkGfm).use(remarkBreaks);
+
+function textFromChildren(children: ComponentChildren): string {
+  if (children == null || typeof children === "boolean") {
+    return "";
+  }
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) {
+    return children.map((child) => textFromChildren(child)).join("");
+  }
+  if (typeof children === "object" && "props" in children) {
+    return textFromChildren((children as { props?: { children?: ComponentChildren } }).props?.children ?? null);
+  }
+  return "";
+}
+
+function definitionId(value: string | undefined): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function collectMarkdownDefinitions(root: MarkdownNode): Map<string, MarkdownDefinition> {
+  const definitions = new Map<string, MarkdownDefinition>();
+  for (const child of root.children || []) {
+    if (child.type !== "definition") {
       continue;
     }
-
-    if (line.trim().startsWith("```")) {
-      const codeLines: string[] = [];
-      index += 1;
-      while (index < lines.length && !(lines[index] || "").trim().startsWith("```")) {
-        codeLines.push(lines[index] || "");
-        index += 1;
-      }
-      if (index < lines.length) {
-        index += 1;
-      }
-      blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n").replace(/\n$/, ""))}</code></pre>`);
+    const key = definitionId(child.identifier);
+    if (!key || !child.url) {
       continue;
     }
+    definitions.set(key, { url: child.url, title: child.title });
+  }
+  return definitions;
+}
 
-    if (index + 1 < lines.length && line.includes("|") && isTableSeparator(lines[index + 1] || "")) {
-      const tableLines = [line, lines[index + 1] || ""];
-      index += 2;
-      while (index < lines.length && (lines[index] || "").trim().includes("|")) {
-        tableLines.push(lines[index] || "");
-        index += 1;
-      }
-      blocks.push(renderTable(tableLines, options));
-      continue;
-    }
-
-    const paragraphLines: string[] = [];
-    while (index < lines.length) {
-      const current = lines[index] || "";
-      if (!current.trim()) {
-        break;
-      }
-      if (current.trim().startsWith("```")) {
-        break;
-      }
-      if (index + 1 < lines.length && current.includes("|") && isTableSeparator(lines[index + 1] || "")) {
-        break;
-      }
-      paragraphLines.push(current);
-      index += 1;
-    }
-    blocks.push(`<p>${paragraphLines.map((paragraphLine) => renderInlineMarkdown(paragraphLine, options)).join("<br />")}</p>`);
+function renderMarkdownLink(target: string, children: ComponentChildren, options: MarkdownRenderOptions, title?: string | null) {
+  const fileRef = parseLocalFileRef(target, options.cwd);
+  if (fileRef && options.sessionId) {
+    const displayLabel = textFromChildren(children).trim() || baseName(fileRef.path);
+    const text = fileRef.line && displayLabel === baseName(fileRef.path) ? `${displayLabel}#L${fileRef.line}` : displayLabel;
+    return (
+      <a
+        className="messageFileLink underline decoration-dotted underline-offset-4"
+        data-file-path={fileRef.path}
+        data-file-line={fileRef.line ? String(fileRef.line) : undefined}
+        href={fileBlobHref(options.sessionId, fileRef.path)}
+        rel="noreferrer"
+        target="_blank"
+        title={title || undefined}
+      >
+        {text}
+      </a>
+    );
   }
 
-  return blocks.join("");
+  const resolvedHref = resolvePathTarget(target, options.cwd);
+  return (
+    <a
+      className="messageInlineLink underline decoration-dotted underline-offset-4"
+      href={resolvedHref}
+      rel="noreferrer"
+      target="_blank"
+      title={title || undefined}
+    >
+      {children}
+    </a>
+  );
+}
+
+function renderMarkdownImage(target: string, altText: string, options: MarkdownRenderOptions, title?: string | null) {
+  const resolvedPath = resolvePathTarget(target, options.cwd);
+  const src = options.sessionId && !isProbablyUrl(resolvedPath) ? fileBlobHref(options.sessionId, resolvedPath) : resolvedPath;
+  return (
+    <img
+      alt={altText}
+      className="messageImage max-h-80 rounded-2xl border border-border/60 bg-background/70 object-contain"
+      loading="lazy"
+      src={src}
+      title={title || undefined}
+    />
+  );
+}
+
+function renderMarkdownChildren(children: MarkdownNode[] | undefined, options: MarkdownRenderOptions, definitions: Map<string, MarkdownDefinition>, keyPrefix: string): ComponentChildren {
+  return (children || []).map((child, index) => (
+    <Fragment key={`${keyPrefix}-${index}`}>{renderMarkdownNode(child, options, definitions, `${keyPrefix}-${index}`)}</Fragment>
+  ));
+}
+
+function renderMarkdownTable(node: MarkdownNode, options: MarkdownRenderOptions, definitions: Map<string, MarkdownDefinition>, keyPrefix: string) {
+  const rows = node.children || [];
+  const headerRow = rows[0];
+  const bodyRows = rows.slice(1);
+  const alignments = Array.isArray(node.align) ? node.align : [];
+
+  return (
+    <div className="mdTableWrap overflow-x-auto rounded-2xl border border-border/60 bg-background/70">
+      <table>
+        {headerRow ? (
+          <thead>
+            <tr>
+              {(headerRow.children || []).map((cell, index) => (
+                <th key={`${keyPrefix}-head-${index}`} style={alignments[index] ? { textAlign: alignments[index] } : undefined}>
+                  {renderMarkdownChildren(cell.children, options, definitions, `${keyPrefix}-head-${index}`)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        ) : null}
+        {bodyRows.length ? (
+          <tbody>
+            {bodyRows.map((row, rowIndex) => (
+              <tr key={`${keyPrefix}-row-${rowIndex}`}>
+                {(row.children || []).map((cell, cellIndex) => (
+                  <td key={`${keyPrefix}-row-${rowIndex}-cell-${cellIndex}`} style={alignments[cellIndex] ? { textAlign: alignments[cellIndex] } : undefined}>
+                    {renderMarkdownChildren(cell.children, options, definitions, `${keyPrefix}-row-${rowIndex}-cell-${cellIndex}`)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        ) : null}
+      </table>
+    </div>
+  );
+}
+
+function renderMarkdownNode(node: MarkdownNode, options: MarkdownRenderOptions, definitions: Map<string, MarkdownDefinition>, keyPrefix: string): ComponentChildren {
+  switch (node.type) {
+    case "root":
+      return renderMarkdownChildren(node.children, options, definitions, keyPrefix);
+    case "definition":
+      return null;
+    case "paragraph":
+      return <p>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</p>;
+    case "text":
+    case "html":
+      return node.value || "";
+    case "strong":
+      return <strong>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</strong>;
+    case "emphasis":
+      return <em>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</em>;
+    case "delete":
+      return <del>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</del>;
+    case "break":
+      return <br />;
+    case "inlineCode":
+      return <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.92em]">{(node.value || "").replace(/\n$/, "")}</code>;
+    case "code": {
+      const className = node.lang ? `language-${node.lang}` : undefined;
+      return (
+        <pre className="overflow-x-auto rounded-2xl border border-border/60 bg-background/70 p-4">
+          <code className={cn("font-mono text-sm", className)}>{(node.value || "").replace(/\n$/, "")}</code>
+        </pre>
+      );
+    }
+    case "heading": {
+      const depth = Math.min(Math.max(node.depth || 1, 1), 6);
+      return h(`h${depth}`, null, renderMarkdownChildren(node.children, options, definitions, keyPrefix));
+    }
+    case "blockquote":
+      return <blockquote className="border-l-2 border-border/70 pl-4 text-muted-foreground">{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</blockquote>;
+    case "list": {
+      const ListTag = node.ordered ? "ol" : "ul";
+      return <ListTag start={node.ordered && node.start && node.start !== 1 ? node.start : undefined}>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</ListTag>;
+    }
+    case "listItem": {
+      const checked = typeof node.checked === "boolean" ? node.checked : null;
+      return (
+        <li>
+          {checked === null ? null : <input checked={checked} disabled readOnly type="checkbox" />}
+          {renderMarkdownChildren(node.children, options, definitions, `${keyPrefix}-item`)}
+        </li>
+      );
+    }
+    case "thematicBreak":
+      return <hr />;
+    case "link":
+      return renderMarkdownLink(node.url || "", renderMarkdownChildren(node.children, options, definitions, keyPrefix), options, node.title);
+    case "image":
+      return renderMarkdownImage(node.url || "", node.alt || "", options, node.title);
+    case "linkReference": {
+      const definition = definitions.get(definitionId(node.identifier));
+      if (!definition) {
+        return renderMarkdownChildren(node.children, options, definitions, keyPrefix);
+      }
+      return renderMarkdownLink(definition.url, renderMarkdownChildren(node.children, options, definitions, keyPrefix), options, definition.title);
+    }
+    case "imageReference": {
+      const definition = definitions.get(definitionId(node.identifier));
+      if (!definition) {
+        return node.alt || "";
+      }
+      return renderMarkdownImage(definition.url, node.alt || "", options, definition.title);
+    }
+    case "table":
+      return renderMarkdownTable(node, options, definitions, keyPrefix);
+    default:
+      if (node.children?.length) {
+        return renderMarkdownChildren(node.children, options, definitions, keyPrefix);
+      }
+      return node.value || "";
+  }
+}
+
+function MarkdownContent({ value, options = {} }: { value: string; options?: MarkdownRenderOptions }) {
+  const normalized = rewriteOaiMemCitations(value).replace(/\r\n?/g, "\n");
+  const root = markdownProcessor.runSync(markdownProcessor.parse(normalized)) as MarkdownNode;
+  const definitions = collectMarkdownDefinitions(root);
+  return <>{renderMarkdownNode(root, options, definitions, "md")}</>;
 }
 
 function messageContentParts(event: MessageEvent): string[] {
@@ -500,11 +584,6 @@ function formatDaySeparator(ts: number): string {
   }).format(new Date(ts * 1000));
 }
 
-function normalizeLineNumber(value: string | null): number | undefined {
-  const line = Number.parseInt(String(value || "").trim(), 10);
-  return Number.isFinite(line) && line > 0 ? line : undefined;
-}
-
 function handleRichTextClick(event: MouseEvent, options: MarkdownRenderOptions) {
   if (!options.onOpenLocalFile) {
     return;
@@ -529,7 +608,11 @@ function renderRichText(value: string, className = "messageBody", options: Markd
   if (!value.trim()) {
     return null;
   }
-  return <div className={className} onClick={(event) => handleRichTextClick(event as MouseEvent, options)} dangerouslySetInnerHTML={{ __html: renderMessageHtml(value, options) }} />;
+  return (
+    <div className={className} onClick={(event) => handleRichTextClick(event as MouseEvent, options)}>
+      <MarkdownContent value={value} options={options} />
+    </div>
+  );
 }
 
 function shouldCollapseContent(value: string): boolean {
@@ -661,7 +744,7 @@ function ChatMessageCard({
   return (
     <MessageSurface kind={kind}>
       {renderCardHeader(kind, label, undefined, event.ts)}
-      <div className="messageBody prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: renderMessageHtml(text, options) }} />
+      {renderRichText(text, "messageBody prose prose-sm max-w-none", options)}
       <div className="messageBubbleActions">
         <button
           type="button"
