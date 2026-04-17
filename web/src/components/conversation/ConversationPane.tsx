@@ -1374,12 +1374,14 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const scrollModeRef = useRef<"bottom" | "preserve" | null>(null);
   const [showPreviousUserJump, setShowPreviousUserJump] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [attemptedLoadOlder, setAttemptedLoadOlder] = useState(false);
   const hasOlder = activeSessionId ? hasOlderBySessionId[activeSessionId] === true : false;
   const olderCursor = activeSessionId ? olderBeforeBySessionId[activeSessionId] ?? 0 : 0;
   const olderLoading = activeSessionId ? loadingOlderBySessionId[activeSessionId] === true : false;
   const activeSessionLoading = activeSessionId ? loadingBySessionId[activeSessionId] === true : false;
   const activeSessionLoaded = activeSessionId ? loadedBySessionId[activeSessionId] === true : false;
   const showHistoryControls = Boolean(activeSessionId && messages.length && (hasOlder || olderCursor > 0 || olderLoading));
+  const showHistoryTopReached = Boolean(activeSessionId && messages.length && attemptedLoadOlder && !olderLoading && !hasOlder && olderCursor <= 0);
   const waitingForInitialHistoricalReplay = activeSessionIsHistoricalPi && messages.length === 0 && !activeSessionLoaded;
   const showLoadingState = (activeSessionLoading || waitingForInitialHistoricalReplay) && messages.length === 0 && !activeSessionLoaded;
   const markdownOptions: MarkdownRenderOptions = {
@@ -1387,6 +1389,10 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
     cwd: activeSession?.cwd,
     onOpenLocalFile: onOpenFilePath,
   };
+
+  useEffect(() => {
+    setAttemptedLoadOlder(false);
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -1463,6 +1469,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
       };
       scrollModeRef.current = "preserve";
     }
+    setAttemptedLoadOlder(true);
     await messagesStoreApi.loadOlder(activeSessionId);
   };
 
@@ -1511,9 +1518,15 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
           renderLoadingCards()
         ) : (
           <div className="messageList flex flex-col gap-3">
-            {showHistoryControls ? (
+            {showHistoryControls || showHistoryTopReached ? (
               <div className="historyControls flex flex-wrap items-center justify-between gap-2 rounded-[1.1rem] border border-border/60 bg-background/70 px-3 py-2 text-sm text-muted-foreground">
-                <span>{hasOlder || olderCursor > 0 ? "Older conversation history is available." : "You are viewing older history."}</span>
+                <span>
+                  {showHistoryTopReached
+                    ? "已经到顶了"
+                    : hasOlder || olderCursor > 0
+                      ? "Older conversation history is available."
+                      : "You are viewing older history."}
+                </span>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
