@@ -308,6 +308,48 @@ describe("ConversationPane", () => {
     expect(blockCode?.textContent).toContain("const answer = 42;");
   });
 
+  it("renders markdown unordered and ordered lists with explicit list styling", () => {
+    const sessionsStore = createStaticStore(
+      { items: [], activeSessionId: "sess-4-list", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-4-list": [
+            {
+              role: "assistant",
+              text: "- first\n- second\n\n1. alpha\n2. beta",
+            },
+          ],
+        },
+        offsetsBySessionId: { "sess-4-list": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    const unordered = root.querySelector(".messageBody ul") as HTMLUListElement | null;
+    const ordered = root.querySelector(".messageBody ol") as HTMLOListElement | null;
+    expect(unordered).not.toBeNull();
+    expect(ordered).not.toBeNull();
+    expect(unordered?.className).toContain("list-disc");
+    expect(unordered?.textContent).toContain("first");
+    expect(unordered?.textContent).toContain("second");
+    expect(ordered?.className).toContain("list-decimal");
+    expect(ordered?.textContent).toContain("alpha");
+    expect(ordered?.textContent).toContain("beta");
+  });
+
   it("copies plain chat bubble text from the copy button", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(globalThis.navigator, "clipboard", {

@@ -371,13 +371,23 @@ function renderMarkdownNode(node: MarkdownNode, options: MarkdownRenderOptions, 
       return <blockquote className="border-l-2 border-border/70 pl-4 text-muted-foreground">{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</blockquote>;
     case "list": {
       const ListTag = node.ordered ? "ol" : "ul";
-      return <ListTag start={node.ordered && node.start && node.start !== 1 ? node.start : undefined}>{renderMarkdownChildren(node.children, options, definitions, keyPrefix)}</ListTag>;
+      const listClassName = node.ordered
+        ? "my-4 list-decimal space-y-1 pl-6"
+        : "my-4 list-disc space-y-1 pl-6";
+      return (
+        <ListTag
+          className={listClassName}
+          start={node.ordered && node.start && node.start !== 1 ? node.start : undefined}
+        >
+          {renderMarkdownChildren(node.children, options, definitions, keyPrefix)}
+        </ListTag>
+      );
     }
     case "listItem": {
       const checked = typeof node.checked === "boolean" ? node.checked : null;
       return (
-        <li>
-          {checked === null ? null : <input checked={checked} disabled readOnly type="checkbox" />}
+        <li className={checked === null ? "pl-1" : "flex items-start gap-2 pl-1"}>
+          {checked === null ? null : <input checked={checked} className="mt-1" disabled readOnly type="checkbox" />}
           {renderMarkdownChildren(node.children, options, definitions, `${keyPrefix}-item`)}
         </li>
       );
