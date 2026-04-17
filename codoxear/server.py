@@ -685,22 +685,36 @@ def _parse_cookies(header: str | None) -> dict[str, str]:
     return out
 
 
+def _header_auth_token(handler: http.server.BaseHTTPRequestHandler) -> str:
+    auth = str(handler.headers.get("Authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return str(handler.headers.get("X-Codoxear-Auth") or "").strip()
+
+
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
     cookies = _parse_cookies(handler.headers.get("Cookie"))
     token = cookies.get(COOKIE_NAME)
-    if not token:
+    if token and (_verify_cookie(token) is not None):
+        return True
+    header_token = _header_auth_token(handler)
+    if not header_token:
         return False
-    return _verify_cookie(token) is not None
+    return _verify_cookie(header_token) is not None
 
 
-def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
+def _issue_auth_token() -> str:
     exp = int(_now()) + COOKIE_TTL_SECONDS
-    token = _sign_cookie({"exp": exp})
+    return _sign_cookie({"exp": exp})
+
+
+def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler, token: str | None = None) -> str:
+    token = token or _issue_auth_token()
     attrs = [
         f"{COOKIE_NAME}={token}",
         f"Path={COOKIE_PATH}",
         "HttpOnly",
-        "SameSite=Strict",
+        "SameSite=Lax",
         f"Max-Age={COOKIE_TTL_SECONDS}",
     ]
     forwarded_proto_raw = handler.headers.get("X-Forwarded-Proto")
@@ -708,6 +722,7 @@ def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
     if COOKIE_SECURE or forwarded_proto == "https":
         attrs.append("Secure")
     handler.send_header("Set-Cookie", "; ".join(attrs))
+    return token
 
 _PASSWORD_CACHE: str | None = None
 
@@ -4443,14 +4458,16 @@ def _read_static_bytes(path: Path) -> bytes:
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "codoxear/0.1"
 
-    def _send_static(self, rel: str) -> None:
-        path = (STATIC_DIR / rel.lstrip("/")).resolve()
+    def _send_static(self, rel: str, *, immutable: bool = False) -> None:
+        clean_rel = rel.lstrip("/")
+        path = (STATIC_DIR / clean_rel).resolve()
         if not str(path).startswith(str(STATIC_DIR.resolve())):
             self.send_error(404)
             return
         if not path.exists() or not path.is_file():
             self.send_error(404)
             return
+        immutable = immutable or clean_rel.startswith("vendor/monaco-")
         data = _read_static_bytes(path)
         if path.suffix == ".html":
             ctype = "text/html; charset=utf-8"
@@ -4475,11 +4492,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        # UI is used for interactive debugging; serve assets without caching so changes
-        # (including inline JS) show up immediately on refresh.
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        if immutable:
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        else:
+            # HTML and unversioned assets stay uncached so local refreshes immediately pick up edits.
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(data)
 
@@ -4490,6 +4509,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             u = urllib.parse.urlparse(self.path)
             path = u.path
+            static_version = urllib.parse.parse_qs(u.query).get("v", [""])[0].strip()
             if URL_PREFIX:
                 if path == URL_PREFIX:
                     loc = URL_PREFIX + "/"
@@ -4514,10 +4534,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send_static("service-worker.js")
                 return
             if path == "/app.js":
-                self._send_static("app.js")
+                self._send_static("app.js", immutable=bool(static_version))
                 return
             if path == "/app.css":
-                self._send_static("app.css")
+                self._send_static("app.css", immutable=bool(static_version))
                 return
             if path == "/favicon.png":
                 self._send_static("favicon.png")
@@ -5556,25 +5576,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(pw, str) or not _is_same_password(pw):
                     _json_response(self, 403, {"error": "bad password"})
                     return
+                token = _issue_auth_token()
+                payload = json.dumps({"ok": True, "auth_token": token}, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
-                _set_auth_cookie(self)
+                _set_auth_cookie(self, token)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(b'{"ok":true}')
+                self.wfile.write(payload)
                 return
 
             if path == "/api/logout":
                 if not _require_auth(self):
                     self._unauthorized()
                     return
+                payload = b'{"ok":true}'
                 self.send_response(200)
                 self.send_header(
                     "Set-Cookie",
-                    f"{COOKIE_NAME}=deleted; Path={COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Strict",
+                    f"{COOKIE_NAME}=deleted; Path={COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Lax",
                 )
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(b'{"ok":true}')
+                self.wfile.write(payload)
                 return
 
             if path == "/api/settings/voice":

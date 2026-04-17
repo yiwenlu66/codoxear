@@ -151,8 +151,23 @@
       };
       let latestSessions = [];
       const LAST_BACKEND_KEY = "codoxear.newSessionBackend";
+      const AUTH_TOKEN_KEY = "codoxear.authToken";
       function lastProviderKey(backend) {
         return `codoxear.newSessionProvider.${normalizeAgentBackendName(backend)}`;
+      }
+      function readStoredAuthToken() {
+        try {
+          return String(localStorage.getItem(AUTH_TOKEN_KEY) || "").trim();
+        } catch (_error) {
+          return "";
+        }
+      }
+      function storeAuthToken(token) {
+        const value = String(token || "").trim();
+        try {
+          if (value) localStorage.setItem(AUTH_TOKEN_KEY, value);
+          else localStorage.removeItem(AUTH_TOKEN_KEY);
+        } catch (_error) {}
       }
       function loadRememberedBackendChoice() {
         return normalizeAgentBackendName(localStorage.getItem(LAST_BACKEND_KEY) || "codex");
@@ -172,6 +187,8 @@
       async function api(path, { method = "GET", body, signal } = {}) {
         const t0 = performance.now();
         const opts = { method, headers: {}, signal };
+        const authToken = readStoredAuthToken();
+        if (authToken) opts.headers["Authorization"] = `Bearer ${authToken}`;
         if (body !== undefined) {
           opts.headers["Content-Type"] = "application/json";
           opts.body = JSON.stringify(body);
@@ -193,6 +210,7 @@
           if (rawPath.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
           else pushPerfSample("api_messages_poll_ms", dt);
         }
+        if (res.status === 401) storeAuthToken("");
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
         return obj;
       }
@@ -312,11 +330,6 @@
       function agentBackendDisplayName(value) {
         const backend = normalizeAgentBackendName(value);
         return backend === "pi" ? "Pi" : "Codex";
-      }
-
-      function agentBackendLogoPath(value) {
-        const backend = normalizeAgentBackendName(value);
-        return resolveAppUrl(`/static/logos/${backend}.svg`);
       }
 
       function sessionAgentBackend(s) {
@@ -1180,26 +1193,46 @@
         root.innerHTML = "";
         const err = el("div", { class: "err" });
         const wrap = el("div", { class: "loginWrap" });
-        const box = el("div", { class: "login" }, [
+        const submitLogin = async (event) => {
+          if (event) event.preventDefault();
+          err.textContent = "";
+          const btn = $("#loginBtn");
+          const prevText = btn ? btn.textContent : "";
+          if (btn) {
+            btn.disabled = true;
+            btn.textContent = "Logging in...";
+          }
+          const pw = $("#pw").value;
+          try {
+            const res = await api("/api/login", { method: "POST", body: { password: pw } });
+            storeAuthToken(res && typeof res.auth_token === "string" ? res.auth_token : "");
+            window.location.replace(resolveAppUrl("/"));
+          } catch (e) {
+            err.textContent = e.obj?.error || e.message;
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = prevText || "Login";
+            }
+          }
+        };
+        const box = el("form", { class: "login" }, [
           el("h1", { text: "Codoxear login" }),
           el("div", { class: "row2" }, [
-            el("input", { type: "password", id: "pw", placeholder: "Password" }),
-            el("button", { class: "primary", id: "loginBtn", text: "Login" }),
+            el("input", {
+              type: "password",
+              id: "pw",
+              placeholder: "Password",
+              autocomplete: "current-password",
+              autofocus: "autofocus",
+            }),
+            el("button", { class: "primary", id: "loginBtn", type: "submit", text: "Login" }),
             err,
           ]),
         ]);
         wrap.appendChild(box);
         root.appendChild(wrap);
-        $("#loginBtn").onclick = async () => {
-          err.textContent = "";
-          const pw = $("#pw").value;
-          try {
-            await api("/api/login", { method: "POST", body: { password: pw } });
-            onAuthed();
-          } catch (e) {
-            err.textContent = e.obj?.error || e.message;
-          }
-        };
+        box.addEventListener("submit", submitLogin);
       }
 
 	      function renderApp() {
@@ -3029,13 +3062,13 @@
                ].filter(Boolean)),
              ]);
 	             const badgesWrap = el("div", { class: "sessionBadges" }, badges);
+	             const backend = sessionAgentBackend(s);
 	             const metaItems = [
-	               el("img", {
-	                 class: "sessionBackendStatusIcon",
-	                 src: agentBackendLogoPath(sessionAgentBackend(s)),
-	                 alt: `${agentBackendDisplayName(sessionAgentBackend(s))} logo`,
-	                 width: "12",
-	                 height: "12",
+	               el("span", {
+	                 class: "agentBackendBadge",
+	                 "data-backend": backend,
+	                 text: agentBackendDisplayName(backend),
+	                 title: `${agentBackendDisplayName(backend)} backend`,
 	               }),
 	               el("span", {
 	                 class: `ownerBadge ownerIconBadge ${s.transport === "tmux" ? "owner-tmux" : s.owned ? "owner-web" : "owner-terminal"}`,
@@ -4727,13 +4760,11 @@
               type: "button",
               title: agentBackendDisplayName(backend),
               "aria-label": agentBackendDisplayName(backend),
+              "data-backend": backend,
             }, [
-              el("img", {
-                class: "agentBackendTabLogo",
-                src: agentBackendLogoPath(backend),
-                alt: `${agentBackendDisplayName(backend)} logo`,
-                width: "20",
-                height: "20",
+              el("span", {
+                class: "agentBackendTabLabel",
+                text: agentBackendDisplayName(backend),
               }),
             ]);
             btn.onclick = () => setNewSessionBackend(backend, { resetSelections: true });
@@ -5530,8 +5561,16 @@
         let fileSearchTimer = null;
         let fileSearchAbort = null;
         let monacoReadyPromise = null;
+        let monacoLoaderPromise = null;
         let monacoNs = null;
         let monacoThemeReady = false;
+        let monacoBase = resolveAppUrl("/static/vendor/monaco-0.52.2/vs");
+        const monacoSources = [
+          {
+            loader: resolveAppUrl("/static/vendor/monaco-0.52.2/vs/loader.js"),
+            base: resolveAppUrl("/static/vendor/monaco-0.52.2/vs"),
+          },
+        ];
         let fileEditor = null;
         let fileEditorKind = "";
         let fileEditorModels = [];
@@ -6104,6 +6143,42 @@
           setFileDirty(false);
         }
 
+        function ensureMonacoLoader() {
+          if (window.require && window.require.config) return Promise.resolve();
+          if (monacoLoaderPromise) return monacoLoaderPromise;
+          monacoLoaderPromise = new Promise((resolve, reject) => {
+            const trySource = (index) => {
+              if (index >= monacoSources.length) {
+                reject(new Error("monaco loader unavailable"));
+                return;
+              }
+              const source = monacoSources[index];
+              monacoBase = source.base;
+              const script = document.createElement("script");
+              script.src = source.loader;
+              script.async = true;
+              script.onload = () => {
+                if (window.require && window.require.config) {
+                  resolve();
+                  return;
+                }
+                script.remove();
+                trySource(index + 1);
+              };
+              script.onerror = () => {
+                script.remove();
+                trySource(index + 1);
+              };
+              document.head.appendChild(script);
+            };
+            trySource(0);
+          }).catch((err) => {
+            monacoLoaderPromise = null;
+            throw err;
+          });
+          return monacoLoaderPromise;
+        }
+
         function ensureMonaco() {
           if (monacoReadyPromise) return monacoReadyPromise;
           monacoReadyPromise = new Promise((resolve, reject) => {
@@ -6112,7 +6187,7 @@
                 reject(new Error("monaco loader unavailable"));
                 return;
               }
-              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+              const base = monacoBase;
               window.MonacoEnvironment = {
                 getWorkerUrl(_moduleId, _label) {
                   const src = `
@@ -6160,14 +6235,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               finish();
               return;
             }
-            const waitForLoader = () => {
-              if (window.require && window.require.config) {
-                finish();
-                return;
-              }
-              setTimeout(waitForLoader, 25);
-            };
-            waitForLoader();
+            ensureMonacoLoader().then(finish, reject);
           });
           return monacoReadyPromise;
         }
@@ -7999,6 +8067,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         $("#logoutBtnSide").onclick = async () => {
           await api("/api/logout", { method: "POST" });
+          storeAuthToken("");
           renderLogin(renderApp);
         };
 

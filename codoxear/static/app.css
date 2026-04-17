@@ -318,13 +318,28 @@
         gap: 8px;
         min-width: 0;
       }
-      .sessionBackendStatusIcon {
-        width: 10px;
-        height: 10px;
+      .agentBackendBadge {
+        min-width: 30px;
+        height: 18px;
+        padding: 0 7px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         flex: 0 0 auto;
-        display: block;
-        object-fit: contain;
-        filter: grayscale(1) brightness(0) opacity(0.62);
+        background: rgba(15, 23, 42, 0.04);
+        color: rgba(17, 24, 39, 0.72);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        line-height: 1;
+      }
+      .agentBackendBadge[data-backend="codex"] {
+        color: #1d4ed8;
+      }
+      .agentBackendBadge[data-backend="pi"] {
+        color: #0f766e;
       }
       .sessionBadges {
         display: inline-flex;
@@ -1583,7 +1598,7 @@ select {
         gap: 6px;
       }
       .agentBackendTab {
-        width: 34px;
+        min-width: 68px;
         height: 34px;
         border-radius: 999px;
         border: 1px solid rgba(15, 23, 42, 0.12);
@@ -1591,18 +1606,25 @@ select {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 0;
+        padding: 0 12px;
       }
       .agentBackendTab.active {
         border-color: rgba(29, 78, 216, 0.48);
         background: rgba(29, 78, 216, 0.1);
         box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.08);
       }
-      .agentBackendTabLogo {
-        width: 20px;
-        height: 20px;
-        display: block;
-        object-fit: contain;
+      .agentBackendTabLabel {
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        letter-spacing: 0.01em;
+        color: rgba(17, 24, 39, 0.82);
+      }
+      .agentBackendTab[data-backend="codex"] .agentBackendTabLabel {
+        color: #1d4ed8;
+      }
+      .agentBackendTab[data-backend="pi"] .agentBackendTabLabel {
+        color: #0f766e;
       }
       .formBody {
         display: flex;
