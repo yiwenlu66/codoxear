@@ -1254,6 +1254,7 @@ select {
   background: var(--markdown-code-bg);
   color: var(--markdown-code-fg);
   border: 1px solid var(--markdown-code-border);
+  font-family: var(--font-code);
 }
 
 .messageExpandable {
@@ -1336,6 +1337,8 @@ select {
   align-items: flex-start;
   gap: 8px;
   font-size: 0.92rem;
+  border: 1px solid var(--message-todo-item-border);
+  background: var(--message-todo-item-bg);
 }
 
 .messageTodoStatus {
@@ -1343,22 +1346,27 @@ select {
   min-width: 88px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
-  color: var(--legacy-muted);
+  background: var(--message-todo-status-bg);
+  color: var(--message-todo-status-fg);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 10px;
   line-height: 1.5;
 }
 
+.messageTodoStatus.not-started {
+  background: var(--message-todo-status-not-started-bg);
+  color: var(--message-todo-status-not-started-fg);
+}
+
 .messageTodoStatus.completed {
-  background: rgba(22, 163, 74, 0.12);
-  color: #166534;
+  background: var(--message-todo-status-completed-bg);
+  color: var(--message-todo-status-completed-fg);
 }
 
 .messageTodoStatus.in-progress {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  background: var(--message-todo-status-in-progress-bg);
+  color: var(--message-todo-status-in-progress-fg);
 }
 
 .messageBody p {
@@ -1370,6 +1378,27 @@ select {
   max-width: 100%;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.messageBubble.assistant .messageBody,
+.messageBubble.assistant .messageBody.prose {
+  font-family: var(--font-assistant-prose);
+  font-size: 0.98rem;
+  line-height: 1.54;
+  letter-spacing: 0;
+}
+
+.messageBubble.assistant .messageBody p {
+  margin-bottom: 0.72rem;
+}
+
+.messageBubble.assistant .messageBody ul,
+.messageBubble.assistant .messageBody ol {
+  margin: 0.55rem 0 0.8rem;
+}
+
+.messageBubble.assistant .messageBody li + li {
+  margin-top: 0.18rem;
 }
 
 .messageBody p:last-child {
@@ -1442,7 +1471,7 @@ select {
 }
 
 .messageBody code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: var(--font-code);
   font-size: 13px;
   padding: 1px 6px;
   border-radius: 8px;
@@ -1465,6 +1494,7 @@ select {
   background: var(--markdown-code-bg);
   color: var(--markdown-code-fg);
   border: 1px solid var(--markdown-code-border);
+  font-family: var(--font-code);
 }
 
 .messageBody pre code {

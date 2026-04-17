@@ -1056,7 +1056,7 @@ function renderTodoSnapshotCard(event: MessageEvent, options: MarkdownRenderOpti
       {items.length ? (
         <ul className="messageTodoList space-y-2">
           {items.map((item, index) => (
-            <li key={`${item.title || "todo"}-${index}`} className="messageTodoItem flex items-start gap-3 rounded-xl bg-background/70 px-3 py-2 text-sm">
+            <li key={`${item.title || "todo"}-${index}`} className="messageTodoItem flex items-start gap-3 rounded-xl px-3 py-2 text-sm">
               <span className={cn("messageTodoStatus rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide", typeof item.status === "string" ? item.status : "unknown")}>{item.status || "unknown"}</span>
               <span>{item.title || item.description || "Untitled item"}</span>
             </li>
