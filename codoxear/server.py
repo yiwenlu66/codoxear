@@ -175,6 +175,7 @@ TMUX_SESSION_NAME = (
     os.environ.get("CODEX_WEB_TMUX_SESSION") or "codoxear"
 ).strip() or "codoxear"
 TMUX_META_WAIT_SECONDS = 3.0
+TMUX_SHORT_APP_DIR = Path("/tmp/codoxear")
 
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
@@ -469,6 +470,29 @@ def _drain_stream(f: Any) -> None:
 
 def _tmux_available() -> bool:
     return shutil.which("tmux") is not None
+
+
+def _ensure_tmux_short_app_dir() -> str:
+    try:
+        APP_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        return str(TMUX_SHORT_APP_DIR)
+
+    alias = TMUX_SHORT_APP_DIR
+    try:
+        if alias.is_symlink():
+            if alias.resolve() == APP_DIR.resolve():
+                return str(alias)
+            alias.unlink()
+        elif alias.exists():
+            if alias.resolve() == APP_DIR.resolve():
+                return str(alias)
+            return str(alias)
+        alias.parent.mkdir(parents=True, exist_ok=True)
+        alias.symlink_to(APP_DIR, target_is_directory=True)
+        return str(alias)
+    except Exception:
+        return str(alias)
 
 
 def _wait_for_spawned_broker_meta(
@@ -3781,7 +3805,8 @@ def _supports_web_control(meta: dict[str, Any]) -> bool:
 class SessionManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._include_historical_sessions = True
+        # Sidebar should reflect broker-visible live sessions only.
+        self._include_historical_sessions = False
         self._bad_sidecars: dict[str, tuple[bool, int, int]] = {}
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
@@ -3806,7 +3831,6 @@ class SessionManager:
         self._load_queues()
         self._load_recent_cwds()
         self._load_cwd_groups()
-        self._backfill_recent_cwds_from_logs()
         self._voice_push = VoicePushCoordinator(
             app_dir=APP_DIR,
             stop_event=self._stop,
@@ -5276,7 +5300,6 @@ class SessionManager:
             if (now - last) < DISCOVER_MIN_INTERVAL_SECONDS:
                 return
         SOCK_DIR.mkdir(parents=True, exist_ok=True)
-        recent_cwd_dirty = False
         for sock in sorted(SOCK_DIR.glob("*.sock")):
             if skip_invalid_sidecars and self._sidecar_is_quarantined(sock):
                 continue
@@ -5375,12 +5398,16 @@ class SessionManager:
                     session_path_discovered = True
                     _patch_metadata_pi_binding(sock, inferred_pi_session_path)
 
-                if (
-                    backend == "pi"
-                    and (not owned)
-                    and (not _supports_web_control(meta))
-                ):
-                    continue
+                if backend == "pi":
+                    # Only Pi RPC brokers support the live web control path.
+                    if transport != "pi-rpc":
+                        continue
+                    if supports_live_ui is not True:
+                        continue
+                    if not isinstance(ui_protocol_version, int) or ui_protocol_version < 1:
+                        continue
+                    if (not owned) and (not _supports_web_control(meta)):
+                        continue
 
                 log_path = _metadata_log_path(meta=meta, backend=backend, sock=sock)
                 if inferred_pi_session_path is not None:
@@ -5473,11 +5500,6 @@ class SessionManager:
                     self._quarantine_sidecar(sock, exc)
                     continue
                 raise
-            if self._remember_recent_cwd(
-                cwd, ts=meta.get("updated_ts", meta.get("start_ts"))
-            ):
-                recent_cwd_dirty = True
-
             # Validate socket is responsive.
             # If the broker is still bootstrapping, keep the session visible with
             # a degraded state so UI registration does not depend on a ready RPC socket.
@@ -5581,8 +5603,6 @@ class SessionManager:
                     prev.pi_session_path_discovered = (
                         s.pi_session_path_discovered or prev.pi_session_path_discovered
                     )
-        if recent_cwd_dirty:
-            self._save_recent_cwds()
         with self._lock:
             self._last_discover_ts = time.time()
 
@@ -6972,6 +6992,7 @@ class SessionManager:
                 env["CODEX_WEB_TRANSPORT"] = "tmux"
                 env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
                 env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
+                short_app_dir = _ensure_tmux_short_app_dir()
                 inline_env = {
                     "CODEX_WEB_OWNER": "web",
                     "CODEX_WEB_AGENT_BACKEND": "pi",
@@ -6979,6 +7000,7 @@ class SessionManager:
                     "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
                     "CODEX_WEB_TMUX_WINDOW": tmux_window,
                     "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+                    "CODOXEAR_APP_DIR": short_app_dir,
                     "PI_HOME": str(env["PI_HOME"]),
                 }
                 repo_root = Path(__file__).resolve().parent.parent
@@ -7175,6 +7197,7 @@ class SessionManager:
             env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
             env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
             env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
+            short_app_dir = _ensure_tmux_short_app_dir()
             inline_env = {
                 "CODEX_WEB_OWNER": "web",
                 "CODEX_WEB_AGENT_BACKEND": backend_name,
@@ -7182,6 +7205,7 @@ class SessionManager:
                 "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
                 "CODEX_WEB_TMUX_WINDOW": tmux_window,
                 "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
+                "CODOXEAR_APP_DIR": short_app_dir,
             }
             if backend_name == "codex":
                 inline_env["CODEX_HOME"] = str(env["CODEX_HOME"])

@@ -52,6 +52,10 @@ def _send_socket_json_line(conn: socket.socket, payload: dict[str, Any]) -> None
 
 
 def default_app_dir() -> Path:
+    override = os.environ.get("CODOXEAR_APP_DIR")
+    if isinstance(override, str) and override.strip():
+        return Path(override).expanduser()
+
     base = Path.home() / ".local" / "share"
     new = base / "codoxear"
     old = base / "codex-web"
