@@ -753,7 +753,7 @@ function ChatMessageCard({
   return (
     <MessageSurface kind={kind}>
       {renderCardHeader(kind, label, undefined, event.ts)}
-      {renderRichText(text, "messageBody prose prose-sm max-w-none", options)}
+      {renderRichText(text, "messageBody", options)}
       <div className="messageBubbleActions">
         <button
           type="button"

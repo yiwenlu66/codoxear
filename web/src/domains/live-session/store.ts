@@ -60,6 +60,8 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
         messagesStore.applyLive(sessionId, payload.events ?? [], {
           replace,
           offset: typeof payload.offset === "number" ? payload.offset : offset,
+          hasOlder: payload.has_older === true,
+          nextBefore: typeof payload.next_before === "number" ? payload.next_before : undefined,
         });
         const nextRequests = Array.isArray(payload.requests)
           ? payload.requests

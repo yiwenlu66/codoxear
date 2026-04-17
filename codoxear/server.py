@@ -3771,6 +3771,8 @@ def _session_live_payload(
         "session_id": s.session_id,
         "offset": int(page.get("offset", max(0, int(offset))) or 0),
         "live_offset": next_live_offset,
+        "has_older": bool(page.get("has_older")),
+        "next_before": int(page.get("next_before", 0) or 0),
         "busy": bool(busy),
         "events": merged_events,
         "requests_version": current_requests_version,

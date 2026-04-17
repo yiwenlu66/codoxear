@@ -271,6 +271,8 @@ export interface LiveSessionResponse {
   session_id?: string;
   offset?: number;
   live_offset?: number;
+  has_older?: boolean;
+  next_before?: number;
   busy?: boolean;
   requests_version?: string;
   events: MessageEvent[];

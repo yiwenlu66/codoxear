@@ -15,7 +15,7 @@ export interface MessagesState {
 export interface MessagesStore {
   getState(): MessagesState;
   subscribe(listener: () => void): () => void;
-  applyLive(sessionId: string, events: MessageEvent[], options: { replace: boolean; offset?: number }): void;
+  applyLive(sessionId: string, events: MessageEvent[], options: { replace: boolean; offset?: number; hasOlder?: boolean; nextBefore?: number }): void;
   loadInitial(sessionId: string): Promise<void>;
   poll(sessionId: string): Promise<void>;
   loadOlder(sessionId: string, limit?: number): Promise<void>;
@@ -251,7 +251,7 @@ export function createMessagesStore(): MessagesStore {
     }
   };
 
-  const applyLive = (sessionId: string, events: MessageEvent[], options: { replace: boolean; offset?: number }) => {
+  const applyLive = (sessionId: string, events: MessageEvent[], options: { replace: boolean; offset?: number; hasOlder?: boolean; nextBefore?: number }) => {
     const priorEvents = state.bySessionId[sessionId] ?? [];
     const nextLoadingBySessionId = {
       ...state.loadingBySessionId,
@@ -267,6 +267,14 @@ export function createMessagesStore(): MessagesStore {
       offsetsBySessionId: {
         ...state.offsetsBySessionId,
         [sessionId]: typeof options.offset === "number" ? options.offset : state.offsetsBySessionId[sessionId] ?? 0,
+      },
+      hasOlderBySessionId: {
+        ...state.hasOlderBySessionId,
+        [sessionId]: typeof options.hasOlder === "boolean" ? options.hasOlder : state.hasOlderBySessionId[sessionId] ?? false,
+      },
+      olderBeforeBySessionId: {
+        ...state.olderBeforeBySessionId,
+        [sessionId]: typeof options.nextBefore === "number" ? options.nextBefore : state.olderBeforeBySessionId[sessionId] ?? 0,
       },
       loadingBySessionId: nextLoadingBySessionId,
       loadedBySessionId: {

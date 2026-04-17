@@ -20,6 +20,8 @@ describe("createLiveSessionStore", () => {
       requests: [{ id: "r1", method: "select" }],
       busy: true,
       offset: 3,
+      has_older: true,
+      next_before: 40,
     } as never);
     const messagesStore = createMessagesStore();
     const liveStore = createLiveSessionStore(messagesStore);
@@ -28,6 +30,8 @@ describe("createLiveSessionStore", () => {
 
     expect(api.getLiveSession).toHaveBeenCalledWith("s1", undefined, undefined, undefined, undefined);
     expect(messagesStore.getState().bySessionId.s1).toEqual([{ id: "m1" }]);
+    expect(messagesStore.getState().hasOlderBySessionId.s1).toBe(true);
+    expect(messagesStore.getState().olderBeforeBySessionId.s1).toBe(40);
     expect(liveStore.getState().offsetsBySessionId.s1).toBe(3);
     expect(liveStore.getState().liveOffsetsBySessionId.s1).toBe(0);
     expect(liveStore.getState().requestsBySessionId.s1).toEqual([{ id: "r1", method: "select" }]);
@@ -41,12 +45,16 @@ describe("createLiveSessionStore", () => {
         requests: [{ id: "r1" }],
         busy: true,
         offset: 3,
+        has_older: true,
+        next_before: 20,
       } as never)
       .mockResolvedValueOnce({
         events: [{ id: "m2" }],
         requests: [{ id: "r2" }],
         busy: false,
         offset: 4,
+        has_older: true,
+        next_before: 20,
       } as never);
     const messagesStore = createMessagesStore();
     const liveStore = createLiveSessionStore(messagesStore);
@@ -56,6 +64,8 @@ describe("createLiveSessionStore", () => {
 
     expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 3, undefined, undefined, 0);
     expect(messagesStore.getState().bySessionId.s1).toEqual([{ id: "m1" }, { id: "m2" }]);
+    expect(messagesStore.getState().hasOlderBySessionId.s1).toBe(true);
+    expect(messagesStore.getState().olderBeforeBySessionId.s1).toBe(20);
     expect(liveStore.getState().offsetsBySessionId.s1).toBe(4);
     expect(liveStore.getState().liveOffsetsBySessionId.s1).toBe(0);
     expect(liveStore.getState().requestsBySessionId.s1).toEqual([{ id: "r2" }]);

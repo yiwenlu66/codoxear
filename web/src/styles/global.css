@@ -1383,22 +1383,22 @@ select {
 .messageBubble.assistant .messageBody,
 .messageBubble.assistant .messageBody.prose {
   font-family: var(--font-assistant-prose);
-  font-size: 0.98rem;
-  line-height: 1.54;
+  font-size: 0.96rem;
+  line-height: 1.46;
   letter-spacing: 0;
 }
 
 .messageBubble.assistant .messageBody p {
-  margin-bottom: 0.72rem;
+  margin-bottom: 0.48rem;
 }
 
 .messageBubble.assistant .messageBody ul,
 .messageBubble.assistant .messageBody ol {
-  margin: 0.55rem 0 0.8rem;
+  margin: 0.38rem 0 0.62rem;
 }
 
 .messageBubble.assistant .messageBody li + li {
-  margin-top: 0.18rem;
+  margin-top: 0.12rem;
 }
 
 .messageBody p:last-child {

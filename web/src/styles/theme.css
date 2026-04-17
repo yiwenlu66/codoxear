@@ -1,6 +1,6 @@
 :root {
   --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-assistant-prose: "Fira Code", "LXGW WenKai", "LXGW WenKai Screen", "PingFang SC", "Noto Serif CJK SC", monospace;
+  --font-assistant-prose: "LXGW WenKai", "LXGW WenKai Screen", "PingFang SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
   --font-code: "Fira Code", "LXGW WenKai Mono", "LXGW WenKai", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-family: var(--font-ui);
   line-height: 1.5;
