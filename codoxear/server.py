@@ -45,6 +45,7 @@ from .util import iter_session_logs as _iter_session_logs_impl
 from .util import now as _now
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
+from .util import _socket_peer_disconnected
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .voice_push import VoicePushCoordinator
 
@@ -600,6 +601,18 @@ def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def _handle_handler_exception(handler: http.server.BaseHTTPRequestHandler, exc: BaseException) -> None:
+    if _socket_peer_disconnected(exc):
+        return
+    traceback.print_exc()
+    try:
+        _json_response(handler, 500, {"error": str(exc), "trace": traceback.format_exc()})
+    except Exception as reply_exc:
+        if _socket_peer_disconnected(reply_exc):
+            return
+        traceback.print_exc()
 
 
 def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
@@ -5522,8 +5535,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             self.send_error(404)
         except Exception as e:
-            traceback.print_exc()
-            _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
+            _handle_handler_exception(self, e)
 
     def do_POST(self) -> None:
         try:
@@ -6402,8 +6414,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except KeyError:
             _json_response(self, 404, {"error": "unknown session"})
         except Exception as e:
-            traceback.print_exc()
-            _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
+            _handle_handler_exception(self, e)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         # Quiet default logging to keep terminal usable.
