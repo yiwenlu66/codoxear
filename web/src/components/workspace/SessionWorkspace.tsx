@@ -310,13 +310,14 @@ interface SessionWorkspaceProps {
 export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
   const sessionUiState = useSessionUiStore() as {
     sessionId: string | null;
+    runtimeId: string | null;
     diagnostics: Record<string, unknown> | null;
     queue: Record<string, unknown> | null;
     loading: boolean;
     requests?: SessionUiRequest[];
     files?: string[];
   };
-  const { sessionId, diagnostics, queue, loading } = sessionUiState;
+  const { sessionId, runtimeId, diagnostics, queue, loading } = sessionUiState;
   const liveSessionState = useLiveSessionStore();
   const liveSessionStoreApi = useLiveSessionStoreApi();
   const liveRequests = sessionId ? liveSessionState.requestsBySessionId[sessionId] ?? [] : [];
@@ -359,10 +360,10 @@ export function SessionWorkspace({ mode = "default" }: SessionWorkspaceProps) {
     setRequestErrorById((current) => ({ ...current, [requestId]: "" }));
 
     try {
-      await api.submitUiResponse(sessionId, payload);
+      await (runtimeId ? api.submitUiResponse(sessionId, payload, runtimeId) : api.submitUiResponse(sessionId, payload));
       await Promise.all([
-        liveSessionStoreApi.loadInitial(sessionId),
-        sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" }),
+        runtimeId ? liveSessionStoreApi.loadInitial(sessionId, runtimeId) : liveSessionStoreApi.loadInitial(sessionId),
+        runtimeId ? sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi", runtimeId }) : sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" }),
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit response";

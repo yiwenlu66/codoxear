@@ -32,6 +32,7 @@ describe("createSessionUiStore", () => {
     expect(api.getWorkspace).toHaveBeenCalledWith("s1");
     expect(store.getState()).toEqual({
       sessionId: "s1",
+      runtimeId: null,
       diagnostics: { status: "ok" },
       queue: { items: [] },
       loading: false,
@@ -66,6 +67,7 @@ describe("createSessionUiStore", () => {
 
     expect(store.getState()).toEqual({
       sessionId: "s1",
+      runtimeId: null,
       diagnostics: { todo_snapshot: { progress_text: "1/2 completed" } },
       queue: { items: [] },
       loading: true,
@@ -79,6 +81,7 @@ describe("createSessionUiStore", () => {
 
     expect(store.getState()).toEqual({
       sessionId: "s1",
+      runtimeId: null,
       diagnostics: { todo_snapshot: { progress_text: "2/2 completed" } },
       queue: { items: ["queued"] },
       loading: false,
@@ -103,6 +106,7 @@ describe("createSessionUiStore", () => {
 
     expect(store.getState()).toEqual({
       sessionId: "s2",
+      runtimeId: null,
       diagnostics: null,
       queue: null,
       loading: true,
@@ -116,6 +120,7 @@ describe("createSessionUiStore", () => {
 
     expect(store.getState()).toEqual({
       sessionId: "s2",
+      runtimeId: null,
       diagnostics: { todo_snapshot: { progress_text: "0/1 completed" } },
       queue: { items: [] },
       loading: false,

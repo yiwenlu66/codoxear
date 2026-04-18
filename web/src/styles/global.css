@@ -1887,7 +1887,8 @@ select {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
-.composerQueueButton {
+.composerQueueButton,
+.composerInterruptButton {
   flex: 0 0 auto;
   min-width: fit-content;
   height: 44px;
@@ -1896,6 +1897,11 @@ select {
   border-radius: 999px;
   background: color-mix(in srgb, white 90%, var(--panel));
   color: var(--text);
+}
+
+.composerInterruptButton {
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--legacy-border));
+  color: var(--danger);
 }
 
 .composerTextarea {
@@ -2252,6 +2258,7 @@ select {
 
 :root[data-theme="dark"] .sessionCardSurface,
 :root[data-theme="dark"] .composerQueueButton,
+:root[data-theme="dark"] .composerInterruptButton,
 :root[data-theme="dark"] .composerCommandMenu,
 :root[data-theme="dark"] .conversationColumn,
 :root[data-theme="dark"] .conversationToolbar,
@@ -2606,8 +2613,13 @@ select {
     height: 44px;
   }
 
-  .composerQueueButton {
+  .composerQueueButton,
+  .composerInterruptButton {
     min-height: 44px;
+  }
+
+  .composerQueueButton {
+    min-width: fit-content;
     margin-left: auto;
   }
 

@@ -13,6 +13,7 @@ import { normalizeRememberedLine, preferredFileSelectionForSession, rememberFile
 export interface FileViewerDialogProps {
   open: boolean;
   sessionId: string | null;
+  runtimeId?: string | null;
   initialPath?: string;
   initialLine?: number | null;
   initialMode?: FileViewMode | null;
@@ -237,6 +238,7 @@ function FileTreeNodeRow({
 export function FileViewerDialog({
   open,
   sessionId,
+  runtimeId = null,
   initialPath = "",
   initialLine = null,
   initialMode = null,
@@ -278,7 +280,9 @@ export function FileViewerDialog({
 
     void (async () => {
       try {
-        const response = await api.getFiles(sessionId, undefined, controller.signal);
+        const response = runtimeId
+          ? await api.getFiles(sessionId, undefined, controller.signal, runtimeId)
+          : await api.getFiles(sessionId, undefined, controller.signal);
         if (controller.signal.aborted || requestId !== listRequestIdRef.current) {
           return;
         }
@@ -312,7 +316,7 @@ export function FileViewerDialog({
       }
       treeRequestControllersRef.current.clear();
     };
-  }, [open, openRequestKey, sessionId]);
+  }, [open, openRequestKey, runtimeId, sessionId]);
 
   useEffect(() => {
     if (!open) {
@@ -368,12 +372,16 @@ export function FileViewerDialog({
     void (async () => {
       try {
         if (loadMode === "diff") {
-          const response = await api.getGitFileVersions(sessionId, normalized, controller.signal);
+          const response = runtimeId
+            ? await api.getGitFileVersions(sessionId, normalized, controller.signal, runtimeId)
+            : await api.getGitFileVersions(sessionId, normalized, controller.signal);
           if (controller.signal.aborted || requestId !== openRequestIdRef.current) return;
           setDiffPayload(response);
           setPayload(null);
         } else {
-          const response = await api.getFileRead(sessionId, normalized, controller.signal);
+          const response = runtimeId
+            ? await api.getFileRead(sessionId, normalized, controller.signal, runtimeId)
+            : await api.getFileRead(sessionId, normalized, controller.signal);
           if (controller.signal.aborted || requestId !== openRequestIdRef.current) return;
           setPayload(response);
           setDiffPayload(null);
@@ -396,7 +404,7 @@ export function FileViewerDialog({
     return () => {
       controller.abort();
     };
-  }, [open, openRequestKey, path, sessionId, viewMode]);
+  }, [open, openRequestKey, path, runtimeId, sessionId, viewMode]);
 
   const normalizedPath = normalizePath(path);
   const canPreview = isMarkdownFile(normalizedPath);
@@ -411,7 +419,9 @@ export function FileViewerDialog({
     treeRequestControllersRef.current.set(dirPath, controller);
     setTree((current) => setTreeNodeLoading(current, dirPath, true));
 
-    void api.getFiles(sessionId, dirPath, controller.signal).then((response) => {
+    void (runtimeId
+      ? api.getFiles(sessionId, dirPath, controller.signal, runtimeId)
+      : api.getFiles(sessionId, dirPath, controller.signal)).then((response) => {
       if (controller.signal.aborted) {
         return;
       }

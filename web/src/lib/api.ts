@@ -1,4 +1,5 @@
 import { getJson, postJson } from "./http";
+import { getSessionRouteId } from "./session-identity";
 import type {
   AttachmentInjectResponse,
   AudioListenerResponse,
@@ -58,10 +59,11 @@ export const api = {
   getSessionsBootstrap(signal?: AbortSignal) {
     return getJson<SessionBootstrapResponse>("/api/sessions/bootstrap", signal);
   },
-  getSessionDetails(sessionId: string, signal?: AbortSignal) {
-    return getJson<SessionDetailsResponse>(`/api/sessions/${sessionId}/details`, signal);
+  getSessionDetails(sessionId: string, signal?: AbortSignal, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<SessionDetailsResponse>(`/api/sessions/${routeId}/details`, signal);
   },
-  listMessages(sessionId: string, init = false, signal?: AbortSignal, offset?: number, before?: number, limit?: number) {
+  listMessages(sessionId: string, init = false, signal?: AbortSignal, offset?: number, before?: number, limit?: number, runtimeId?: string | null) {
     const query = new URLSearchParams();
     if (init) {
       query.set("init", "1");
@@ -76,12 +78,14 @@ export const api = {
       query.set("limit", String(limit));
     }
     const suffix = query.size ? `?${query.toString()}` : "";
-    return getJson<MessagesResponse>(`/api/sessions/${sessionId}/messages${suffix}`, signal);
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<MessagesResponse>(`/api/sessions/${routeId}/messages${suffix}`, signal);
   },
-  getSessionUiState(sessionId: string, signal?: AbortSignal) {
-    return getJson<SessionUiStateResponse>(`/api/sessions/${sessionId}/ui_state`, signal);
+  getSessionUiState(sessionId: string, signal?: AbortSignal, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<SessionUiStateResponse>(`/api/sessions/${routeId}/ui_state`, signal);
   },
-  getLiveSession(sessionId: string, offset?: number, requestsVersion?: string, signal?: AbortSignal, liveOffset?: number) {
+  getLiveSession(sessionId: string, offset?: number, requestsVersion?: string, signal?: AbortSignal, liveOffset?: number, runtimeId?: string | null) {
     const query = new URLSearchParams();
     if (typeof offset === "number" && Number.isFinite(offset) && offset > 0) {
       query.set("offset", String(offset));
@@ -93,25 +97,32 @@ export const api = {
       query.set("live_offset", String(liveOffset));
     }
     const suffix = query.size ? `?${query.toString()}` : "";
-    return getJson<LiveSessionResponse>(`/api/sessions/${sessionId}/live${suffix}`, signal);
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<LiveSessionResponse>(`/api/sessions/${routeId}/live${suffix}`, signal);
   },
-  getWorkspace(sessionId: string, signal?: AbortSignal) {
-    return getJson<WorkspaceResponse>(`/api/sessions/${sessionId}/workspace`, signal);
+  getWorkspace(sessionId: string, signal?: AbortSignal, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<WorkspaceResponse>(`/api/sessions/${routeId}/workspace`, signal);
   },
-  getSessionCommands(sessionId: string, signal?: AbortSignal) {
-    return getJson<SessionCommandsResponse>(`/api/sessions/${sessionId}/commands`, signal);
+  getSessionCommands(sessionId: string, signal?: AbortSignal, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<SessionCommandsResponse>(`/api/sessions/${routeId}/commands`, signal);
   },
-  attachSessionFile(sessionId: string, payload: { filename: string; data_b64: string; attachment_index: number }) {
-    return postJson<AttachmentInjectResponse>(`/api/sessions/${sessionId}/inject_image`, payload);
+  attachSessionFile(sessionId: string, payload: { filename: string; data_b64: string; attachment_index: number }, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson<AttachmentInjectResponse>(`/api/sessions/${routeId}/inject_image`, payload);
   },
-  async sendMessage(sessionId: string, text: string) {
-    return postJson(`/api/sessions/${sessionId}/send`, { text });
+  async sendMessage(sessionId: string, text: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson(`/api/sessions/${routeId}/send`, { text });
   },
-  async enqueueMessage(sessionId: string, text: string) {
-    return postJson(`/api/sessions/${sessionId}/enqueue`, { text });
+  async enqueueMessage(sessionId: string, text: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson(`/api/sessions/${routeId}/enqueue`, { text });
   },
-  deleteSession(sessionId: string) {
-    return postJson<DeleteSessionResponse>(`/api/sessions/${sessionId}/delete`, {});
+  deleteSession(sessionId: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson<DeleteSessionResponse>(`/api/sessions/${routeId}/delete`, {});
   },
   async createSession(payload: Record<string, unknown>) {
     return postJson<CreateSessionResponse>(`/api/sessions`, payload);
@@ -175,40 +186,49 @@ export const api = {
   toggleNotificationSubscription(endpoint: string, enabled: boolean) {
     return postJson<NotificationSubscriptionStateResponse>(`/api/notifications/subscription/toggle`, { endpoint, enabled });
   },
-  getDiagnostics(sessionId: string) {
-    return getJson(`/api/sessions/${sessionId}/diagnostics`);
+  getDiagnostics(sessionId: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson(`/api/sessions/${routeId}/diagnostics`);
   },
-  getQueue(sessionId: string) {
-    return getJson(`/api/sessions/${sessionId}/queue`);
+  getQueue(sessionId: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson(`/api/sessions/${routeId}/queue`);
   },
-  getFiles(sessionId: string, path?: string, signal?: AbortSignal) {
+  getFiles(sessionId: string, path?: string, signal?: AbortSignal, runtimeId?: string | null) {
     const query = new URLSearchParams();
     if (path) {
       query.set("path", path);
     }
     const suffix = query.size ? `?${query.toString()}` : "";
-    return getJson<SessionFileListResponse>(`/api/sessions/${sessionId}/file/list${suffix}`, signal);
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<SessionFileListResponse>(`/api/sessions/${routeId}/file/list${suffix}`, signal);
   },
-  getFileRead(sessionId: string, path: string, signal?: AbortSignal) {
+  getFileRead(sessionId: string, path: string, signal?: AbortSignal, runtimeId?: string | null) {
     const query = new URLSearchParams();
     query.set("path", path);
-    return getJson<SessionFileReadResponse>(`/api/sessions/${sessionId}/file/read?${query.toString()}`, signal);
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<SessionFileReadResponse>(`/api/sessions/${routeId}/file/read?${query.toString()}`, signal);
   },
-  getGitFileVersions(sessionId: string, path: string, signal?: AbortSignal) {
+  getGitFileVersions(sessionId: string, path: string, signal?: AbortSignal, runtimeId?: string | null) {
     const query = new URLSearchParams();
     query.set("path", path);
-    return getJson<GitFileVersionsResponse>(`/api/sessions/${sessionId}/git/file_versions?${query.toString()}`, signal);
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<GitFileVersionsResponse>(`/api/sessions/${routeId}/git/file_versions?${query.toString()}`, signal);
   },
-  getHarness(sessionId: string) {
-    return getJson<HarnessConfigResponse>(`/api/sessions/${sessionId}/harness`);
+  getHarness(sessionId: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return getJson<HarnessConfigResponse>(`/api/sessions/${routeId}/harness`);
   },
-  saveHarness(sessionId: string, payload: Record<string, unknown>) {
-    return postJson<HarnessConfigResponse>(`/api/sessions/${sessionId}/harness`, payload);
+  saveHarness(sessionId: string, payload: Record<string, unknown>, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson<HarnessConfigResponse>(`/api/sessions/${routeId}/harness`, payload);
   },
-  interruptSession(sessionId: string) {
-    return postJson(`/api/sessions/${sessionId}/interrupt`, {});
+  interruptSession(sessionId: string, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson(`/api/sessions/${routeId}/interrupt`, {});
   },
-  submitUiResponse(sessionId: string, payload: Record<string, unknown>) {
-    return postJson(`/api/sessions/${sessionId}/ui_response`, payload);
+  submitUiResponse(sessionId: string, payload: Record<string, unknown>, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson(`/api/sessions/${routeId}/ui_response`, payload);
   },
 };

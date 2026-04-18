@@ -20,6 +20,7 @@ export interface NewSessionDefaults {
 
 export interface SessionSummary {
   session_id: string;
+  runtime_id?: string | null;
   thread_id?: string | null;
   resume_session_id?: string | null;
   title?: string;
@@ -68,6 +69,7 @@ export interface SessionDetailsResponse {
 export interface CreateSessionResponse {
   ok?: boolean;
   session_id?: string;
+  runtime_id?: string | null;
   backend?: string;
   broker_pid?: number;
 }
@@ -269,6 +271,7 @@ export interface SessionUiStateResponse {
 export interface LiveSessionResponse {
   ok?: boolean;
   session_id?: string;
+  runtime_id?: string | null;
   offset?: number;
   live_offset?: number;
   has_older?: boolean;
@@ -282,6 +285,7 @@ export interface LiveSessionResponse {
 export interface WorkspaceResponse {
   ok?: boolean;
   session_id?: string;
+  runtime_id?: string | null;
   diagnostics?: Record<string, unknown> | null;
   queue?: {
     items?: Array<string | { text?: string }>;

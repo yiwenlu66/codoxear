@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import {
   useComposerStore,
   useComposerStoreApi,
+  useLiveSessionStore,
   useLiveSessionStoreApi,
   useSessionUiStore,
   useSessionUiStoreApi,
@@ -15,6 +16,7 @@ import {
   useSessionsStoreApi,
 } from "../../app/providers";
 import { api } from "../../lib/api";
+import { getSessionRuntimeId } from "../../lib/session-identity";
 import type { SessionCommand } from "../../lib/types";
 import { getDisplayableTodoSnapshot, TodoComposerPanel } from "./TodoComposerPanel";
 
@@ -182,6 +184,7 @@ async function toJpegBlob(file: File, options: { maxDim: number; quality: number
 
 export function Composer() {
   const { activeSessionId, items } = useSessionsStore();
+  const { busyBySessionId = {} } = useLiveSessionStore() as { busyBySessionId?: Record<string, boolean> };
   const { draft, sending } = useComposerStore();
   const { sessionId: sessionUiSessionId, diagnostics } = useSessionUiStore();
   const sessionsStoreApi = useSessionsStoreApi();
@@ -201,6 +204,8 @@ export function Composer() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const postSendRefreshTimeoutsRef = useRef<number[]>([]);
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
+  const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
+  const activeSessionBusy = Boolean(activeSession && (activeSession.busy || (activeSessionId ? busyBySessionId[activeSessionId] === true : false)));
   const activeSessionIsPi = activeSession?.agent_backend === "pi";
   const activeSessionIsHistoricalPi = activeSessionIsPi && activeSession?.historical === true;
   const activeAttachmentCount = activeSessionId ? attachedFilesBySessionId[activeSessionId] ?? 0 : 0;
@@ -294,7 +299,9 @@ export function Composer() {
       [activeSessionId]: true,
     }));
 
-    api.getSessionCommands(activeSessionId)
+    (activeSessionRuntimeId
+      ? api.getSessionCommands(activeSessionId, undefined, activeSessionRuntimeId)
+      : api.getSessionCommands(activeSessionId))
       .then((response) => {
         if (cancelled) {
           return;
@@ -337,7 +344,7 @@ export function Composer() {
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId, activeSessionIsPi, slashQuery]);
+  }, [activeSessionId, activeSessionIsPi, activeSessionRuntimeId, slashQuery]);
 
   useEffect(() => {
     setHighlightedCommandIndex(0);
@@ -378,10 +385,10 @@ export function Composer() {
     });
   };
 
-  const refreshSessionAfterSend = (sessionId: string, agentBackend?: string) => {
+  const refreshSessionAfterSend = (sessionId: string, runtimeId?: string | null, agentBackend?: string) => {
     const refreshNow = () => Promise.allSettled([
-      liveSessionStoreApi.loadInitial(sessionId),
-      sessionUiStoreApi.refresh(sessionId, { agentBackend }),
+      runtimeId ? liveSessionStoreApi.loadInitial(sessionId, runtimeId) : liveSessionStoreApi.loadInitial(sessionId),
+      runtimeId ? sessionUiStoreApi.refresh(sessionId, { agentBackend, runtimeId }) : sessionUiStoreApi.refresh(sessionId, { agentBackend }),
       sessionsStoreApi.refresh(),
     ]);
 
@@ -393,8 +400,8 @@ export function Composer() {
     for (const delayMs of POST_SEND_REFRESH_DELAYS_MS) {
       const timeoutId = window.setTimeout(() => {
         void Promise.allSettled([
-          liveSessionStoreApi.poll(sessionId),
-          sessionUiStoreApi.refresh(sessionId, { agentBackend }),
+          runtimeId ? liveSessionStoreApi.poll(sessionId, runtimeId) : liveSessionStoreApi.poll(sessionId),
+          runtimeId ? sessionUiStoreApi.refresh(sessionId, { agentBackend, runtimeId }) : sessionUiStoreApi.refresh(sessionId, { agentBackend }),
           sessionsStoreApi.refresh(),
         ]);
       }, delayMs);
@@ -404,17 +411,20 @@ export function Composer() {
     return refreshNow();
   };
 
-  const resolvePostSendSessionId = async (response: unknown, fallbackSessionId: string) => {
+  const resolvePostSendSessionIdentity = async (response: unknown, fallbackSessionId: string, fallbackRuntimeId?: string | null) => {
     const nextSessionId = response && typeof response === "object"
       ? String((response as { session_id?: unknown }).session_id || "").trim()
       : "";
+    const nextRuntimeId = response && typeof response === "object"
+      ? String((response as { runtime_id?: unknown }).runtime_id || "").trim()
+      : "";
     if (!nextSessionId || nextSessionId === fallbackSessionId) {
-      return fallbackSessionId;
+      return { sessionId: fallbackSessionId, runtimeId: fallbackRuntimeId || null };
     }
 
     await sessionsStoreApi.refresh();
     sessionsStoreApi.select(nextSessionId);
-    return nextSessionId;
+    return { sessionId: nextSessionId, runtimeId: nextRuntimeId || null };
   };
 
   const submitCurrentDraft = () => {
@@ -422,11 +432,13 @@ export function Composer() {
       return;
     }
 
-    composerStoreApi.submit(activeSessionId)
+    (activeSessionRuntimeId
+      ? composerStoreApi.submit(activeSessionId, activeSessionRuntimeId)
+      : composerStoreApi.submit(activeSessionId))
       .then(async (response) => {
         clearAttachmentCount(activeSessionId);
-        const targetSessionId = await resolvePostSendSessionId(response, activeSessionId);
-        await refreshSessionAfterSend(targetSessionId, activeSession?.agent_backend);
+        const target = await resolvePostSendSessionIdentity(response, activeSessionId, activeSessionRuntimeId);
+        await refreshSessionAfterSend(target.sessionId, target.runtimeId, activeSession?.agent_backend);
       })
       .catch(() => undefined);
   };
@@ -438,18 +450,44 @@ export function Composer() {
 
     const queuedText = draft;
     composerStoreApi.setDraft("");
-    api.enqueueMessage(activeSessionId, queuedText)
+    (activeSessionRuntimeId
+      ? api.enqueueMessage(activeSessionId, queuedText, activeSessionRuntimeId)
+      : api.enqueueMessage(activeSessionId, queuedText))
       .then(async (response) => {
         clearAttachmentCount(activeSessionId);
-        const targetSessionId = await resolvePostSendSessionId(response, activeSessionId);
-        if (activeSessionIsHistoricalPi && targetSessionId !== activeSessionId) {
-          return refreshSessionAfterSend(targetSessionId, activeSession?.agent_backend);
+        const target = await resolvePostSendSessionIdentity(response, activeSessionId, activeSessionRuntimeId);
+        if (activeSessionIsHistoricalPi && target.sessionId !== activeSessionId) {
+          return refreshSessionAfterSend(target.sessionId, target.runtimeId, activeSession?.agent_backend);
         }
-        return sessionUiStoreApi.refresh(targetSessionId, { agentBackend: activeSession?.agent_backend });
+        return target.runtimeId
+          ? sessionUiStoreApi.refresh(target.sessionId, { agentBackend: activeSession?.agent_backend, runtimeId: target.runtimeId })
+          : sessionUiStoreApi.refresh(target.sessionId, { agentBackend: activeSession?.agent_backend });
       })
       .catch(() => {
         composerStoreApi.setDraft(queuedText);
       });
+  };
+
+  const interruptCurrentLoop = () => {
+    if (!activeSessionId || !activeSessionBusy) {
+      return;
+    }
+
+    const interruptRequest = activeSessionRuntimeId
+      ? api.interruptSession(activeSessionId, activeSessionRuntimeId)
+      : api.interruptSession(activeSessionId);
+
+    interruptRequest
+      .then(() => Promise.allSettled([
+        sessionsStoreApi.refresh(),
+        activeSessionRuntimeId
+          ? liveSessionStoreApi.loadInitial(activeSessionId, activeSessionRuntimeId)
+          : liveSessionStoreApi.loadInitial(activeSessionId),
+        activeSessionRuntimeId
+          ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend, runtimeId: activeSessionRuntimeId })
+          : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend }),
+      ]))
+      .catch(() => undefined);
   };
 
   const handleAttachClick = () => {
@@ -516,11 +554,19 @@ export function Composer() {
         throw new Error("file too large");
       }
 
-      await api.attachSessionFile(activeSessionId, {
-        filename: uploadName,
-        data_b64: bytesToBase64(new Uint8Array(buffer)),
-        attachment_index: attachmentIndex,
-      });
+      if (activeSessionRuntimeId) {
+        await api.attachSessionFile(activeSessionId, {
+          filename: uploadName,
+          data_b64: bytesToBase64(new Uint8Array(buffer)),
+          attachment_index: attachmentIndex,
+        }, activeSessionRuntimeId);
+      } else {
+        await api.attachSessionFile(activeSessionId, {
+          filename: uploadName,
+          data_b64: bytesToBase64(new Uint8Array(buffer)),
+          attachment_index: attachmentIndex,
+        });
+      }
 
       setAttachedFilesBySessionId((value) => ({
         ...value,
@@ -677,6 +723,18 @@ export function Composer() {
               >
                 Queue
               </Button>
+              {activeSessionBusy ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="composerInterruptButton"
+                  aria-label="Cancel current loop"
+                  onClick={interruptCurrentLoop}
+                >
+                  Cancel loop
+                </Button>
+              ) : null}
               <Button
                 type="submit"
                 className="sendButton"

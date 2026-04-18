@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 
 import { AskUserCard, askUserHistorySignature, isUnresolvedAskUserEvent } from "./AskUserCard";
 import { useComposerStore, useComposerStoreApi, useLiveSessionStore, useLiveSessionStoreApi, useMessagesStore, useMessagesStoreApi, useSessionsStore } from "../../app/providers";
+import { getSessionRuntimeId } from "../../lib/session-identity";
 import type { MessageEvent } from "../../lib/types";
 
 const MAIN_TIMELINE_KINDS = new Set([
@@ -834,6 +835,7 @@ function shouldAllowFuzzyAskUserMatch(messages: MessageEvent[], index: number) {
 function renderAskUserCard(
   event: MessageEvent,
   sessionId: string | undefined,
+  runtimeId: string | null | undefined,
   options: MarkdownRenderOptions,
   allowFuzzyLiveMatch: boolean,
   allowLegacyFallback: boolean,
@@ -842,6 +844,7 @@ function renderAskUserCard(
     <AskUserCard
       event={event}
       sessionId={sessionId}
+      runtimeId={runtimeId}
       allowFuzzyLiveMatch={allowFuzzyLiveMatch}
       allowLegacyFallback={allowLegacyFallback}
       renderRichText={(value, className) => renderRichText(value, className, options)}
@@ -1184,6 +1187,7 @@ function renderConversationEvent(
   event: MessageEvent,
   kind: string,
   sessionId: string | undefined,
+  runtimeId: string | null | undefined,
   options: MarkdownRenderOptions,
   allowFuzzyLiveMatch = true,
   allowLegacyFallback = false,
@@ -1193,7 +1197,7 @@ function renderConversationEvent(
     case "assistant":
       return renderChatCard(event, kind, options);
     case "ask_user":
-      return renderAskUserCard(event, sessionId, options, allowFuzzyLiveMatch, allowLegacyFallback);
+      return renderAskUserCard(event, sessionId, runtimeId, options, allowFuzzyLiveMatch, allowLegacyFallback);
     case "reasoning":
       return renderReasoningCard(event, options);
     case "tool":
@@ -1384,6 +1388,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const messagesStoreApi = useMessagesStoreApi();
   const liveSessionStoreApi = useLiveSessionStoreApi();
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
+  const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
   const activeSessionIsHistoricalPi = activeSession?.historical === true && activeSession?.agent_backend === "pi";
   const allowLegacyAskUserFallback = Boolean(activeSession?.agent_backend === "pi" && activeSession?.transport !== "pi-rpc");
   const isBusy = Boolean(
@@ -1662,6 +1667,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
                           row.events[0],
                           row.kind,
                           activeSessionId || undefined,
+                          activeSessionRuntimeId,
                           markdownOptions,
                           row.allowFuzzyLiveMatch,
                           row.allowLegacyFallback,

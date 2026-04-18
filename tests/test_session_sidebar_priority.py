@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+from codoxear.page_state_sqlite import DurableSessionRecord
+from codoxear.page_state_sqlite import PageStateDB
 from codoxear.server import Session
 from codoxear.server import SessionManager
 
@@ -94,10 +96,50 @@ class TestSessionSidebarPriority(unittest.TestCase):
         rows = mgr.list_sessions()
 
         self.assertEqual(rows[0]["session_id"], "current")
+        self.assertEqual(rows[0]["runtime_id"], "current")
         self.assertFalse(rows[0]["snoozed"])
         self.assertFalse(rows[0]["blocked"])
         self.assertIsNone(rows[0]["snooze_until"])
         self.assertIsNone(rows[0]["dependency_session_id"])
+
+    def test_list_sessions_includes_recovered_sqlite_sessions_when_no_live_sessions(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr._refresh_durable_session_catalog = lambda *args, **kwargs: None  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            db = PageStateDB(Path(td) / "state.sqlite")
+            db.save_sessions(
+                {
+                    ("pi", "resume-pi"): DurableSessionRecord(
+                        backend="pi",
+                        session_id="resume-pi",
+                        cwd="/repo",
+                        source_path=str(Path(td) / "resume-pi.jsonl"),
+                        title="Recovered",
+                        first_user_message="hello",
+                        created_at=100.0,
+                        updated_at=150.0,
+                    )
+                }
+            )
+            db.save_session_ui_state(
+                aliases={("pi", "resume-pi"): "Recovered alias"},
+                sidebar_meta={("pi", "resume-pi"): {"priority_offset": 0.2, "focused": True}},
+                hidden_keys=set(),
+            )
+            mgr._aliases, mgr._sidebar_meta, mgr._hidden_sessions = db.load_session_ui_state()
+            mgr._page_state_db = db
+            rows = mgr.list_sessions()
+            db.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["session_id"], "history:pi:resume-pi")
+        self.assertEqual(rows[0]["runtime_id"], None)
+        self.assertTrue(rows[0]["historical"])
+        self.assertEqual(rows[0]["alias"], "Recovered alias")
+        self.assertEqual(rows[0]["title"], "Recovered")
+        self.assertEqual(rows[0]["first_user_message"], "hello")
 
     def test_list_sessions_includes_historical_resumable_sessions_when_no_live_sessions(
         self,
@@ -149,6 +191,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertTrue(
             all(str(row["session_id"]).startswith("history:") for row in rows)
         )
+        self.assertTrue(all(row.get("runtime_id") is None for row in rows))
         self.assertEqual({row["cwd"] for row in rows}, {"/repo"})
 
     def test_list_sessions_skips_historical_entry_when_matching_live_session_exists(
@@ -214,7 +257,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(
             [row["session_id"] for row in rows],
-            ["history:codex:resume-other", "live-broker"],
+            ["history:codex:resume-other", "resume-codex"],
         )
         self.assertEqual(rows[0]["resume_session_id"], "resume-other")
         self.assertTrue(rows[0]["historical"])
@@ -275,7 +318,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(
             [row["session_id"] for row in rows],
-            ["broker-new", "broker-other"],
+            ["shared-thread", "other-thread"],
         )
         self.assertEqual(
             [row["thread_id"] for row in rows],

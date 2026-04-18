@@ -789,7 +789,7 @@ class TestPiBackendRouting(unittest.TestCase):
                 rows = mgr.list_sessions()
 
             sids = sorted(row["session_id"] for row in rows)
-            self.assertEqual(sids, ["good-session", "pty-session"])
+            self.assertEqual(sids, ["pi-thread-good", "pi-thread-pty"])
 
     def test_list_sessions_hides_unsupported_terminal_pi_sidecar(self) -> None:
         mgr = _make_manager()
@@ -896,7 +896,7 @@ class TestPiBackendRouting(unittest.TestCase):
                 mgr._discover_existing(force=True, skip_invalid_sidecars=True)
 
             rows = mgr.list_sessions()
-            self.assertEqual([row["session_id"] for row in rows], ["good-session"])
+            self.assertEqual([row["session_id"] for row in rows], ["pi-thread-good"])
             self.assertTrue(mgr._sidecar_is_quarantined(bad_sock))
 
             with (
@@ -973,7 +973,7 @@ class TestPiBackendRouting(unittest.TestCase):
                 mgr._discover_existing(force=True, skip_invalid_sidecars=True)
 
             rows = mgr.list_sessions()
-            self.assertEqual([row["session_id"] for row in rows], ["good-session"])
+            self.assertEqual([row["session_id"] for row in rows], ["pi-thread-good"])
             self.assertTrue(mgr._sidecar_is_quarantined(bad_sock))
 
             with (
@@ -1088,7 +1088,12 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(argv[8], "-e")
         self.assertEqual(
             result,
-            {"broker_pid": 2468, "backend": "pi", "session_id": "pi-web-session"},
+            {
+                "broker_pid": 2468,
+                "backend": "pi",
+                "session_id": "pi-web-session",
+                "runtime_id": "pi-web-session",
+            },
         )
 
     def test_spawn_web_session_adds_codoxear_ask_user_bridge_extension_for_pi(
@@ -1551,6 +1556,36 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 404)
         self.assertEqual(payload, {"error": "unknown session"})
         self.assertNotIn("pi-session", mgr._sessions)
+
+    def test_messages_route_allows_historical_pi_session_without_live_runtime(self) -> None:
+        mgr = _make_manager()
+        mgr.refresh_session_meta = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_session = lambda _sid: None  # type: ignore[method-assign]
+        mgr.get_messages_page = lambda _sid, **_kwargs: {
+            "events": [{"type": "assistant", "text": "hello"}],
+            "diag": {},
+            "offset": 0,
+            "busy": False,
+            "queue_len": 0,
+            "token": None,
+            "has_older": False,
+            "next_before": 0,
+        }  # type: ignore[method-assign]
+        handler = _HandlerHarness("/api/sessions/history:pi:resume-1/messages?init=1&limit=20")
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER", mgr),
+            patch(
+                "codoxear.server._historical_session_row",
+                return_value={"agent_backend": "pi", "backend": "pi", "resume_session_id": "resume-1"},
+            ),
+        ):
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload["events"], [{"type": "assistant", "text": "hello"}])
 
     def test_live_route_returns_messages_busy_and_requests_for_pi_session(self) -> None:
         mgr = _make_manager()
@@ -2031,7 +2066,8 @@ class TestPiBackendRouting(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
         self.assertEqual(payload["ok"], True)
-        self.assertEqual(payload["session_id"], "pi-session")
+        self.assertEqual(payload["session_id"], "pi-thread-001")
+        self.assertEqual(payload["runtime_id"], "pi-session")
         self.assertIn("diagnostics", payload)
         self.assertEqual(payload["diagnostics"]["busy"], False)
         self.assertEqual(
@@ -3343,11 +3379,11 @@ class TestPiMessageNormalization(unittest.TestCase):
 
         self.assertEqual(
             [row["session_id"] for row in rows_before_refresh[:2]],
-            ["other-session", "pi-session"],
+            ["thread-other", "pi-thread-001"],
         )
         self.assertEqual(
             [row["session_id"] for row in rows_after_refresh[:2]],
-            ["pi-session", "other-session"],
+            ["pi-thread-001", "thread-other"],
         )
         self.assertEqual(rows_after_refresh[0]["updated_ts"], refreshed_mtime)
 

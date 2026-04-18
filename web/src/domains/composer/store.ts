@@ -19,7 +19,7 @@ export interface ComposerStore {
   getState(): ComposerState;
   subscribe(listener: () => void): () => void;
   setDraft(value: string): void;
-  submit(sessionId: string): Promise<unknown>;
+  submit(sessionId: string, runtimeId?: string | null): Promise<unknown>;
   clearAcknowledgedPending(sessionId: string, persistedEvents: MessageEvent[]): void;
 }
 
@@ -46,7 +46,7 @@ export function createComposerStore(): ComposerStore {
       state = { ...state, draft: value };
       emit();
     },
-    async submit(sessionId: string) {
+    async submit(sessionId: string, runtimeId?: string | null) {
       if (!state.draft.trim() || state.sending) return;
 
       nextPendingId += 1;
@@ -70,7 +70,9 @@ export function createComposerStore(): ComposerStore {
       emit();
 
       try {
-        const response = await api.sendMessage(sessionId, text);
+        const response = runtimeId
+          ? await api.sendMessage(sessionId, text, runtimeId)
+          : await api.sendMessage(sessionId, text);
         state = {
           ...state,
           sending: false,

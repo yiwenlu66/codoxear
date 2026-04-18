@@ -20,6 +20,7 @@ import {
   shortSessionId,
   writeThemeMode,
 } from "./app-shell/utils";
+import { getSessionRuntimeId } from "../lib/session-identity";
 
 function EmptyDetailsWorkspace() {
   return (
@@ -105,6 +106,7 @@ export function AppShell() {
   }, [sessionsStoreApi]);
 
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
+  const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
   const activeSessionBusy = Boolean(
     (activeSessionId && busyBySessionId[activeSessionId] === true)
     || activeSession?.busy === true,
@@ -164,6 +166,7 @@ export function AppShell() {
     activeSessionBackend: activeSession?.agent_backend,
     activeSessionHistorical: activeSession?.historical === true,
     activeSessionId,
+    activeSessionRuntimeId,
     activeSessionLiveBusy: activeSessionId ? busyBySessionId[activeSessionId] === true : false,
     backgroundReplySoundPrimedSessionIdsRef,
     items,
@@ -240,13 +243,42 @@ export function AppShell() {
 
   const interruptActiveSession = async () => {
     if (!activeSessionId || !activeSessionBusy) return;
-    await api.interruptSession(activeSessionId);
+    if (activeSessionRuntimeId) {
+      await api.interruptSession(activeSessionId, activeSessionRuntimeId);
+    } else {
+      await api.interruptSession(activeSessionId);
+    }
     await Promise.allSettled([
       sessionsStoreApi.refresh(),
-      liveSessionStoreApi.loadInitial(activeSessionId),
-      sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend }),
+      activeSessionRuntimeId
+        ? liveSessionStoreApi.loadInitial(activeSessionId, activeSessionRuntimeId)
+        : liveSessionStoreApi.loadInitial(activeSessionId),
+      activeSessionRuntimeId
+        ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend, runtimeId: activeSessionRuntimeId })
+        : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSession?.agent_backend }),
     ]);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== "Escape") {
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+      if (!activeSessionId || !activeSessionBusy) {
+        return;
+      }
+      event.preventDefault();
+      void interruptActiveSession();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [activeSessionBusy, activeSessionId, interruptActiveSession]);
 
   const triggerTestPushNotification = async () => {
     setVoiceSettingsStatus("Sending test push...");
@@ -323,6 +355,7 @@ export function AppShell() {
       </div>
       <AppShellWorkspaceOverlays
         activeSessionId={activeSessionId}
+        activeSessionRuntimeId={activeSessionRuntimeId}
         detailsOpen={detailsOpen}
         fileViewerLine={fileViewerLine}
         fileViewerMode={fileViewerMode}

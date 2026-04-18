@@ -10,6 +10,7 @@ import { useLiveSessionStore, useLiveSessionStoreApi, useSessionUiStore, useSess
 interface AskUserCardProps {
   event: MessageEvent;
   sessionId?: string;
+  runtimeId?: string | null;
   renderRichText: (value: string, className?: string) => any;
   allowFuzzyLiveMatch?: boolean;
   allowLegacyFallback?: boolean;
@@ -204,6 +205,7 @@ function findMatchingLiveRequest(event: MessageEvent, requests: SessionUiRequest
 export function AskUserCard({
   event,
   sessionId,
+  runtimeId,
   renderRichText,
   allowFuzzyLiveMatch = true,
   allowLegacyFallback = false,
@@ -276,10 +278,14 @@ export function AskUserCard({
   const refreshAfterSubmit = async () => {
     if (!sessionId) return;
     if (liveRequests.length) {
-      await liveSessionStoreApi.loadInitial(sessionId);
+      await (runtimeId
+        ? liveSessionStoreApi.loadInitial(sessionId, runtimeId)
+        : liveSessionStoreApi.loadInitial(sessionId));
       return;
     }
-    await sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" });
+    await (runtimeId
+      ? sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi", runtimeId })
+      : sessionUiStoreApi.refresh(sessionId, { agentBackend: "pi" }));
   };
 
   const handleSubmit = async (values: string[], freeform: string) => {
@@ -290,10 +296,15 @@ export function AskUserCard({
 
     try {
       if (liveBridgeRequest) {
-        await api.submitUiResponse(sessionId, {
-          id: requestId,
-          value: encodeAskUserBridgeResponse(bridgeAnswers),
-        });
+        await (runtimeId
+          ? api.submitUiResponse(sessionId, {
+              id: requestId,
+              value: encodeAskUserBridgeResponse(bridgeAnswers),
+            }, runtimeId)
+          : api.submitUiResponse(sessionId, {
+              id: requestId,
+              value: encodeAskUserBridgeResponse(bridgeAnswers),
+            }));
         await refreshAfterSubmit();
         return;
       }
@@ -304,7 +315,7 @@ export function AskUserCard({
           setError("Enter an answer before submitting");
           return;
         }
-        await api.sendMessage(sessionId, message);
+        await (runtimeId ? api.sendMessage(sessionId, message, runtimeId) : api.sendMessage(sessionId, message));
         setAwaitingLogSync(true);
         return;
       }
@@ -321,7 +332,7 @@ export function AskUserCard({
         ? { id: requestId, confirmed: true }
         : { id: requestId, value: finalValue };
 
-      await api.submitUiResponse(sessionId, payload);
+      await (runtimeId ? api.submitUiResponse(sessionId, payload, runtimeId) : api.submitUiResponse(sessionId, payload));
       if (usingLegacyFallback) {
         setAwaitingLogSync(true);
       }

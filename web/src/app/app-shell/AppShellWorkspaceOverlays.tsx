@@ -9,6 +9,7 @@ import { HarnessDialog } from "../../components/workspace/HarnessDialog";
 
 interface AppShellWorkspaceOverlaysProps {
   activeSessionId: string | null;
+  activeSessionRuntimeId?: string | null;
   detailsOpen: boolean;
   fileViewerLine: number | null;
   fileViewerMode: FileViewMode | null;
@@ -35,6 +36,7 @@ interface AppShellWorkspaceOverlaysProps {
 
 export function AppShellWorkspaceOverlays({
   activeSessionId,
+  activeSessionRuntimeId,
   detailsOpen,
   fileViewerLine,
   fileViewerMode,
@@ -134,13 +136,14 @@ export function AppShellWorkspaceOverlays({
       <FileViewerDialog
         open={fileViewerOpen}
         sessionId={activeSessionId}
+        runtimeId={activeSessionRuntimeId}
         initialPath={fileViewerPath}
         initialLine={fileViewerLine}
         initialMode={fileViewerMode}
         openRequestKey={fileViewerRequestKey}
         onClose={onCloseFileViewer}
       />
-      <HarnessDialog open={harnessOpen} sessionId={activeSessionId} onClose={onCloseHarness} />
+      <HarnessDialog open={harnessOpen} sessionId={activeSessionId} runtimeId={activeSessionRuntimeId} onClose={onCloseHarness} />
       <NewSessionDialog open={newSessionOpen} onClose={onCloseNewSession} />
     </>
   );

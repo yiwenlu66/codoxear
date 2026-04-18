@@ -46,6 +46,10 @@ from . import rollout_log as _rollout_log
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .pi_log import read_pi_session_id as _read_pi_session_id
+from .page_state_sqlite import DurableSessionRecord
+from .page_state_sqlite import PageStateDB
+from .page_state_sqlite import SessionRef
+from .page_state_sqlite import import_legacy_app_dir_to_db
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
@@ -154,6 +158,7 @@ FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
 CWD_GROUPS_PATH = APP_DIR / "cwd_groups.json"
+PAGE_STATE_DB_PATH = APP_DIR / "sqlite.db"
 VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
 PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
 DELIVERY_LEDGER_PATH = APP_DIR / "voice_delivery_ledger.json"
@@ -524,10 +529,13 @@ def _spawn_result_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(broker_pid, int):
         raise RuntimeError("spawn metadata is missing broker_pid")
     sock_path = _clean_optional_text(meta.get("sock_path"))
-    session_id = Path(sock_path).stem if sock_path else None
+    runtime_id = Path(sock_path).stem if sock_path else None
+    session_id = _clean_optional_text(meta.get("session_id")) or runtime_id
     payload: dict[str, Any] = {"broker_pid": int(broker_pid)}
     if session_id:
         payload["session_id"] = session_id
+    if runtime_id:
+        payload["runtime_id"] = runtime_id
     backend = _clean_optional_text(meta.get("backend"))
     if backend:
         payload["backend"] = backend
@@ -3188,6 +3196,7 @@ def _historical_sidebar_items(
         out.append(
             {
                 "session_id": _historical_session_id(backend, resume_session_id),
+                "runtime_id": None,
                 "thread_id": resume_session_id,
                 "backend": backend,
                 "pid": None,
@@ -3548,7 +3557,10 @@ def _display_updated_ts(s: Session) -> float:
 
 def _session_row_dedupe_key(row: dict[str, Any]) -> str:
     if row.get("historical"):
-        return f"historical:{str(row.get('session_id', '')).strip()}"
+        backend = normalize_agent_backend(
+            row.get("agent_backend"), default=str(row.get("backend", "codex"))
+        )
+        return f"historical:{backend}:{str(row.get('session_id', '')).strip()}"
     thread_id = str(row.get("thread_id", "")).strip()
     if thread_id:
         backend = normalize_agent_backend(
@@ -3562,6 +3574,10 @@ def _display_source_path(s: Session) -> str | None:
     if s.backend == "pi":
         return str(s.session_path) if s.session_path is not None else None
     return str(s.log_path) if s.log_path is not None else None
+
+
+def _durable_session_id_for_live_session(s: Session) -> str:
+    return _clean_optional_text(s.thread_id) or _clean_optional_text(s.session_id) or ""
 
 
 def _display_pi_busy(s: Session, *, broker_busy: bool) -> bool:
@@ -3665,8 +3681,10 @@ def _session_diagnostics_payload(
     )
     final_priority = 0.0 if (snoozed or blocked) else base_priority
     busy, broker_busy = _display_session_busy(manager, session_id, s, state)
+    durable_session_id = _durable_session_id_for_live_session(s)
     return {
-        "session_id": s.session_id,
+        "session_id": durable_session_id,
+        "runtime_id": s.session_id,
         "thread_id": s.thread_id,
         "agent_backend": s.agent_backend,
         "backend": s.backend,
@@ -3718,7 +3736,8 @@ def _session_workspace_payload(
     )
     return {
         "ok": True,
-        "session_id": s.session_id,
+        "session_id": _durable_session_id_for_live_session(s),
+        "runtime_id": s.session_id,
         "diagnostics": diagnostics,
         "queue": {"items": manager.queue_list(session_id)},
     }
@@ -3768,7 +3787,8 @@ def _session_live_payload(
         )
     payload: dict[str, Any] = {
         "ok": True,
-        "session_id": s.session_id,
+        "session_id": _durable_session_id_for_live_session(s),
+        "runtime_id": s.session_id,
         "offset": int(page.get("offset", max(0, int(offset))) or 0),
         "live_offset": next_live_offset,
         "has_older": bool(page.get("has_older")),
@@ -3854,12 +3874,16 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
+        self._last_session_catalog_refresh_ts = 0.0
+        self._page_state_db = PageStateDB(PAGE_STATE_DB_PATH)
+        if self._page_state_db.is_empty():
+            import_legacy_app_dir_to_db(source_app_dir=APP_DIR, db_path=PAGE_STATE_DB_PATH)
         self._harness: dict[str, dict[str, Any]] = {}
-        self._aliases: dict[str, str] = {}
-        self._sidebar_meta: dict[str, dict[str, Any]] = {}
+        self._aliases: dict[SessionRef, str] = {}
+        self._sidebar_meta: dict[SessionRef, dict[str, Any]] = {}
         self._hidden_sessions: set[str] = set()
-        self._files: dict[str, list[str]] = {}
-        self._queues: dict[str, list[str]] = {}
+        self._files: dict[SessionRef, list[str]] = {}
+        self._queues: dict[SessionRef, list[str]] = {}
         self._pi_commands_cache: dict[str, dict[str, Any]] = {}
         self._recent_cwds: dict[str, float] = {}
         self._cwd_groups: dict[str, dict[str, Any]] = {}
@@ -3881,8 +3905,10 @@ class SessionManager:
             subscriptions_path=PUSH_SUBSCRIPTIONS_PATH,
             delivery_ledger_path=DELIVERY_LEDGER_PATH,
             vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
+            page_state_db=self._page_state_db,
         )
         self._discover_existing(force=True, skip_invalid_sidecars=True)
+        self._refresh_durable_session_catalog(force=True)
         self._harness_thr = threading.Thread(
             target=self._harness_loop, name="harness", daemon=True
         )
@@ -3898,6 +3924,180 @@ class SessionManager:
 
     def stop(self) -> None:
         self._stop.set()
+
+    def _page_state_ref_for_session(self, session: Session) -> SessionRef | None:
+        durable_id = _clean_optional_text(session.thread_id) or _clean_optional_text(session.session_id)
+        if durable_id is None:
+            return None
+        backend = normalize_agent_backend(session.agent_backend, default=session.backend or "codex")
+        return backend, durable_id
+
+    def _durable_session_id_for_session(self, session: Session) -> str:
+        ref = self._page_state_ref_for_session(session)
+        if ref is not None:
+            return ref[1]
+        return str(session.session_id)
+
+    def _runtime_session_id_for_identifier(self, session_id: str) -> str | None:
+        target = _clean_optional_text(session_id)
+        if target is None:
+            return None
+        with self._lock:
+            if target in self._sessions:
+                return target
+            matches: list[str] = []
+            for runtime_id, session in self._sessions.items():
+                ref = self._page_state_ref_for_session(session)
+                if ref is not None and ref[1] == target:
+                    matches.append(runtime_id)
+                    continue
+                thread_id = _clean_optional_text(session.thread_id)
+                if thread_id == target:
+                    matches.append(runtime_id)
+            if len(matches) == 1:
+                return matches[0]
+        return None
+
+    def _catalog_record_for_ref(self, ref: SessionRef) -> DurableSessionRecord | None:
+        backend, durable_session_id = ref
+        source_path = _find_session_log_for_session_id(
+            durable_session_id, agent_backend=backend
+        )
+        if source_path is None or (not source_path.exists()):
+            return None
+        if backend == "pi":
+            row = _pi_resume_candidate_from_session_file(source_path)
+            if not isinstance(row, dict):
+                return None
+            title = _clean_optional_text(row.get("title")) or ""
+            first_user_message = _clean_optional_text(
+                _first_user_message_preview_from_pi_session(source_path)
+            )
+        else:
+            row = _resume_candidate_from_log(source_path, agent_backend=backend)
+            if not isinstance(row, dict):
+                return None
+            title = _clean_optional_text(row.get("title")) or ""
+            first_user_message = _clean_optional_text(
+                _first_user_message_preview_from_log(source_path)
+            )
+        cwd = _clean_optional_text(row.get("cwd"))
+        updated_ts = row.get("updated_ts")
+        updated_at = float(updated_ts) if isinstance(updated_ts, (int, float)) else _safe_path_mtime(source_path)
+        return DurableSessionRecord(
+            backend=backend,
+            session_id=durable_session_id,
+            cwd=cwd,
+            source_path=str(source_path),
+            title=title,
+            first_user_message=first_user_message,
+            created_at=updated_at,
+            updated_at=updated_at,
+        )
+
+    def _refresh_durable_session_catalog(self, *, force: bool = False) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if not isinstance(db, PageStateDB):
+            return
+        now = time.time()
+        last_refresh = float(getattr(self, "_last_session_catalog_refresh_ts", 0.0) or 0.0)
+        if (not force) and (now - last_refresh) < 5.0:
+            return
+        refs = set(db.known_session_refs())
+        with self._lock:
+            for session in self._sessions.values():
+                ref = self._page_state_ref_for_session(session)
+                if ref is not None:
+                    refs.add(ref)
+        existing = db.load_sessions()
+        rows: dict[SessionRef, DurableSessionRecord] = {}
+        for ref in sorted(refs):
+            record = self._catalog_record_for_ref(ref)
+            if record is None:
+                record = existing.get(ref)
+            if record is not None:
+                rows[ref] = record
+        db.save_sessions(rows)
+        self._last_session_catalog_refresh_ts = now
+
+    def _page_state_ref_for_session_id(self, session_id: str) -> SessionRef | None:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is not None:
+            with self._lock:
+                session = self._sessions.get(runtime_id)
+            if session is not None:
+                return self._page_state_ref_for_session(session)
+        parsed = _parse_historical_session_id(session_id)
+        if parsed is not None:
+            backend, durable_id = parsed
+            return backend, durable_id
+        return None
+
+    def _persist_session_ui_state(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            return
+        with self._lock:
+            aliases_src = dict(self._aliases)
+            sidebar_src = dict(self._sidebar_meta)
+            hidden_keys = set(self._hidden_sessions)
+        aliases: dict[SessionRef, str] = {}
+        for key, value in aliases_src.items():
+            ref = key if isinstance(key, tuple) and len(key) == 2 else self._page_state_ref_for_session_id(str(key))
+            if ref is None or not isinstance(value, str) or not value.strip():
+                continue
+            aliases[ref] = value
+        sidebar_meta: dict[SessionRef, dict[str, Any]] = {}
+        for key, value in sidebar_src.items():
+            ref = key if isinstance(key, tuple) and len(key) == 2 else self._page_state_ref_for_session_id(str(key))
+            if ref is None or not isinstance(value, dict):
+                continue
+            sidebar_meta[ref] = dict(value)
+        db.save_session_ui_state(aliases, sidebar_meta, hidden_keys)
+
+    def _persist_files(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            return
+        with self._lock:
+            files_src = dict(self._files)
+        rows: dict[SessionRef, list[str]] = {}
+        for key, value in files_src.items():
+            ref = key if isinstance(key, tuple) and len(key) == 2 else self._page_state_ref_for_session_id(str(key))
+            if ref is None or not isinstance(value, list):
+                continue
+            rows[ref] = [row for row in value if isinstance(row, str) and row.strip()]
+        db.save_files(rows)
+
+    def _persist_queues(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            return
+        with self._lock:
+            queues_src = dict(self._queues)
+        rows: dict[SessionRef, list[str]] = {}
+        for key, value in queues_src.items():
+            ref = key if isinstance(key, tuple) and len(key) == 2 else self._page_state_ref_for_session_id(str(key))
+            if ref is None or not isinstance(value, list):
+                continue
+            rows[ref] = [row for row in value if isinstance(row, str) and row.strip()]
+        db.save_queues(rows)
+
+    def _persist_recent_cwds(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            return
+        with self._lock:
+            recent_cwds = dict(self._recent_cwds)
+        db.save_recent_cwds(recent_cwds)
+
+    def _persist_cwd_groups(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            return
+        with self._lock:
+            cwd_groups = dict(self._cwd_groups)
+        db.save_cwd_groups(cwd_groups)
 
     def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
         s.meta_thinking = 0
@@ -4120,96 +4320,28 @@ class SessionManager:
         os.replace(tmp, HARNESS_PATH)
 
     def _load_aliases(self) -> None:
-        try:
-            raw = ALIAS_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_aliases.json (expected object)")
-        cleaned: dict[str, str] = {}
-        for sid, v in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(v, str):
-                continue
-            alias = _clean_alias(v)
-            if alias:
-                cleaned[sid] = alias
+        aliases, _sidebar_meta, _hidden_keys = self._page_state_db.load_session_ui_state()
         with self._lock:
-            self._aliases = cleaned
+            self._aliases = aliases
 
     def _save_aliases(self) -> None:
-        with self._lock:
-            obj = dict(self._aliases)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = ALIAS_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, ALIAS_PATH)
+        self._persist_session_ui_state()
 
     def _load_sidebar_meta(self) -> None:
-        try:
-            raw = SIDEBAR_META_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_sidebar.json (expected object)")
-        cleaned: dict[str, dict[str, Any]] = {}
-        for sid, value in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(value, dict):
-                continue
-            offset = _clean_priority_offset(value.get("priority_offset"))
-            snooze_until = _clean_snooze_until(value.get("snooze_until"))
-            dependency_session_id = _clean_dependency_session_id(
-                value.get("dependency_session_id")
-            )
-            entry: dict[str, Any] = {"priority_offset": offset}
-            if snooze_until is not None:
-                entry["snooze_until"] = snooze_until
-            if dependency_session_id is not None:
-                entry["dependency_session_id"] = dependency_session_id
-            cleaned[sid] = entry
+        _aliases, sidebar_meta, _hidden_keys = self._page_state_db.load_session_ui_state()
         with self._lock:
-            self._sidebar_meta = cleaned
+            self._sidebar_meta = sidebar_meta
 
     def _save_sidebar_meta(self) -> None:
-        with self._lock:
-            obj = dict(self._sidebar_meta)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = SIDEBAR_META_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, SIDEBAR_META_PATH)
+        self._persist_session_ui_state()
 
     def _load_hidden_sessions(self) -> None:
-        try:
-            raw = HIDDEN_SESSIONS_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return
-        obj = json.loads(raw)
-        if not isinstance(obj, list):
-            raise ValueError("invalid hidden_sessions.json (expected list)")
-        cleaned = {sid.strip() for sid in obj if isinstance(sid, str) and sid.strip()}
+        _aliases, _sidebar_meta, hidden_keys = self._page_state_db.load_session_ui_state()
         with self._lock:
-            self._hidden_sessions = cleaned
+            self._hidden_sessions = hidden_keys
 
     def _save_hidden_sessions(self) -> None:
-        with self._lock:
-            obj = sorted(getattr(self, "_hidden_sessions", set()))
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = HIDDEN_SESSIONS_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-        os.replace(tmp, HIDDEN_SESSIONS_PATH)
+        self._persist_session_ui_state()
 
     def _hidden_session_keys(
         self,
@@ -4287,34 +4419,51 @@ class SessionManager:
 
     def alias_set(self, session_id: str, name: str) -> str:
         alias = _clean_alias(name)
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None or runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
             if alias:
-                self._aliases[session_id] = alias
+                self._aliases[ref] = alias
             else:
-                self._aliases.pop(session_id, None)
+                self._aliases.pop(runtime_id, None)
+                self._aliases.pop(ref, None)
         self._save_aliases()
         return alias
 
     def alias_get(self, session_id: str) -> str:
+        ref = self._page_state_ref_for_session_id(session_id)
+        if ref is None:
+            return ""
         with self._lock:
-            alias = self._aliases.get(session_id)
+            alias = self._aliases.get(ref)
+            if alias is None:
+                alias = self._aliases.get(session_id)
         return alias if isinstance(alias, str) else ""
 
     def alias_clear(self, session_id: str) -> None:
+        ref = self._page_state_ref_for_session_id(session_id)
+        if ref is None:
+            return
         with self._lock:
-            if session_id not in self._aliases:
+            if ref not in self._aliases and session_id not in self._aliases:
                 return
+            self._aliases.pop(ref, None)
             self._aliases.pop(session_id, None)
         self._save_aliases()
 
     def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
+        ref = self._page_state_ref_for_session_id(session_id)
+        if ref is None:
+            raise KeyError("unknown session")
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
             meta_map = getattr(self, "_sidebar_meta", None)
-            entry = meta_map.get(session_id) if isinstance(meta_map, dict) else None
+            entry = None
+            if isinstance(meta_map, dict):
+                entry = meta_map.get(ref)
+                if entry is None:
+                    entry = meta_map.get(session_id)
         if not isinstance(entry, dict):
             return {
                 "priority_offset": 0.0,
@@ -4327,6 +4476,7 @@ class SessionManager:
             "dependency_session_id": _clean_dependency_session_id(
                 entry.get("dependency_session_id")
             ),
+            "focused": bool(entry.get("focused")),
         }
 
     def sidebar_meta_set(
@@ -4340,28 +4490,32 @@ class SessionManager:
         offset = _clean_priority_offset(priority_offset)
         snooze_until_clean = _clean_snooze_until(snooze_until)
         dependency_clean = _clean_dependency_session_id(dependency_session_id)
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if dependency_clean == session_id:
-                raise ValueError("session cannot depend on itself")
-            if dependency_clean is not None and dependency_clean not in self._sessions:
+        ref = self._page_state_ref_for_session_id(session_id)
+        if ref is None:
+            raise KeyError("unknown session")
+        dep_ref = None
+        if dependency_clean is not None:
+            dep_ref = self._page_state_ref_for_session_id(dependency_clean)
+            if dep_ref is None:
                 raise ValueError("dependency session not found")
+            if dep_ref == ref:
+                raise ValueError("session cannot depend on itself")
+        with self._lock:
             entry = {"priority_offset": offset}
             if snooze_until_clean is not None:
                 entry["snooze_until"] = snooze_until_clean
-            if dependency_clean is not None:
-                entry["dependency_session_id"] = dependency_clean
+            if dep_ref is not None:
+                entry["dependency_session_id"] = dep_ref[1]
             meta_map = getattr(self, "_sidebar_meta", None)
             if not isinstance(meta_map, dict):
                 self._sidebar_meta = {}
                 meta_map = self._sidebar_meta
-            meta_map[session_id] = entry
+            meta_map[ref] = entry
         self._save_sidebar_meta()
         return {
             "priority_offset": offset,
             "snooze_until": snooze_until_clean,
-            "dependency_session_id": dependency_clean,
+            "dependency_session_id": dep_ref[1] if dep_ref is not None else None,
         }
 
     def edit_session(
@@ -4377,21 +4531,27 @@ class SessionManager:
         offset = _clean_priority_offset(priority_offset)
         snooze_until_clean = _clean_snooze_until(snooze_until)
         dependency_clean = _clean_dependency_session_id(dependency_session_id)
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-            if dependency_clean == session_id:
-                raise ValueError("session cannot depend on itself")
-            if dependency_clean is not None and dependency_clean not in self._sessions:
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None or runtime_id is None:
+            raise KeyError("unknown session")
+        dep_ref = None
+        if dependency_clean is not None:
+            dep_ref = self._page_state_ref_for_session_id(dependency_clean)
+            if dep_ref is None:
                 raise ValueError("dependency session not found")
+            if dep_ref == ref:
+                raise ValueError("session cannot depend on itself")
+        with self._lock:
             aliases = getattr(self, "_aliases", None)
             if not isinstance(aliases, dict):
                 self._aliases = {}
                 aliases = self._aliases
             if alias:
-                aliases[session_id] = alias
+                aliases[ref] = alias
             else:
-                aliases.pop(session_id, None)
+                aliases.pop(runtime_id, None)
+                aliases.pop(ref, None)
             meta_map = getattr(self, "_sidebar_meta", None)
             if not isinstance(meta_map, dict):
                 self._sidebar_meta = {}
@@ -4399,15 +4559,15 @@ class SessionManager:
             entry = {"priority_offset": offset}
             if snooze_until_clean is not None:
                 entry["snooze_until"] = snooze_until_clean
-            if dependency_clean is not None:
-                entry["dependency_session_id"] = dependency_clean
-            meta_map[session_id] = entry
+            if dep_ref is not None:
+                entry["dependency_session_id"] = dep_ref[1]
+            meta_map[ref] = entry
         self._save_aliases()
         self._save_sidebar_meta()
         return alias, {
             "priority_offset": offset,
             "snooze_until": snooze_until_clean,
-            "dependency_session_id": dependency_clean,
+            "dependency_session_id": dep_ref[1] if dep_ref is not None else None,
         }
 
     def _clear_deleted_session_state(self, session_id: str) -> None:
@@ -4415,19 +4575,26 @@ class SessionManager:
         changed_harness = False
         changed_files = False
         changed_queues = False
+        ref = self._page_state_ref_for_session_id(session_id)
         with self._lock:
             aliases = getattr(self, "_aliases", None)
             if isinstance(aliases, dict):
                 aliases.pop(session_id, None)
+                if ref is not None:
+                    aliases.pop(ref, None)
             meta_map = getattr(self, "_sidebar_meta", None)
-            if isinstance(meta_map, dict) and session_id in meta_map:
-                meta_map.pop(session_id, None)
-                changed_sidebar = True
             if isinstance(meta_map, dict):
+                if session_id in meta_map:
+                    meta_map.pop(session_id, None)
+                    changed_sidebar = True
+                if ref is not None and ref in meta_map:
+                    meta_map.pop(ref, None)
+                    changed_sidebar = True
+            if isinstance(meta_map, dict) and ref is not None:
                 for entry in meta_map.values():
                     if not isinstance(entry, dict):
                         continue
-                    if entry.get("dependency_session_id") != session_id:
+                    if entry.get("dependency_session_id") != ref[1]:
                         continue
                     entry.pop("dependency_session_id", None)
                     changed_sidebar = True
@@ -4437,14 +4604,21 @@ class SessionManager:
                 changed_harness = True
             files = getattr(self, "_files", None)
             if isinstance(files, dict):
-                for key in [f"sid:{session_id}", session_id]:
-                    if key in files:
-                        files.pop(key, None)
+                for legacy_key in (session_id, f"sid:{session_id}"):
+                    if legacy_key in files:
+                        files.pop(legacy_key, None)
                         changed_files = True
+                if ref is not None and ref in files:
+                    files.pop(ref, None)
+                    changed_files = True
             queues = getattr(self, "_queues", None)
-            if isinstance(queues, dict) and session_id in queues:
-                queues.pop(session_id, None)
-                changed_queues = True
+            if isinstance(queues, dict):
+                if session_id in queues:
+                    queues.pop(session_id, None)
+                    changed_queues = True
+                if ref is not None and ref in queues:
+                    queues.pop(ref, None)
+                    changed_queues = True
             command_cache = getattr(self, "_pi_commands_cache", None)
             if isinstance(command_cache, dict):
                 command_cache.pop(session_id, None)
@@ -4459,96 +4633,119 @@ class SessionManager:
             self._save_queues()
 
     def _load_files(self) -> None:
-        try:
-            raw = FILE_HISTORY_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            try:
+                raw = FILE_HISTORY_PATH.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return
+            obj = json.loads(raw)
+            if not isinstance(obj, dict):
+                raise ValueError("invalid session_files.json (expected object)")
+            cleaned: dict[str, list[str]] = {}
+            for sid, arr in obj.items():
+                if not isinstance(sid, str) or not sid:
+                    continue
+                if sid.startswith("cwd:"):
+                    continue
+                key = sid if sid.startswith("sid:") else f"sid:{sid}"
+                if not isinstance(arr, list):
+                    continue
+                out: list[str] = []
+                for v in arr:
+                    if not isinstance(v, str):
+                        continue
+                    p = v.strip()
+                    if not p or p in out:
+                        continue
+                    out.append(p)
+                    if len(out) >= FILE_HISTORY_MAX:
+                        break
+                if out:
+                    cleaned[key] = out
+            with self._lock:
+                self._files = cleaned
             return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_files.json (expected object)")
-        cleaned: dict[str, list[str]] = {}
-        for sid, arr in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if sid.startswith("cwd:"):
-                continue
-            key = sid if sid.startswith("sid:") else f"sid:{sid}"
-            if not isinstance(arr, list):
-                continue
-            out: list[str] = []
-            for v in arr:
-                if not isinstance(v, str):
-                    continue
-                p = v.strip()
-                if not p or p in out:
-                    continue
-                out.append(p)
-                if len(out) >= FILE_HISTORY_MAX:
-                    break
-            if out:
-                cleaned[key] = out
         with self._lock:
-            self._files = cleaned
+            self._files = db.load_files()
 
     def _save_files(self) -> None:
-        with self._lock:
-            obj = dict(self._files)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = FILE_HISTORY_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, FILE_HISTORY_PATH)
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            with self._lock:
+                obj = dict(self._files)
+            os.makedirs(APP_DIR, exist_ok=True)
+            tmp = FILE_HISTORY_PATH.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(tmp, FILE_HISTORY_PATH)
+            return
+        self._persist_files()
 
     def _load_queues(self) -> None:
-        try:
-            raw = QUEUE_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            try:
+                raw = QUEUE_PATH.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return
+            obj = json.loads(raw)
+            if not isinstance(obj, dict):
+                raise ValueError("invalid session_queues.json (expected object)")
+            cleaned: dict[str, list[str]] = {}
+            for sid, arr in obj.items():
+                if not isinstance(sid, str) or not sid:
+                    continue
+                if not isinstance(arr, list):
+                    continue
+                out: list[str] = []
+                for v in arr:
+                    if not isinstance(v, str):
+                        continue
+                    t = v.strip()
+                    if not t:
+                        continue
+                    out.append(v)
+                if out:
+                    cleaned[sid] = out
+            with self._lock:
+                self._queues = cleaned
             return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_queues.json (expected object)")
-        cleaned: dict[str, list[str]] = {}
-        for sid, arr in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(arr, list):
-                continue
-            out: list[str] = []
-            for v in arr:
-                if not isinstance(v, str):
-                    continue
-                t = v.strip()
-                if not t:
-                    continue
-                out.append(v)
-            if out:
-                cleaned[sid] = out
         with self._lock:
-            self._queues = cleaned
+            self._queues = db.load_queues()
 
     def _save_queues(self) -> None:
-        with self._lock:
-            obj = dict(self._queues)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = QUEUE_PATH.with_suffix(".json.tmp")
-        tmp.write_text(
-            json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(tmp, QUEUE_PATH)
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            with self._lock:
+                obj = dict(self._queues)
+            os.makedirs(APP_DIR, exist_ok=True)
+            tmp = QUEUE_PATH.with_suffix(".json.tmp")
+            tmp.write_text(
+                json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(tmp, QUEUE_PATH)
+            return
+        self._persist_queues()
 
     def _load_recent_cwds(self) -> None:
-        try:
-            raw = RECENT_CWD_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid recent_cwds.json (expected object)")
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            try:
+                raw = RECENT_CWD_PATH.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                return
+            obj = json.loads(raw)
+            if not isinstance(obj, dict):
+                raise ValueError("invalid recent_cwds.json (expected object)")
+            source_items = obj.items()
+        else:
+            source_items = db.load_recent_cwds().items()
         cleaned: dict[str, float] = {}
-        for raw_cwd, raw_ts in obj.items():
+        for raw_cwd, raw_ts in source_items:
             cwd = _clean_recent_cwd(raw_cwd)
             if cwd is None or isinstance(raw_ts, bool):
                 continue
@@ -4561,18 +4758,21 @@ class SessionManager:
             prev = cleaned.get(cwd)
             if prev is None or ts > prev:
                 cleaned[cwd] = ts
-        top = sorted(cleaned.items(), key=lambda item: (-item[1], item[0]))[
-            :RECENT_CWD_MAX
-        ]
+        top = sorted(cleaned.items(), key=lambda item: (-item[1], item[0]))[:RECENT_CWD_MAX]
         with self._lock:
             self._recent_cwds = dict(top)
 
     def _save_recent_cwds(self) -> None:
+        db = getattr(self, "_page_state_db", None)
         with self._lock:
             items = sorted(
                 getattr(self, "_recent_cwds", {}).items(),
                 key=lambda item: (-float(item[1]), item[0]),
             )[:RECENT_CWD_MAX]
+            self._recent_cwds = dict(items)
+        if db is not None:
+            self._persist_recent_cwds()
+            return
         obj = {cwd: ts for cwd, ts in items}
         os.makedirs(APP_DIR, exist_ok=True)
         tmp = RECENT_CWD_PATH.with_suffix(".json.tmp")
@@ -4583,40 +4783,47 @@ class SessionManager:
         os.replace(tmp, RECENT_CWD_PATH)
 
     def _load_cwd_groups(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is None:
+            try:
+                raw = CWD_GROUPS_PATH.read_text(encoding="utf-8")
+            except FileNotFoundError:
+                with self._lock:
+                    self._cwd_groups = {}
+                return
+            try:
+                obj = json.loads(raw)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid cwd_groups.json (expected object)")
+                source_items = obj.items()
+            except (json.JSONDecodeError, TypeError, ValueError) as e:
+                LOG.warning("recovering malformed cwd_groups.json as empty state: %s", e)
+                source_items = []
+        else:
+            source_items = db.load_cwd_groups().items()
         cleaned: dict[str, dict[str, Any]] = {}
-        try:
-            raw = CWD_GROUPS_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            with self._lock:
-                self._cwd_groups = cleaned
-            return
-        try:
-            obj = json.loads(raw)
-            if not isinstance(obj, dict):
-                raise ValueError("invalid cwd_groups.json (expected object)")
-            for cwd, v in obj.items():
-                try:
-                    normalized_cwd = _normalize_cwd_group_key(cwd)
-                except ValueError:
-                    continue
-                if not isinstance(v, dict):
-                    continue
-                label = _clean_alias(v.get("label", ""))
-                persisted_collapsed = v.get("collapsed", False)
-                collapsed = (
-                    persisted_collapsed
-                    if isinstance(persisted_collapsed, bool)
-                    else False
-                )
-                if label or collapsed:
-                    cleaned[normalized_cwd] = {"label": label, "collapsed": collapsed}
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
-            LOG.warning("recovering malformed cwd_groups.json as empty state: %s", e)
-            cleaned = {}
+        for cwd, v in source_items:
+            try:
+                normalized_cwd = _normalize_cwd_group_key(cwd)
+            except ValueError:
+                continue
+            if not isinstance(v, dict):
+                continue
+            label = _clean_alias(v.get("label", ""))
+            persisted_collapsed = v.get("collapsed", False)
+            collapsed = (
+                persisted_collapsed if isinstance(persisted_collapsed, bool) else False
+            )
+            if label or collapsed:
+                cleaned[normalized_cwd] = {"label": label, "collapsed": collapsed}
         with self._lock:
             self._cwd_groups = cleaned
 
     def _save_cwd_groups(self) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if db is not None:
+            self._persist_cwd_groups()
+            return
         with self._lock:
             obj = dict(self._cwd_groups)
         os.makedirs(APP_DIR, exist_ok=True)
@@ -4818,19 +5025,35 @@ class SessionManager:
         return [cwd for cwd, _ts in items[: max(0, int(limit))]]
 
     def _queue_len(self, session_id: str) -> int:
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None:
+            return 0
         with self._lock:
             qmap = getattr(self, "_queues", None)
             if not isinstance(qmap, dict):
                 return 0
-            q = qmap.get(session_id)
+            q = qmap.get(ref)
+            if not isinstance(q, list) and runtime_id is not None:
+                q = qmap.get(runtime_id)
+            if not isinstance(q, list):
+                q = qmap.get(session_id)
             return int(len(q)) if isinstance(q, list) else 0
 
     def _queue_list_local(self, session_id: str) -> list[str]:
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None:
+            return []
         with self._lock:
             qmap = getattr(self, "_queues", None)
             if not isinstance(qmap, dict):
                 return []
-            q = qmap.get(session_id)
+            q = qmap.get(ref)
+            if not isinstance(q, list) and runtime_id is not None:
+                q = qmap.get(runtime_id)
+            if not isinstance(q, list):
+                q = qmap.get(session_id)
             if not isinstance(q, list) or not q:
                 return []
             return list(q)
@@ -4840,14 +5063,20 @@ class SessionManager:
         if not t.strip():
             raise ValueError("text required")
         touched_ts: float | None = None
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None or runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if s is None:
                 raise KeyError("unknown session")
-            q = self._queues.get(session_id)
+            q = self._queues.get(runtime_id)
+            if not isinstance(q, list):
+                q = self._queues.get(ref)
             if not isinstance(q, list):
                 q = []
-                self._queues[session_id] = q
+                self._queues[runtime_id] = q
             q.append(t)
             ql = len(q)
             if s.backend == "pi":
@@ -4858,19 +5087,24 @@ class SessionManager:
         return {"queued": True, "queue_len": int(ql)}
 
     def _queue_delete_local(self, session_id: str, index: int) -> dict[str, Any]:
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None or runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            if session_id not in self._sessions:
+            if runtime_id not in self._sessions:
                 raise KeyError("unknown session")
-            q = self._queues.get(session_id)
+            q = self._queues.get(runtime_id)
             if not isinstance(q, list):
                 q = []
-                self._queues[session_id] = q
+                self._queues[runtime_id] = q
             if index < 0 or index >= len(q):
                 raise ValueError("index out of range")
             q.pop(int(index))
             ql = len(q)
             if not q:
-                self._queues.pop(session_id, None)
+                self._queues.pop(runtime_id, None)
+                self._queues.pop(ref, None)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -4880,13 +5114,17 @@ class SessionManager:
         t = str(text)
         if not t.strip():
             raise ValueError("text required")
+        ref = self._page_state_ref_for_session_id(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if ref is None or runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            if session_id not in self._sessions:
+            if runtime_id not in self._sessions:
                 raise KeyError("unknown session")
-            q = self._queues.get(session_id)
+            q = self._queues.get(runtime_id)
             if not isinstance(q, list):
                 q = []
-                self._queues[session_id] = q
+                self._queues[runtime_id] = q
             if index < 0 or index >= len(q):
                 raise ValueError("index out of range")
             q[int(index)] = t
@@ -4894,70 +5132,53 @@ class SessionManager:
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
-    def _files_key_for_session(
-        self, session_id: str
-    ) -> tuple[str, list[str], "Session"]:
-        s = self._sessions.get(session_id)
+    def _files_key_for_session(self, session_id: str) -> tuple[str, SessionRef, "Session"]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
+        s = self._sessions.get(runtime_id)
         if not s:
             raise KeyError("unknown session")
-        sid_key = f"sid:{session_id}"
-        return sid_key, [sid_key, session_id], s
+        ref = self._page_state_ref_for_session(s)
+        if ref is None:
+            raise KeyError("unknown session")
+        return runtime_id, ref, s
 
     def files_get(self, session_id: str) -> list[str]:
-        dirty = False
-        out: list[str] = []
+        runtime_id, key, _s = self._files_key_for_session(session_id)
         with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            arr = self._files.get(key)
-            if isinstance(arr, list) and arr:
-                out = list(arr)
-            else:
-                for lk in legacy_keys:
-                    arr2 = self._files.get(lk)
-                    if isinstance(arr2, list) and arr2:
-                        out = list(arr2)
-                        if lk != key:
-                            self._files[key] = list(arr2)
-                            self._files.pop(lk, None)
-                            dirty = True
-                        break
-        if dirty:
-            self._save_files()
-        return list(out)
+            arr = self._files.get(runtime_id)
+            if not isinstance(arr, list):
+                arr = self._files.get(key)
+            if not isinstance(arr, list):
+                arr = self._files.get(session_id)
+            return list(arr) if isinstance(arr, list) else []
 
     def files_add(self, session_id: str, path: str) -> list[str]:
         p = str(path).strip()
         if not p:
             return self.files_get(session_id)
-        dirty = False
+        runtime_id, key, _s = self._files_key_for_session(session_id)
         with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            cur = list(self._files.get(key, []))
-            if not cur:
-                for lk in legacy_keys:
-                    legacy = self._files.get(lk)
-                    if isinstance(legacy, list) and legacy:
-                        cur = list(legacy)
-                        if lk != key:
-                            self._files.pop(lk, None)
-                            dirty = True
-                        break
+            cur = list(self._files.get(runtime_id, self._files.get(key, self._files.get(session_id, []))))
             cur = [x for x in cur if x != p]
             cur.insert(0, p)
             if len(cur) > FILE_HISTORY_MAX:
                 cur = cur[:FILE_HISTORY_MAX]
-            self._files[key] = cur
+            self._files[runtime_id] = cur
         self._save_files()
         return list(cur)
 
     def files_clear(self, session_id: str) -> None:
         dirty = False
+        runtime_id, key, _s = self._files_key_for_session(session_id)
         with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            for lk in legacy_keys:
-                if lk in self._files:
-                    self._files.pop(lk, None)
-                    dirty = True
+            if runtime_id in self._files:
+                self._files.pop(runtime_id, None)
+                dirty = True
+            if session_id in self._files:
+                self._files.pop(session_id, None)
+                dirty = True
             if key in self._files:
                 self._files.pop(key, None)
                 dirty = True
@@ -4965,11 +5186,14 @@ class SessionManager:
             self._save_files()
 
     def harness_get(self, session_id: str) -> dict[str, Any]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
-            cfg0 = self._harness.get(session_id)
+            cfg0 = self._harness.get(runtime_id)
             cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
         enabled = bool(cfg.get("enabled"))
         request = cfg.get("request")
@@ -4995,11 +5219,14 @@ class SessionManager:
         cooldown_minutes: int | None = None,
         remaining_injections: int | None = None,
     ) -> dict[str, Any]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
-            cur0 = self._harness.get(session_id)
+            cur0 = self._harness.get(runtime_id)
             cur = dict(cur0) if isinstance(cur0, dict) else {}
             if enabled is not None:
                 cur["enabled"] = bool(enabled)
@@ -5019,18 +5246,22 @@ class SessionManager:
             cur["remaining_injections"] = _clean_harness_remaining_injections(
                 cur.get("remaining_injections"), allow_zero=True
             )
-            self._harness[session_id] = cur
+            self._harness[runtime_id] = cur
             if enabled is not None and bool(enabled) is False:
-                self._harness_last_injected.pop(session_id, None)
+                self._harness_last_injected.pop(runtime_id, None)
         self._save_harness()
         return self.harness_get(session_id)
 
     def _session_display_name(self, session_id: str) -> str:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return "Session"
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 return "Session"
-            alias = self._aliases.get(session_id)
+            ref = self._page_state_ref_for_session(s)
+            alias = self._aliases.get(ref) if ref is not None else None
             if isinstance(alias, str) and alias.strip():
                 return alias.strip()
             cwd_name = Path(s.cwd).expanduser().name.strip()
@@ -5298,8 +5529,11 @@ class SessionManager:
                 if s0:
                     s0.queue_idle_since = None
             return False
+        ref = self._page_state_ref_for_session_id(session_id)
         with self._lock:
             q = self._queues.get(session_id)
+            if not isinstance(q, list) and ref is not None:
+                q = self._queues.get(ref)
             s0 = self._sessions.get(session_id)
             if s0:
                 s0.queue_idle_since = None
@@ -5307,6 +5541,8 @@ class SessionManager:
                 q.pop(0)
                 if not q:
                     self._queues.pop(session_id, None)
+                    if ref is not None:
+                        self._queues.pop(ref, None)
         self._save_queues()
         return True
 
@@ -5314,16 +5550,15 @@ class SessionManager:
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         with self._lock:
-            # Drop queues for sessions that no longer exist.
-            drop = [sid for sid in self._queues.keys() if sid not in self._sessions]
-            for sid in drop:
-                self._queues.pop(sid, None)
-            session_ids = [
-                sid for sid, q in self._queues.items() if isinstance(q, list) and q
-            ]
-        if drop:
-            self._save_queues()
-        for sid in session_ids:
+            active_runtime_ids: list[str] = []
+            for runtime_id, session in self._sessions.items():
+                ref = self._page_state_ref_for_session(session)
+                q = self._queues.get(runtime_id)
+                if (not isinstance(q, list)) and ref is not None:
+                    q = self._queues.get(ref)
+                if isinstance(q, list) and q:
+                    active_runtime_ids.append(runtime_id)
+        for sid in active_runtime_ids:
             try:
                 if self._maybe_drain_session_queue(sid):
                     break
@@ -5785,6 +6020,10 @@ class SessionManager:
 
     def list_sessions(self) -> list[dict[str, Any]]:
         # Rescan sockets to pick up sessions created before the server started.
+        recovered_catalog = {}
+        db = getattr(self, "_page_state_db", None)
+        if isinstance(db, PageStateDB):
+            recovered_catalog = db.load_sessions()
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         self._update_meta_counters()
@@ -5796,7 +6035,10 @@ class SessionManager:
             qmap = getattr(self, "_queues", None)
             meta_map = getattr(self, "_sidebar_meta", None)
             hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
-            active_ids = set(self._sessions.keys())
+            active_durable_ids = {
+                (_clean_optional_text(v.thread_id) or _clean_optional_text(v.session_id) or "")
+                for v in self._sessions.values()
+            }
             live_resume_keys: set[tuple[str, str]] = set()
             for s in self._sessions.values():
                 thread_id = str(s.thread_id or "").strip()
@@ -5825,29 +6067,6 @@ class SessionManager:
                     if isinstance(cfg0, dict)
                     else HARNESS_DEFAULT_MAX_INJECTIONS
                 )
-                alias = self._aliases.get(s.session_id)
-                if not isinstance(alias, str):
-                    alias = ""
-                files: list[str] = []
-                try:
-                    key, legacy_keys, _sref = self._files_key_for_session(s.session_id)
-                except KeyError:
-                    key = ""
-                    legacy_keys = []
-                if key:
-                    cur = self._files.get(key)
-                    if isinstance(cur, list) and cur:
-                        files = list(cur)
-                    else:
-                        for lk in legacy_keys:
-                            legacy = self._files.get(lk)
-                            if isinstance(legacy, list) and legacy:
-                                files = list(legacy)
-                                if lk != key:
-                                    self._files[key] = list(legacy)
-                                    self._files.pop(lk, None)
-                                    files_dirty = True
-                                break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 if (
                     log_exists
@@ -5902,14 +6121,19 @@ class SessionManager:
                     prev_recent_ts = recent_map.get(cwd_recent)
                     if prev_recent_ts is None or prev_recent_ts < updated_ts:
                         recent_map[cwd_recent] = updated_ts
+                ref = self._page_state_ref_for_session(s)
                 queue_len = 0
                 if isinstance(qmap, dict):
                     q0 = qmap.get(s.session_id)
+                    if not isinstance(q0, list) and ref is not None:
+                        q0 = qmap.get(ref)
                     if isinstance(q0, list):
                         queue_len = len(q0)
-                meta0 = (
-                    meta_map.get(s.session_id) if isinstance(meta_map, dict) else None
-                )
+                meta0 = None
+                if isinstance(meta_map, dict):
+                    meta0 = meta_map.get(s.session_id)
+                    if meta0 is None and ref is not None:
+                        meta0 = meta_map.get(ref)
                 if not isinstance(meta0, dict):
                     meta0 = {}
                 priority_offset = _clean_priority_offset(meta0.get("priority_offset"))
@@ -5917,9 +6141,13 @@ class SessionManager:
                 dependency_session_id = _clean_dependency_session_id(
                     meta0.get("dependency_session_id")
                 )
-                if dependency_session_id == s.session_id or (
+                active_durable_ids = {
+                    (_clean_optional_text(v.thread_id) or _clean_optional_text(v.session_id) or "")
+                    for v in self._sessions.values()
+                }
+                if dependency_session_id == (_clean_optional_text(s.thread_id) or _clean_optional_text(s.session_id)) or (
                     dependency_session_id is not None
-                    and dependency_session_id not in active_ids
+                    and dependency_session_id not in active_durable_ids
                 ):
                     dependency_session_id = None
                     if isinstance(meta_map, dict) and isinstance(meta0, dict):
@@ -5957,9 +6185,11 @@ class SessionManager:
                             s.first_user_message = preview
                     except Exception:
                         pass
+                durable_session_id = ref[1] if ref is not None else self._durable_session_id_for_session(s)
                 items.append(
                     {
-                        "session_id": s.session_id,
+                        "session_id": durable_session_id,
+                        "runtime_id": s.session_id,
                         "thread_id": s.thread_id,
                         "backend": s.backend,
                         "pid": s.codex_pid,
@@ -5983,9 +6213,9 @@ class SessionManager:
                         "harness_enabled": h_enabled,
                         "harness_cooldown_minutes": h_cooldown_minutes,
                         "harness_remaining_injections": h_remaining_injections,
-                        "alias": alias,
+                        "alias": (self._aliases.get(s.session_id) if self._aliases.get(s.session_id) is not None else (self._aliases.get(ref) if ref is not None else None)),
                         "first_user_message": s.first_user_message or "",
-                        "files": list(files),
+                        "files": list(self._files.get(s.session_id, self._files.get(ref, []))) if ref is not None else list(self._files.get(s.session_id, [])),
                         "git_branch": git_branch,
                         "model_provider": s.model_provider,
                         "preferred_auth_method": s.preferred_auth_method,
@@ -6007,6 +6237,106 @@ class SessionManager:
                         "final_priority": final_priority,
                         "blocked": blocked,
                         "snoozed": snoozed,
+                    }
+                )
+
+            for ref, record in recovered_catalog.items():
+                backend, durable_session_id = ref
+                if backend != "pi":
+                    continue
+                if (backend, durable_session_id) in live_resume_keys:
+                    continue
+                history_session_id = _historical_session_id(backend, durable_session_id)
+                if hidden_sessions.intersection(
+                    self._hidden_session_keys(
+                        history_session_id,
+                        durable_session_id,
+                        durable_session_id,
+                        backend,
+                    )
+                ):
+                    continue
+                meta0 = meta_map.get(ref) if isinstance(meta_map, dict) else None
+                if not isinstance(meta0, dict):
+                    meta0 = {}
+                priority_offset = _clean_priority_offset(meta0.get("priority_offset"))
+                snooze_until = _clean_snooze_until(meta0.get("snooze_until"))
+                dependency_session_id = _clean_dependency_session_id(
+                    meta0.get("dependency_session_id")
+                )
+                if dependency_session_id is not None and dependency_session_id not in active_durable_ids:
+                    dependency_session_id = None
+                    if isinstance(meta_map, dict):
+                        meta0.pop("dependency_session_id", None)
+                        sidebar_dirty = True
+                if snooze_until is not None and snooze_until <= now_ts:
+                    snooze_until = None
+                    if isinstance(meta_map, dict):
+                        meta0.pop("snooze_until", None)
+                        sidebar_dirty = True
+                updated_ts = float(record.updated_at or record.created_at or now_ts)
+                elapsed_s = max(0.0, now_ts - updated_ts)
+                time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                base_priority = _clip01(time_priority + priority_offset)
+                blocked = dependency_session_id is not None
+                snoozed = snooze_until is not None and snooze_until > now_ts
+                final_priority = 0.0 if (snoozed or blocked) else base_priority
+                alias = None
+                if isinstance(self._aliases, dict):
+                    alias = self._aliases.get(ref)
+                queue_rows = self._queues.get(ref, []) if isinstance(self._queues, dict) else []
+                file_rows = self._files.get(ref, []) if isinstance(self._files, dict) else []
+                cwd = record.cwd or ""
+                cwd_path = _safe_expanduser(Path(cwd)).resolve() if cwd else None
+                git_branch = _current_git_branch(cwd_path) if cwd_path is not None else None
+                items.append(
+                    {
+                        "session_id": history_session_id,
+                        "runtime_id": None,
+                        "thread_id": durable_session_id,
+                        "resume_session_id": durable_session_id,
+                        "backend": backend,
+                        "pid": None,
+                        "broker_pid": None,
+                        "agent_backend": backend,
+                        "owned": False,
+                        "transport": None,
+                        "cwd": cwd,
+                        "start_ts": float(record.created_at or updated_ts),
+                        "updated_ts": updated_ts,
+                        "busy": False,
+                        "queue_len": len(queue_rows) if isinstance(queue_rows, list) else 0,
+                        "token": None,
+                        "thinking": 0,
+                        "tools": 0,
+                        "system": 0,
+                        "harness_enabled": False,
+                        "harness_cooldown_minutes": HARNESS_DEFAULT_IDLE_MINUTES,
+                        "harness_remaining_injections": HARNESS_DEFAULT_MAX_INJECTIONS,
+                        "alias": alias,
+                        "title": record.title or "",
+                        "first_user_message": record.first_user_message or "",
+                        "files": list(file_rows) if isinstance(file_rows, list) else [],
+                        "git_branch": git_branch,
+                        "model_provider": None,
+                        "preferred_auth_method": None,
+                        "provider_choice": None,
+                        "model": None,
+                        "reasoning_effort": None,
+                        "service_tier": None,
+                        "tmux_session": None,
+                        "tmux_window": None,
+                        "priority_offset": priority_offset,
+                        "snooze_until": snooze_until,
+                        "dependency_session_id": dependency_session_id,
+                        "time_priority": time_priority,
+                        "base_priority": base_priority,
+                        "final_priority": final_priority,
+                        "blocked": blocked,
+                        "snoozed": snoozed,
+                        "historical": True,
+                        "source_path": record.source_path,
+                        "session_path": record.source_path,
                     }
                 )
 
@@ -6072,6 +6402,7 @@ class SessionManager:
                 -float(item.get("final_priority", 0.0)),
                 -float(item.get("updated_ts", item.get("start_ts", 0.0))),
                 -float(item.get("start_ts", 0.0)),
+                0 if normalize_agent_backend(item.get("agent_backend"), default="codex") == "pi" else 1,
                 str(item.get("session_id", "")),
             )
         )
@@ -6086,14 +6417,20 @@ class SessionManager:
         return deduped
 
     def get_session(self, session_id: str) -> Session | None:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return None
         with self._lock:
-            return self._sessions.get(session_id)
+            return self._sessions.get(runtime_id)
 
     def refresh_session_meta(self, session_id: str, *, strict: bool = True) -> None:
         # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
         # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 return
             sock = s.sock_path
@@ -6714,6 +7051,10 @@ class SessionManager:
                 "next_before": int(next_before),
             }
 
+        runtime_session_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_session_id is None:
+            raise KeyError("unknown session")
+        session_id = runtime_session_id
         self.refresh_session_meta(session_id, strict=False)
         s = self.get_session(session_id)
         if not s:
@@ -6956,8 +7297,11 @@ class SessionManager:
         return False
 
     def kill_session(self, session_id: str) -> bool:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return False
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
         if not s:
             return False
         try:
@@ -7374,19 +7718,22 @@ class SessionManager:
         return _spawn_result_from_meta(meta)
 
     def delete_session(self, session_id: str) -> bool:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return False
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
         if not s:
             return False
-        ok = self.kill_session(session_id)
+        ok = self.kill_session(runtime_id)
         if ok:
             # Hide the session immediately so stale sidecars do not repopulate the
             # sidebar before the broker and child process have fully exited.
             self._hide_session_identity(s)
-            self.files_clear(session_id)
-            self._clear_deleted_session_state(session_id)
+            self.files_clear(runtime_id)
+            self._clear_deleted_session_state(runtime_id)
             with self._lock:
-                self._sessions.pop(session_id, None)
+                self._sessions.pop(runtime_id, None)
         return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
@@ -7410,17 +7757,22 @@ class SessionManager:
                 resume_session_id=resume_session_id,
             )
             self.list_sessions()
+            live_runtime_id = _clean_optional_text(spawn_res.get("runtime_id"))
             live_session_id = _clean_optional_text(spawn_res.get("session_id"))
-            if live_session_id is None:
-                raise RuntimeError("spawned session did not return a session id")
-            resp = self.send(live_session_id, text)
+            if live_runtime_id is None or live_session_id is None:
+                raise RuntimeError("spawned session did not return session identities")
+            resp = self.send(live_runtime_id, text)
             out = dict(resp)
             out["session_id"] = live_session_id
+            out["runtime_id"] = live_runtime_id
             out["backend"] = "pi"
             return out
 
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
@@ -7429,20 +7781,20 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
+                    self._sessions.pop(runtime_id, None)
+                self._clear_deleted_session_state(runtime_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
             # Broker alive but socket temporarily unavailable (e.g. during
             # session switch).  Auto-enqueue so the message is delivered
             # once the broker becomes reachable again.
-            return self._queue_enqueue_local(session_id, text)
+            return self._queue_enqueue_local(runtime_id, text)
         error = resp.get("error")
         if isinstance(error, str) and error:
             raise ValueError(error)
         with self._lock:
-            s2 = self._sessions.get(session_id)
+            s2 = self._sessions.get(runtime_id)
             if s2:
                 if "busy" in resp:
                     s2.busy = bool(resp.get("busy"))
@@ -7478,12 +7830,14 @@ class SessionManager:
                 resume_session_id=resume_session_id,
             )
             self.list_sessions()
+            live_runtime_id = _clean_optional_text(spawn_res.get("runtime_id"))
             live_session_id = _clean_optional_text(spawn_res.get("session_id"))
-            if live_session_id is None:
-                raise RuntimeError("spawned session did not return a session id")
-            resp = self.enqueue(live_session_id, text)
+            if live_runtime_id is None or live_session_id is None:
+                raise RuntimeError("spawned session did not return session identities")
+            resp = self.enqueue(live_runtime_id, text)
             out = dict(resp)
             out["session_id"] = live_session_id
+            out["runtime_id"] = live_runtime_id
             out["backend"] = "pi"
             return out
 
@@ -7491,10 +7845,10 @@ class SessionManager:
         return self._queue_enqueue_local(session_id, text)
 
     def queue_list(self, session_id: str) -> list[str]:
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-        return self._queue_list_local(session_id)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
+        return self._queue_list_local(runtime_id)
 
     def queue_delete(self, session_id: str, index: int) -> dict[str, Any]:
         return self._queue_delete_local(session_id, int(index))
@@ -7503,8 +7857,11 @@ class SessionManager:
         return self._queue_update_local(session_id, int(index), text)
 
     def get_state(self, session_id: str) -> dict[str, Any]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
@@ -7513,8 +7870,8 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
+                    self._sessions.pop(runtime_id, None)
+                self._clear_deleted_session_state(runtime_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -7526,7 +7883,7 @@ class SessionManager:
                 "token": s.token,
             }
         with self._lock:
-            s2 = self._sessions.get(session_id)
+            s2 = self._sessions.get(runtime_id)
             if s2:
                 if "busy" not in resp or "queue_len" not in resp:
                     # Return the last known good state if broker responds with garbage.
@@ -7544,9 +7901,12 @@ class SessionManager:
         return resp
 
     def get_ui_state(self, session_id: str) -> dict[str, Any]:
-        self.refresh_session_meta(session_id, strict=False)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
+        self.refresh_session_meta(runtime_id, strict=False)
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             if s.backend != "pi":
@@ -7557,8 +7917,8 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
+                    self._sessions.pop(runtime_id, None)
+                self._clear_deleted_session_state(runtime_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -7578,9 +7938,12 @@ class SessionManager:
         return _sanitize_pi_ui_state_payload(resp)
 
     def get_session_commands(self, session_id: str) -> dict[str, Any]:
-        self.refresh_session_meta(session_id, strict=False)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
+        self.refresh_session_meta(runtime_id, strict=False)
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             if s.backend != "pi":
@@ -7592,7 +7955,7 @@ class SessionManager:
                 else None
             )
             cache = getattr(self, "_pi_commands_cache", None)
-            cached = cache.get(session_id) if isinstance(cache, dict) else None
+            cached = cache.get(runtime_id) if isinstance(cache, dict) else None
             if isinstance(cached, dict):
                 cached_ts = cached.get("ts")
                 if (
@@ -7613,8 +7976,8 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
+                    self._sessions.pop(runtime_id, None)
+                self._clear_deleted_session_state(runtime_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -7632,7 +7995,7 @@ class SessionManager:
         with self._lock:
             cache = getattr(self, "_pi_commands_cache", None)
             if isinstance(cache, dict):
-                cache[session_id] = {
+                cache[runtime_id] = {
                     "ts": time.time(),
                     "thread_id": thread_id,
                     "session_path": session_path_key,
@@ -7643,9 +8006,12 @@ class SessionManager:
     def submit_ui_response(
         self, session_id: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
-        self.refresh_session_meta(session_id, strict=False)
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
+        self.refresh_session_meta(runtime_id, strict=False)
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             if s.backend != "pi":
@@ -7660,8 +8026,8 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
+                    self._sessions.pop(runtime_id, None)
+                self._clear_deleted_session_state(runtime_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -7672,12 +8038,12 @@ class SessionManager:
                     "live ui responses are unavailable for this pi session"
                 )
             if payload.get("cancelled") is True:
-                self.inject_keys(session_id, "\\x1b")
+                self.inject_keys(runtime_id, "\\x1b")
                 return {"ok": True, "legacy_fallback": True}
             text = _legacy_pi_ui_response_text(payload)
             if text is None:
                 raise ValueError("ui response value required")
-            self.send(session_id, text)
+            self.send(runtime_id, text)
             return {"ok": True, "legacy_fallback": True}
         error = resp.get("error")
         if isinstance(error, str) and error:
@@ -7685,8 +8051,11 @@ class SessionManager:
         return resp
 
     def get_tail(self, session_id: str) -> str:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
@@ -7695,7 +8064,7 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
+                    self._sessions.pop(runtime_id, None)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -7708,8 +8077,11 @@ class SessionManager:
         return tail
 
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(session_id)
+            s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
@@ -7718,7 +8090,7 @@ class SessionManager:
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
-                    self._sessions.pop(session_id, None)
+                    self._sessions.pop(runtime_id, None)
                 _unlink_quiet(sock)
                 _unlink_quiet(sock.with_suffix(".json"))
                 raise KeyError("unknown session")
@@ -8450,7 +8822,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self,
                     200,
                     {
-                        "session_id": s.session_id,
+                        "session_id": _durable_session_id_for_live_session(s),
+                        "runtime_id": s.session_id,
                         "thread_id": s.thread_id,
                         "agent_backend": s.agent_backend,
                         "backend": s.backend,
@@ -9150,7 +9523,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 MANAGER.refresh_session_meta(session_id, strict=False)
                 dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
                 s = MANAGER.get_session(session_id)
-                if not s:
+                historical_row = _historical_session_row(session_id)
+                if (not s) and historical_row is None:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
@@ -9188,7 +9562,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     limit=limit,
                     before=before,
                 )
-                if isinstance(payload.get("diag"), dict) and s.backend != "pi":
+                if isinstance(payload.get("diag"), dict) and s is not None and s.backend != "pi":
                     payload["diag"]["meta_refresh_ms"] = round(dt_meta_ms, 3)
                 _json_response(self, 200, payload)
                 dt_total_ms = (time.perf_counter() - t0_total) * 1000.0

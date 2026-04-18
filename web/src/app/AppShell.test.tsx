@@ -591,6 +591,19 @@ describe("AppShell", () => {
     expect(api.interruptSession).toHaveBeenCalledWith("sess-1");
   });
 
+  it("interrupts the active busy session when Escape is pressed", async () => {
+    const { api } = await import("../lib/api");
+    renderAppShell({ items: [{ session_id: "sess-1", alias: "Legacy shell", agent_backend: "pi", busy: true }] });
+    await flush();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    });
+    await flush();
+
+    expect(api.interruptSession).toHaveBeenCalledWith("sess-1");
+  });
+
   it("keeps the interrupt toolbar action when live session state is still busy", async () => {
     renderAppShell({
       items: [{ session_id: "sess-1", alias: "Legacy shell", agent_backend: "pi", busy: false }],

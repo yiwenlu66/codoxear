@@ -2,6 +2,7 @@ import { api } from "../../lib/api";
 
 export interface SessionUiState {
   sessionId: string | null;
+  runtimeId: string | null;
   diagnostics: Record<string, unknown> | null;
   queue: Record<string, unknown> | null;
   loading: boolean;
@@ -9,6 +10,7 @@ export interface SessionUiState {
 
 export interface SessionUiRefreshOptions {
   agentBackend?: string;
+  runtimeId?: string | null;
 }
 
 export interface SessionUiStore {
@@ -20,6 +22,7 @@ export interface SessionUiStore {
 export function createSessionUiStore(): SessionUiStore {
   let state: SessionUiState = {
     sessionId: null,
+    runtimeId: null,
     diagnostics: null,
     queue: null,
     loading: false,
@@ -46,6 +49,7 @@ export function createSessionUiStore(): SessionUiStore {
       const preserveCurrentState = state.sessionId === sessionId;
       state = {
         sessionId,
+        runtimeId: preserveCurrentState ? state.runtimeId : (_options?.runtimeId ?? null),
         diagnostics: preserveCurrentState ? state.diagnostics : null,
         queue: preserveCurrentState ? state.queue : null,
         loading: true,
@@ -53,13 +57,18 @@ export function createSessionUiStore(): SessionUiStore {
       emit();
 
       try {
-        const workspace = await api.getWorkspace(sessionId);
+        const workspace = _options?.runtimeId
+          ? await api.getWorkspace(sessionId, undefined, _options.runtimeId)
+          : await api.getWorkspace(sessionId);
         if (refreshId !== currentRefreshId) {
           return;
         }
 
         state = {
           sessionId,
+          runtimeId: typeof workspace.runtime_id === "string" && workspace.runtime_id.trim()
+            ? workspace.runtime_id
+            : (_options?.runtimeId ?? null),
           diagnostics: (workspace.diagnostics ?? null) as Record<string, unknown> | null,
           queue: (workspace.queue ?? null) as Record<string, unknown> | null,
           loading: false,

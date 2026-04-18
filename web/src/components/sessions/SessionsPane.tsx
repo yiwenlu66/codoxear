@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSessionsStore, useSessionsStoreApi } from "../../app/providers";
 import { api } from "../../lib/api";
 import { normalizeLaunchBackend, providerChoiceToSettings } from "../../lib/launch";
+import { getSessionRuntimeId } from "../../lib/session-identity";
 import type { CwdGroupMeta, SessionSummary } from "../../lib/types";
 import { EditSessionDialog } from "./EditSessionDialog";
 import { SessionCard } from "./SessionCard";
@@ -97,7 +98,8 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
     }
     try {
       setActionError("");
-      await api.deleteSession(session.session_id);
+      const runtimeId = getSessionRuntimeId(session);
+      await (runtimeId ? api.deleteSession(session.session_id, runtimeId) : api.deleteSession(session.session_id));
       await sessionsStoreApi.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to delete session");

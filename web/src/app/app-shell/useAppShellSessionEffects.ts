@@ -2,12 +2,14 @@ import { useEffect, useState } from "preact/hooks";
 import type { LiveSessionStore } from "../../domains/live-session/store";
 import type { SessionUiStore } from "../../domains/session-ui/store";
 import type { SessionsStore } from "../../domains/sessions/store";
+import { getSessionRuntimeId } from "../../lib/session-identity";
 import type { SessionSummary } from "../../lib/types";
 
 interface UseAppShellSessionEffectsOptions {
   activeSessionBackend?: string;
   activeSessionHistorical?: boolean;
   activeSessionId: string | null;
+  activeSessionRuntimeId?: string | null;
   activeSessionLiveBusy: boolean;
   items: SessionSummary[];
   liveSessionStoreApi: LiveSessionStore;
@@ -38,6 +40,7 @@ export function useAppShellSessionEffects({
   activeSessionBackend,
   activeSessionHistorical,
   activeSessionId,
+  activeSessionRuntimeId,
   activeSessionLiveBusy,
   items,
   liveSessionStoreApi,
@@ -95,10 +98,14 @@ export function useAppShellSessionEffects({
     if (replySoundEnabled) {
       suppressedReplySoundSessionIdsRef.current.add(activeSessionId);
     }
-    liveSessionStoreApi.loadInitial(activeSessionId)
+    (activeSessionRuntimeId
+      ? liveSessionStoreApi.loadInitial(activeSessionId, activeSessionRuntimeId)
+      : liveSessionStoreApi.loadInitial(activeSessionId))
       .catch(recoverMissingSession);
     const intervalId = window.setInterval(() => {
-      liveSessionStoreApi.poll(activeSessionId)
+      (activeSessionRuntimeId
+        ? liveSessionStoreApi.poll(activeSessionId, activeSessionRuntimeId)
+        : liveSessionStoreApi.poll(activeSessionId))
         .catch(recoverMissingSession)
         .finally(() => {
           if (activeSessionReplySoundPrimingRef.current === activeSessionId) {
@@ -108,7 +115,7 @@ export function useAppShellSessionEffects({
         });
     }, activeLiveRefreshIntervalMs);
     return () => window.clearInterval(intervalId);
-  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionReplySoundPrimingRef, liveSessionStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
+  }, [activeLiveRefreshIntervalMs, activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionReplySoundPrimingRef, activeSessionRuntimeId, liveSessionStoreApi, pageVisible, replySoundEnabled, sessionUiStoreApi, sessionsStoreApi, suppressedReplySoundSessionIdsRef, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !workspaceOpen || !activeSessionId) {
@@ -126,12 +133,16 @@ export function useAppShellSessionEffects({
       sessionsStoreApi.refresh().catch(() => undefined);
     };
 
-    sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend }).catch(recoverMissingSession);
+    (activeSessionRuntimeId
+      ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend, runtimeId: activeSessionRuntimeId })
+      : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend })).catch(recoverMissingSession);
     const intervalId = window.setInterval(() => {
-      sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend }).catch(recoverMissingSession);
+      (activeSessionRuntimeId
+        ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend, runtimeId: activeSessionRuntimeId })
+        : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend })).catch(recoverMissingSession);
     }, WORKSPACE_REFRESH_MS);
     return () => window.clearInterval(intervalId);
-  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, pageVisible, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
+  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionRuntimeId, pageVisible, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !replySoundEnabled) {
@@ -141,6 +152,7 @@ export function useAppShellSessionEffects({
     const backgroundBusySessions = items.filter((session) => session.session_id !== activeSessionId && session.busy);
     for (const session of backgroundBusySessions) {
       const sessionId = session.session_id;
+      const runtimeId = getSessionRuntimeId(session);
       if (
         backgroundReplySoundPrimedSessionIdsRef.current.has(sessionId)
         || suppressedReplySoundSessionIdsRef.current.has(sessionId)
@@ -148,7 +160,9 @@ export function useAppShellSessionEffects({
         continue;
       }
       suppressedReplySoundSessionIdsRef.current.add(sessionId);
-      liveSessionStoreApi.loadInitial(sessionId)
+      (runtimeId
+        ? liveSessionStoreApi.loadInitial(sessionId, runtimeId)
+        : liveSessionStoreApi.loadInitial(sessionId))
         .catch(() => undefined)
         .finally(() => {
           suppressedReplySoundSessionIdsRef.current.delete(sessionId);
@@ -163,12 +177,14 @@ export function useAppShellSessionEffects({
     }
 
     const pollBackgroundBusySessions = () => {
-      const backgroundBusySessionIds = items
+      const backgroundBusySessions = items
         .filter((session) => session.session_id !== activeSessionId && session.busy)
-        .map((session) => session.session_id)
-        .filter((sessionId) => backgroundReplySoundPrimedSessionIdsRef.current.has(sessionId));
-      for (const sessionId of backgroundBusySessionIds) {
-        liveSessionStoreApi.poll(sessionId).catch(() => undefined);
+        .filter((session) => backgroundReplySoundPrimedSessionIdsRef.current.has(session.session_id));
+      for (const session of backgroundBusySessions) {
+        const runtimeId = getSessionRuntimeId(session);
+        (runtimeId
+          ? liveSessionStoreApi.poll(session.session_id, runtimeId)
+          : liveSessionStoreApi.poll(session.session_id)).catch(() => undefined);
       }
     };
 

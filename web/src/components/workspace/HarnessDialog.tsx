@@ -10,10 +10,11 @@ import { api } from "../../lib/api";
 interface HarnessDialogProps {
   open: boolean;
   sessionId: string | null;
+  runtimeId?: string | null;
   onClose: () => void;
 }
 
-export function HarnessDialog({ open, sessionId, onClose }: HarnessDialogProps) {
+export function HarnessDialog({ open, sessionId, runtimeId = null, onClose }: HarnessDialogProps) {
   const [enabled, setEnabled] = useState(false);
   const [request, setRequest] = useState("");
   const [cooldownMinutes, setCooldownMinutes] = useState("30");
@@ -29,7 +30,7 @@ export function HarnessDialog({ open, sessionId, onClose }: HarnessDialogProps) 
     let cancelled = false;
     setLoading(true);
     setStatus("");
-    api.getHarness(sessionId)
+    (runtimeId ? api.getHarness(sessionId, runtimeId) : api.getHarness(sessionId))
       .then((response) => {
         if (cancelled) return;
         setEnabled(response.enabled === true);
@@ -50,7 +51,7 @@ export function HarnessDialog({ open, sessionId, onClose }: HarnessDialogProps) 
     return () => {
       cancelled = true;
     };
-  }, [open, sessionId]);
+  }, [open, runtimeId, sessionId]);
 
   const save = async () => {
     if (!sessionId || saving) {
@@ -59,12 +60,19 @@ export function HarnessDialog({ open, sessionId, onClose }: HarnessDialogProps) 
     setSaving(true);
     setStatus("Saving…");
     try {
-      await api.saveHarness(sessionId, {
-        enabled,
-        request,
-        cooldown_minutes: Number(cooldownMinutes || 0),
-        remaining_injections: Number(remainingInjections || 0),
-      });
+      await (runtimeId
+        ? api.saveHarness(sessionId, {
+            enabled,
+            request,
+            cooldown_minutes: Number(cooldownMinutes || 0),
+            remaining_injections: Number(remainingInjections || 0),
+          }, runtimeId)
+        : api.saveHarness(sessionId, {
+            enabled,
+            request,
+            cooldown_minutes: Number(cooldownMinutes || 0),
+            remaining_injections: Number(remainingInjections || 0),
+          }));
       setStatus("Saved");
       window.setTimeout(() => {
         onClose();

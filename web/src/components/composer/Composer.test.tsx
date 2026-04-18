@@ -33,6 +33,7 @@ import { Composer } from "./Composer";
 interface RenderComposerOptions {
   activeSessionId?: string | null;
   items?: Array<{ session_id: string; agent_backend: string; busy: boolean; historical?: boolean }>;
+  liveBusyBySessionId?: Record<string, boolean>;
   sessionUiSessionId?: string | null;
   diagnostics?: Record<string, unknown> | null;
   draft?: string;
@@ -99,6 +100,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
   const {
     activeSessionId = "sess-1",
     items = [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
+    liveBusyBySessionId = {},
     sessionUiSessionId = activeSessionId,
     diagnostics = null,
     draft = "Hello",
@@ -106,7 +108,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
   } = options;
   const submit = vi.fn().mockResolvedValue(submitResult);
   const liveSessionStore = createStore(
-    { offsetsBySessionId: {}, liveOffsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: {}, loadingBySessionId: {} },
+    { offsetsBySessionId: {}, liveOffsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: liveBusyBySessionId, loadingBySessionId: {} },
     () => ({ loadInitial: vi.fn(), poll: vi.fn() }),
   );
   const sessionsStore = createStore(
@@ -458,6 +460,30 @@ describe("Composer", () => {
     expect(enqueueMessage).toHaveBeenCalledWith("sess-1", "After this turn, also inspect logs");
     expect(sessionUiStore.refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
     expect(composerStore.getState().draft).toBe("");
+  });
+
+  it("shows a cancel-loop button for a busy session and interrupts the active loop", async () => {
+    const interruptSession = vi.spyOn(api, "interruptSession").mockResolvedValue({ ok: true } as any);
+    const { liveSessionStore, sessionUiStore, sessionsStore } = renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
+      liveBusyBySessionId: { "sess-1": true },
+    });
+    const composerRoot = getRoot();
+
+    const cancelButton = composerRoot.querySelector(".composerInterruptButton") as HTMLButtonElement | null;
+    expect(cancelButton).not.toBeNull();
+    expect(cancelButton?.textContent).toContain("Cancel loop");
+
+    await act(async () => {
+      cancelButton?.click();
+      await Promise.resolve();
+    });
+    await flushEffects();
+
+    expect(interruptSession).toHaveBeenCalledWith("sess-1");
+    expect(sessionsStore.refresh).toHaveBeenCalledTimes(1);
+    expect(liveSessionStore.loadInitial).toHaveBeenCalledWith("sess-1");
+    expect(sessionUiStore.refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
   });
 
   it("shows a todo summary bar above the composer for a current pi session with todo items", () => {

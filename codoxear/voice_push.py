@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .page_state_sqlite import PageStateDB
+
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
 from pywebpush import WebPushException
@@ -716,6 +718,7 @@ class VoicePushCoordinator:
         subscriptions_path: Path,
         delivery_ledger_path: Path,
         vapid_private_key_path: Path,
+        page_state_db: PageStateDB | None = None,
     ) -> None:
         self._app_dir = Path(app_dir)
         self._stop = stop_event
@@ -723,6 +726,7 @@ class VoicePushCoordinator:
         self._subscriptions_path = Path(subscriptions_path)
         self._delivery_ledger_path = Path(delivery_ledger_path)
         self._vapid_private_key_path = Path(vapid_private_key_path)
+        self._page_state_db = page_state_db
         self._hls = MergedHLSStream(root_dir=self._app_dir / "audio")
         self._client = OpenAICompatibleClient()
         self._lock = threading.Lock()
@@ -1732,16 +1736,22 @@ class VoicePushCoordinator:
                 self._delivery_ledger.pop(message_id, None)
 
     def _load_settings(self) -> None:
-        try:
-            raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
+        if self._page_state_db is not None:
+            raw = self._page_state_db.load_app_kv("voice_settings")
+        else:
+            try:
+                raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raw = {}
         self._voice_settings = _clean_voice_settings(raw)
 
     def _save_settings(self) -> None:
-        os.makedirs(self._settings_path.parent, exist_ok=True)
         with self._lock:
             payload = dict(self._voice_settings)
+        if self._page_state_db is not None:
+            self._page_state_db.save_app_kv("voice_settings", payload)
+            return
+        os.makedirs(self._settings_path.parent, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -1757,10 +1767,13 @@ class VoicePushCoordinator:
         os.replace(tmp_path, self._settings_path)
 
     def _load_subscriptions(self) -> None:
-        try:
-            raw = json.loads(self._subscriptions_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = []
+        if self._page_state_db is not None:
+            raw = self._page_state_db.load_push_subscriptions()
+        else:
+            try:
+                raw = json.loads(self._subscriptions_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raw = []
         cleaned: dict[str, dict[str, Any]] = {}
         if isinstance(raw, list):
             for item in raw:
@@ -1770,9 +1783,12 @@ class VoicePushCoordinator:
         self._subscriptions = cleaned
 
     def _save_subscriptions(self) -> None:
-        os.makedirs(self._subscriptions_path.parent, exist_ok=True)
         with self._lock:
             payload = list(self._subscriptions.values())
+        if self._page_state_db is not None:
+            self._page_state_db.save_push_subscriptions(payload)
+            return
+        os.makedirs(self._subscriptions_path.parent, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",
@@ -1788,17 +1804,23 @@ class VoicePushCoordinator:
         os.replace(tmp_path, self._subscriptions_path)
 
     def _load_delivery_ledger(self) -> None:
-        try:
-            raw = json.loads(self._delivery_ledger_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
+        if self._page_state_db is not None:
+            raw = self._page_state_db.load_delivery_ledger()
+        else:
+            try:
+                raw = json.loads(self._delivery_ledger_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                raw = {}
         self._delivery_ledger = _clean_ledger(raw)
 
     def _save_delivery_ledger(self) -> None:
-        os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
         with self._lock:
             self._trim_locked()
             payload = dict(self._delivery_ledger)
+        if self._page_state_db is not None:
+            self._page_state_db.save_delivery_ledger(payload)
+            return
+        os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             "w",
             encoding="utf-8",

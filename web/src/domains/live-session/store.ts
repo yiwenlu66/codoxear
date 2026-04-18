@@ -16,8 +16,8 @@ export interface LiveSessionState {
 export interface LiveSessionStore {
   getState(): LiveSessionState;
   subscribe(listener: () => void): () => void;
-  loadInitial(sessionId: string): Promise<void>;
-  poll(sessionId: string): Promise<void>;
+  loadInitial(sessionId: string, runtimeId?: string | null): Promise<void>;
+  poll(sessionId: string, runtimeId?: string | null): Promise<void>;
 }
 
 function liveSessionErrorMessage(error: unknown): string {
@@ -49,7 +49,7 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
     }
   };
 
-  const runLoad = async (sessionId: string, replace: boolean) => {
+  const runLoad = async (sessionId: string, replace: boolean, runtimeId?: string | null) => {
     const existing = inFlightBySessionId[sessionId];
     if (existing) {
       return existing;
@@ -69,7 +69,9 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
         const offset = replace ? undefined : state.offsetsBySessionId[sessionId];
         const liveOffset = replace ? undefined : state.liveOffsetsBySessionId[sessionId];
         const requestsVersion = replace ? undefined : state.requestVersionsBySessionId[sessionId];
-        const payload = await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset);
+        const payload = runtimeId
+          ? await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset, runtimeId)
+          : await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset);
         messagesStore.applyLive(sessionId, payload.events ?? [], {
           replace,
           offset: typeof payload.offset === "number" ? payload.offset : offset,
@@ -146,11 +148,11 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
         listeners.delete(listener);
       };
     },
-    loadInitial(sessionId: string) {
-      return runLoad(sessionId, true);
+    loadInitial(sessionId: string, runtimeId?: string | null) {
+      return runLoad(sessionId, true, runtimeId);
     },
-    poll(sessionId: string) {
-      return runLoad(sessionId, false);
+    poll(sessionId: string, runtimeId?: string | null) {
+      return runLoad(sessionId, false, runtimeId);
     },
   };
 }
