@@ -222,7 +222,7 @@ HARNESS_MAX_SCAN_BYTES = int(
     os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024))
 )
 DISCOVER_MIN_INTERVAL_SECONDS = float(
-    os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0")
+    os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "5.0")
 )
 CHAT_INIT_SEED_SCAN_BYTES = int(
     os.environ.get("CODEX_WEB_CHAT_INIT_SEED_SCAN_BYTES", str(512 * 1024))
@@ -6019,13 +6019,12 @@ class SessionManager:
                 s2.meta_log_off = off if off >= 0 else s2.meta_log_off
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        # Rescan sockets to pick up sessions created before the server started.
         recovered_catalog = {}
         db = getattr(self, "_page_state_db", None)
         if isinstance(db, PageStateDB):
             recovered_catalog = db.load_sessions()
-        self._discover_existing_if_stale()
-        self._prune_dead_sessions()
+        if float(getattr(self, "_last_discover_ts", 0.0) or 0.0) <= 0.0:
+            self._discover_existing_if_stale(force=True)
         self._update_meta_counters()
         files_dirty = False
         sidebar_dirty = False
