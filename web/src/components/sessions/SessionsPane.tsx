@@ -90,6 +90,17 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
 
   const groupedSessions = useMemo(() => groupSessions(items, cwdGroups), [cwdGroups, items]);
 
+  const toggleSessionFocus = async (session: SessionSummary) => {
+    try {
+      setActionError("");
+      const runtimeId = getSessionRuntimeId(session);
+      await api.setSessionFocus(session.session_id, session.focused !== true, runtimeId);
+      await sessionsStoreApi.refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Failed to update Focus");
+    }
+  };
+
   const deleteSession = async (session: SessionSummary) => {
     const confirmed = typeof window === "undefined" || typeof window.confirm !== "function"
       ? true
@@ -266,6 +277,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
                         }
                         sessionsStoreApi.select(session.session_id);
                       }}
+                      onToggleFocus={session.historical ? undefined : () => { void toggleSessionFocus(session); }}
                       onDuplicate={session.historical ? undefined : () => { void duplicateSession(session); }}
                       onDelete={session.historical ? undefined : () => { void deleteSession(session); }}
                       onEdit={session.historical ? undefined : () => {

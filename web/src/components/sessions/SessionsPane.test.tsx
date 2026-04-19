@@ -12,6 +12,7 @@ vi.mock("../../lib/api", () => ({
     editSession: vi.fn().mockResolvedValue({ ok: true, alias: "Updated session" }),
     editCwdGroup: vi.fn().mockResolvedValue({ ok: true }),
     deleteSession: vi.fn().mockResolvedValue({ ok: true }),
+    setSessionFocus: vi.fn().mockResolvedValue({ ok: true, focused: true }),
     getSessionDetails: vi.fn().mockResolvedValue({ ok: true, session: { session_id: "sess-1", alias: "Inbox cleanup", agent_backend: "pi", priority_offset: 0 } }),
   },
 }));
@@ -153,6 +154,26 @@ describe("SessionsPane", () => {
 
     expect(root?.querySelector(".sessionTitle")?.textContent).toContain("Release checklist");
     expect(root?.querySelector(".sessionTitle")?.textContent).not.toContain("先整理一下今晚要发的内容");
+  });
+
+  it("toggles Focus from the session rail", async () => {
+    const sessionsStore = renderSessionsPane({
+      items: [{ session_id: "sess-1", alias: "Inbox cleanup", agent_backend: "pi", focused: false }],
+      activeSessionId: "sess-1",
+      loading: false,
+      newSessionDefaults: null,
+      recentCwds: [],
+      cwdGroups: {},
+      tmuxAvailable: false,
+    });
+
+    const focusButton = root?.querySelector<HTMLButtonElement>('button[aria-label="Add to Focus"]');
+    expect(focusButton).not.toBeNull();
+    await click(focusButton!);
+    await flush();
+
+    expect(api.setSessionFocus).toHaveBeenCalledWith("sess-1", true, null);
+    expect(sessionsStore.refresh).toHaveBeenCalled();
   });
 
   it("deletes a session after confirmation", async () => {

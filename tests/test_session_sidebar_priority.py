@@ -98,6 +98,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(rows[0]["session_id"], "current")
         self.assertEqual(rows[0]["runtime_id"], "current")
+        self.assertFalse(rows[0]["focused"])
         self.assertFalse(rows[0]["snoozed"])
         self.assertFalse(rows[0]["blocked"])
         self.assertIsNone(rows[0]["snooze_until"])
@@ -113,6 +114,14 @@ class TestSessionSidebarPriority(unittest.TestCase):
         )
 
         self.assertEqual(row["display_name"], "Structured title")
+
+    def test_sidebar_meta_get_defaults_focus_to_false(self) -> None:
+        mgr = _make_manager()
+        mgr._page_state_ref_for_session_id = lambda session_id: ("pi", session_id)  # type: ignore[method-assign]
+
+        meta = mgr.sidebar_meta_get("sess-1")
+
+        self.assertFalse(meta["focused"])
 
     def test_list_sessions_includes_pending_sqlite_sessions_as_live_placeholders(
         self,
@@ -151,6 +160,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertIsNone(rows[0]["runtime_id"])
         self.assertFalse(rows[0]["historical"])
         self.assertTrue(rows[0]["pending_startup"])
+        self.assertTrue(rows[0]["focused"])
         self.assertEqual(rows[0]["alias"], "Recovered alias")
         self.assertEqual(rows[0]["title"], "Recovered")
         self.assertEqual(rows[0]["display_name"], "Recovered alias")
@@ -190,6 +200,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(rows[0]["session_id"], "history:pi:resume-pi")
         self.assertEqual(rows[0]["runtime_id"], None)
         self.assertTrue(rows[0]["historical"])
+        self.assertTrue(rows[0]["focused"])
         self.assertEqual(rows[0]["alias"], "Recovered alias")
         self.assertEqual(rows[0]["title"], "Recovered")
         self.assertEqual(rows[0]["first_user_message"], "hello")

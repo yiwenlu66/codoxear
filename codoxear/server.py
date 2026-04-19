@@ -43,6 +43,7 @@ from .agent_backend import normalize_agent_backend
 from . import pi_messages as _pi_messages
 from . import pi_messages as _pi_messages
 from . import rollout_log as _rollout_log
+from .pi_log import pi_model_context_window as _pi_model_context_window
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .pi_log import read_pi_session_id as _read_pi_session_id
@@ -1753,6 +1754,7 @@ SESSION_LIST_ROW_KEYS = (
     "snoozed",
     "historical",
     "pending_startup",
+    "focused",
 )
 SESSION_LIST_GROUP_PAGE_SIZE = 5
 SESSION_LIST_RECENT_GROUP_LIMIT = 3
@@ -1770,6 +1772,12 @@ def _session_row_display_name(row: dict[str, Any], *, fallback: str = "Session")
         if out:
             return out
     return fallback
+
+
+def _clean_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    return None
 
 
 def _normalize_session_cwd_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -2907,7 +2915,14 @@ def _pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
 
 
 def _write_pi_session_header(
-    session_path: Path, *, session_id: str, cwd: str, parent_session: str | None = None
+    session_path: Path,
+    *,
+    session_id: str,
+    cwd: str,
+    parent_session: str | None = None,
+    provider: str | None = None,
+    model_id: str | None = None,
+    thinking_level: str | None = None,
 ) -> None:
     session_path.parent.mkdir(parents=True, exist_ok=True)
     now = float(_now())
@@ -2925,6 +2940,12 @@ def _write_pi_session_header(
     }
     if isinstance(parent_session, str) and parent_session.strip():
         header["parentSession"] = parent_session.strip()
+    if isinstance(provider, str) and provider.strip():
+        header["provider"] = provider.strip()
+    if isinstance(model_id, str) and model_id.strip():
+        header["modelId"] = model_id.strip()
+    if isinstance(thinking_level, str) and thinking_level.strip():
+        header["thinkingLevel"] = thinking_level.strip()
     with session_path.open("w", encoding="utf-8") as f:
         f.write(json.dumps(header, ensure_ascii=False) + "\n")
 
@@ -3559,6 +3580,7 @@ class Session:
     tmux_session: str | None = None
     tmux_window: str | None = None
     resume_session_id: str | None = None
+    title: str | None = None
     first_user_message: str | None = None
     pi_idle_activity_ts: float | None = None
     pi_busy_activity_floor: float | None = None
@@ -3673,23 +3695,26 @@ def _display_session_busy(
     return bool(busy), broker_busy
 
 
-def _session_diagnostics_payload(
-    manager: "SessionManager", session_id: str, s: Session, state: dict[str, Any]
-) -> dict[str, Any]:
-    state = _validated_session_state(state)
-    token_val: dict[str, Any] | None = None
-    st_token = state.get("token")
-    if isinstance(st_token, dict) or st_token is None:
-        token_val = (
-            st_token
-            if isinstance(st_token, dict)
-            else (s.token if isinstance(s.token, dict) else None)
-        )
+def _resolved_session_run_settings(
+    s: Session,
+) -> tuple[str | None, str | None, str | None, str | None]:
     model_provider = s.model_provider
     preferred_auth_method = s.preferred_auth_method
     model = s.model
     reasoning_effort = s.reasoning_effort
-    service_tier = s.service_tier
+    if (
+        (model_provider is None or model is None or reasoning_effort is None)
+        and s.backend == "pi"
+        and s.session_path is not None
+        and s.session_path.exists()
+    ):
+        pi_provider, pi_model, pi_effort = _read_pi_run_settings(s.session_path)
+        if model_provider is None:
+            model_provider = pi_provider
+        if model is None:
+            model = pi_model
+        if reasoning_effort is None:
+            reasoning_effort = pi_effort
     if (
         (model_provider is None or model is None or reasoning_effort is None)
         and s.log_path is not None
@@ -3704,6 +3729,56 @@ def _session_diagnostics_payload(
             model = log_model
         if reasoning_effort is None:
             reasoning_effort = log_effort
+    return model_provider, preferred_auth_method, model, reasoning_effort
+
+
+def _session_context_usage_payload(
+    s: Session, token_val: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if s.backend != "pi":
+        return None
+    context_window = None
+    model_provider, _preferred_auth_method, model, _reasoning_effort = (
+        _resolved_session_run_settings(s)
+    )
+    if model_provider is not None and model is not None:
+        context_window = _pi_model_context_window(model_provider, model)
+    if (not isinstance(context_window, int) or context_window <= 0) and isinstance(
+        token_val, dict
+    ):
+        token_context_window = token_val.get("context_window")
+        if isinstance(token_context_window, int) and token_context_window > 0:
+            context_window = token_context_window
+    if not isinstance(context_window, int) or context_window <= 0:
+        return None
+    used_tokens = 0
+    if isinstance(token_val, dict):
+        raw_used_tokens = token_val.get("tokens_in_context")
+        if isinstance(raw_used_tokens, int) and raw_used_tokens > 0:
+            used_tokens = raw_used_tokens
+    used_tokens = min(max(used_tokens, 0), context_window)
+    percent_used = int(round((used_tokens / context_window) * 100.0)) if context_window > 0 else 0
+    return {
+        "used_tokens": used_tokens,
+        "total_tokens": context_window,
+        "percent_used": percent_used,
+    }
+
+
+def _session_diagnostics_payload(
+    manager: "SessionManager", session_id: str, s: Session, state: dict[str, Any]
+) -> dict[str, Any]:
+    state = _validated_session_state(state)
+    token_val: dict[str, Any] | None = None
+    st_token = state.get("token")
+    if isinstance(st_token, dict) or st_token is None:
+        token_val = (
+            st_token
+            if isinstance(st_token, dict)
+            else (s.token if isinstance(s.token, dict) else None)
+        )
+    model_provider, preferred_auth_method, model, reasoning_effort = _resolved_session_run_settings(s)
+    service_tier = s.service_tier
     sidebar_meta = manager.sidebar_meta_get(session_id)
     cwd_path = _safe_expanduser(Path(s.cwd))
     if not cwd_path.is_absolute():
@@ -3740,6 +3815,7 @@ def _session_diagnostics_payload(
         "broker_busy": broker_busy,
         "queue_len": manager._queue_len(session_id),
         "token": token_val,
+        "context_usage": _session_context_usage_payload(s, token_val),
         "model_provider": model_provider,
         "preferred_auth_method": preferred_auth_method,
         "provider_choice": _provider_choice_for_backend(
@@ -3797,8 +3873,13 @@ def _session_live_payload(
     page = manager.get_messages_page(
         session_id, offset=max(0, int(offset)), init=(offset <= 0), limit=80, before=0
     )
-    busy, _broker_busy = _display_session_busy(
-        manager, session_id, s, manager.get_state(session_id)
+    state = manager.get_state(session_id)
+    busy, _broker_busy = _display_session_busy(manager, session_id, s, state)
+    state_token = state.get("token") if isinstance(state, dict) else None
+    token_val = (
+        state_token
+        if isinstance(state_token, dict)
+        else (s.token if isinstance(s.token, dict) else None)
     )
     requests: list[dict[str, Any]] = []
     if s.backend == "pi":
@@ -3835,6 +3916,8 @@ def _session_live_payload(
         "busy": bool(busy),
         "events": merged_events,
         "requests_version": current_requests_version,
+        "token": token_val,
+        "context_usage": _session_context_usage_payload(s, token_val),
     }
     if requests_version != current_requests_version:
         payload["requests"] = requests
@@ -4569,6 +4652,7 @@ class SessionManager:
                 "priority_offset": 0.0,
                 "snooze_until": None,
                 "dependency_session_id": None,
+                "focused": False,
             }
         return {
             "priority_offset": _clean_priority_offset(entry.get("priority_offset")),
@@ -4601,22 +4685,76 @@ class SessionManager:
             if dep_ref == ref:
                 raise ValueError("session cannot depend on itself")
         with self._lock:
-            entry = {"priority_offset": offset}
-            if snooze_until_clean is not None:
-                entry["snooze_until"] = snooze_until_clean
-            if dep_ref is not None:
-                entry["dependency_session_id"] = dep_ref[1]
             meta_map = getattr(self, "_sidebar_meta", None)
             if not isinstance(meta_map, dict):
                 self._sidebar_meta = {}
                 meta_map = self._sidebar_meta
+            existing = meta_map.get(ref)
+            entry = {"priority_offset": offset}
+            if isinstance(existing, dict) and existing.get("focused"):
+                entry["focused"] = True
+            if snooze_until_clean is not None:
+                entry["snooze_until"] = snooze_until_clean
+            if dep_ref is not None:
+                entry["dependency_session_id"] = dep_ref[1]
             meta_map[ref] = entry
         self._save_sidebar_meta()
         return {
             "priority_offset": offset,
             "snooze_until": snooze_until_clean,
             "dependency_session_id": dep_ref[1] if dep_ref is not None else None,
+            "focused": bool(isinstance(existing, dict) and existing.get("focused")),
         }
+
+    def focus_set(self, session_id: str, focused: Any) -> bool:
+        focused_clean = _clean_optional_bool(focused)
+        if focused_clean is None:
+            raise ValueError("focused must be a boolean")
+        ref = self._page_state_ref_for_session_id(session_id)
+        if ref is None:
+            raise KeyError("unknown session")
+        with self._lock:
+            meta_map = getattr(self, "_sidebar_meta", None)
+            if not isinstance(meta_map, dict):
+                self._sidebar_meta = {}
+                meta_map = self._sidebar_meta
+            entry = meta_map.get(ref)
+            next_entry = dict(entry) if isinstance(entry, dict) else {}
+            if focused_clean:
+                next_entry["focused"] = True
+            else:
+                next_entry.pop("focused", None)
+            next_entry["priority_offset"] = _clean_priority_offset(
+                next_entry.get("priority_offset")
+            )
+            next_entry["snooze_until"] = _clean_snooze_until(
+                next_entry.get("snooze_until")
+            )
+            next_entry["dependency_session_id"] = _clean_dependency_session_id(
+                next_entry.get("dependency_session_id")
+            )
+            if (
+                not next_entry.get("focused")
+                and not next_entry.get("priority_offset")
+                and next_entry.get("snooze_until") is None
+                and next_entry.get("dependency_session_id") is None
+            ):
+                meta_map.pop(ref, None)
+            else:
+                cleaned_entry = {
+                    "priority_offset": float(next_entry.get("priority_offset") or 0.0)
+                }
+                if next_entry.get("focused"):
+                    cleaned_entry["focused"] = True
+                if next_entry.get("snooze_until") is not None:
+                    cleaned_entry["snooze_until"] = next_entry["snooze_until"]
+                if next_entry.get("dependency_session_id") is not None:
+                    cleaned_entry["dependency_session_id"] = next_entry[
+                        "dependency_session_id"
+                    ]
+                meta_map[ref] = cleaned_entry
+        self._save_sidebar_meta()
+        return focused_clean
 
     def edit_session(
         self,
@@ -4657,7 +4795,10 @@ class SessionManager:
             if not isinstance(meta_map, dict):
                 self._sidebar_meta = {}
                 meta_map = self._sidebar_meta
+            existing = meta_map.get(ref)
             entry = {"priority_offset": offset}
+            if isinstance(existing, dict) and existing.get("focused"):
+                entry["focused"] = True
             if snooze_until_clean is not None:
                 entry["snooze_until"] = snooze_until_clean
             if dep_ref is not None:
@@ -4669,6 +4810,7 @@ class SessionManager:
             "priority_offset": offset,
             "snooze_until": snooze_until_clean,
             "dependency_session_id": dep_ref[1] if dep_ref is not None else None,
+            "focused": bool(isinstance(existing, dict) and existing.get("focused")),
         }
 
     def _clear_deleted_session_state(self, session_id: str) -> None:
@@ -5368,6 +5510,7 @@ class SessionManager:
                 {
                     "session_id": self._durable_session_id_for_session(s),
                     "alias": alias,
+                    "title": s.title or "",
                     "first_user_message": s.first_user_message or "",
                 }
             )
@@ -6272,6 +6415,18 @@ class SessionManager:
                 if not cwd_path.is_absolute():
                     cwd_path = cwd_path.resolve()
                 git_branch = _current_git_branch(cwd_path)
+                if s.title is None:
+                    try:
+                        if (
+                            s.backend == "pi"
+                            and s.session_path is not None
+                            and s.session_path.exists()
+                        ):
+                            title = _pi_session_name_from_session_file(s.session_path)
+                            if title:
+                                s.title = title
+                    except Exception:
+                        pass
                 if s.first_user_message is None:
                     try:
                         preview = ""
@@ -6318,6 +6473,7 @@ class SessionManager:
                         "harness_cooldown_minutes": h_cooldown_minutes,
                         "harness_remaining_injections": h_remaining_injections,
                         "alias": (self._aliases.get(s.session_id) if self._aliases.get(s.session_id) is not None else (self._aliases.get(ref) if ref is not None else None)),
+                        "title": s.title or "",
                         "first_user_message": s.first_user_message or "",
                         "files": list(self._files.get(s.session_id, self._files.get(ref, []))) if ref is not None else list(self._files.get(s.session_id, [])),
                         "git_branch": git_branch,
@@ -6341,6 +6497,7 @@ class SessionManager:
                         "final_priority": final_priority,
                         "blocked": blocked,
                         "snoozed": snoozed,
+                        "focused": bool(meta0.get("focused")),
                     }
                 )
 
@@ -6420,6 +6577,7 @@ class SessionManager:
                         "alias": alias,
                         "title": record.title or "",
                         "first_user_message": record.first_user_message or "",
+                        "focused": bool(meta0.get("focused")),
                         "files": list(file_rows) if isinstance(file_rows, list) else [],
                         "git_branch": git_branch,
                         "model_provider": None,
@@ -7474,6 +7632,9 @@ class SessionManager:
                     session_path,
                     session_id=created_pending_session_id,
                     cwd=cwd3,
+                    provider=model_provider,
+                    model_id=model,
+                    thinking_level=reasoning_effort,
                 )
                 self._persist_durable_session_record(
                     DurableSessionRecord(
@@ -10411,6 +10572,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 _json_response(self, 200, {"ok": True, "alias": alias})
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/focus"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip():
+                    raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict):
+                    raise ValueError("invalid json body (expected object)")
+                try:
+                    focused = MANAGER.focus_set(session_id, obj.get("focused"))
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                _json_response(self, 200, {"ok": True, "focused": focused})
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/send"):

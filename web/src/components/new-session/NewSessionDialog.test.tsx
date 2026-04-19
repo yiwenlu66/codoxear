@@ -216,6 +216,62 @@ describe("NewSessionDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("shows focused live sessions on the Focus tab and selects them directly", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [
+        { session_id: "sess-1", alias: "Inbox cleanup", cwd: "/tmp/project-a", agent_backend: "pi", focused: true },
+        { session_id: "sess-2", title: "Release checklist", cwd: "/tmp/project-b", agent_backend: "codex", focused: true },
+        { session_id: "sess-3", alias: "Hidden", cwd: "/tmp/project-c", agent_backend: "pi", focused: false },
+      ],
+      activeSessionId: "sess-3",
+      loading: false,
+      bootstrapLoaded: true,
+      recentCwds: ["/tmp/project-c"],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "pi",
+        backends: {
+          codex: { provider_choice: "chatgpt" },
+          pi: {},
+        },
+      },
+    });
+    const onClose = vi.fn();
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={onClose} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const focusTab = Array.from(root.querySelectorAll("button")).find((button) => button.textContent?.includes("Focus"));
+    expect(focusTab).toBeDefined();
+    await act(async () => {
+      focusTab?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(root.textContent).toContain("Inbox cleanup");
+    expect(root.textContent).toContain("Release checklist");
+    expect(root.textContent).not.toContain("Hidden");
+
+    const focusItem = Array.from(root.querySelectorAll<HTMLButtonElement>(".focusSessionItem")).find((button) => button.textContent?.includes("Release checklist"));
+    expect(focusItem).toBeDefined();
+    await act(async () => {
+      focusItem?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(sessionsStore.select).toHaveBeenCalledWith("sess-2");
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("prefills the working directory from the active session", async () => {
     const sessionsStore = createSessionsStore({
       items: [

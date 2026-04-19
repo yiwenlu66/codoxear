@@ -32,8 +32,9 @@ import { Composer } from "./Composer";
 
 interface RenderComposerOptions {
   activeSessionId?: string | null;
-  items?: Array<{ session_id: string; agent_backend: string; busy: boolean; historical?: boolean }>;
+  items?: Array<{ session_id: string; agent_backend: string; busy: boolean; historical?: boolean; pending_startup?: boolean }>;
   liveBusyBySessionId?: Record<string, boolean>;
+  liveContextUsageBySessionId?: Record<string, { used_tokens?: number; total_tokens?: number; percent_used?: number } | null>;
   sessionUiSessionId?: string | null;
   diagnostics?: Record<string, unknown> | null;
   draft?: string;
@@ -101,6 +102,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
     activeSessionId = "sess-1",
     items = [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
     liveBusyBySessionId = {},
+    liveContextUsageBySessionId = {},
     sessionUiSessionId = activeSessionId,
     diagnostics = null,
     draft = "Hello",
@@ -108,7 +110,17 @@ function renderComposer(options: RenderComposerOptions = {}) {
   } = options;
   const submit = vi.fn().mockResolvedValue(submitResult);
   const liveSessionStore = createStore(
-    { offsetsBySessionId: {}, liveOffsetsBySessionId: {}, requestsBySessionId: {}, requestVersionsBySessionId: {}, busyBySessionId: liveBusyBySessionId, loadingBySessionId: {} },
+    {
+      offsetsBySessionId: {},
+      liveOffsetsBySessionId: {},
+      requestsBySessionId: {},
+      requestVersionsBySessionId: {},
+      busyBySessionId: liveBusyBySessionId,
+      loadingBySessionId: {},
+      contextUsageBySessionId: liveContextUsageBySessionId,
+      tokenBySessionId: {},
+      errorBySessionId: {},
+    },
     () => ({ loadInitial: vi.fn(), poll: vi.fn() }),
   );
   const sessionsStore = createStore(
@@ -176,6 +188,28 @@ describe("Composer", () => {
       root.remove();
       root = null;
     }
+  });
+
+  it("shows Pi context usage in the composer gutter", async () => {
+    renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
+      liveContextUsageBySessionId: {
+        "sess-1": { used_tokens: 82000, total_tokens: 200000, percent_used: 41 },
+      },
+    });
+
+    expect(getRoot().textContent).toContain("82K/200K 41%");
+  });
+
+  it("shows zero-used fallback when the total context is known", async () => {
+    renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: false }],
+      liveContextUsageBySessionId: {
+        "sess-1": { total_tokens: 200000 },
+      },
+    });
+
+    expect(getRoot().textContent).toContain("0/200K 0%");
   });
 
   it("submits on plain Enter when enter-to-send is enabled", async () => {

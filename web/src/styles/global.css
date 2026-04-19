@@ -1869,11 +1869,32 @@ select {
   border-radius: 1.25rem;
 }
 
+.composerControlsColumn {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+  min-width: fit-content;
+}
+
 .composerControlsRow {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.composerContextUsage {
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--legacy-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .composerInputWrap {
@@ -2025,6 +2046,50 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.focusSessionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.focusSessionItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--legacy-border) 68%, white);
+  border-radius: 16px;
+  background: color-mix(in srgb, white 94%, var(--panel));
+  color: var(--text);
+  text-align: left;
+}
+
+.focusSessionItem:hover,
+.focusSessionItem:focus-visible {
+  background: color-mix(in srgb, var(--legacy-accent) 10%, white);
+  outline: none;
+}
+
+.focusSessionTitle {
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.focusSessionMeta,
+.focusSessionEmpty {
+  font-size: 0.84rem;
+  color: var(--legacy-muted);
+}
+
+.focusSessionEmpty {
+  padding: 14px;
+  border: 1px dashed color-mix(in srgb, var(--legacy-border) 68%, white);
+  border-radius: 16px;
+  background: color-mix(in srgb, white 96%, var(--panel));
 }
 
 .newSessionMeta {
@@ -2252,8 +2317,14 @@ select {
 :root[data-theme="dark"] .composerShell,
 :root[data-theme="dark"] .composerInputWrap,
 :root[data-theme="dark"] .composerQueueButton,
-:root[data-theme="dark"] .composerCommandMenu {
+:root[data-theme="dark"] .composerCommandMenu,
+:root[data-theme="dark"] .focusSessionItem,
+:root[data-theme="dark"] .focusSessionEmpty {
   background: var(--chrome-elevated);
+}
+
+:root[data-theme="dark"] .composerContextUsage {
+  color: color-mix(in srgb, var(--text-muted) 88%, var(--text));
 }
 
 :root[data-theme="dark"] .sessionCardSurface,
@@ -2263,7 +2334,9 @@ select {
 :root[data-theme="dark"] .conversationColumn,
 :root[data-theme="dark"] .conversationToolbar,
 :root[data-theme="dark"] .workspaceRail,
-:root[data-theme="dark"] .sidebarFooter {
+:root[data-theme="dark"] .sidebarFooter,
+:root[data-theme="dark"] .focusSessionItem,
+:root[data-theme="dark"] .focusSessionEmpty {
   border-color: var(--chrome-border);
 }
 
@@ -2296,6 +2369,19 @@ select {
 @media (max-width: 1080px) and (min-width: 881px) {
   .conversationToolbar {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .composerControlsColumn {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .composerControlsRow {
+    justify-content: flex-end;
+  }
+
+  .composerContextUsage {
+    text-align: right;
   }
 
   .conversationToolbarGroup {

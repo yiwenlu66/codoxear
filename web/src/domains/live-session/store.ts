@@ -1,6 +1,6 @@
 import { api } from "../../lib/api";
 import { HttpError } from "../../lib/http";
-import type { SessionUiRequest } from "../../lib/types";
+import type { ContextUsagePayload, SessionUiRequest } from "../../lib/types";
 import type { MessagesStore } from "../messages/store";
 
 export interface LiveSessionState {
@@ -11,6 +11,8 @@ export interface LiveSessionState {
   busyBySessionId: Record<string, boolean>;
   loadingBySessionId: Record<string, boolean>;
   errorBySessionId: Record<string, string>;
+  tokenBySessionId: Record<string, Record<string, unknown> | null>;
+  contextUsageBySessionId: Record<string, ContextUsagePayload | null>;
 }
 
 export interface LiveSessionStore {
@@ -39,6 +41,8 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
     busyBySessionId: {},
     loadingBySessionId: {},
     errorBySessionId: {},
+    tokenBySessionId: {},
+    contextUsageBySessionId: {},
   };
   const listeners = new Set<() => void>();
   const inFlightBySessionId: Record<string, Promise<void> | undefined> = {};
@@ -113,6 +117,14 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
           errorBySessionId: {
             ...state.errorBySessionId,
             [sessionId]: "",
+          },
+          tokenBySessionId: {
+            ...state.tokenBySessionId,
+            [sessionId]: payload.token && typeof payload.token === "object" ? payload.token as Record<string, unknown> : null,
+          },
+          contextUsageBySessionId: {
+            ...state.contextUsageBySessionId,
+            [sessionId]: payload.context_usage && typeof payload.context_usage === "object" ? payload.context_usage : null,
           },
         };
         emit();

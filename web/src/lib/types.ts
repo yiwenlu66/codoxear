@@ -34,6 +34,7 @@ export interface SessionSummary {
   owned?: boolean;
   busy?: boolean;
   pending_startup?: boolean;
+  focused?: boolean;
   queue_len?: number;
   updated_ts?: number;
   git_branch?: string | null;
@@ -90,6 +91,12 @@ export interface EditSessionResponse extends RenameSessionResponse {
   priority_offset?: number;
   snooze_until?: number | null;
   dependency_session_id?: string | null;
+  focused?: boolean;
+}
+
+export interface FocusSessionResponse {
+  ok?: boolean;
+  focused?: boolean;
 }
 
 export interface CwdGroupMeta {
@@ -271,6 +278,12 @@ export interface SessionUiStateResponse {
   requests: SessionUiRequest[];
 }
 
+export interface ContextUsagePayload {
+  used_tokens?: number;
+  total_tokens?: number;
+  percent_used?: number;
+}
+
 export interface LiveSessionResponse {
   ok?: boolean;
   session_id?: string;
@@ -280,6 +293,8 @@ export interface LiveSessionResponse {
   has_older?: boolean;
   next_before?: number;
   busy?: boolean;
+  token?: Record<string, unknown> | null;
+  context_usage?: ContextUsagePayload | null;
   requests_version?: string;
   events: MessageEvent[];
   requests?: SessionUiRequest[];
@@ -290,6 +305,7 @@ export interface WorkspaceResponse {
   session_id?: string;
   runtime_id?: string | null;
   diagnostics?: Record<string, unknown> | null;
+  context_usage?: ContextUsagePayload | null;
   queue?: {
     items?: Array<string | { text?: string }>;
   } | null;

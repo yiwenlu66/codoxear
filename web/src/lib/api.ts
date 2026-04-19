@@ -6,6 +6,7 @@ import type {
   CreateSessionResponse,
   DeleteSessionResponse,
   EditSessionResponse,
+  FocusSessionResponse,
   GitFileVersionsResponse,
   HarnessConfigResponse,
   EditCwdGroupResponse,
@@ -142,6 +143,10 @@ export const api = {
   },
   renameSession(sessionId: string, name: string) {
     return postJson<RenameSessionResponse>(`/api/sessions/${sessionId}/rename`, { name });
+  },
+  setSessionFocus(sessionId: string, focused: boolean, runtimeId?: string | null) {
+    const routeId = getSessionRouteId(sessionId, runtimeId);
+    return postJson<FocusSessionResponse>(`/api/sessions/${routeId}/focus`, { focused });
   },
   editSession(sessionId: string, payload: Record<string, unknown>) {
     return postJson<EditSessionResponse>(`/api/sessions/${sessionId}/edit`, payload);

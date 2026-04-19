@@ -79,6 +79,33 @@ function syncComposerTextareaHeight(textarea: HTMLTextAreaElement | null, enable
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
+function formatContextK(value: number) {
+  const normalized = Math.max(0, Math.round(value));
+  if (normalized <= 0) {
+    return "0";
+  }
+  return `${Math.round(normalized / 1000)}K`;
+}
+
+function getContextUsageLabel(contextUsage: { used_tokens?: number; total_tokens?: number; percent_used?: number } | null | undefined) {
+  if (!contextUsage) {
+    return null;
+  }
+  const totalTokens = typeof contextUsage.total_tokens === "number" && Number.isFinite(contextUsage.total_tokens)
+    ? Math.max(0, Math.round(contextUsage.total_tokens))
+    : 0;
+  if (totalTokens <= 0) {
+    return null;
+  }
+  const usedTokens = typeof contextUsage.used_tokens === "number" && Number.isFinite(contextUsage.used_tokens)
+    ? Math.min(totalTokens, Math.max(0, Math.round(contextUsage.used_tokens)))
+    : 0;
+  const percentUsed = typeof contextUsage.percent_used === "number" && Number.isFinite(contextUsage.percent_used)
+    ? Math.min(100, Math.max(0, Math.round(contextUsage.percent_used)))
+    : Math.min(100, Math.max(0, Math.round((usedTokens / totalTokens) * 100)));
+  return `${formatContextK(usedTokens)}/${formatContextK(totalTokens)} ${percentUsed}%`;
+}
+
 function safeStem(name: string) {
   const base = String(name || "file").split("/").pop() || "file";
   const dot = base.lastIndexOf(".");
@@ -184,7 +211,10 @@ async function toJpegBlob(file: File, options: { maxDim: number; quality: number
 
 export function Composer() {
   const { activeSessionId, items } = useSessionsStore();
-  const { busyBySessionId = {} } = useLiveSessionStore() as { busyBySessionId?: Record<string, boolean> };
+  const { busyBySessionId = {}, contextUsageBySessionId = {} } = useLiveSessionStore() as {
+    busyBySessionId?: Record<string, boolean>;
+    contextUsageBySessionId?: Record<string, { used_tokens?: number; total_tokens?: number; percent_used?: number } | null>;
+  };
   const { draft, sending } = useComposerStore();
   const { sessionId: sessionUiSessionId, diagnostics } = useSessionUiStore();
   const sessionsStoreApi = useSessionsStoreApi();
@@ -229,6 +259,13 @@ export function Composer() {
 
     return getDisplayableTodoSnapshot(snapshot);
   }, [activeSession?.agent_backend, activeSessionId, diagnostics, sessionUiSessionId]);
+
+  const composerContextUsageLabel = useMemo(() => {
+    if (!activeSessionId || !activeSessionIsPi) {
+      return null;
+    }
+    return getContextUsageLabel(contextUsageBySessionId[activeSessionId] ?? null);
+  }, [activeSessionId, activeSessionIsPi, contextUsageBySessionId]);
 
   const visibleTodoExpanded = activeSessionId ? Boolean(todoExpandedBySessionId[activeSessionId]) : false;
   const visibleCommands = useMemo(() => {
@@ -697,54 +734,57 @@ export function Composer() {
                 </div>
               ) : null}
             </div>
-            <div className="composerControlsRow">
-              <input ref={fileInputRef} type="file" hidden tabIndex={-1} onChange={handleAttachChange} />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="composerAttachButton"
-                aria-label="Attach file"
-                title={attachButtonTitle}
-                disabled={!attachmentsSupported || attachmentUploading || sending}
-                onClick={handleAttachClick}
-              >
-                <span className="buttonGlyph">📎</span>
-                {activeAttachmentCount > 0 ? <span className="composerAttachBadge">{activeAttachmentCount}</span> : null}
-                <span className="visuallyHidden">Attach file</span>
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="composerQueueButton"
-                aria-label="Queued messages"
-                disabled={sending || activeSessionPending || !draft.trim()}
-                onClick={queueCurrentDraft}
-              >
-                Queue
-              </Button>
-              {activeSessionBusy ? (
+            <div className="composerControlsColumn">
+              {composerContextUsageLabel ? <div className="composerContextUsage">{composerContextUsageLabel}</div> : null}
+              <div className="composerControlsRow">
+                <input ref={fileInputRef} type="file" hidden tabIndex={-1} onChange={handleAttachChange} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="composerAttachButton"
+                  aria-label="Attach file"
+                  title={attachButtonTitle}
+                  disabled={!attachmentsSupported || attachmentUploading || sending}
+                  onClick={handleAttachClick}
+                >
+                  <span className="buttonGlyph">📎</span>
+                  {activeAttachmentCount > 0 ? <span className="composerAttachBadge">{activeAttachmentCount}</span> : null}
+                  <span className="visuallyHidden">Attach file</span>
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="composerInterruptButton"
-                  aria-label="Cancel current loop"
-                  onClick={interruptCurrentLoop}
+                  className="composerQueueButton"
+                  aria-label="Queued messages"
+                  disabled={sending || activeSessionPending || !draft.trim()}
+                  onClick={queueCurrentDraft}
                 >
-                  Cancel loop
+                  Queue
                 </Button>
-              ) : null}
-              <Button
-                type="submit"
-                className="sendButton"
-                aria-label={sending ? "Sending" : "Send"}
-                disabled={sending || activeSessionPending || !draft.trim()}
-              >
-                <span className="buttonGlyph">➤</span>
-                <span className="visuallyHidden">{sending ? "Sending..." : "Send"}</span>
-              </Button>
+                {activeSessionBusy ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="composerInterruptButton"
+                    aria-label="Cancel current loop"
+                    onClick={interruptCurrentLoop}
+                  >
+                    Cancel loop
+                  </Button>
+                ) : null}
+                <Button
+                  type="submit"
+                  className="sendButton"
+                  aria-label={sending ? "Sending" : "Send"}
+                  disabled={sending || activeSessionPending || !draft.trim()}
+                >
+                  <span className="buttonGlyph">➤</span>
+                  <span className="visuallyHidden">{sending ? "Sending..." : "Send"}</span>
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>

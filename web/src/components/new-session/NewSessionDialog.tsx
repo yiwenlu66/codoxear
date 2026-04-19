@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useSessionsStore, useSessionsStoreApi } from "../../app/providers";
 import { api } from "../../lib/api";
 import { providerChoiceToSettings } from "../../lib/launch";
+import { getSessionDisplayName } from "../../lib/session-display";
 import type { LaunchBackendDefaults, SessionResumeCandidate, SessionResumeCandidatesResponse } from "../../lib/types";
 
 interface NewSessionDialogProps {
@@ -27,6 +28,7 @@ interface SessionCwdInfo {
 }
 
 type LaunchSettingField = "backend" | "model" | "providerChoice" | "reasoningEffort" | "createInTmux" | "fastMode";
+type NewSessionSurfaceTab = "launch" | "focus";
 
 function baseName(value: string) {
   const trimmed = value.trim().replace(/[\\/]+$/, "");
@@ -137,6 +139,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
   const [cwd, setCwd] = useState("");
   const [backend, setBackend] = useState("pi");
   const [sessionName, setSessionName] = useState("");
+  const [surfaceTab, setSurfaceTab] = useState<NewSessionSurfaceTab>("launch");
   const [model, setModel] = useState("");
   const [providerChoice, setProviderChoice] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("");
@@ -186,6 +189,10 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     () => items.find((session) => session.session_id === activeSessionId) ?? null,
     [activeSessionId, items],
   );
+  const focusedSessions = useMemo(
+    () => items.filter((session) => session.focused === true && session.historical !== true),
+    [items],
+  );
   const sessionNamePlaceholder = baseName(cwd) || "session-name";
   const dialogTitleId = "new-session-dialog-title";
 
@@ -215,6 +222,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     setCwd(initialCwdForDialog(activeSession?.cwd, recentCwds));
     setBackend(initialBackend);
     setSessionName("");
+    setSurfaceTab("launch");
     setModel(initialDefaults.model?.trim() || "");
     setProviderChoice(initialDefaults.provider_choice?.trim() || initialProviders[0] || "");
     setReasoningEffort(initialDefaults.reasoning_effort?.trim() || initialReasoning[0] || "high");
@@ -432,6 +440,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
                   {supportsFast ? <Badge variant="outline">Fast available</Badge> : null}
                   {supportsTmux ? <Badge variant="outline">tmux ready</Badge> : null}
                   {supportsWorktree ? <Badge variant="outline">worktree support</Badge> : null}
+                  {focusedSessions.length ? <Badge variant="outline">{focusedSessions.length} Focus</Badge> : null}
                 </div>
               </div>
               <div className="agentBackendTabs grid min-w-[14rem] grid-cols-2 gap-2 rounded-2xl bg-muted/60 p-1">
@@ -448,6 +457,24 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
                   </Button>
                 ))}
               </div>
+            </div>
+            <div className="newSessionSurfaceTabs grid w-full max-w-sm grid-cols-2 gap-2 rounded-2xl bg-muted/60 p-1">
+              <Button
+                type="button"
+                variant={surfaceTab === "launch" ? "default" : "ghost"}
+                className="h-10 rounded-[1rem]"
+                onClick={() => setSurfaceTab("launch")}
+              >
+                Launch
+              </Button>
+              <Button
+                type="button"
+                variant={surfaceTab === "focus" ? "default" : "ghost"}
+                className="h-10 rounded-[1rem]"
+                onClick={() => setSurfaceTab("focus")}
+              >
+                Focus
+              </Button>
             </div>
           </DialogHeader>
 
@@ -523,6 +550,38 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
             }}
           >
             <div className="newSessionFormBody space-y-5 overflow-y-auto px-6 py-5">
+              {surfaceTab === "focus" ? (
+                <section className="dialogSection space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Focus</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Jump straight to the sessions you manually shortlisted.</p>
+                  </div>
+                  {focusedSessions.length ? (
+                    <div className="focusSessionList">
+                      {focusedSessions.map((session) => (
+                        <button
+                          key={session.session_id}
+                          type="button"
+                          className="focusSessionItem"
+                          onClick={() => {
+                            sessionsStoreApi.select(session.session_id);
+                            onClose();
+                          }}
+                        >
+                          <span className="focusSessionTitle">{getSessionDisplayName(session)}</span>
+                          <span className="focusSessionMeta">
+                            {session.agent_backend || "codex"}
+                            {session.cwd?.trim() ? ` · ${session.cwd.trim()}` : ""}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="focusSessionEmpty">No live sessions are in Focus yet. Use the star button in the left rail first.</div>
+                  )}
+                </section>
+              ) : (
+                <>
               <section className="dialogSection space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -747,6 +806,8 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
                 </>
               ) : null}
 
+                </>
+              )}
               {error ? <p className="errorText text-sm font-medium">{error}</p> : null}
             </div>
 
@@ -756,9 +817,11 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
               <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting || !cwd.trim()}>
-                {submitting ? "Launching..." : "Start session"}
-              </Button>
+              {surfaceTab === "launch" ? (
+                <Button type="submit" disabled={submitting || !cwd.trim()}>
+                  {submitting ? "Launching..." : "Start session"}
+                </Button>
+              ) : null}
             </div>
           </form>
         </DialogContent>

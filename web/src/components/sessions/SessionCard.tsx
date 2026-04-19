@@ -10,12 +10,13 @@ interface SessionCardProps {
   session: SessionSummary;
   active: boolean;
   onSelect: () => void;
+  onToggleFocus?: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
 }
 
-function ActionIcon({ kind }: { kind: "edit" | "duplicate" | "delete" }) {
+function ActionIcon({ kind }: { kind: "edit" | "duplicate" | "delete" | "focus" }) {
   if (kind === "edit") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
@@ -30,6 +31,14 @@ function ActionIcon({ kind }: { kind: "edit" | "duplicate" | "delete" }) {
       <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
         <rect x="5" y="3" width="8" height="9" rx="1.5" />
         <path d="M3.5 6.5V12A1.5 1.5 0 0 0 5 13.5h5.5" />
+      </svg>
+    );
+  }
+
+  if (kind === "focus") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <path d="m8 1.7 1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4L2.2 5.9l4-.6Z" />
       </svg>
     );
   }
@@ -50,11 +59,11 @@ export function useDesktopSessionActions() {
   return Boolean(window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 881px)").matches);
 }
 
-export function SessionCard({ session, active, onSelect, onEdit, onDuplicate, onDelete }: SessionCardProps) {
+export function SessionCard({ session, active, onSelect, onToggleFocus, onEdit, onDuplicate, onDelete }: SessionCardProps) {
   const title = getSessionDisplayName(session);
   const isHistorical = session.historical === true;
   const desktopActions = useDesktopSessionActions();
-  const hasActions = Boolean(onEdit || onDuplicate || onDelete);
+  const hasActions = Boolean(onToggleFocus || onEdit || onDuplicate || onDelete);
   const showActions = hasActions && (active || desktopActions);
   const idBase = `session-${session.session_id.replace(/[^a-z0-9_-]/gi, "-")}`;
   const titleId = `${idBase}-title`;
@@ -63,6 +72,7 @@ export function SessionCard({ session, active, onSelect, onEdit, onDuplicate, on
     session.agent_backend || "codex",
     isHistorical ? "historical" : session.busy ? "busy" : "idle",
     !isHistorical && session.owned ? "web-owned" : null,
+    !isHistorical && session.focused ? "focused" : null,
     !isHistorical && session.queue_len ? `${session.queue_len} queued` : null,
   ].filter(Boolean);
   const accessibilityLabel = accessibilityParts.join(", ");
@@ -99,12 +109,28 @@ export function SessionCard({ session, active, onSelect, onEdit, onDuplicate, on
                   <Badge variant="secondary" className="backendBadge">{session.agent_backend || "codex"}</Badge>
                   {isHistorical ? <Badge variant="outline" className="ownerBadge">history</Badge> : null}
                   {!isHistorical && session.owned ? <Badge variant="outline" className="ownerBadge">web</Badge> : null}
+                  {!isHistorical && session.focused ? <Badge variant="outline" className="ownerBadge">Focus</Badge> : null}
                   {!isHistorical && session.queue_len ? <Badge className="queueBadge">{session.queue_len}</Badge> : null}
                 </div>
               </div>
               <div className="sessionCardFooterAside">
                 {showActions ? (
                   <div className="sessionActionRowInline flex items-center justify-end gap-1">
+                    {onToggleFocus ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn("sessionActionIconButton h-8 w-8 rounded-md text-muted-foreground hover:text-foreground", session.focused && "text-foreground")}
+                        aria-label={session.focused ? "Remove from Focus" : "Add to Focus"}
+                        onClick={(event) => {
+                          stopActionClick(event);
+                          onToggleFocus();
+                        }}
+                      >
+                        <ActionIcon kind="focus" />
+                      </Button>
+                    ) : null}
                     {onEdit ? (
                       <Button
                         type="button"
