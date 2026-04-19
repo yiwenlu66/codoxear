@@ -814,6 +814,55 @@ class TestPiBackendRouting(unittest.TestCase):
             sids = sorted(row["session_id"] for row in rows)
             self.assertEqual(sids, ["pi-thread-good", "pi-thread-pty"])
 
+    def test_list_sessions_uses_attention_timestamps_not_pi_file_mtime(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            older_path = Path(td) / "older.jsonl"
+            newer_path = Path(td) / "newer.jsonl"
+            older_path.write_text('{"type":"session","id":"older"}\n', encoding="utf-8")
+            newer_path.write_text('{"type":"session","id":"newer"}\n', encoding="utf-8")
+            os.utime(older_path, (10_000.0, 10_000.0))
+            os.utime(newer_path, (9_000.0, 9_000.0))
+            mgr._sessions = {
+                "older-runtime": Session(
+                    session_id="older-runtime",
+                    thread_id="older-session",
+                    agent_backend="pi",
+                    backend="pi",
+                    broker_pid=os.getpid(),
+                    codex_pid=os.getpid(),
+                    owned=True,
+                    start_ts=100.0,
+                    cwd="/tmp/older",
+                    log_path=None,
+                    sock_path=Path(td) / "older.sock",
+                    session_path=older_path,
+                    last_chat_ts=100.0,
+                    last_chat_history_scanned=True,
+                ),
+                "newer-runtime": Session(
+                    session_id="newer-runtime",
+                    thread_id="newer-session",
+                    agent_backend="pi",
+                    backend="pi",
+                    broker_pid=os.getpid(),
+                    codex_pid=os.getpid(),
+                    owned=True,
+                    start_ts=200.0,
+                    cwd="/tmp/newer",
+                    log_path=None,
+                    sock_path=Path(td) / "newer.sock",
+                    session_path=newer_path,
+                    last_chat_ts=200.0,
+                    last_chat_history_scanned=True,
+                ),
+            }
+
+            with patch("codoxear.server._current_git_branch", return_value=None):
+                rows = mgr.list_sessions()
+
+        self.assertEqual([row["session_id"] for row in rows[:2]], ["newer-session", "older-session"])
+
     def test_list_sessions_hides_unsupported_terminal_pi_sidecar(self) -> None:
         mgr = _make_manager()
         mgr._discover_existing_if_stale = (
@@ -1566,6 +1615,44 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertEqual(payload, {"ok": True, "accepted": True})
         mgr.send.assert_called_once_with("history:pi:resume-1", "resume me")
+
+    def test_update_pi_last_chat_ts_ignores_tool_only_events(self) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            session_path = Path(td) / "pi-session.jsonl"
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=os.getpid(),
+                codex_pid=os.getpid(),
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp/project",
+                log_path=None,
+                sock_path=Path(td) / "pi.sock",
+                session_path=session_path,
+                last_chat_ts=100.0,
+            )
+
+            SessionManager._update_pi_last_chat_ts(
+                mgr,
+                "pi-session",
+                [{"type": "tool", "ts": 999.0, "text": "bash"}],
+                session_path=session_path,
+            )
+
+            self.assertEqual(mgr._sessions["pi-session"].last_chat_ts, 100.0)
+
+            SessionManager._update_pi_last_chat_ts(
+                mgr,
+                "pi-session",
+                [{"type": "tool_result", "ts": 120.0, "text": "bash failed", "is_error": True}],
+                session_path=session_path,
+            )
+
+            self.assertEqual(mgr._sessions["pi-session"].last_chat_ts, 120.0)
 
     def test_get_state_preserves_cached_token_when_broker_returns_none(self) -> None:
         mgr = _make_manager()

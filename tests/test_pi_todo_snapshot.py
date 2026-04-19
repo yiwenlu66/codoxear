@@ -725,7 +725,7 @@ class TestPiTodoDiagnostics(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(payload["log_path"], None)
         self.assertEqual(payload["session_file_path"], str(session_path))
-        self.assertEqual(payload["updated_ts"], session_mtime)
+        self.assertEqual(payload["updated_ts"], 321.0)
 
     def test_diagnostics_includes_todo_snapshot_for_pi_session(self) -> None:
         handler = _HandlerHarness("/api/sessions/pi-session/diagnostics")

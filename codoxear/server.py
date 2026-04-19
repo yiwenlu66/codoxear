@@ -3660,6 +3660,7 @@ class Session:
     pi_idle_activity_ts: float | None = None
     pi_busy_activity_floor: float | None = None
     pi_session_path_discovered: bool = False
+    pi_attention_scan_activity_ts: float | None = None
     bridge_transport_state: str = "unknown"
     bridge_transport_error: str | None = None
     bridge_transport_checked_ts: float = 0.0
@@ -3694,17 +3695,61 @@ def _session_supports_live_pi_ui(session: Session) -> bool:
     return True
 
 
+def _is_attention_worthy_session_event(event: dict[str, Any]) -> bool:
+    if not isinstance(event, dict) or event.get("display") is False:
+        return False
+    event_type = str(event.get("type") or "").strip()
+    return bool(
+        event.get("role") in {"user", "assistant"}
+        or bool(event.get("is_error"))
+        or event_type == "ask_user"
+    )
+
+
+
+def _attention_updated_ts_from_events(events: list[dict[str, Any]]) -> float | None:
+    latest_ts: float | None = None
+    for event in events:
+        if not _is_attention_worthy_session_event(event):
+            continue
+        ts = event.get("ts")
+        if not isinstance(ts, (int, float)) or not math.isfinite(float(ts)):
+            continue
+        latest_ts = float(ts) if latest_ts is None else max(latest_ts, float(ts))
+    return latest_ts
+
+
+
+def _last_attention_ts_from_pi_tail(
+    session_path: Path | None, *, max_scan_bytes: int = 8 * 1024 * 1024
+) -> float | None:
+    if session_path is None or not session_path.exists():
+        return None
+    try:
+        events, _token_update, _off, _scan_bytes, _complete, _diag = (
+            _pi_messages.read_pi_message_tail_snapshot(
+                session_path,
+                min_events=80,
+                initial_scan_bytes=256 * 1024,
+                max_scan_bytes=max_scan_bytes,
+            )
+        )
+    except Exception:
+        return None
+    if any(_is_attention_worthy_session_event(event) for event in events):
+        activity_ts = _session_file_activity_ts(session_path)
+        if activity_ts is not None:
+            return activity_ts
+    return _attention_updated_ts_from_events(events)
+
+
+
 def _display_updated_ts(s: Session) -> float:
-    updated_ts = (
+    return (
         float(s.last_chat_ts)
         if isinstance(s.last_chat_ts, (int, float))
         else float(s.start_ts)
     )
-    if s.backend == "pi":
-        activity_ts = _session_file_activity_ts(s.session_path)
-        if activity_ts is not None:
-            updated_ts = max(updated_ts, activity_ts)
-    return updated_ts
 
 
 def _session_row_dedupe_key(row: dict[str, Any]) -> str:
@@ -6807,14 +6852,28 @@ class SessionManager:
                     s.last_chat_history_scanned = True
                     if isinstance(conv_ts, (int, float)):
                         s.last_chat_ts = float(conv_ts)
-                if s.backend == "pi":
+                if s.backend == "pi" and s.session_path is not None and s.session_path.exists():
                     activity_ts = _session_file_activity_ts(s.session_path)
-                    if activity_ts is not None:
-                        s.last_chat_ts = (
-                            activity_ts
-                            if s.last_chat_ts is None
-                            else max(s.last_chat_ts, activity_ts)
+                    scanned_activity_ts = s.pi_attention_scan_activity_ts
+                    should_refresh_attention = bool(
+                        activity_ts is not None
+                        and (
+                            scanned_activity_ts is None
+                            or float(activity_ts) > float(scanned_activity_ts)
                         )
+                    )
+                    if should_refresh_attention or (
+                        s.last_chat_ts is None and (not s.last_chat_history_scanned)
+                    ):
+                        conv_ts = _last_attention_ts_from_pi_tail(s.session_path)
+                        s.last_chat_history_scanned = True
+                        s.pi_attention_scan_activity_ts = activity_ts
+                        if isinstance(conv_ts, (int, float)):
+                            s.last_chat_ts = (
+                                float(conv_ts)
+                                if s.last_chat_ts is None
+                                else max(float(s.last_chat_ts), float(conv_ts))
+                            )
                 updated_ts = _display_updated_ts(s)
                 canonical_cwd = _canonical_session_cwd(s.cwd)
                 cwd_recent = _clean_recent_cwd(canonical_cwd)
@@ -7300,6 +7359,7 @@ class SessionManager:
                 return
             if pi_session_switched:
                 s2.session_path = None
+                s2.pi_attention_scan_activity_ts = None
                 self._reset_log_caches(s2, meta_log_off=0)
             s2.thread_id = thread_id
             s2.agent_backend = agent_backend
@@ -7498,7 +7558,11 @@ class SessionManager:
     ) -> None:
         if not events:
             return
+        if not any(_is_attention_worthy_session_event(event) for event in events):
+            return
         latest_chat_ts = _session_file_activity_ts(session_path)
+        if latest_chat_ts is None:
+            latest_chat_ts = _attention_updated_ts_from_events(events)
         if latest_chat_ts is None:
             return
         with self._lock:
