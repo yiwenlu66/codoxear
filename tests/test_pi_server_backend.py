@@ -22,8 +22,10 @@ from codoxear.server import SessionManager
 from codoxear.server import _parse_create_session_request
 from codoxear.server import _provider_choice_for_backend
 from codoxear.server import _json_response
-from codoxear.server import _ui_requests_version
+from codoxear.server import _session_details_payload
 from codoxear.server import _session_live_payload
+from codoxear.server import _session_workspace_payload
+from codoxear.server import _ui_requests_version
 from tests.pi_fixtures import pi_persisted_session_file
 from tests.pi_fixtures import pi_runtime_session_file
 
@@ -134,6 +136,22 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(headers.get("Content-Encoding"), "gzip")
         body = gzip.decompress(handler.wfile.getvalue()).decode("utf-8")
         self.assertEqual(body, '{"ok":true}')
+
+    def test_delete_route_decodes_historical_session_id(self) -> None:
+        mgr = _make_manager()
+        mgr.delete_session = lambda session_id: session_id == "history:pi:resume-1"  # type: ignore[method-assign]
+        encoded = urllib.parse.quote("history:pi:resume-1", safe="")
+        handler = _HandlerHarness(f"/api/sessions/{encoded}/delete", body=b"{}")
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER", mgr),
+        ):
+            Handler.do_POST(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(payload, {"ok": True})
 
     def test_get_session_commands_caches_pi_command_results(self) -> None:
         mgr = _make_manager()
@@ -1571,6 +1589,71 @@ class TestPiBackendRouting(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
         self.assertEqual(payload["events"], [{"type": "assistant", "text": "hello"}])
+
+    def test_session_details_payload_falls_back_to_historical_row(self) -> None:
+        mgr = _make_manager()
+        mgr.list_sessions = lambda *args, **kwargs: []  # type: ignore[method-assign]
+
+        with patch(
+            "codoxear.server._historical_session_row",
+            return_value={"session_id": "history:pi:resume-1", "agent_backend": "pi", "backend": "pi", "cwd": "/tmp/hist", "historical": True},
+        ):
+            payload = _session_details_payload(mgr, "history:pi:resume-1")
+
+        self.assertEqual(payload["session"]["session_id"], "history:pi:resume-1")
+        self.assertTrue(payload["session"]["historical"])
+
+    def test_session_workspace_payload_allows_historical_pi_session_without_live_runtime(self) -> None:
+        mgr = _make_manager()
+        mgr.get_session = lambda _sid: None  # type: ignore[method-assign]
+
+        with patch(
+            "codoxear.server._historical_session_row",
+            return_value={"session_id": "history:pi:resume-1", "agent_backend": "pi", "backend": "pi", "cwd": "/tmp/hist", "historical": True},
+        ):
+            payload = _session_workspace_payload(mgr, "history:pi:resume-1")
+
+        self.assertEqual(payload["session_id"], "history:pi:resume-1")
+        self.assertIsNone(payload["runtime_id"])
+        self.assertEqual(payload["queue"], {"items": []})
+
+    def test_session_live_payload_allows_historical_pi_session_without_live_runtime(self) -> None:
+        mgr = _make_manager()
+        mgr.get_session = lambda _sid: None  # type: ignore[method-assign]
+        mgr.get_messages_page = lambda _sid, **_kwargs: {
+            "events": [{"role": "assistant", "text": "historical"}],
+            "offset": 4,
+            "has_older": True,
+            "next_before": 123,
+        }  # type: ignore[method-assign]
+
+        with patch(
+            "codoxear.server._historical_session_row",
+            return_value={"session_id": "history:pi:resume-1", "agent_backend": "pi", "backend": "pi", "cwd": "/tmp/hist", "historical": True},
+        ):
+            payload = _session_live_payload(mgr, "history:pi:resume-1", offset=4)
+
+        self.assertEqual(payload["session_id"], "history:pi:resume-1")
+        self.assertIsNone(payload["runtime_id"])
+        self.assertEqual(payload["events"], [{"role": "assistant", "text": "historical"}])
+        self.assertEqual(payload["requests"], [])
+        self.assertFalse(payload["busy"])
+
+    def test_session_live_payload_falls_back_to_listed_stale_session_row(self) -> None:
+        mgr = _make_manager()
+        mgr.get_session = lambda _sid: None  # type: ignore[method-assign]
+        mgr.list_sessions = lambda *args, **kwargs: [  # type: ignore[method-assign]
+            {"session_id": "history:pi:resume-1", "agent_backend": "pi", "backend": "pi", "historical": True}
+        ]
+        mgr.get_messages_page = lambda _sid, **_kwargs: (_ for _ in ()).throw(KeyError("unknown session"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server._historical_session_row", return_value=None):
+            payload = _session_live_payload(mgr, "history:pi:resume-1", offset=2)
+
+        self.assertEqual(payload["session_id"], "history:pi:resume-1")
+        self.assertEqual(payload["events"], [])
+        self.assertEqual(payload["offset"], 2)
+        self.assertFalse(payload["busy"])
 
     def test_live_route_returns_messages_busy_and_requests_for_pi_session(self) -> None:
         mgr = _make_manager()

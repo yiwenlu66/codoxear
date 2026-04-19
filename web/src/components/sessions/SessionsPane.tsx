@@ -118,8 +118,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
     }
     try {
       setActionError("");
-      const runtimeId = getSessionRuntimeId(session);
-      await (runtimeId ? api.deleteSession(session.session_id, runtimeId) : api.deleteSession(session.session_id));
+      await api.deleteSession(session.session_id);
       await sessionsStoreApi.refresh();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to delete session");
@@ -311,7 +310,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
                       }}
                       onToggleFocus={session.historical ? undefined : () => { void toggleSessionFocus(session); }}
                       onDuplicate={session.historical ? undefined : () => { void duplicateSession(session); }}
-                      onDelete={session.historical ? undefined : () => { void deleteSession(session); }}
+                      onDelete={() => { void deleteSession(session); }}
                       onEdit={session.historical ? undefined : () => {
                         setActionError("");
                         void api.getSessionDetails(session.session_id)

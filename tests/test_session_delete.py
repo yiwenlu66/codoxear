@@ -77,6 +77,22 @@ class TestSessionDelete(unittest.TestCase):
             )
         )
 
+    def test_delete_historical_session_without_live_runtime_hides_resume_identity(self) -> None:
+        manager = self._manager()
+        manager._save_hidden_sessions = lambda: None  # type: ignore[method-assign]
+        manager._page_state_ref_for_session_id = lambda session_id: ("pi", "resume-1") if session_id == "history:pi:resume-1" else None  # type: ignore[method-assign]
+        manager._delete_durable_session_record = lambda ref: None  # type: ignore[method-assign]
+        manager._clear_deleted_session_state = lambda session_id: None  # type: ignore[method-assign]
+
+        ok = manager.delete_session("history:pi:resume-1")
+
+        self.assertTrue(ok)
+        self.assertTrue(
+            manager._session_is_hidden(
+                "history:pi:resume-1", "resume-1", "resume-1", "pi"
+            )
+        )
+
     def test_list_sessions_omits_hidden_historical_entry(self) -> None:
         manager = self._manager()
         manager._include_historical_sessions = True

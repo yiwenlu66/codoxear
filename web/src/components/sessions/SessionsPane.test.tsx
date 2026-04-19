@@ -202,6 +202,29 @@ describe("SessionsPane", () => {
     expect(sessionsStore.refresh).toHaveBeenCalled();
   });
 
+  it("deletes a historical session after confirmation", async () => {
+    const confirm = vi.fn().mockReturnValue(true);
+    vi.stubGlobal("confirm", confirm);
+    const sessionsStore = renderSessionsPane({
+      items: [{ session_id: "history:pi:resume-1", alias: "Recovered", agent_backend: "pi", historical: true }],
+      activeSessionId: "history:pi:resume-1",
+      loading: false,
+      newSessionDefaults: null,
+      recentCwds: [],
+      cwdGroups: {},
+      tmuxAvailable: false,
+    });
+
+    const deleteButton = root?.querySelector<HTMLButtonElement>('button[aria-label="Delete session"]');
+    expect(deleteButton).not.toBeNull();
+    await click(deleteButton!);
+    await flush();
+
+    expect(api.deleteSession).toHaveBeenCalledWith("history:pi:resume-1");
+    expect(sessionsStore.refresh).toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalled();
+  });
+
   it("deletes a session after confirmation", async () => {
     const confirm = vi.fn().mockReturnValue(true);
     vi.stubGlobal("confirm", confirm);

@@ -117,7 +117,7 @@ def _match_session_route(path: str, *suffix: str) -> str | None:
         return None
     if parts[:3] != ["", "api", "sessions"]:
         return None
-    session_id = parts[3]
+    session_id = urllib.parse.unquote(parts[3])
     if not session_id:
         return None
     if tuple(parts[4:]) != tuple(suffix):
@@ -1896,12 +1896,22 @@ def _session_list_payload(
     return payload
 
 
+def _listed_session_row(manager: "SessionManager", session_id: str) -> dict[str, Any] | None:
+    for row in manager.list_sessions(group_limit=1000, limit=5000):
+        if str(row.get("session_id") or "") == session_id:
+            return dict(row)
+    return None
+
+
 def _session_details_payload(
     manager: "SessionManager", session_id: str
 ) -> dict[str, Any]:
-    for row in manager.list_sessions():
-        if str(row.get("session_id") or "") == session_id:
-            return {"ok": True, "session": _normalize_session_cwd_row(dict(row))}
+    row = _listed_session_row(manager, session_id)
+    if row is not None:
+        return {"ok": True, "session": _normalize_session_cwd_row(row)}
+    historical_row = _historical_session_row(session_id)
+    if historical_row is not None:
+        return {"ok": True, "session": _normalize_session_cwd_row(dict(historical_row))}
     raise KeyError("unknown session")
 
 
@@ -3869,7 +3879,18 @@ def _session_workspace_payload(
     manager.refresh_session_meta(session_id, strict=False)
     s = manager.get_session(session_id)
     if not s:
-        raise KeyError("unknown session")
+        historical_row = _historical_session_row(session_id)
+        if historical_row is None:
+            historical_row = _listed_session_row(manager, session_id)
+        if historical_row is None:
+            raise KeyError("unknown session")
+        return {
+            "ok": True,
+            "session_id": str(historical_row.get("session_id") or session_id),
+            "runtime_id": None,
+            "diagnostics": None,
+            "queue": {"items": []},
+        }
     diagnostics = _session_diagnostics_payload(
         manager, session_id, s, manager.get_state(session_id)
     )
@@ -3893,7 +3914,32 @@ def _session_live_payload(
     manager.refresh_session_meta(session_id, strict=False)
     s = manager.get_session(session_id)
     if not s:
-        raise KeyError("unknown session")
+        historical_row = _historical_session_row(session_id)
+        if historical_row is None:
+            historical_row = _listed_session_row(manager, session_id)
+        if historical_row is None:
+            raise KeyError("unknown session")
+        try:
+            page = manager.get_messages_page(
+                session_id, offset=max(0, int(offset)), init=(offset <= 0), limit=80, before=0
+            )
+        except KeyError:
+            page = {"events": [], "offset": max(0, int(offset)), "has_older": False, "next_before": 0}
+        return {
+            "ok": True,
+            "session_id": str(historical_row.get("session_id") or session_id),
+            "runtime_id": None,
+            "offset": int(page.get("offset", max(0, int(offset))) or 0),
+            "live_offset": 0,
+            "has_older": bool(page.get("has_older")),
+            "next_before": int(page.get("next_before", 0) or 0),
+            "busy": False,
+            "events": page.get("events") if isinstance(page.get("events"), list) else [],
+            "requests_version": "",
+            "requests": [],
+            "token": None,
+            "context_usage": None,
+        }
     page = manager.get_messages_page(
         session_id, offset=max(0, int(offset)), init=(offset <= 0), limit=80, before=0
     )
@@ -4598,12 +4644,18 @@ class SessionManager:
             hidden.add(session_id)
         self._save_hidden_sessions()
 
-    def _hide_session_identity(self, s: Session) -> None:
+    def _hide_session_identity_values(
+        self,
+        session_id: str | None,
+        thread_id: str | None,
+        resume_session_id: str | None,
+        backend: str | None,
+    ) -> None:
         hidden_keys = self._hidden_session_keys(
-            s.session_id,
-            s.thread_id,
-            s.resume_session_id,
-            s.agent_backend or s.backend,
+            session_id,
+            thread_id,
+            resume_session_id,
+            backend,
         )
         with self._lock:
             hidden = getattr(self, "_hidden_sessions", None)
@@ -4612,6 +4664,14 @@ class SessionManager:
                 hidden = self._hidden_sessions
             hidden.update(hidden_keys)
         self._save_hidden_sessions()
+
+    def _hide_session_identity(self, s: Session) -> None:
+        self._hide_session_identity_values(
+            s.session_id,
+            s.thread_id,
+            s.resume_session_id,
+            s.agent_backend or s.backend,
+        )
 
     def _unhide_session(self, session_id: str) -> None:
         changed = False
@@ -8075,6 +8135,13 @@ class SessionManager:
             ref = self._page_state_ref_for_session_id(session_id)
             if ref is None:
                 return False
+            backend, durable_id = ref
+            self._hide_session_identity_values(
+                session_id,
+                durable_id,
+                durable_id if backend == "pi" else None,
+                backend,
+            )
             self._delete_durable_session_record(ref)
             self._clear_deleted_session_state(session_id)
             return True
