@@ -42,6 +42,7 @@ interface RenderComposerOptions {
   draft?: string;
   submitResult?: unknown;
   composerStore?: any;
+  compactMobile?: boolean;
 }
 
 let root: HTMLDivElement | null = null;
@@ -112,6 +113,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
     draft = "Hello",
     submitResult,
     composerStore: providedComposerStore,
+    compactMobile = false,
   } = options;
   const submit = vi.fn().mockResolvedValue(submitResult);
   const liveSessionStore = createStore(
@@ -186,7 +188,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
         liveSessionStore={liveSessionStore as any}
         sessionUiStore={sessionUiStore as any}
       >
-        <Composer />
+        <Composer compactMobile={compactMobile} />
       </AppProviders>,
       root!,
     );
@@ -576,6 +578,24 @@ describe("Composer", () => {
     expect(controlsRow?.querySelector(".composerAttachButton")).not.toBeNull();
     expect(controlsRow?.querySelector(".composerQueueButton")).not.toBeNull();
     expect(controlsRow?.querySelector(".sendButton")).not.toBeNull();
+  });
+
+  it("renders compact mobile controls with horizontal metadata and no queue or attach buttons", () => {
+    renderComposer({
+      compactMobile: true,
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: true }],
+      liveContextUsageBySessionId: {
+        "sess-1": { used_tokens: 82000, total_tokens: 200000, percent_used: 41 },
+      },
+    });
+    const composerRoot = getRoot();
+
+    expect(composerRoot.querySelector(".composerControlsColumn.compactMobile")).not.toBeNull();
+    expect(composerRoot.querySelector(".composerMetaRow.compactMobile")).not.toBeNull();
+    expect(composerRoot.querySelector(".composerAttachButton")).toBeNull();
+    expect(composerRoot.querySelector(".composerQueueButton")).toBeNull();
+    expect(composerRoot.querySelector(".composerInterruptButton")).not.toBeNull();
+    expect(composerRoot.querySelector(".sendButton")).not.toBeNull();
   });
 
   it("starts with two rows on mobile and caps textarea growth after the mobile max height", async () => {
