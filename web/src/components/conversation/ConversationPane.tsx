@@ -1397,6 +1397,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   );
   const persistedMessages = activeSessionId ? bySessionId[activeSessionId] ?? [] : [];
   const pendingMessages = activeSessionId ? pendingBySessionId[activeSessionId] ?? [] : [];
+  const hasLocalConversationState = persistedMessages.length > 0 || pendingMessages.length > 0;
   const rawMessages = [...persistedMessages, ...pendingMessages];
   const messages = rawMessages.filter(shouldRenderInMainConversation);
   const rows = messages.reduce<Array<{
@@ -1454,6 +1455,7 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const [showPreviousUserJump, setShowPreviousUserJump] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [attemptedLoadOlder, setAttemptedLoadOlder] = useState(false);
+  const [sessionSwitchLoadingId, setSessionSwitchLoadingId] = useState<string | null>(activeSessionId);
   const hasOlder = activeSessionId ? hasOlderBySessionId[activeSessionId] === true : false;
   const olderCursor = activeSessionId ? olderBeforeBySessionId[activeSessionId] ?? 0 : 0;
   const olderLoading = activeSessionId ? loadingOlderBySessionId[activeSessionId] === true : false;
@@ -1462,8 +1464,18 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   const showHistoryControls = Boolean(activeSessionId && messages.length && (hasOlder || olderCursor > 0 || olderLoading));
   const showHistoryTopReached = Boolean(activeSessionId && messages.length && attemptedLoadOlder && !olderLoading && !hasOlder && olderCursor <= 0);
   const waitingForInitialHistoricalReplay = activeSessionIsHistoricalPi && messages.length === 0 && !activeSessionLoaded;
-  const showLoadingState = (activeSessionLoading || waitingForInitialHistoricalReplay) && messages.length === 0 && !activeSessionLoaded;
   const liveSessionError = activeSessionId ? String(errorBySessionId[activeSessionId] || "").trim() : "";
+  const showLoadingState = Boolean(
+    activeSessionId
+    && !liveSessionError
+    && messages.length === 0
+    && !activeSessionLoaded
+    && (
+      activeSessionLoading
+      || waitingForInitialHistoricalReplay
+      || sessionSwitchLoadingId === activeSessionId
+    )
+  );
   const markdownOptions: MarkdownRenderOptions = {
     sessionId: activeSessionId || undefined,
     cwd: activeSession?.cwd,
@@ -1473,7 +1485,16 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
   useEffect(() => {
     setAttemptedLoadOlder(false);
     autoFollowBottomRef.current = true;
-  }, [activeSessionId]);
+    if (!activeSessionId) {
+      setSessionSwitchLoadingId(null);
+      return;
+    }
+    if (!activeSessionLoaded && !hasLocalConversationState) {
+      setSessionSwitchLoadingId(activeSessionId);
+      return;
+    }
+    setSessionSwitchLoadingId((current) => (current === activeSessionId ? null : current));
+  }, [activeSessionId, activeSessionLoaded, hasLocalConversationState]);
 
   useEffect(() => {
     if (!activeSessionId) return;
@@ -1606,7 +1627,10 @@ export function ConversationPane({ onOpenFilePath }: ConversationPaneProps) {
 
   return (
     <section ref={sectionRef} className="conversationTimeline relative flex min-h-0 flex-1">
-      <ScrollArea className={cn("conversationPane conversationScrollArea min-h-0 flex-1 px-3 py-4", !activeSessionId && "emptyState")}>
+      <ScrollArea
+        key={activeSessionId || "no-session"}
+        className={cn("conversationPane conversationScrollArea min-h-0 flex-1 px-3 py-4", !activeSessionId && "emptyState")}
+      >
         {showLoadingState ? (
           renderLoadingCards()
         ) : (

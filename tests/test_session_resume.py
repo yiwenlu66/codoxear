@@ -946,8 +946,12 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             ],
         )
         self.assertEqual(env["CODEX_WEB_OWNER"], "web")
-        self.assertEqual(result, {"broker_pid": 7654, "backend": "pi"})
-        self.assertEqual(thread_calls, ["start"])
+        self.assertEqual(result["backend"], "pi")
+        self.assertTrue(result["pending_startup"])
+        self.assertIsNone(result["runtime_id"])
+        self.assertIsInstance(result["session_id"], str)
+        self.assertTrue(result["session_id"])
+        self.assertEqual(thread_calls, ["start", "start"])
 
     def test_spawn_web_session_resolves_pi_resume_from_agent_backend_alias(
         self,

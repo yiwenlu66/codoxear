@@ -53,6 +53,7 @@ export interface SessionSummary {
 
 export interface SessionsResponse {
   sessions: SessionSummary[];
+  remaining_count?: number;
   remaining_by_group?: Record<string, number>;
   omitted_group_count?: number;
 }
@@ -245,6 +246,10 @@ export interface MessageEvent {
   completed?: boolean;
   stream_id?: string;
   turn_id?: string;
+  event_id?: string;
+  request_id?: string;
+  request_state?: string;
+  pending_text?: string;
   [key: string]: unknown;
 }
 
@@ -290,11 +295,14 @@ export interface LiveSessionResponse {
   runtime_id?: string | null;
   offset?: number;
   live_offset?: number;
+  bridge_offset?: number;
   has_older?: boolean;
   next_before?: number;
   busy?: boolean;
   token?: Record<string, unknown> | null;
   context_usage?: ContextUsagePayload | null;
+  transport_state?: string;
+  transport_error?: string | null;
   requests_version?: string;
   events: MessageEvent[];
   requests?: SessionUiRequest[];

@@ -20,6 +20,8 @@ _MILLIS_THRESHOLD = (
 )
 
 _PI_READ_MAX_BYTES = 2 * 1024 * 1024
+_PI_CHAT_INIT_SEED_SCAN_BYTES = 256 * 1024
+_PI_CHAT_INIT_MAX_SCAN_BYTES = 64 * 1024 * 1024
 _PI_TODO_SCAN_START_BYTES = 64 * 1024
 _PI_TODO_SCAN_MAX_BYTES = 8 * 1024 * 1024
 _PI_DIAG_TOOL_NAMES_LIMIT = 32
@@ -1426,6 +1428,36 @@ def _read_latest_claude_todo_snapshot(
     if not tasks:
         return None
     return _normalize_pi_todo_snapshot(tasks)
+
+
+def read_pi_message_tail_snapshot(
+    session_path: Path,
+    *,
+    min_events: int,
+    initial_scan_bytes: int,
+    max_scan_bytes: int,
+    include_system: bool = False,
+) -> tuple[list[dict[str, Any]], int, int, bool, dict[str, Any]]:
+    if not session_path.exists():
+        return [], 0, max(_PI_CHAT_INIT_SEED_SCAN_BYTES, int(initial_scan_bytes)), False, {"tool_names": [], "last_tool": None}
+    size = int(session_path.stat().st_size)
+    scan_bytes = max(_PI_CHAT_INIT_SEED_SCAN_BYTES, int(initial_scan_bytes))
+    scan_bytes = min(scan_bytes, max(_PI_CHAT_INIT_SEED_SCAN_BYTES, int(max_scan_bytes)))
+    target_events = max(20, int(min_events))
+    latest_events: list[dict[str, Any]] = []
+    latest_diag: dict[str, Any] = {"tool_names": [], "last_tool": None}
+    while True:
+        entries = _read_jsonl_tail(session_path, min(scan_bytes, size if size > 0 else scan_bytes))
+        events, _meta, _flags, diag = normalize_pi_entries(
+            [obj for obj in entries if isinstance(obj, dict)],
+            include_system=include_system,
+        )
+        latest_events = events
+        latest_diag = diag
+        if len(events) >= target_events or scan_bytes >= size or scan_bytes >= max_scan_bytes:
+            break
+        scan_bytes = min(max_scan_bytes, max(scan_bytes * 2, scan_bytes + _PI_CHAT_INIT_SEED_SCAN_BYTES))
+    return latest_events, size, scan_bytes, scan_bytes >= size, latest_diag
 
 
 def read_pi_message_page(

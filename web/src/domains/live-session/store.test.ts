@@ -28,7 +28,7 @@ describe("createLiveSessionStore", () => {
 
     await liveStore.loadInitial("s1");
 
-    expect(api.getLiveSession).toHaveBeenCalledWith("s1", undefined, undefined, undefined, undefined);
+    expect(api.getLiveSession).toHaveBeenCalledWith("s1", undefined, undefined, undefined, undefined, undefined, undefined);
     expect(messagesStore.getState().bySessionId.s1).toEqual([{ id: "m1" }]);
     expect(messagesStore.getState().hasOlderBySessionId.s1).toBe(true);
     expect(messagesStore.getState().olderBeforeBySessionId.s1).toBe(40);
@@ -62,7 +62,7 @@ describe("createLiveSessionStore", () => {
     await liveStore.loadInitial("s1");
     await liveStore.poll("s1");
 
-    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 3, undefined, undefined, 0);
+    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 3, undefined, undefined, 0, undefined, 0);
     expect(messagesStore.getState().bySessionId.s1).toEqual([{ id: "m1" }, { id: "m2" }]);
     expect(messagesStore.getState().hasOlderBySessionId.s1).toBe(true);
     expect(messagesStore.getState().olderBeforeBySessionId.s1).toBe(20);
@@ -93,7 +93,7 @@ describe("createLiveSessionStore", () => {
     await liveStore.loadInitial("s1");
     await liveStore.poll("s1");
 
-    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 3, "v1", undefined, 0);
+    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 3, "v1", undefined, 0, undefined, 0);
     expect(liveStore.getState().requestsBySessionId.s1).toEqual([{ id: "r1" }]);
   });
 
@@ -142,7 +142,7 @@ describe("createLiveSessionStore", () => {
     expect(liveStore.getState().offsetsBySessionId.s1).toBe(2);
   });
 
-  it("tracks a separate live offset for broker-streamed pi messages", async () => {
+  it("tracks separate live and bridge offsets for broker-streamed session events", async () => {
     vi.mocked(api.getLiveSession)
       .mockResolvedValueOnce({
         events: [{ role: "assistant", text: "hel", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" }],
@@ -150,6 +150,7 @@ describe("createLiveSessionStore", () => {
         busy: true,
         offset: 100,
         live_offset: 7,
+        bridge_offset: 3,
       } as never)
       .mockResolvedValueOnce({
         events: [{ role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" }],
@@ -157,6 +158,7 @@ describe("createLiveSessionStore", () => {
         busy: true,
         offset: 101,
         live_offset: 8,
+        bridge_offset: 4,
       } as never);
     const messagesStore = createMessagesStore();
     const liveStore = createLiveSessionStore(messagesStore);
@@ -164,9 +166,37 @@ describe("createLiveSessionStore", () => {
     await liveStore.loadInitial("s1");
     await liveStore.poll("s1");
 
-    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 100, undefined, undefined, 7);
+    expect(api.getLiveSession).toHaveBeenNthCalledWith(2, "s1", 100, undefined, undefined, 7, undefined, 3);
     expect(messagesStore.getState().bySessionId.s1).toEqual([
       { role: "assistant", text: "hello", streaming: true, stream_id: "pi-stream:turn-001", turn_id: "turn-001" },
+    ]);
+    expect(liveStore.getState().bridgeOffsetsBySessionId.s1).toBe(4);
+  });
+
+  it("deduplicates bridge events by event_id across repeated live polls", async () => {
+    vi.mocked(api.getLiveSession)
+      .mockResolvedValueOnce({
+        events: [{ type: "pi_event", summary: "Bridge failed", event_id: "bridge:1", request_state: "failed" }],
+        requests: [],
+        busy: false,
+        offset: 1,
+        bridge_offset: 1,
+      } as never)
+      .mockResolvedValueOnce({
+        events: [{ type: "pi_event", summary: "Bridge failed", event_id: "bridge:1", request_state: "failed" }],
+        requests: [],
+        busy: false,
+        offset: 2,
+        bridge_offset: 1,
+      } as never);
+    const messagesStore = createMessagesStore();
+    const liveStore = createLiveSessionStore(messagesStore);
+
+    await liveStore.loadInitial("s1");
+    await liveStore.poll("s1");
+
+    expect(messagesStore.getState().bySessionId.s1).toEqual([
+      { type: "pi_event", summary: "Bridge failed", event_id: "bridge:1", request_state: "failed" },
     ]);
   });
 

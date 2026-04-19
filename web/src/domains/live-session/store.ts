@@ -6,6 +6,7 @@ import type { MessagesStore } from "../messages/store";
 export interface LiveSessionState {
   offsetsBySessionId: Record<string, number>;
   liveOffsetsBySessionId: Record<string, number>;
+  bridgeOffsetsBySessionId: Record<string, number>;
   requestsBySessionId: Record<string, SessionUiRequest[]>;
   requestVersionsBySessionId: Record<string, string>;
   busyBySessionId: Record<string, boolean>;
@@ -36,6 +37,7 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
   let state: LiveSessionState = {
     offsetsBySessionId: {},
     liveOffsetsBySessionId: {},
+    bridgeOffsetsBySessionId: {},
     requestsBySessionId: {},
     requestVersionsBySessionId: {},
     busyBySessionId: {},
@@ -72,10 +74,11 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
       try {
         const offset = replace ? undefined : state.offsetsBySessionId[sessionId];
         const liveOffset = replace ? undefined : state.liveOffsetsBySessionId[sessionId];
+        const bridgeOffset = replace ? undefined : state.bridgeOffsetsBySessionId[sessionId];
         const requestsVersion = replace ? undefined : state.requestVersionsBySessionId[sessionId];
         const payload = runtimeId
-          ? await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset, runtimeId)
-          : await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset);
+          ? await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset, runtimeId, bridgeOffset)
+          : await api.getLiveSession(sessionId, offset, requestsVersion, undefined, liveOffset, undefined, bridgeOffset);
         messagesStore.applyLive(sessionId, payload.events ?? [], {
           replace,
           offset: typeof payload.offset === "number" ? payload.offset : offset,
@@ -100,6 +103,10 @@ export function createLiveSessionStore(messagesStore: MessagesStore): LiveSessio
           liveOffsetsBySessionId: {
             ...state.liveOffsetsBySessionId,
             [sessionId]: typeof payload.live_offset === "number" ? payload.live_offset : state.liveOffsetsBySessionId[sessionId] ?? 0,
+          },
+          bridgeOffsetsBySessionId: {
+            ...state.bridgeOffsetsBySessionId,
+            [sessionId]: typeof payload.bridge_offset === "number" ? payload.bridge_offset : state.bridgeOffsetsBySessionId[sessionId] ?? 0,
           },
           requestsBySessionId: {
             ...state.requestsBySessionId,

@@ -29,6 +29,7 @@ vi.mock("./TodoComposerPanel", async (importOriginal) => {
 });
 
 import { Composer } from "./Composer";
+import { createComposerStore } from "../../domains/composer/store";
 
 interface RenderComposerOptions {
   activeSessionId?: string | null;
@@ -39,6 +40,7 @@ interface RenderComposerOptions {
   diagnostics?: Record<string, unknown> | null;
   draft?: string;
   submitResult?: unknown;
+  composerStore?: any;
 }
 
 let root: HTMLDivElement | null = null;
@@ -107,6 +109,7 @@ function renderComposer(options: RenderComposerOptions = {}) {
     diagnostics = null,
     draft = "Hello",
     submitResult,
+    composerStore: providedComposerStore,
   } = options;
   const submit = vi.fn().mockResolvedValue(submitResult);
   const liveSessionStore = createStore(
@@ -127,11 +130,20 @@ function renderComposer(options: RenderComposerOptions = {}) {
     { items, activeSessionId, loading: false, newSessionDefaults: null },
     (setState) => ({ refresh: vi.fn(), select: vi.fn(), setState }),
   );
-  const composerStore = createStore(
-    { draft, sending: false },
-    (setState) => ({
-      setDraft(value: string) {
-        setState({ draft: value });
+  const composerStore = providedComposerStore ?? createStore(
+    { draftBySessionId: activeSessionId ? { [activeSessionId]: draft } : {}, sending: false, pendingBySessionId: {} },
+    (setState, getState) => ({
+      setDraft(sessionId: string | null | undefined, value: string) {
+        if (!sessionId) {
+          return;
+        }
+        const nextDraftBySessionId = { ...(getState().draftBySessionId ?? {}) };
+        if (value.length) {
+          nextDraftBySessionId[sessionId] = value;
+        } else {
+          delete nextDraftBySessionId[sessionId];
+        }
+        setState({ draftBySessionId: nextDraftBySessionId });
       },
       submit,
     }),
@@ -210,6 +222,101 @@ describe("Composer", () => {
     });
 
     expect(getRoot().textContent).toContain("0/200K 0%");
+  });
+
+  it("keeps the textarea editable while a Pi session is still starting", () => {
+    renderComposer({
+      items: [{ session_id: "sess-1", agent_backend: "pi", busy: false, pending_startup: true }],
+      draft: "queued draft",
+    });
+
+    const composerRoot = getRoot();
+    const textarea = composerRoot.querySelector("textarea") as HTMLTextAreaElement;
+    const queueButton = Array.from(composerRoot.querySelectorAll("button")).find((button) => button.textContent?.includes("Queue")) as HTMLButtonElement;
+    const sendButton = composerRoot.querySelector("button[type='submit']") as HTMLButtonElement;
+
+    expect(textarea.disabled).toBe(false);
+    expect(queueButton.disabled).toBe(false);
+    expect(sendButton.disabled).toBe(true);
+  });
+
+  it("keeps separate drafts for different sessions", async () => {
+    const sessionsStore = createStore(
+      {
+        items: [
+          { session_id: "sess-1", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", agent_backend: "pi", busy: false },
+        ],
+        activeSessionId: "sess-1",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      (setState) => ({
+        refresh: vi.fn(),
+        select: vi.fn(),
+        setState,
+      }),
+    );
+    const composerStore = createComposerStore();
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    act(() => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any} composerStore={composerStore as any}>
+          <Composer />
+        </AppProviders>,
+        root!,
+      );
+    });
+
+    const textarea = getRoot().querySelector("textarea") as HTMLTextAreaElement;
+
+    act(() => {
+      textarea.value = "draft one";
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    act(() => {
+      sessionsStore.setState({
+        items: [
+          { session_id: "sess-1", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", agent_backend: "pi", busy: false },
+        ],
+        activeSessionId: "sess-2",
+        loading: false,
+        newSessionDefaults: null,
+      });
+    });
+
+    expect((getRoot().querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+
+    act(() => {
+      const currentTextarea = getRoot().querySelector("textarea") as HTMLTextAreaElement;
+      currentTextarea.value = "draft two";
+      currentTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    act(() => {
+      sessionsStore.setState({
+        items: [
+          { session_id: "sess-1", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", agent_backend: "pi", busy: false },
+        ],
+        activeSessionId: "sess-1",
+        loading: false,
+        newSessionDefaults: null,
+      });
+    });
+
+    expect((getRoot().querySelector("textarea") as HTMLTextAreaElement).value).toBe("draft one");
+  });
+
+  it("restores session drafts from localStorage on reload", () => {
+    window.localStorage.setItem("codoxear.composerDrafts.v1", JSON.stringify({ "sess-1": "persisted draft" }));
+    const composerStore = createComposerStore();
+    renderComposer({ composerStore: composerStore as any });
+
+    expect((getRoot().querySelector("textarea") as HTMLTextAreaElement).value).toBe("persisted draft");
   });
 
   it("submits on plain Enter when enter-to-send is enabled", async () => {
@@ -375,12 +482,12 @@ describe("Composer", () => {
     expect(getSessionCommands).toHaveBeenCalledTimes(1);
 
     act(() => {
-      composerStore.setDraft("hello");
+      composerStore.setDraft("sess-1", "hello");
     });
     await flushEffects();
 
     act(() => {
-      composerStore.setDraft("/re");
+      composerStore.setDraft("sess-1", "/re");
     });
     await flushEffects();
 
@@ -493,7 +600,7 @@ describe("Composer", () => {
 
     expect(enqueueMessage).toHaveBeenCalledWith("sess-1", "After this turn, also inspect logs");
     expect(sessionUiStore.refresh).toHaveBeenCalledWith("sess-1", { agentBackend: "pi" });
-    expect(composerStore.getState().draft).toBe("");
+    expect(composerStore.getState().draftBySessionId?.["sess-1"] ?? "").toBe("");
   });
 
   it("shows a cancel-loop button for a busy session and interrupts the active loop", async () => {

@@ -1699,6 +1699,88 @@ describe("ConversationPane", () => {
     expect(root.querySelector("[data-kind='loading']")).toBeNull();
   });
 
+  it("shows a loading skeleton immediately when switching to an unloaded session", async () => {
+    const initialSessionsStore = createStaticStore(
+      {
+        items: [
+          { session_id: "sess-1", agent_backend: "pi" },
+          { session_id: "sess-2", agent_backend: "pi" },
+        ],
+        activeSessionId: "sess-1",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const initialMessagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-1": [{ role: "assistant", text: "Loaded message" }],
+        },
+        offsetsBySessionId: { "sess-1": 1 },
+        hasOlderBySessionId: {},
+        olderBeforeBySessionId: {},
+        loadingOlderBySessionId: {},
+        loadingBySessionId: {},
+        loadedBySessionId: { "sess-1": true },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={initialSessionsStore as any} messagesStore={initialMessagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.textContent).toContain("Loaded message");
+
+    const switchedSessionsStore = createStaticStore(
+      {
+        items: [
+          { session_id: "sess-1", agent_backend: "pi" },
+          { session_id: "sess-2", agent_backend: "pi" },
+        ],
+        activeSessionId: "sess-2",
+        loading: false,
+        newSessionDefaults: null,
+      },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const switchedMessagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-1": [{ role: "assistant", text: "Loaded message" }],
+        },
+        offsetsBySessionId: { "sess-1": 1 },
+        hasOlderBySessionId: {},
+        olderBeforeBySessionId: {},
+        loadingOlderBySessionId: {},
+        loadingBySessionId: {},
+        loadedBySessionId: { "sess-1": true },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve(), loadOlder: () => Promise.resolve() },
+    );
+
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={switchedSessionsStore as any} messagesStore={switchedMessagesStore as any}>
+          <ConversationPane />
+        </AppProviders>,
+        root!,
+      );
+      await Promise.resolve();
+    });
+
+    expect(root.textContent).not.toContain("Loaded message");
+    expect(root.querySelector("[data-kind='loading']")).not.toBeNull();
+  });
+
   it("loads historical pi messages when the synthetic history session becomes active", async () => {
     const sessionsStore = createStaticStore(
       {

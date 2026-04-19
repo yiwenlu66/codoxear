@@ -295,12 +295,13 @@ describe("api", () => {
     );
   });
 
-  it("requests live session data with a separate live offset cursor", async () => {
+  it("requests live session data with separate live and bridge cursors", async () => {
     const payload: LiveSessionResponse = {
       ok: true,
       session_id: "session-1",
       offset: 6,
       live_offset: 3,
+      bridge_offset: 9,
       busy: true,
       events: [{ id: "m2" }],
       requests_version: "v1",
@@ -313,9 +314,9 @@ describe("api", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(api.getLiveSession("session-1", 4, "v1", undefined, 2)).resolves.toEqual(payload);
+    await expect(api.getLiveSession("session-1", 4, "v1", undefined, 2, undefined, 7)).resolves.toEqual(payload);
     expect(fetchMock).toHaveBeenCalledWith(
-      "api/sessions/session-1/live?offset=4&requests_version=v1&live_offset=2",
+      "api/sessions/session-1/live?offset=4&requests_version=v1&live_offset=2&bridge_offset=7",
       {
         headers: { Accept: "application/json" },
         signal: undefined,

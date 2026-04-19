@@ -49,11 +49,7 @@ function createSessionsStore(initialState: any, options?: { onRefresh?: () => vo
       await options?.onRefresh?.();
       emit();
     }),
-    loadMoreGroup: vi.fn(async () => {
-      await options?.onRefresh?.();
-      emit();
-    }),
-    loadMoreGroups: vi.fn(async () => {
+    loadMore: vi.fn(async () => {
       await options?.onRefresh?.();
       emit();
     }),
@@ -185,6 +181,37 @@ describe("SessionsPane", () => {
     await flush();
 
     expect(api.setSessionFocus).toHaveBeenCalledWith("sess-1", true, null);
+    expect(sessionsStore.refresh).toHaveBeenCalled();
+  });
+
+  it("keeps focused historical sessions in Focus and allows removing Focus", async () => {
+    const sessionsStore = renderSessionsPane({
+      items: [
+        { session_id: "history:pi:resume-1", alias: "Recovered planning", agent_backend: "pi", historical: true, focused: true },
+        { session_id: "sess-2", alias: "Release prep", agent_backend: "pi", focused: false },
+      ],
+      activeSessionId: "history:pi:resume-1",
+      loading: false,
+      newSessionDefaults: null,
+      recentCwds: [],
+      cwdGroups: {},
+      tmuxAvailable: false,
+    });
+
+    const focusTab = Array.from(root?.querySelectorAll<HTMLButtonElement>("button") || []).find((button) => button.textContent?.includes("Focus"));
+    expect(focusTab).toBeDefined();
+    await click(focusTab!);
+    await flush();
+
+    expect(root?.textContent).toContain("Recovered planning");
+    expect(root?.textContent).not.toContain("Release prep");
+
+    const unfocusButton = root?.querySelector<HTMLButtonElement>('button[aria-label="Remove from Focus"]');
+    expect(unfocusButton).not.toBeNull();
+    await click(unfocusButton!);
+    await flush();
+
+    expect(api.setSessionFocus).toHaveBeenCalledWith("history:pi:resume-1", false, null);
     expect(sessionsStore.refresh).toHaveBeenCalled();
   });
 
@@ -402,19 +429,16 @@ describe("SessionsPane", () => {
       recentCwds: [],
       cwdGroups: {},
       tmuxAvailable: false,
-      remainingByGroup: { "/work/docs": 1, "/work/api": 2 },
-      omittedGroupCount: 2,
+      remainingCount: 3,
     });
 
-    const loadMore = Array.from(root?.querySelectorAll<HTMLButtonElement>("button") || []).find((button) => (button.textContent || "").includes("Load more sessions"));
+    const loadMore = Array.from(root?.querySelectorAll<HTMLButtonElement>("button") || []).find((button) => (button.textContent || "").includes("Load 3 more sessions"));
     expect(loadMore).toBeDefined();
 
     await click(loadMore!);
     await flush();
 
-    expect(sessionsStore.loadMoreGroup).toHaveBeenCalledWith("/work/docs");
-    expect(sessionsStore.loadMoreGroup).toHaveBeenCalledWith("/work/api");
-    expect(sessionsStore.loadMoreGroups).toHaveBeenCalledTimes(1);
+    expect(sessionsStore.loadMore).toHaveBeenCalledTimes(1);
   });
 
   it("does not render cwd group controls in the flat rail", () => {

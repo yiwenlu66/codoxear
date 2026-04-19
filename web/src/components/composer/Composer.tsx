@@ -215,7 +215,8 @@ export function Composer() {
     busyBySessionId?: Record<string, boolean>;
     contextUsageBySessionId?: Record<string, { used_tokens?: number; total_tokens?: number; percent_used?: number } | null>;
   };
-  const { draft, sending } = useComposerStore();
+  const composerState = useComposerStore();
+  const sending = composerState.sending;
   const { sessionId: sessionUiSessionId, diagnostics } = useSessionUiStore();
   const sessionsStoreApi = useSessionsStoreApi();
   const composerStoreApi = useComposerStoreApi();
@@ -235,6 +236,7 @@ export function Composer() {
   const postSendRefreshTimeoutsRef = useRef<number[]>([]);
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
   const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
+  const draft = activeSessionId ? composerState.draftBySessionId?.[activeSessionId] ?? "" : "";
   const activeSessionPending = activeSession?.pending_startup === true;
   const activeSessionBusy = Boolean(activeSession && (activeSession.busy || (activeSessionId ? busyBySessionId[activeSessionId] === true : false)));
   const activeSessionIsPi = activeSession?.agent_backend === "pi";
@@ -406,7 +408,7 @@ export function Composer() {
       return;
     }
 
-    composerStoreApi.setDraft(formatSlashCommandValue(command.name));
+    composerStoreApi.setDraft(activeSessionId, formatSlashCommandValue(command.name));
     setHighlightedCommandIndex(0);
   };
 
@@ -482,12 +484,12 @@ export function Composer() {
   };
 
   const queueCurrentDraft = () => {
-    if (!activeSessionId || !draft.trim() || sending || activeSessionPending) {
+    if (!activeSessionId || !draft.trim() || sending) {
       return;
     }
 
     const queuedText = draft;
-    composerStoreApi.setDraft("");
+    composerStoreApi.setDraft(activeSessionId, "");
     (activeSessionRuntimeId
       ? api.enqueueMessage(activeSessionId, queuedText, activeSessionRuntimeId)
       : api.enqueueMessage(activeSessionId, queuedText))
@@ -502,7 +504,7 @@ export function Composer() {
           : sessionUiStoreApi.refresh(target.sessionId, { agentBackend: activeSession?.agent_backend });
       })
       .catch(() => {
-        composerStoreApi.setDraft(queuedText);
+        composerStoreApi.setDraft(activeSessionId, queuedText);
       });
   };
 
@@ -666,7 +668,7 @@ export function Composer() {
                 className="composerTextarea"
                 onInput={(event) => {
                   syncComposerTextareaHeight(event.currentTarget, mobileComposerAutosize);
-                  composerStoreApi.setDraft(event.currentTarget.value);
+                  composerStoreApi.setDraft(activeSessionId, event.currentTarget.value);
                 }}
                 onKeyDown={(event) => {
                   if (commandMenuOpen) {
@@ -712,7 +714,7 @@ export function Composer() {
                   event.preventDefault();
                   submitCurrentDraft();
                 }}
-                disabled={sending || activeSessionPending}
+                disabled={sending}
               />
               {commandMenuOpen ? (
                 <div className="composerCommandMenu" data-testid="composer-command-menu">
@@ -758,7 +760,7 @@ export function Composer() {
                   size="sm"
                   className="composerQueueButton"
                   aria-label="Queued messages"
-                  disabled={sending || activeSessionPending || !draft.trim()}
+                  disabled={sending || !draft.trim()}
                   onClick={queueCurrentDraft}
                 >
                   Queue

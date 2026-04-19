@@ -34,7 +34,7 @@ function deleteSessionConfirmText(session: SessionSummary) {
 }
 
 export function SessionsPane({ onNewSession }: SessionsPaneProps) {
-  const { items, activeSessionId, remainingByGroup = {}, omittedGroupCount = 0 } = useSessionsStore();
+  const { items, activeSessionId, remainingCount = 0 } = useSessionsStore();
   const sessionsStoreApi = useSessionsStoreApi();
   const [editingSession, setEditingSession] = useState<SessionSummary | null>(null);
   const [actionError, setActionError] = useState("");
@@ -42,15 +42,11 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
   const [loadingMore, setLoadingMore] = useState(false);
 
   const focusedItems = useMemo(
-    () => items.filter((session) => session.focused === true && session.historical !== true),
+    () => items.filter((session) => session.focused === true),
     [items],
   );
   const visibleSessions = surfaceTab === "focus" ? focusedItems : items;
-  const remainingSessionCount = useMemo(
-    () => Object.values(remainingByGroup).reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0),
-    [remainingByGroup],
-  );
-  const canLoadMoreSessions = surfaceTab === "sessions" && (remainingSessionCount > 0 || omittedGroupCount > 0);
+  const canLoadMoreSessions = surfaceTab === "sessions" && remainingCount > 0;
 
   const switchSurfaceTab = (nextTab: SessionsSurfaceTab) => {
     setSurfaceTab(nextTab);
@@ -60,22 +56,14 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
   };
 
   const loadMoreSessions = async () => {
-    const pendingGroupKeys = Object.entries(remainingByGroup)
-      .filter(([, value]) => Number(value || 0) > 0)
-      .map(([groupKey]) => groupKey);
-    if (pendingGroupKeys.length === 0 && omittedGroupCount <= 0) {
+    if (remainingCount <= 0) {
       return;
     }
 
     setLoadingMore(true);
     setActionError("");
     try {
-      for (const groupKey of pendingGroupKeys) {
-        await sessionsStoreApi.loadMoreGroup(groupKey);
-      }
-      if (omittedGroupCount > 0) {
-        await sessionsStoreApi.loadMoreGroups();
-      }
+      await sessionsStoreApi.loadMore();
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Failed to load more sessions");
     } finally {
@@ -245,7 +233,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
                   }
                   sessionsStoreApi.select(session.session_id);
                 }}
-                onToggleFocus={session.historical ? undefined : () => { void toggleSessionFocus(session); }}
+                onToggleFocus={() => { void toggleSessionFocus(session); }}
                 onDuplicate={session.historical ? undefined : () => { void duplicateSession(session); }}
                 onDelete={() => { void deleteSession(session); }}
                 onEdit={session.historical ? undefined : () => {
@@ -265,17 +253,13 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
               <button
                 type="button"
                 className="sessionGroupMoreButton"
-                aria-label={`Load more sessions${omittedGroupCount > 0 ? ` and ${omittedGroupCount} more directories` : ""}`}
+                aria-label={`Load ${remainingCount} more sessions`}
                 disabled={loadingMore}
                 onClick={() => {
                   void loadMoreSessions();
                 }}
               >
-                {loadingMore
-                  ? "Loading..."
-                  : omittedGroupCount > 0
-                    ? `Load more sessions (${remainingSessionCount} pending, ${omittedGroupCount} more directories)`
-                    : `Load ${remainingSessionCount} more sessions`}
+                {loadingMore ? "Loading..." : `Load ${remainingCount} more sessions`}
               </button>
             ) : null}
           </div>

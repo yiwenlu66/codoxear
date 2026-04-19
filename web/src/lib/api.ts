@@ -86,7 +86,7 @@ export const api = {
     const routeId = getSessionRouteId(sessionId, runtimeId);
     return getJson<SessionUiStateResponse>(`/api/sessions/${routeId}/ui_state`, signal);
   },
-  getLiveSession(sessionId: string, offset?: number, requestsVersion?: string, signal?: AbortSignal, liveOffset?: number, runtimeId?: string | null) {
+  getLiveSession(sessionId: string, offset?: number, requestsVersion?: string, signal?: AbortSignal, liveOffset?: number, runtimeId?: string | null, bridgeOffset?: number) {
     const query = new URLSearchParams();
     if (typeof offset === "number" && Number.isFinite(offset) && offset > 0) {
       query.set("offset", String(offset));
@@ -96,6 +96,9 @@ export const api = {
     }
     if (typeof liveOffset === "number" && Number.isFinite(liveOffset) && liveOffset > 0) {
       query.set("live_offset", String(liveOffset));
+    }
+    if (typeof bridgeOffset === "number" && Number.isFinite(bridgeOffset) && bridgeOffset > 0) {
+      query.set("bridge_offset", String(bridgeOffset));
     }
     const suffix = query.size ? `?${query.toString()}` : "";
     const routeId = getSessionRouteId(sessionId, runtimeId);

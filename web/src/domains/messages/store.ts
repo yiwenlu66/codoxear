@@ -1,6 +1,8 @@
 import { api } from "../../lib/api";
 import type { MessageEvent } from "../../lib/types";
 
+const MACHINE_TRACE_TYPES = new Set(["reasoning", "tool", "tool_result", "todo_snapshot"]);
+
 export interface MessagesState {
   bySessionId: Record<string, MessageEvent[]>;
   offsetsBySessionId: Record<string, number>;
@@ -50,10 +52,34 @@ function streamedAssistantMatchesDurable(streamingEvent: MessageEvent, durableEv
   );
 }
 
+function eventCreatesConversationAnchor(event: MessageEvent | undefined): boolean {
+  if (!event || event.display === false) {
+    return false;
+  }
+  if (event.role === "user" || event.role === "assistant") {
+    return true;
+  }
+  const type = typeof event.type === "string" ? event.type : "";
+  if (!type) {
+    return false;
+  }
+  return !MACHINE_TRACE_TYPES.has(type);
+}
+
 function mergeLiveEvents(priorEvents: MessageEvent[], incomingEvents: MessageEvent[]): MessageEvent[] {
   const next = [...priorEvents];
 
   for (const incomingEvent of incomingEvents) {
+    const incomingEventId = typeof incomingEvent.event_id === "string" ? incomingEvent.event_id : "";
+    if (incomingEventId) {
+      const existingIndex = next.findIndex((event) => event.event_id === incomingEventId);
+      if (existingIndex >= 0) {
+        next[existingIndex] = { ...next[existingIndex], ...incomingEvent };
+      } else {
+        next.push(incomingEvent);
+      }
+      continue;
+    }
     if (isStreamingAssistantEvent(incomingEvent)) {
       const existingIndex = next.findIndex((event) => event.stream_id === incomingEvent.stream_id);
       if (existingIndex >= 0) {
@@ -207,28 +233,48 @@ export function createMessagesStore(): MessagesStore {
     emit();
 
     try {
-      const data = await api.listMessages(sessionId, true, undefined, undefined, before, limit);
-      if (loadId !== currentOlderLoadIds[sessionId]) {
-        return;
+      let nextBefore = before;
+      let hasOlder = state.hasOlderBySessionId[sessionId] === true;
+      let nextOffset = state.offsetsBySessionId[sessionId] ?? 0;
+      let aggregatedEvents: MessageEvent[] = [];
+      let foundAnchor = false;
+
+      while ((nextBefore > 0 || hasOlder) && !foundAnchor) {
+        const data = await api.listMessages(sessionId, true, undefined, undefined, nextBefore, limit);
+        if (loadId !== currentOlderLoadIds[sessionId]) {
+          return;
+        }
+
+        const pageEvents = Array.isArray(data.events) ? data.events : [];
+        aggregatedEvents = [...pageEvents, ...aggregatedEvents];
+        foundAnchor = pageEvents.some(eventCreatesConversationAnchor);
+        hasOlder = data.has_older === true;
+        nextBefore = typeof data.next_before === "number" ? data.next_before : 0;
+        if (typeof data.offset === "number") {
+          nextOffset = data.offset;
+        }
+        if (!pageEvents.length && !hasOlder) {
+          break;
+        }
       }
 
       state = {
         ...state,
         bySessionId: {
           ...state.bySessionId,
-          [sessionId]: [...data.events, ...(state.bySessionId[sessionId] ?? [])],
+          [sessionId]: [...aggregatedEvents, ...(state.bySessionId[sessionId] ?? [])],
         },
         offsetsBySessionId: {
           ...state.offsetsBySessionId,
-          [sessionId]: typeof data.offset === "number" ? data.offset : state.offsetsBySessionId[sessionId] ?? 0,
+          [sessionId]: nextOffset,
         },
         hasOlderBySessionId: {
           ...state.hasOlderBySessionId,
-          [sessionId]: data.has_older === true,
+          [sessionId]: hasOlder,
         },
         olderBeforeBySessionId: {
           ...state.olderBeforeBySessionId,
-          [sessionId]: typeof data.next_before === "number" ? data.next_before : 0,
+          [sessionId]: nextBefore,
         },
         loadingOlderBySessionId: {
           ...state.loadingOlderBySessionId,

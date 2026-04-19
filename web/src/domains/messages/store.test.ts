@@ -255,4 +255,44 @@ describe("createMessagesStore", () => {
     expect(store.getState().hasOlderBySessionId.s1).toBe(false);
     expect(store.getState().olderBeforeBySessionId.s1).toBe(0);
   });
+
+  it("keeps fetching older pages until one visible conversation message is found", async () => {
+    vi.mocked(api.listMessages)
+      .mockResolvedValueOnce({
+        events: [{ id: "m2", role: "assistant", text: "current" }],
+        offset: 3,
+        has_older: true,
+        next_before: 2,
+      } as never)
+      .mockResolvedValueOnce({
+        events: [
+          { id: "tool-1", type: "tool", name: "read" },
+          { id: "tool-2", type: "tool_result", text: "ok" },
+        ],
+        offset: 3,
+        has_older: true,
+        next_before: 4,
+      } as never)
+      .mockResolvedValueOnce({
+        events: [{ id: "m1", role: "user", text: "anchor" }],
+        offset: 3,
+        has_older: false,
+        next_before: 0,
+      } as never);
+    const store = createMessagesStore();
+
+    await store.loadInitial("s1");
+    await store.loadOlder("s1");
+
+    expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", true, undefined, undefined, 2, 80);
+    expect(api.listMessages).toHaveBeenNthCalledWith(3, "s1", true, undefined, undefined, 4, 80);
+    expect(store.getState().bySessionId.s1).toEqual([
+      { id: "m1", role: "user", text: "anchor" },
+      { id: "tool-1", type: "tool", name: "read" },
+      { id: "tool-2", type: "tool_result", text: "ok" },
+      { id: "m2", role: "assistant", text: "current" },
+    ]);
+    expect(store.getState().hasOlderBySessionId.s1).toBe(false);
+    expect(store.getState().olderBeforeBySessionId.s1).toBe(0);
+  });
 });

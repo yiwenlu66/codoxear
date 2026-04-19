@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from typing import cast
 from unittest.mock import ANY
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from codoxear import pi_messages
@@ -71,6 +72,10 @@ def _make_manager() -> SessionManager:
     mgr._hidden_sessions = set()
     mgr._files = {}
     mgr._queues = {}
+    mgr._bridge_events = {}
+    mgr._bridge_event_offsets = {}
+    mgr._outbound_requests = {}
+    mgr._queue_wakeup = threading.Event()
     mgr._pi_commands_cache = {}
     mgr._recent_cwds = {}
     mgr._last_discover_ts = 0.0
@@ -1322,7 +1327,7 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 502)
         self.assertEqual(body, {"error": "abort failed"})
 
-    def test_send_endpoint_returns_broker_send_error(self) -> None:
+    def test_send_endpoint_accepts_immediately_and_worker_surfaces_broker_error(self) -> None:
         body = json.dumps({"text": "hello pi"}).encode("utf-8")
         handler = _HandlerHarness("/api/sessions/pi-session/send", body=body)
         mgr = _make_manager()
@@ -1343,7 +1348,7 @@ class TestPiBackendRouting(unittest.TestCase):
                 sock_path=sock,
             )
             mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
-                {"error": "prompt rejected"} if req["cmd"] == "send" else {}
+                {"error": "prompt rejected"} if req["cmd"] == "send" else {"busy": False, "queue_len": 0, "token": None}
             )  # type: ignore[method-assign]
 
             with (
@@ -1353,10 +1358,15 @@ class TestPiBackendRouting(unittest.TestCase):
                 Handler.do_POST(handler)  # type: ignore[arg-type]
 
         body = json.loads(handler.wfile.getvalue().decode("utf-8"))
-        self.assertEqual(handler.status, 502)
-        self.assertEqual(body, {"error": "prompt rejected"})
+        self.assertEqual(handler.status, 200)
+        self.assertTrue(body["accepted"])
+        self.assertEqual(body["delivery_state"], "queued")
+        mgr._maybe_drain_outbound_request("pi-session")
+        bridge_events = mgr._bridge_events.get("pi-thread-001", [])
+        self.assertTrue(bridge_events)
+        self.assertEqual(bridge_events[-1]["event"]["request_state"], "failed")
 
-    def test_send_touches_pi_session_file_even_before_agent_writes(self) -> None:
+    def test_send_accepts_immediately_and_worker_touches_pi_session_file(self) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
@@ -1380,17 +1390,23 @@ class TestPiBackendRouting(unittest.TestCase):
             mgr._sock_call = lambda _sock, req, timeout_s=0.0: (
                 {"busy": True, "queue_len": 0, "token": None}
                 if req["cmd"] == "send"
-                else {"busy": True, "queue_len": 0, "token": None}
+                else {"busy": False, "queue_len": 0, "token": None}
             )  # type: ignore[method-assign]
 
             res = mgr.send("pi-session", "hello pi")
 
-            self.assertEqual(res["queue_len"], 0)
+            self.assertTrue(bool(res.get("accepted")))
+            self.assertEqual(res.get("delivery_state"), "queued")
+            self.assertEqual(len(mgr._outbound_requests["pi-session"]), 1)
+
+            drained = mgr._maybe_drain_outbound_request("pi-session")
+
+            self.assertTrue(drained)
             self.assertTrue(session_path.exists())
             s = mgr._sessions["pi-session"]
             self.assertTrue(isinstance(s.pi_busy_activity_floor, float))
 
-    def test_send_fallback_enqueue_touches_pi_session_file(self) -> None:
+    def test_send_failure_surfaces_bridge_event_without_silence(self) -> None:
         mgr = _make_manager()
         with tempfile.TemporaryDirectory() as td:
             session_path = Path(td) / "pi-session.jsonl"
@@ -1423,11 +1439,65 @@ class TestPiBackendRouting(unittest.TestCase):
 
             res = mgr.send("pi-session", "hello queued")
 
-            self.assertTrue(bool(res.get("queued")))
-            self.assertEqual(res.get("queue_len"), 1)
-            self.assertTrue(session_path.exists())
-            s = mgr._sessions["pi-session"]
-            self.assertTrue(isinstance(s.pi_busy_activity_floor, float))
+            self.assertTrue(bool(res.get("accepted")))
+            self.assertEqual(res.get("delivery_state"), "queued")
+            self.assertEqual(len(mgr._outbound_requests["pi-session"]), 1)
+
+            mgr._maybe_drain_outbound_request("pi-session")
+            mgr._maybe_drain_outbound_request("pi-session")
+            mgr._maybe_drain_outbound_request("pi-session")
+
+            bridge_events = mgr._bridge_events.get("pi-thread-001", [])
+            self.assertEqual(len(mgr._outbound_requests.get("pi-session", [])), 0)
+            self.assertTrue(bridge_events)
+            self.assertEqual(bridge_events[-1]["event"]["request_state"], "failed")
+            self.assertIn("Original prompt", bridge_events[-1]["event"]["text"])
+
+    def test_send_resumes_sqlite_recovered_historical_pi_session(self) -> None:
+        mgr = _make_manager()
+        mgr.spawn_web_session = Mock(return_value={
+            "session_id": "live-session",
+            "runtime_id": "live-runtime",
+            "backend": "pi",
+        })
+        mgr.list_sessions = Mock(return_value=[
+            {
+                "session_id": "history:pi:resume-1",
+                "resume_session_id": "resume-1",
+                "cwd": "/tmp/project",
+                "agent_backend": "pi",
+                "backend": "pi",
+                "historical": True,
+            }
+        ])
+        mgr.send = SessionManager.send.__get__(mgr, SessionManager)
+        mgr._runtime_session_id_for_identifier = Mock(side_effect=lambda session_id: session_id if session_id == "live-runtime" else None)
+        mgr._sessions = {
+            "live-runtime": Session(
+                session_id="live-runtime",
+                thread_id="live-session",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=os.getpid(),
+                codex_pid=os.getpid(),
+                owned=True,
+                start_ts=123.0,
+                cwd="/tmp/project",
+                log_path=None,
+                sock_path=Path("/tmp/live-runtime.sock"),
+                session_path=Path("/tmp/live-session.jsonl"),
+                busy=False,
+            )
+        }
+        mgr._sock_call = Mock(return_value={"busy": True, "queue_len": 0, "token": None})
+
+        res = mgr.send("history:pi:resume-1", "resume me")
+
+        mgr.spawn_web_session.assert_called_once_with(cwd="/tmp/project", backend="pi", resume_session_id="resume-1")
+        self.assertEqual(res["session_id"], "live-session")
+        self.assertEqual(res["runtime_id"], "live-runtime")
+        self.assertEqual(res["backend"], "pi")
+        self.assertTrue(bool(res.get("accepted")))
 
     def test_ui_state_route_returns_pending_requests_for_pi_session(self) -> None:
         mgr = _make_manager()
@@ -1998,12 +2068,25 @@ class TestPiBackendRouting(unittest.TestCase):
                 "token": None,
             }  # type: ignore[method-assign]
 
+            mgr._append_bridge_event(
+                "pi-thread-001",
+                {
+                    "type": "pi_event",
+                    "summary": "Bridge send failed",
+                    "event_id": "bridge:test-1",
+                    "request_state": "failed",
+                },
+            )
+
             payload = _session_live_payload(
-                mgr, "pi-session", offset=100, live_offset=7
+                mgr, "pi-session", offset=100, live_offset=7, bridge_offset=0
             )
 
         self.assertEqual(payload["offset"], 100)
         self.assertEqual(payload["live_offset"], 8)
+        self.assertEqual(payload["bridge_offset"], 1)
+        self.assertEqual(payload["transport_state"], "unknown")
+        self.assertEqual(payload["events"][-1]["event_id"], "bridge:test-1")
 
     def test_session_live_payload_keeps_streaming_reply_when_old_history_has_same_text(
         self,
@@ -2453,8 +2536,8 @@ class TestPiBackendRouting(unittest.TestCase):
                 thread_id="pi-thread-001",
                 agent_backend="pi",
                 backend="pi",
-                broker_pid=3333,
-                codex_pid=4444,
+                broker_pid=os.getpid(),
+                codex_pid=os.getpid(),
                 owned=True,
                 start_ts=123.0,
                 cwd="/tmp",
@@ -2472,6 +2555,8 @@ class TestPiBackendRouting(unittest.TestCase):
                     return {"error": "unknown cmd"}
                 if req["cmd"] == "send":
                     return {"queued": False, "queue_len": 0}
+                if req["cmd"] == "state":
+                    return {"busy": False, "queue_len": 0, "token": None}
                 return {}
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
@@ -2490,7 +2575,7 @@ class TestPiBackendRouting(unittest.TestCase):
             forwarded,
             [
                 {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"},
-                {"cmd": "send", "text": "Details"},
+                {"cmd": "state"},
             ],
         )
 
@@ -2516,13 +2601,13 @@ class TestPiBackendRouting(unittest.TestCase):
                         "session_id": "pi-thread-001",
                         "backend": "pi",
                         "owner": "web",
-                        "broker_pid": 3333,
-                        "codex_pid": 4444,
+                        "broker_pid": os.getpid(),
+                        "codex_pid": os.getpid(),
                         "cwd": td,
                         "start_ts": 123.0,
                         "session_path": str(session_path),
                         "sock_path": str(sock),
-                        "transport": "pi-rpc",
+                        "transport": "pty",
                     }
                 ),
                 encoding="utf-8",
@@ -2532,8 +2617,8 @@ class TestPiBackendRouting(unittest.TestCase):
                 thread_id="pi-thread-001",
                 agent_backend="pi",
                 backend="pi",
-                broker_pid=3333,
-                codex_pid=4444,
+                broker_pid=os.getpid(),
+                codex_pid=os.getpid(),
                 owned=True,
                 start_ts=123.0,
                 cwd=td,
@@ -2553,6 +2638,8 @@ class TestPiBackendRouting(unittest.TestCase):
                     return {"error": "unknown cmd"}
                 if req["cmd"] == "send":
                     return {"queued": False, "queue_len": 0}
+                if req["cmd"] == "state":
+                    return {"busy": False, "queue_len": 0, "token": None}
                 raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
 
             mgr._sock_call = _sock_call  # type: ignore[method-assign]
@@ -2571,7 +2658,7 @@ class TestPiBackendRouting(unittest.TestCase):
             forwarded,
             [
                 {"cmd": "ui_response", "id": "ui-req-1", "value": "Details"},
-                {"cmd": "send", "text": "Details"},
+                {"cmd": "state"},
             ],
         )
 
@@ -2748,8 +2835,6 @@ class TestPiBackendRouting(unittest.TestCase):
                         "alias": "Active",
                     }
                 ],
-                "remaining_by_group": {},
-                "omitted_group_count": 0,
             },
         )
         self.assertNotIn("model", payload["sessions"][0])
@@ -2796,10 +2881,10 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(payload["session"]["provider_choice"], "openai-api")
         self.assertEqual(payload["session"]["priority_offset"], 0.25)
 
-    def test_list_sessions_caps_each_group_to_five_rows_and_reports_remaining(
+    def test_list_sessions_paginates_flat_rows_and_reports_remaining_count(
         self,
     ) -> None:
-        handler = _HandlerHarness("/api/sessions")
+        handler = _HandlerHarness("/api/sessions?limit=5")
         docs_cwd = str(Path("/work/docs").resolve(strict=False))
         with (
             patch("codoxear.server._require_auth", return_value=True),
@@ -2830,16 +2915,14 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertEqual(
             [row["session_id"] for row in payload["sessions"]],
-            ["docs-1", "docs-2", "docs-3", "docs-4", "docs-5", "docs-6", "docs-7", "api-1"],
+            ["docs-1", "docs-2", "docs-3", "docs-4", "docs-5"],
         )
         self.assertEqual(payload["sessions"][0]["runtime_id"], "docs-runtime-1")
-        self.assertEqual(payload["remaining_by_group"], {})
+        self.assertEqual(payload["remaining_count"], 3)
 
-    def test_list_sessions_supports_loading_more_rows_for_one_group(self) -> None:
+    def test_list_sessions_supports_flat_offset_pagination(self) -> None:
         docs_cwd = str(Path("/work/docs").resolve(strict=False))
-        handler = _HandlerHarness(
-            f"/api/sessions?group_key={urllib.parse.quote(docs_cwd)}&offset=5&limit=5"
-        )
+        handler = _HandlerHarness("/api/sessions?offset=5&limit=5")
         with (
             patch("codoxear.server._require_auth", return_value=True),
             patch("codoxear.server.MANAGER") as manager,
@@ -2861,9 +2944,9 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(
             [row["session_id"] for row in payload["sessions"]], ["docs-6", "docs-7"]
         )
-        self.assertEqual(payload["remaining_by_group"], {})
+        self.assertNotIn("remaining_count", payload)
 
-    def test_list_sessions_includes_recent_groups_and_busy_groups_only(self) -> None:
+    def test_list_sessions_preserves_manager_order_in_flat_payload(self) -> None:
         handler = _HandlerHarness("/api/sessions")
         cwds = [
             str(Path(f"/work/group-{index}").resolve(strict=False))
@@ -2912,11 +2995,11 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertEqual(
             [row["session_id"] for row in payload["sessions"]],
-            ["old-busy", "recent-1", "recent-2", "recent-3", "old-idle"],
+            ["recent-1", "recent-2", "recent-3", "old-idle", "old-busy"],
         )
-        self.assertEqual(payload["omitted_group_count"], 0)
+        self.assertNotIn("omitted_group_count", payload)
 
-    def test_list_sessions_orders_groups_by_busy_then_recent_activity(self) -> None:
+    def test_list_sessions_keeps_flat_order_for_busy_and_recent_rows(self) -> None:
         handler = _HandlerHarness("/api/sessions")
         group_old = str(Path("/work/old").resolve(strict=False))
         group_busy = str(Path("/work/busy").resolve(strict=False))
@@ -2955,7 +3038,7 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(handler.status, 200)
         self.assertEqual(
             [row["session_id"] for row in payload["sessions"]],
-            ["busy-1", "recent-1", "old-1"],
+            ["old-1", "busy-1", "recent-1"],
         )
 
     def test_list_sessions_supports_loading_more_omitted_groups(self) -> None:

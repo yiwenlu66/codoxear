@@ -352,7 +352,10 @@ export function AppShell() {
             onOpenTodo={() => setTodoViewerOpen(true)}
             onOpenWorkspace={openWorkspace}
           />
-          <ConversationPane onOpenFilePath={(path, line) => openFileViewer(path, line ?? null, "file")} />
+          <ConversationPane
+            key={activeSessionId || "no-session"}
+            onOpenFilePath={(path, line) => openFileViewer(path, line ?? null, "file")}
+          />
           <Composer />
         </section>
       </div>

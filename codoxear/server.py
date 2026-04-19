@@ -219,6 +219,18 @@ VOICE_PUSH_SWEEP_SECONDS = float(
 QUEUE_IDLE_GRACE_SECONDS = float(
     os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0")
 )
+BRIDGE_TRANSPORT_PROBE_STALE_SECONDS = float(
+    os.environ.get("CODEX_WEB_BRIDGE_TRANSPORT_PROBE_STALE_SECONDS", "2.0")
+)
+BRIDGE_TRANSPORT_RPC_TIMEOUT_SECONDS = float(
+    os.environ.get("CODEX_WEB_BRIDGE_TRANSPORT_RPC_TIMEOUT_SECONDS", "0.35")
+)
+BRIDGE_OUTBOUND_FAILURE_MAX_ATTEMPTS = int(
+    os.environ.get("CODEX_WEB_BRIDGE_OUTBOUND_FAILURE_MAX_ATTEMPTS", "3")
+)
+BRIDGE_OUTBOUND_FAILURE_MAX_AGE_SECONDS = float(
+    os.environ.get("CODEX_WEB_BRIDGE_OUTBOUND_FAILURE_MAX_AGE_SECONDS", "8.0")
+)
 HARNESS_MAX_SCAN_BYTES = int(
     os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024))
 )
@@ -1757,6 +1769,7 @@ SESSION_LIST_ROW_KEYS = (
     "pending_startup",
     "focused",
 )
+SESSION_LIST_PAGE_SIZE = 50
 SESSION_LIST_GROUP_PAGE_SIZE = 12
 SESSION_LIST_RECENT_GROUP_LIMIT = 12
 SESSION_LIST_FALLBACK_GROUP_KEY = "__no_working_directory__"
@@ -1810,10 +1823,21 @@ def _session_list_payload(
     *,
     group_key: str | None = None,
     offset: int = 0,
-    limit: int = SESSION_LIST_GROUP_PAGE_SIZE,
+    limit: int = SESSION_LIST_PAGE_SIZE,
     group_offset: int = 0,
     group_limit: int = SESSION_LIST_RECENT_GROUP_LIMIT,
 ) -> dict[str, Any]:
+    start = max(0, int(offset))
+    stop = start + max(1, int(limit))
+
+    if group_key is None and group_offset <= 0 and group_limit == SESSION_LIST_RECENT_GROUP_LIMIT:
+        page_rows = [_frontend_session_list_row(row) for row in rows[start:stop]]
+        remaining = max(0, len(rows) - stop)
+        payload: dict[str, Any] = {"sessions": page_rows}
+        if remaining > 0:
+            payload["remaining_count"] = remaining
+        return payload
+
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         key = _session_list_group_key(row)
@@ -1855,8 +1879,6 @@ def _session_list_payload(
 
     if group_key is not None:
         group_rows = grouped.get(group_key, [])
-        start = max(0, int(offset))
-        stop = start + max(1, int(limit))
         page_rows = [_frontend_session_list_row(row) for row in group_rows[start:stop]]
         remaining = max(0, len(group_rows) - stop)
         return {
@@ -3620,6 +3642,22 @@ class Session:
     pi_idle_activity_ts: float | None = None
     pi_busy_activity_floor: float | None = None
     pi_session_path_discovered: bool = False
+    bridge_transport_state: str = "unknown"
+    bridge_transport_error: str | None = None
+    bridge_transport_checked_ts: float = 0.0
+
+
+@dataclass
+class BridgeOutboundRequest:
+    request_id: str
+    runtime_id: str
+    durable_session_id: str
+    text: str
+    created_ts: float
+    state: str = "queued"
+    attempts: int = 0
+    last_error: str | None = None
+    last_attempt_ts: float = 0.0
 
 
 def _session_supports_live_pi_ui(session: Session) -> bool:
@@ -3910,6 +3948,7 @@ def _session_live_payload(
     *,
     offset: int = 0,
     live_offset: int = 0,
+    bridge_offset: int = 0,
     requests_version: str | None = None,
 ) -> dict[str, Any]:
     manager.refresh_session_meta(session_id, strict=False)
@@ -3926,16 +3965,26 @@ def _session_live_payload(
             )
         except KeyError:
             page = {"events": [], "offset": max(0, int(offset)), "has_older": False, "next_before": 0}
+        durable_session_id = str(historical_row.get("session_id") or session_id)
+        bridge_session_key = _clean_optional_text(
+            historical_row.get("resume_session_id")
+        ) or durable_session_id
+        bridge_events, next_bridge_offset = manager._bridge_events_since(
+            bridge_session_key,
+            offset=bridge_offset,
+        )
+        base_events = page.get("events") if isinstance(page.get("events"), list) else []
         return {
             "ok": True,
-            "session_id": str(historical_row.get("session_id") or session_id),
+            "session_id": durable_session_id,
             "runtime_id": None,
             "offset": int(page.get("offset", max(0, int(offset))) or 0),
             "live_offset": 0,
+            "bridge_offset": next_bridge_offset,
             "has_older": bool(page.get("has_older")),
             "next_before": int(page.get("next_before", 0) or 0),
             "busy": False,
-            "events": page.get("events") if isinstance(page.get("events"), list) else [],
+            "events": [*base_events, *bridge_events],
             "requests_version": "",
             "requests": [],
             "token": None,
@@ -3962,6 +4011,7 @@ def _session_live_payload(
     events = page.get("events")
     merged_events = events if isinstance(events, list) else []
     next_live_offset = max(0, int(live_offset))
+    next_bridge_offset = max(0, int(bridge_offset))
     if _session_supports_live_pi_ui(s):
         streamed_payload = _pi_live_messages_payload(manager, s, offset=live_offset)
         next_live_offset = int(
@@ -3976,12 +4026,19 @@ def _session_live_payload(
                 if isinstance(item, dict)
             ],
         )
+    bridge_events, next_bridge_offset = manager._bridge_events_since(
+        _durable_session_id_for_live_session(s),
+        offset=bridge_offset,
+    )
+    if bridge_events:
+        merged_events = [*merged_events, *bridge_events]
     payload: dict[str, Any] = {
         "ok": True,
         "session_id": _durable_session_id_for_live_session(s),
         "runtime_id": s.session_id,
         "offset": int(page.get("offset", max(0, int(offset))) or 0),
         "live_offset": next_live_offset,
+        "bridge_offset": next_bridge_offset,
         "has_older": bool(page.get("has_older")),
         "next_before": int(page.get("next_before", 0) or 0),
         "busy": bool(busy),
@@ -3989,6 +4046,8 @@ def _session_live_payload(
         "requests_version": current_requests_version,
         "token": token_val,
         "context_usage": _session_context_usage_payload(s, token_val),
+        "transport_state": s.bridge_transport_state,
+        "transport_error": s.bridge_transport_error,
     }
     if requests_version != current_requests_version:
         payload["requests"] = requests
@@ -4077,6 +4136,10 @@ class SessionManager:
         self._hidden_sessions: set[str] = set()
         self._files: dict[SessionRef, list[str]] = {}
         self._queues: dict[SessionRef, list[str]] = {}
+        self._bridge_events: dict[str, list[dict[str, Any]]] = {}
+        self._bridge_event_offsets: dict[str, int] = {}
+        self._outbound_requests: dict[str, list[BridgeOutboundRequest]] = {}
+        self._queue_wakeup = threading.Event()
         self._pi_commands_cache: dict[str, dict[str, Any]] = {}
         self._recent_cwds: dict[str, float] = {}
         self._cwd_groups: dict[str, dict[str, Any]] = {}
@@ -4151,6 +4214,237 @@ class SessionManager:
                 return None
             matches.sort(key=lambda item: (-item[0], item[1]))
             return matches[0][1]
+
+    def _durable_session_id_for_identifier(self, session_id: str) -> str | None:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is not None:
+            with self._lock:
+                session = self._sessions.get(runtime_id)
+            if session is not None:
+                return self._durable_session_id_for_session(session)
+        target = _clean_optional_text(session_id)
+        return target if target is not None else None
+
+    def _append_bridge_event(self, durable_session_id: str, event: dict[str, Any]) -> dict[str, Any]:
+        key = _clean_optional_text(durable_session_id)
+        if key is None:
+            raise ValueError("durable session id required")
+        with self._lock:
+            offsets = getattr(self, "_bridge_event_offsets", None)
+            if not isinstance(offsets, dict):
+                self._bridge_event_offsets = {}
+                offsets = self._bridge_event_offsets
+            rows_by_session = getattr(self, "_bridge_events", None)
+            if not isinstance(rows_by_session, dict):
+                self._bridge_events = {}
+                rows_by_session = self._bridge_events
+            next_offset = int(offsets.get(key, 0)) + 1
+            offsets[key] = next_offset
+            stamped = dict(event)
+            stamped["event_id"] = str(stamped.get("event_id") or f"bridge:{key}:{next_offset}")
+            stamped["ts"] = float(stamped.get("ts") or time.time())
+            rows_by_session.setdefault(key, []).append({"offset": next_offset, "event": stamped})
+            rows = rows_by_session[key]
+            if len(rows) > 64:
+                rows_by_session[key] = rows[-64:]
+            return stamped
+
+    def _bridge_events_since(self, durable_session_id: str, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
+        key = _clean_optional_text(durable_session_id)
+        if key is None:
+            return [], max(0, int(offset))
+        with self._lock:
+            rows_by_session = getattr(self, "_bridge_events", None)
+            offsets = getattr(self, "_bridge_event_offsets", None)
+            rows = list(rows_by_session.get(key, [])) if isinstance(rows_by_session, dict) else []
+            latest = int(offsets.get(key, 0)) if isinstance(offsets, dict) else 0
+        since = max(0, int(offset))
+        events = [
+            dict(row.get("event"))
+            for row in rows
+            if isinstance(row, dict)
+            and int(row.get("offset", 0) or 0) > since
+            and isinstance(row.get("event"), dict)
+        ]
+        return events, latest
+
+    def _set_bridge_transport_state(
+        self,
+        runtime_id: str,
+        *,
+        state: str,
+        error: str | None = None,
+        checked_ts: float | None = None,
+    ) -> None:
+        with self._lock:
+            session = self._sessions.get(runtime_id)
+            if session is None:
+                return
+            session.bridge_transport_state = state
+            session.bridge_transport_error = _clean_optional_text(error)
+            session.bridge_transport_checked_ts = float(checked_ts if checked_ts is not None else time.time())
+
+    def _probe_bridge_transport(self, session_id: str, *, force_rpc: bool = False) -> tuple[str, str | None]:
+        runtime_id = self._runtime_session_id_for_identifier(session_id)
+        if runtime_id is None:
+            return "dead", "unknown session"
+        with self._lock:
+            session = self._sessions.get(runtime_id)
+        if session is None:
+            return "dead", "unknown session"
+        processes_dead = (not _pid_alive(session.broker_pid)) and (not _pid_alive(session.codex_pid))
+        now = time.time()
+        last_checked = float(session.bridge_transport_checked_ts or 0.0)
+        if (
+            not force_rpc
+            and session.bridge_transport_state in {"alive", "degraded"}
+            and (now - last_checked) < BRIDGE_TRANSPORT_PROBE_STALE_SECONDS
+        ):
+            return session.bridge_transport_state, session.bridge_transport_error
+        try:
+            resp = self._sock_call(
+                session.sock_path,
+                {"cmd": "state"},
+                timeout_s=BRIDGE_TRANSPORT_RPC_TIMEOUT_SECONDS,
+            )
+            if not isinstance(resp, dict):
+                raise ValueError("invalid state probe response")
+        except Exception as exc:
+            if processes_dead:
+                self._set_bridge_transport_state(runtime_id, state="dead", error="broker exited", checked_ts=now)
+                return "dead", "broker exited"
+            error = str(exc).strip() or type(exc).__name__
+            self._set_bridge_transport_state(runtime_id, state="degraded", error=error, checked_ts=now)
+            return "degraded", error
+        self._set_bridge_transport_state(runtime_id, state="alive", error=None, checked_ts=now)
+        return "alive", None
+
+    def _enqueue_outbound_request(self, runtime_id: str, text: str) -> BridgeOutboundRequest:
+        with self._lock:
+            session = self._sessions.get(runtime_id)
+            if session is None:
+                raise KeyError("unknown session")
+            durable_session_id = self._durable_session_id_for_session(session)
+            requests_by_runtime = getattr(self, "_outbound_requests", None)
+            if not isinstance(requests_by_runtime, dict):
+                self._outbound_requests = {}
+                requests_by_runtime = self._outbound_requests
+            request = BridgeOutboundRequest(
+                request_id=f"bridge-send-{uuid.uuid4().hex}",
+                runtime_id=runtime_id,
+                durable_session_id=durable_session_id,
+                text=str(text),
+                created_ts=time.time(),
+            )
+            requests_by_runtime.setdefault(runtime_id, []).append(request)
+        queue_wakeup = getattr(self, "_queue_wakeup", None)
+        if isinstance(queue_wakeup, threading.Event):
+            queue_wakeup.set()
+        return request
+
+    def _fail_outbound_request(self, request: BridgeOutboundRequest, error: str) -> None:
+        event = {
+            "type": "pi_event",
+            "summary": "Bridge send failed",
+            "text": f"Bridge could not deliver the queued prompt: {error}\n\nOriginal prompt:\n{request.text}",
+            "is_error": True,
+            "request_id": request.request_id,
+            "request_state": "failed",
+            "pending_text": request.text,
+            "ts": time.time(),
+        }
+        self._append_bridge_event(request.durable_session_id, event)
+
+    def _maybe_drain_outbound_request(self, runtime_id: str) -> bool:
+        with self._lock:
+            requests_by_runtime = getattr(self, "_outbound_requests", None)
+            session = self._sessions.get(runtime_id)
+            queue = requests_by_runtime.get(runtime_id) if isinstance(requests_by_runtime, dict) else None
+            request = queue[0] if session is not None and isinstance(queue, list) and queue else None
+        if session is None or request is None:
+            return False
+        if request.runtime_id != runtime_id:
+            with self._lock:
+                queue2 = self._outbound_requests.get(runtime_id)
+                if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                    queue2.pop(0)
+            self._fail_outbound_request(request, "stale runtime")
+            return True
+        state, transport_error = self._probe_bridge_transport(runtime_id)
+        if state == "dead":
+            with self._lock:
+                queue2 = self._outbound_requests.get(runtime_id)
+                if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                    queue2.pop(0)
+                    if not queue2:
+                        self._outbound_requests.pop(runtime_id, None)
+            self._fail_outbound_request(request, transport_error or "broker exited")
+            return True
+        try:
+            st = self.get_state(runtime_id)
+        except Exception as exc:
+            request.attempts += 1
+            request.last_attempt_ts = time.time()
+            request.last_error = str(exc).strip() or type(exc).__name__
+            if request.attempts >= BRIDGE_OUTBOUND_FAILURE_MAX_ATTEMPTS or (time.time() - request.created_ts) >= BRIDGE_OUTBOUND_FAILURE_MAX_AGE_SECONDS:
+                with self._lock:
+                    queue2 = self._outbound_requests.get(runtime_id)
+                    if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                        queue2.pop(0)
+                        if not queue2:
+                            self._outbound_requests.pop(runtime_id, None)
+                self._fail_outbound_request(request, request.last_error)
+                return True
+            return False
+        if not isinstance(st, dict) or bool(st.get("busy")) or int(st.get("queue_len") or 0) > 0:
+            return False
+        request.state = "sending"
+        request.attempts += 1
+        request.last_attempt_ts = time.time()
+        try:
+            resp = self._sock_call(session.sock_path, {"cmd": "send", "text": request.text}, timeout_s=1.0)
+        except Exception as exc:
+            request.last_error = str(exc).strip() or type(exc).__name__
+            state2, transport_error2 = self._probe_bridge_transport(runtime_id, force_rpc=True)
+            if state2 == "dead" or request.attempts >= BRIDGE_OUTBOUND_FAILURE_MAX_ATTEMPTS or (time.time() - request.created_ts) >= BRIDGE_OUTBOUND_FAILURE_MAX_AGE_SECONDS:
+                with self._lock:
+                    queue2 = self._outbound_requests.get(runtime_id)
+                    if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                        queue2.pop(0)
+                        if not queue2:
+                            self._outbound_requests.pop(runtime_id, None)
+                self._fail_outbound_request(request, transport_error2 or request.last_error)
+                return True
+            return False
+        error = resp.get("error") if isinstance(resp, dict) else None
+        if isinstance(error, str) and error:
+            with self._lock:
+                queue2 = self._outbound_requests.get(runtime_id)
+                if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                    queue2.pop(0)
+                    if not queue2:
+                        self._outbound_requests.pop(runtime_id, None)
+            self._fail_outbound_request(request, error)
+            return True
+        with self._lock:
+            queue2 = self._outbound_requests.get(runtime_id)
+            if isinstance(queue2, list) and queue2 and queue2[0] is request:
+                queue2.pop(0)
+                if not queue2:
+                    self._outbound_requests.pop(runtime_id, None)
+            session2 = self._sessions.get(runtime_id)
+            if session2 is not None:
+                if isinstance(resp, dict) and "busy" in resp:
+                    session2.busy = bool(resp.get("busy"))
+                if isinstance(resp, dict) and "queue_len" in resp:
+                    session2.queue_len = int(resp.get("queue_len"))
+                session2.pi_idle_activity_ts = None
+                if session2.backend == "pi":
+                    activity_ts = _touch_session_file(session2.session_path)
+                    session2.pi_busy_activity_floor = activity_ts if session2.busy else None
+                else:
+                    session2.pi_busy_activity_floor = None
+        return True
 
     def _catalog_record_for_ref(self, ref: SessionRef) -> DurableSessionRecord | None:
         backend, durable_session_id = ref
@@ -5791,7 +6085,12 @@ class SessionManager:
             except Exception:
                 sys.stderr.write("error: queue sweep crashed; continuing\n")
                 sys.stderr.flush()
-            self._stop.wait(QUEUE_SWEEP_SECONDS)
+            queue_wakeup = getattr(self, "_queue_wakeup", None)
+            if isinstance(queue_wakeup, threading.Event):
+                queue_wakeup.wait(QUEUE_SWEEP_SECONDS)
+                queue_wakeup.clear()
+            else:
+                self._stop.wait(QUEUE_SWEEP_SECONDS)
 
     def _maybe_drain_session_queue(
         self, session_id: str, *, now_ts: float | None = None
@@ -5885,6 +6184,8 @@ class SessionManager:
         self._prune_dead_sessions()
         with self._lock:
             active_runtime_ids: list[str] = []
+            active_outbound_runtime_ids: list[str] = []
+            outbound_requests = getattr(self, "_outbound_requests", None)
             for runtime_id, session in self._sessions.items():
                 ref = self._page_state_ref_for_session(session)
                 q = self._queues.get(runtime_id)
@@ -5892,6 +6193,18 @@ class SessionManager:
                     q = self._queues.get(ref)
                 if isinstance(q, list) and q:
                     active_runtime_ids.append(runtime_id)
+                outbound = outbound_requests.get(runtime_id) if isinstance(outbound_requests, dict) else None
+                if isinstance(outbound, list) and outbound:
+                    active_outbound_runtime_ids.append(runtime_id)
+        for sid in active_outbound_runtime_ids:
+            try:
+                if self._maybe_drain_outbound_request(sid):
+                    break
+            except Exception:
+                sys.stderr.write(
+                    f"error: outbound sweep failed for session {sid}; skipping\n"
+                )
+                sys.stderr.flush()
         for sid in active_runtime_ids:
             try:
                 if self._maybe_drain_session_queue(sid):
@@ -7139,6 +7452,96 @@ class SessionManager:
                 else max(s.last_chat_ts, latest_chat_ts)
             )
 
+    def _ensure_pi_chat_index(
+        self, session_id: str, *, min_events: int, before: int
+    ) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any]]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                return [], 0, False, 0, {"tool_names": [], "last_tool": None}
+            session_path = s.session_path
+            scan_bytes = int(s.chat_index_scan_bytes) if s.chat_index_scan_bytes > 0 else (256 * 1024)
+            idx_off = int(s.chat_index_log_off)
+        if session_path is None or (not session_path.exists()):
+            return [], 0, False, 0, {"tool_names": [], "last_tool": None}
+
+        size = int(session_path.stat().st_size)
+        if size < idx_off:
+            self._set_chat_index_snapshot(
+                session_id=session_id,
+                events=[],
+                token_update=None,
+                scan_bytes=256 * 1024,
+                scan_complete=False,
+                log_off=0,
+            )
+            idx_off = 0
+
+        with self._lock:
+            s2 = self._sessions.get(session_id)
+            ready = bool(s2 and (s2.chat_index_events is not None))
+            cached_count = len(s2.chat_index_events) if s2 else 0
+            scan_complete = bool(s2.chat_index_scan_complete) if s2 else False
+        target_events = max(0, int(min_events) + max(0, int(before)))
+        seed_diag = {"tool_names": [], "last_tool": None}
+        if (not ready) or ((target_events > cached_count) and (not scan_complete)):
+            events, new_off, used_scan, complete, diag = _pi_messages.read_pi_message_tail_snapshot(
+                session_path,
+                min_events=max(20, target_events),
+                initial_scan_bytes=max(256 * 1024, scan_bytes),
+                max_scan_bytes=64 * 1024 * 1024,
+            )
+            seed_diag = diag
+            self._set_chat_index_snapshot(
+                session_id=session_id,
+                events=events,
+                token_update=None,
+                scan_bytes=used_scan,
+                scan_complete=complete,
+                log_off=new_off,
+            )
+        with self._lock:
+            s3 = self._sessions.get(session_id)
+            if not s3:
+                return [], 0, False, 0, {"tool_names": [], "last_tool": None}
+            session_path2 = s3.session_path
+            off3 = int(s3.chat_index_log_off)
+            prev_events = list(s3.chat_index_events)
+            scan_complete2 = bool(s3.chat_index_scan_complete)
+        if session_path2 is None or (not session_path2.exists()):
+            return prev_events, off3, False, 0, {"tool_names": [], "last_tool": None}
+        size2 = int(session_path2.stat().st_size)
+        latest_diag = seed_diag
+        if size2 > off3:
+            events_delta, new_off, _meta_delta, _flags, latest_diag = _pi_messages.read_pi_message_delta(
+                session_path2,
+                offset=off3,
+            )
+            if events_delta:
+                self._append_chat_events(
+                    session_id,
+                    events_delta,
+                    new_off=new_off,
+                    latest_token=None,
+                )
+            elif new_off > off3:
+                self._append_chat_events(session_id, [], new_off=new_off, latest_token=None)
+        with self._lock:
+            s4 = self._sessions.get(session_id)
+            if not s4:
+                return prev_events, off3, False, 0, latest_diag
+            events2 = list(s4.chat_index_events)
+            off4 = int(s4.chat_index_log_off)
+            scan_complete3 = bool(s4.chat_index_scan_complete)
+        n = len(events2)
+        b = max(0, int(before))
+        end = max(0, n - b)
+        start = max(0, end - max(20, int(min_events)))
+        page = self._attach_notification_texts(events2[start:end])
+        has_older = start > 0 or ((not scan_complete3) and bool(page))
+        next_before = b + len(page) if has_older else 0
+        return page, off4, has_older, next_before, latest_diag
+
     def _ensure_chat_index(
         self, session_id: str, *, min_events: int, before: int
     ) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
@@ -7451,12 +7854,10 @@ class SessionManager:
                     _patch_metadata_session_path(s.sock_path, discovered)
             if s.session_path is not None and s.session_path.exists():
                 if init and offset == 0:
-                    events, new_off, has_older, next_before, diag = (
-                        _pi_messages.read_pi_message_page(
-                            s.session_path,
-                            limit=limit,
-                            before=before,
-                        )
+                    events, new_off, has_older, next_before, diag = self._ensure_pi_chat_index(
+                        session_id,
+                        min_events=limit,
+                        before=before,
                     )
                 else:
                     events, new_off, meta_delta, flags, diag = (
@@ -7465,6 +7866,13 @@ class SessionManager:
                             offset=offset,
                         )
                     )
+                    if new_off > offset:
+                        self._append_chat_events(
+                            session_id,
+                            events,
+                            new_off=new_off,
+                            latest_token=None,
+                        )
                 self._update_pi_last_chat_ts(
                     session_id, events, session_path=s.session_path
                 )
@@ -7507,12 +7915,10 @@ class SessionManager:
                         _patch_metadata_session_path(s.sock_path, newer_sp, force=True)
                         self._reset_log_caches(s, meta_log_off=0)
                         # Re-read from the newly discovered session file.
-                        events, new_off, has_older, next_before, diag = (
-                            _pi_messages.read_pi_message_page(
-                                s.session_path,
-                                limit=limit,
-                                before=0,
-                            )
+                        events, new_off, has_older, next_before, diag = self._ensure_pi_chat_index(
+                            session_id,
+                            min_events=limit,
+                            before=0,
                         )
                         self._update_pi_last_chat_ts(
                             session_id, events, session_path=s.session_path
@@ -8164,6 +8570,10 @@ class SessionManager:
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
         historical_row = _historical_session_row(session_id)
+        if historical_row is None and self._runtime_session_id_for_identifier(session_id) is None:
+            listed_row = _listed_session_row(self, session_id)
+            if isinstance(listed_row, dict) and listed_row.get("historical"):
+                historical_row = listed_row
         if historical_row is not None:
             backend = normalize_agent_backend(
                 historical_row.get("agent_backend", historical_row.get("backend")),
@@ -8201,42 +8611,34 @@ class SessionManager:
             s = self._sessions.get(runtime_id)
             if not s:
                 raise KeyError("unknown session")
-            sock = s.sock_path
-        try:
-            resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(runtime_id, None)
-                self._clear_deleted_session_state(runtime_id)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            # Broker alive but socket temporarily unavailable (e.g. during
-            # session switch).  Auto-enqueue so the message is delivered
-            # once the broker becomes reachable again.
-            return self._queue_enqueue_local(runtime_id, text)
-        error = resp.get("error")
-        if isinstance(error, str) and error:
-            raise ValueError(error)
-        with self._lock:
-            s2 = self._sessions.get(runtime_id)
-            if s2:
-                if "busy" in resp:
-                    s2.busy = bool(resp.get("busy"))
-                if "queue_len" not in resp:
-                    raise ValueError("invalid broker send response")
-                s2.queue_len = int(resp.get("queue_len"))
-                s2.pi_idle_activity_ts = None
-                if s2.backend == "pi":
-                    activity_ts = _touch_session_file(s2.session_path)
-                    s2.pi_busy_activity_floor = activity_ts if s2.busy else None
-                else:
-                    s2.pi_busy_activity_floor = None
-        return resp
+            durable_session_id = self._durable_session_id_for_session(s)
+        transport_state, transport_error = self._probe_bridge_transport(runtime_id)
+        if transport_state == "dead":
+            with self._lock:
+                self._sessions.pop(runtime_id, None)
+            self._clear_deleted_session_state(runtime_id)
+            _unlink_quiet(s.sock_path)
+            _unlink_quiet(s.sock_path.with_suffix(".json"))
+            raise KeyError("unknown session")
+        request = self._enqueue_outbound_request(runtime_id, text)
+        return {
+            "ok": True,
+            "accepted": True,
+            "request_id": request.request_id,
+            "delivery_state": request.state,
+            "session_id": durable_session_id,
+            "runtime_id": runtime_id,
+            "backend": s.backend,
+            "transport_state": transport_state,
+            "transport_error": transport_error,
+        }
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
         historical_row = _historical_session_row(session_id)
+        if historical_row is None and self._runtime_session_id_for_identifier(session_id) is None:
+            listed_row = _listed_session_row(self, session_id)
+            if isinstance(listed_row, dict) and listed_row.get("historical"):
+                historical_row = listed_row
         if historical_row is not None:
             backend = normalize_agent_backend(
                 historical_row.get("agent_backend", historical_row.get("backend")),
@@ -8965,13 +9367,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 group_key_q = qs.get("group_key")
                 group_key = group_key_q[0] if group_key_q else None
                 offset = max(0, int(qs.get("offset", ["0"])[0] or "0"))
+                limit_default = SESSION_LIST_PAGE_SIZE
+                if group_key is not None:
+                    limit_default = SESSION_LIST_GROUP_PAGE_SIZE
                 limit = max(
                     1,
                     min(
-                        50,
+                        200,
                         int(
-                            qs.get("limit", [str(SESSION_LIST_GROUP_PAGE_SIZE)])[0]
-                            or str(SESSION_LIST_GROUP_PAGE_SIZE)
+                            qs.get("limit", [str(limit_default)])[0]
+                            or str(limit_default)
                         ),
                     ),
                 )
@@ -9096,6 +9501,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 qs = urllib.parse.parse_qs(u.query)
                 offset_q = qs.get("offset")
                 live_offset_q = qs.get("live_offset")
+                bridge_offset_q = qs.get("bridge_offset")
                 requests_version_q = qs.get("requests_version")
                 if offset_q is None:
                     offset = 0
@@ -9109,6 +9515,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if not live_offset_q:
                         raise ValueError("invalid live_offset")
                     live_offset = int(live_offset_q[0])
+                if bridge_offset_q is None:
+                    bridge_offset = 0
+                else:
+                    if not bridge_offset_q:
+                        raise ValueError("invalid bridge_offset")
+                    bridge_offset = int(bridge_offset_q[0])
                 requests_version = None
                 if requests_version_q:
                     requests_version = str(requests_version_q[0] or "").strip() or None
@@ -9118,6 +9530,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         session_id,
                         offset=offset,
                         live_offset=live_offset,
+                        bridge_offset=bridge_offset,
                         requests_version=requests_version,
                     )
                 except KeyError:
