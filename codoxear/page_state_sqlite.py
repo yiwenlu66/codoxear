@@ -20,6 +20,7 @@ class DurableSessionRecord:
     first_user_message: str | None = None
     created_at: float | None = None
     updated_at: float | None = None
+    pending_startup: bool = False
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,7 @@ class PageStateDB:
                   first_user_message TEXT,
                   created_at REAL,
                   updated_at REAL,
+                  pending_startup INTEGER NOT NULL DEFAULT 0,
                   PRIMARY KEY (backend, session_id)
                 );
 
@@ -207,11 +209,19 @@ class PageStateDB:
                 );
                 """
             )
+            cols = {
+                str(row[1])
+                for row in self._conn.execute("PRAGMA table_info(sessions)")
+            }
+            if "pending_startup" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE sessions ADD COLUMN pending_startup INTEGER NOT NULL DEFAULT 0"
+                )
 
     def load_sessions(self) -> dict[SessionRef, DurableSessionRecord]:
         out: dict[SessionRef, DurableSessionRecord] = {}
         for row in self._conn.execute(
-            "SELECT backend, session_id, cwd, source_path, title, first_user_message, created_at, updated_at FROM sessions"
+            "SELECT backend, session_id, cwd, source_path, title, first_user_message, created_at, updated_at, pending_startup FROM sessions"
         ):
             ref = (_normalize_backend(row["backend"]), str(row["session_id"]))
             out[ref] = DurableSessionRecord(
@@ -223,6 +233,7 @@ class PageStateDB:
                 first_user_message=_clean_text(row["first_user_message"]),
                 created_at=(float(row["created_at"]) if row["created_at"] is not None else None),
                 updated_at=(float(row["updated_at"]) if row["updated_at"] is not None else None),
+                pending_startup=bool(row["pending_startup"] or 0),
             )
         return out
 
@@ -234,8 +245,8 @@ class PageStateDB:
                     """
                     INSERT INTO sessions (
                       backend, session_id, cwd, source_path, title,
-                      first_user_message, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      first_user_message, created_at, updated_at, pending_startup
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         backend,
@@ -246,8 +257,46 @@ class PageStateDB:
                         row.first_user_message,
                         row.created_at,
                         row.updated_at,
+                        1 if row.pending_startup else 0,
                     ),
                 )
+
+    def upsert_session(self, row: DurableSessionRecord) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO sessions (
+                  backend, session_id, cwd, source_path, title,
+                  first_user_message, created_at, updated_at, pending_startup
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(backend, session_id) DO UPDATE SET
+                  cwd=excluded.cwd,
+                  source_path=excluded.source_path,
+                  title=excluded.title,
+                  first_user_message=excluded.first_user_message,
+                  created_at=excluded.created_at,
+                  updated_at=excluded.updated_at,
+                  pending_startup=excluded.pending_startup
+                """,
+                (
+                    row.backend,
+                    row.session_id,
+                    row.cwd,
+                    row.source_path,
+                    row.title,
+                    row.first_user_message,
+                    row.created_at,
+                    row.updated_at,
+                    1 if row.pending_startup else 0,
+                ),
+            )
+
+    def delete_session(self, ref: SessionRef) -> None:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM sessions WHERE backend = ? AND session_id = ?",
+                (ref[0], ref[1]),
+            )
 
     def known_session_refs(self) -> set[SessionRef]:
         refs: set[SessionRef] = set()

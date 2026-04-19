@@ -1054,20 +1054,12 @@ class TestPiBackendRouting(unittest.TestCase):
         session_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         with (
             tempfile.TemporaryDirectory() as td,
-            patch("codoxear.server._wait_or_raise", return_value=None),
-            patch(
-                "codoxear.server._wait_for_spawned_broker_meta",
-                return_value={
-                    "broker_pid": 2468,
-                    "backend": "pi",
-                    "sock_path": "/tmp/pi-web-session.sock",
-                },
-            ),
             patch(
                 "codoxear.server.subprocess.Popen", return_value=_Proc()
             ) as popen_mock,
             patch("codoxear.server._now", return_value=1774708716.099),
             patch("codoxear.server.uuid.uuid4", return_value=session_uuid),
+            patch.object(SessionManager, "_persist_durable_session_record", lambda *_args, **_kwargs: None),
             patch.object(threading.Thread, "start", lambda self: None),
         ):
             result = SessionManager.spawn_web_session(manager, cwd=td, backend="pi")
@@ -1089,10 +1081,10 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(
             result,
             {
-                "broker_pid": 2468,
                 "backend": "pi",
-                "session_id": "pi-web-session",
-                "runtime_id": "pi-web-session",
+                "session_id": str(session_uuid),
+                "runtime_id": None,
+                "pending_startup": True,
             },
         )
 
@@ -1104,20 +1096,12 @@ class TestPiBackendRouting(unittest.TestCase):
         session_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
         with (
             tempfile.TemporaryDirectory() as td,
-            patch("codoxear.server._wait_or_raise", return_value=None),
-            patch(
-                "codoxear.server._wait_for_spawned_broker_meta",
-                return_value={
-                    "broker_pid": 2468,
-                    "backend": "pi",
-                    "sock_path": "/tmp/pi-web-session.sock",
-                },
-            ),
             patch(
                 "codoxear.server.subprocess.Popen", return_value=_Proc()
             ) as popen_mock,
             patch("codoxear.server._now", return_value=1774708716.099),
             patch("codoxear.server.uuid.uuid4", return_value=session_uuid),
+            patch.object(SessionManager, "_persist_durable_session_record", lambda *_args, **_kwargs: None),
             patch.object(threading.Thread, "start", lambda self: None),
         ):
             SessionManager.spawn_web_session(manager, cwd=td, backend="pi")
@@ -1209,10 +1193,6 @@ class TestPiBackendRouting(unittest.TestCase):
             tempfile.TemporaryDirectory() as td,
             patch("codoxear.server.shutil.which", return_value="/usr/bin/tmux"),
             patch(
-                "codoxear.server._wait_for_spawned_broker_meta",
-                return_value={"broker_pid": 7777, "backend": "pi"},
-            ) as wait_mock,
-            patch(
                 "codoxear.server.subprocess.run",
                 side_effect=[
                     __import__("subprocess").CompletedProcess(
@@ -1229,6 +1209,9 @@ class TestPiBackendRouting(unittest.TestCase):
                     ),
                 ],
             ) as run_mock,
+            patch("codoxear.server.uuid.uuid4", return_value=uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")),
+            patch.object(SessionManager, "_persist_durable_session_record", lambda *_args, **_kwargs: None),
+            patch.object(threading.Thread, "start", lambda self: None),
         ):
             result = SessionManager.spawn_web_session(
                 manager,
@@ -1240,8 +1223,10 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(
             result,
             {
-                "broker_pid": 7777,
                 "backend": "pi",
+                "session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "runtime_id": None,
+                "pending_startup": True,
                 "tmux_session": "codoxear",
                 "tmux_window": ANY,
             },
@@ -1252,7 +1237,7 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
         self.assertIn("codoxear.pi_broker", shell_cmd)
-        wait_mock.assert_called_once()
+        self.assertNotIn("broker_pid", result)
 
     def test_interrupt_routes_through_keys_for_pi_backend(self) -> None:
         mgr = _make_manager()

@@ -205,6 +205,7 @@ export function Composer() {
   const postSendRefreshTimeoutsRef = useRef<number[]>([]);
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
   const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
+  const activeSessionPending = activeSession?.pending_startup === true;
   const activeSessionBusy = Boolean(activeSession && (activeSession.busy || (activeSessionId ? busyBySessionId[activeSessionId] === true : false)));
   const activeSessionIsPi = activeSession?.agent_backend === "pi";
   const activeSessionIsHistoricalPi = activeSessionIsPi && activeSession?.historical === true;
@@ -285,7 +286,7 @@ export function Composer() {
   }, [draft, mobileComposerAutosize]);
 
   useEffect(() => {
-    if (!activeSessionId || !activeSessionIsPi || slashQuery === null) {
+    if (!activeSessionId || !activeSessionIsPi || activeSessionPending || slashQuery === null) {
       return;
     }
     if (commandsLoaded || commandsLoading) {
@@ -344,7 +345,7 @@ export function Composer() {
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId, activeSessionIsPi, activeSessionRuntimeId, slashQuery]);
+  }, [activeSessionId, activeSessionIsPi, activeSessionPending, activeSessionRuntimeId, slashQuery]);
 
   useEffect(() => {
     setHighlightedCommandIndex(0);
@@ -428,7 +429,7 @@ export function Composer() {
   };
 
   const submitCurrentDraft = () => {
-    if (!activeSessionId || !draft.trim() || sending) {
+    if (!activeSessionId || !draft.trim() || sending || activeSessionPending) {
       return;
     }
 
@@ -444,7 +445,7 @@ export function Composer() {
   };
 
   const queueCurrentDraft = () => {
-    if (!activeSessionId || !draft.trim() || sending) {
+    if (!activeSessionId || !draft.trim() || sending || activeSessionPending) {
       return;
     }
 
@@ -674,7 +675,7 @@ export function Composer() {
                   event.preventDefault();
                   submitCurrentDraft();
                 }}
-                disabled={sending}
+                disabled={sending || activeSessionPending}
               />
               {commandMenuOpen ? (
                 <div className="composerCommandMenu" data-testid="composer-command-menu">
@@ -718,7 +719,7 @@ export function Composer() {
                 size="sm"
                 className="composerQueueButton"
                 aria-label="Queued messages"
-                disabled={sending || !draft.trim()}
+                disabled={sending || activeSessionPending || !draft.trim()}
                 onClick={queueCurrentDraft}
               >
                 Queue
@@ -739,7 +740,7 @@ export function Composer() {
                 type="submit"
                 className="sendButton"
                 aria-label={sending ? "Sending" : "Send"}
-                disabled={sending || !draft.trim()}
+                disabled={sending || activeSessionPending || !draft.trim()}
               >
                 <span className="buttonGlyph">➤</span>
                 <span className="visuallyHidden">{sending ? "Sending..." : "Send"}</span>

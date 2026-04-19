@@ -107,6 +107,7 @@ export function AppShell() {
 
   const activeSession = items.find((session) => session.session_id === activeSessionId) ?? null;
   const activeSessionRuntimeId = getSessionRuntimeId(activeSession);
+  const activeSessionPending = activeSession?.pending_startup === true;
   const activeSessionBusy = Boolean(
     (activeSessionId && busyBySessionId[activeSessionId] === true)
     || activeSession?.busy === true,
@@ -165,6 +166,7 @@ export function AppShell() {
   useAppShellSessionEffects({
     activeSessionBackend: activeSession?.agent_backend,
     activeSessionHistorical: activeSession?.historical === true,
+    activeSessionPending,
     activeSessionId,
     activeSessionRuntimeId,
     activeSessionLiveBusy: activeSessionId ? busyBySessionId[activeSessionId] === true : false,

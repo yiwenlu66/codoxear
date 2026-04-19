@@ -1751,6 +1751,7 @@ SESSION_LIST_ROW_KEYS = (
     "blocked",
     "snoozed",
     "historical",
+    "pending_startup",
 )
 SESSION_LIST_GROUP_PAGE_SIZE = 5
 SESSION_LIST_RECENT_GROUP_LIMIT = 3
@@ -2888,6 +2889,29 @@ def _pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
     stamp = time.strftime("%Y-%m-%dT%H-%M-%S", time.gmtime(now))
     name = f"{stamp}-{millis:03d}Z_{uuid.uuid4()}.jsonl"
     return _pi_native_session_dir_for_cwd(cwd) / name
+
+
+def _write_pi_session_header(
+    session_path: Path, *, session_id: str, cwd: str, parent_session: str | None = None
+) -> None:
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    now = float(_now())
+    millis = int(round((now - math.floor(now)) * 1000))
+    if millis >= 1000:
+        now = math.floor(now) + 1.0
+        millis = 0
+    timestamp = f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(now))}.{millis:03d}Z"
+    header: dict[str, Any] = {
+        "type": "session",
+        "version": 3,
+        "id": session_id,
+        "timestamp": timestamp,
+        "cwd": cwd,
+    }
+    if isinstance(parent_session, str) and parent_session.strip():
+        header["parentSession"] = parent_session.strip()
+    with session_path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(header, ensure_ascii=False) + "\n")
 
 
 def _pi_session_name_from_session_file(
@@ -4031,7 +4055,67 @@ class SessionManager:
         if parsed is not None:
             backend, durable_id = parsed
             return backend, durable_id
+        target = _clean_optional_text(session_id)
+        db = getattr(self, "_page_state_db", None)
+        if target is not None and isinstance(db, PageStateDB):
+            matches = [ref for ref in db.known_session_refs() if ref[1] == target]
+            if len(matches) == 1:
+                return matches[0]
         return None
+
+    def _persist_durable_session_record(self, row: DurableSessionRecord) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if isinstance(db, PageStateDB):
+            db.upsert_session(row)
+
+    def _delete_durable_session_record(self, ref: SessionRef | None) -> None:
+        db = getattr(self, "_page_state_db", None)
+        if ref is not None and isinstance(db, PageStateDB):
+            db.delete_session(ref)
+
+    def _finalize_pending_pi_spawn(
+        self,
+        *,
+        spawn_nonce: str,
+        durable_session_id: str,
+        cwd: str,
+        session_path: Path,
+        proc: subprocess.Popen[bytes] | None = None,
+    ) -> None:
+        ref = ("pi", durable_session_id)
+        try:
+            if proc is not None:
+                _wait_or_raise(proc, label="pi broker", timeout_s=0.25)
+            meta = _wait_for_spawned_broker_meta(spawn_nonce)
+            live_session_id = _clean_optional_text(meta.get("session_id")) or durable_session_id
+            if live_session_id != durable_session_id:
+                raise RuntimeError(
+                    f"pi session id mismatch: expected {durable_session_id}, got {live_session_id}"
+                )
+            self._discover_existing(force=True, skip_invalid_sidecars=True)
+            self._refresh_durable_session_catalog(force=True)
+            db = getattr(self, "_page_state_db", None)
+            current = (
+                db.load_sessions().get(ref)
+                if isinstance(db, PageStateDB)
+                else None
+            )
+            self._persist_durable_session_record(
+                DurableSessionRecord(
+                    backend="pi",
+                    session_id=durable_session_id,
+                    cwd=(current.cwd if current is not None else cwd),
+                    source_path=(current.source_path if current is not None else str(session_path)),
+                    title=current.title if current is not None else None,
+                    first_user_message=current.first_user_message if current is not None else None,
+                    created_at=(current.created_at if current is not None else _safe_path_mtime(session_path)),
+                    updated_at=(current.updated_at if current is not None else _safe_path_mtime(session_path)),
+                    pending_startup=False,
+                )
+            )
+        except Exception:
+            self._delete_durable_session_record(ref)
+            self._clear_deleted_session_state(durable_session_id)
 
     def _persist_session_ui_state(self) -> None:
         db = getattr(self, "_page_state_db", None)
@@ -4421,13 +4505,14 @@ class SessionManager:
         alias = _clean_alias(name)
         ref = self._page_state_ref_for_session_id(session_id)
         runtime_id = self._runtime_session_id_for_identifier(session_id)
-        if ref is None or runtime_id is None:
+        if ref is None:
             raise KeyError("unknown session")
         with self._lock:
             if alias:
                 self._aliases[ref] = alias
             else:
-                self._aliases.pop(runtime_id, None)
+                if runtime_id is not None:
+                    self._aliases.pop(runtime_id, None)
                 self._aliases.pop(ref, None)
         self._save_aliases()
         return alias
@@ -4533,7 +4618,7 @@ class SessionManager:
         dependency_clean = _clean_dependency_session_id(dependency_session_id)
         ref = self._page_state_ref_for_session_id(session_id)
         runtime_id = self._runtime_session_id_for_identifier(session_id)
-        if ref is None or runtime_id is None:
+        if ref is None:
             raise KeyError("unknown session")
         dep_ref = None
         if dependency_clean is not None:
@@ -4550,7 +4635,8 @@ class SessionManager:
             if alias:
                 aliases[ref] = alias
             else:
-                aliases.pop(runtime_id, None)
+                if runtime_id is not None:
+                    aliases.pop(runtime_id, None)
                 aliases.pop(ref, None)
             meta_map = getattr(self, "_sidebar_meta", None)
             if not isinstance(meta_map, dict):
@@ -5065,21 +5151,22 @@ class SessionManager:
         touched_ts: float | None = None
         ref = self._page_state_ref_for_session_id(session_id)
         runtime_id = self._runtime_session_id_for_identifier(session_id)
-        if ref is None or runtime_id is None:
+        if ref is None:
             raise KeyError("unknown session")
         with self._lock:
-            s = self._sessions.get(runtime_id)
-            if s is None:
-                raise KeyError("unknown session")
-            q = self._queues.get(runtime_id)
+            s = self._sessions.get(runtime_id) if runtime_id is not None else None
+            q = self._queues.get(runtime_id) if runtime_id is not None else None
             if not isinstance(q, list):
                 q = self._queues.get(ref)
             if not isinstance(q, list):
                 q = []
-                self._queues[runtime_id] = q
+                if runtime_id is not None:
+                    self._queues[runtime_id] = q
+                else:
+                    self._queues[ref] = q
             q.append(t)
             ql = len(q)
-            if s.backend == "pi":
+            if s is not None and s.backend == "pi":
                 touched_ts = _touch_session_file(s.session_path)
                 s.pi_idle_activity_ts = None
                 s.pi_busy_activity_floor = touched_ts
@@ -6245,10 +6332,10 @@ class SessionManager:
                     continue
                 if (backend, durable_session_id) in live_resume_keys:
                     continue
-                history_session_id = _historical_session_id(backend, durable_session_id)
+                session_row_id = durable_session_id if record.pending_startup else _historical_session_id(backend, durable_session_id)
                 if hidden_sessions.intersection(
                     self._hidden_session_keys(
-                        history_session_id,
+                        session_row_id,
                         durable_session_id,
                         durable_session_id,
                         backend,
@@ -6290,7 +6377,7 @@ class SessionManager:
                 git_branch = _current_git_branch(cwd_path) if cwd_path is not None else None
                 items.append(
                     {
-                        "session_id": history_session_id,
+                        "session_id": session_row_id,
                         "runtime_id": None,
                         "thread_id": durable_session_id,
                         "resume_session_id": durable_session_id,
@@ -6333,7 +6420,8 @@ class SessionManager:
                         "final_priority": final_priority,
                         "blocked": blocked,
                         "snoozed": snoozed,
-                        "historical": True,
+                        "historical": not record.pending_startup,
+                        "pending_startup": bool(record.pending_startup),
                         "source_path": record.source_path,
                         "session_path": record.source_path,
                     }
@@ -7344,6 +7432,7 @@ class SessionManager:
         cwd3 = str(cwd_path)
         if backend_name == "pi":
             spawn_nonce = secrets.token_hex(8)
+            created_pending_session_id: str | None = None
             if resume_session_id is not None:
                 resume_id = _clean_optional_resume_session_id(resume_session_id)
                 if not resume_id:
@@ -7361,7 +7450,24 @@ class SessionManager:
                 if session_path is None:
                     raise ValueError(f"resume session not found for cwd: {resume_id}")
             else:
+                created_pending_session_id = str(uuid.uuid4())
                 session_path = _pi_new_session_file_for_cwd(cwd_path)
+                _write_pi_session_header(
+                    session_path,
+                    session_id=created_pending_session_id,
+                    cwd=cwd3,
+                )
+                self._persist_durable_session_record(
+                    DurableSessionRecord(
+                        backend="pi",
+                        session_id=created_pending_session_id,
+                        cwd=cwd3,
+                        source_path=str(session_path),
+                        created_at=_safe_path_mtime(session_path),
+                        updated_at=_safe_path_mtime(session_path),
+                        pending_startup=True,
+                    )
+                )
             session_path.parent.mkdir(parents=True, exist_ok=True)
             argv = [
                 sys.executable,
@@ -7389,6 +7495,8 @@ class SessionManager:
             if create_in_tmux:
                 tmux_bin = shutil.which("tmux")
                 if tmux_bin is None:
+                    if created_pending_session_id is not None:
+                        self._delete_durable_session_record(("pi", created_pending_session_id))
                     raise ValueError("tmux is unavailable on this host")
                 tmux_window = _safe_filename(
                     f"{Path(cwd3).name or 'session'}-{spawn_nonce[:6]}",
@@ -7454,12 +7562,34 @@ class SessionManager:
                     tmux_argv, capture_output=True, text=True, env=env, check=False
                 )
                 if tmux_proc.returncode != 0:
+                    if created_pending_session_id is not None:
+                        self._delete_durable_session_record(("pi", created_pending_session_id))
                     detail = (
                         tmux_proc.stderr
                         or tmux_proc.stdout
                         or f"exit status {tmux_proc.returncode}"
                     ).strip()
                     raise RuntimeError(f"tmux launch failed: {detail}")
+                if created_pending_session_id is not None:
+                    threading.Thread(
+                        target=self._finalize_pending_pi_spawn,
+                        kwargs={
+                            "spawn_nonce": spawn_nonce,
+                            "durable_session_id": created_pending_session_id,
+                            "cwd": cwd3,
+                            "session_path": session_path,
+                            "proc": None,
+                        },
+                        daemon=True,
+                    ).start()
+                    return {
+                        "session_id": created_pending_session_id,
+                        "runtime_id": None,
+                        "backend": "pi",
+                        "pending_startup": True,
+                        "tmux_session": TMUX_SESSION_NAME,
+                        "tmux_window": tmux_window,
+                    }
                 meta = _wait_for_spawned_broker_meta(spawn_nonce)
                 payload = _spawn_result_from_meta(meta)
                 return {
@@ -7477,13 +7607,33 @@ class SessionManager:
                     start_new_session=True,
                 )
             except Exception as e:
+                if created_pending_session_id is not None:
+                    self._delete_durable_session_record(("pi", created_pending_session_id))
                 raise RuntimeError(f"spawn failed: {e}") from e
-            _wait_or_raise(proc, label="pi broker", timeout_s=1.5)
             if proc.stderr is not None:
                 threading.Thread(
                     target=_drain_stream, args=(proc.stderr,), daemon=True
                 ).start()
             threading.Thread(target=proc.wait, daemon=True).start()
+            if created_pending_session_id is not None:
+                threading.Thread(
+                    target=self._finalize_pending_pi_spawn,
+                    kwargs={
+                        "spawn_nonce": spawn_nonce,
+                        "durable_session_id": created_pending_session_id,
+                        "cwd": cwd3,
+                        "session_path": session_path,
+                        "proc": proc,
+                    },
+                    daemon=True,
+                ).start()
+                return {
+                    "session_id": created_pending_session_id,
+                    "runtime_id": None,
+                    "backend": "pi",
+                    "pending_startup": True,
+                }
+            _wait_or_raise(proc, label="pi broker", timeout_s=1.5)
             meta = _wait_for_spawned_broker_meta(spawn_nonce)
             return _spawn_result_from_meta(meta)
         if resume_session_id is not None and worktree_branch is not None:
@@ -7719,7 +7869,12 @@ class SessionManager:
     def delete_session(self, session_id: str) -> bool:
         runtime_id = self._runtime_session_id_for_identifier(session_id)
         if runtime_id is None:
-            return False
+            ref = self._page_state_ref_for_session_id(session_id)
+            if ref is None:
+                return False
+            self._delete_durable_session_record(ref)
+            self._clear_deleted_session_state(session_id)
+            return True
         with self._lock:
             s = self._sessions.get(runtime_id)
         if not s:

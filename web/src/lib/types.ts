@@ -32,6 +32,7 @@ export interface SessionSummary {
   broker_pid?: number;
   owned?: boolean;
   busy?: boolean;
+  pending_startup?: boolean;
   queue_len?: number;
   updated_ts?: number;
   git_branch?: string | null;
@@ -72,6 +73,7 @@ export interface CreateSessionResponse {
   runtime_id?: string | null;
   backend?: string;
   broker_pid?: number;
+  pending_startup?: boolean;
 }
 
 export interface DeleteSessionResponse {

@@ -61,6 +61,7 @@ class TestPageStateSQLite(unittest.TestCase):
                         first_user_message="hello",
                         created_at=10.0,
                         updated_at=12.0,
+                        pending_startup=True,
                     )
                 }
             )
@@ -71,6 +72,7 @@ class TestPageStateSQLite(unittest.TestCase):
             self.assertEqual(rows[("pi", "sess-a")].title, "alpha")
             self.assertEqual(rows[("pi", "sess-a")].first_user_message, "hello")
             self.assertEqual(rows[("pi", "sess-a")].updated_at, 12.0)
+            self.assertTrue(rows[("pi", "sess-a")].pending_startup)
             self.assertEqual(db.known_session_refs(), {("pi", "sess-a")})
             db.close()
 

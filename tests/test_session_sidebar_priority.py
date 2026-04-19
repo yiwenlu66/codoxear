@@ -102,6 +102,46 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertIsNone(rows[0]["snooze_until"])
         self.assertIsNone(rows[0]["dependency_session_id"])
 
+    def test_list_sessions_includes_pending_sqlite_sessions_as_live_placeholders(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        mgr._refresh_durable_session_catalog = lambda *args, **kwargs: None  # type: ignore[method-assign]
+        with tempfile.TemporaryDirectory() as td:
+            db = PageStateDB(Path(td) / "state.sqlite")
+            db.save_sessions(
+                {
+                    ("pi", "resume-pi"): DurableSessionRecord(
+                        backend="pi",
+                        session_id="resume-pi",
+                        cwd="/repo",
+                        source_path=str(Path(td) / "resume-pi.jsonl"),
+                        title="Recovered",
+                        first_user_message="hello",
+                        created_at=100.0,
+                        updated_at=150.0,
+                        pending_startup=True,
+                    )
+                }
+            )
+            db.save_session_ui_state(
+                aliases={("pi", "resume-pi"): "Recovered alias"},
+                sidebar_meta={("pi", "resume-pi"): {"priority_offset": 0.2, "focused": True}},
+                hidden_keys=set(),
+            )
+            mgr._aliases, mgr._sidebar_meta, mgr._hidden_sessions = db.load_session_ui_state()
+            mgr._page_state_db = db
+            rows = mgr.list_sessions()
+            db.close()
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["session_id"], "resume-pi")
+        self.assertIsNone(rows[0]["runtime_id"])
+        self.assertFalse(rows[0]["historical"])
+        self.assertTrue(rows[0]["pending_startup"])
+        self.assertEqual(rows[0]["alias"], "Recovered alias")
+        self.assertEqual(rows[0]["title"], "Recovered")
+
     def test_list_sessions_includes_recovered_sqlite_sessions_when_no_live_sessions(
         self,
     ) -> None:
