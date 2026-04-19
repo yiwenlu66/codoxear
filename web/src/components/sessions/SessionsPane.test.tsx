@@ -156,6 +156,32 @@ describe("SessionsPane", () => {
     expect(root?.querySelector(".sessionTitle")?.textContent).not.toContain("先整理一下今晚要发的内容");
   });
 
+  it("switches between Sessions and Focus tabs", async () => {
+    renderSessionsPane({
+      items: [
+        { session_id: "sess-1", alias: "Inbox cleanup", agent_backend: "pi", focused: true, cwd: "/tmp/a" },
+        { session_id: "sess-2", alias: "Release prep", agent_backend: "pi", focused: false, cwd: "/tmp/b" },
+      ],
+      activeSessionId: "sess-1",
+      loading: false,
+      newSessionDefaults: null,
+      recentCwds: [],
+      cwdGroups: {},
+      tmuxAvailable: false,
+    });
+
+    expect(root?.textContent).toContain("Inbox cleanup");
+    expect(root?.textContent).toContain("Release prep");
+
+    const focusTab = Array.from(root?.querySelectorAll<HTMLButtonElement>("button") || []).find((button) => button.textContent?.includes("Focus"));
+    expect(focusTab).toBeDefined();
+    await click(focusTab!);
+    await flush();
+
+    expect(root?.textContent).toContain("Inbox cleanup");
+    expect(root?.textContent).not.toContain("Release prep");
+  });
+
   it("toggles Focus from the session rail", async () => {
     const sessionsStore = renderSessionsPane({
       items: [{ session_id: "sess-1", alias: "Inbox cleanup", agent_backend: "pi", focused: false }],

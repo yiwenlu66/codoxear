@@ -68,9 +68,17 @@ def _pi_context_windows(models_path_str: str, mtime_ns: int) -> dict[tuple[str, 
     return out
 
 
-def pi_model_context_window(provider: str | None, model: str | None, *, models_path: Path | None = None) -> int | None:
-    if not isinstance(provider, str) or not provider.strip():
+def _fallback_context_window_for_model(index: dict[tuple[str, str], int], model: str) -> int | None:
+    wanted = model.strip()
+    if not wanted:
         return None
+    matches = {ctx for (_provider, model_id), ctx in index.items() if model_id == wanted}
+    if len(matches) == 1:
+        return next(iter(matches))
+    return None
+
+
+def pi_model_context_window(provider: str | None, model: str | None, *, models_path: Path | None = None) -> int | None:
     if not isinstance(model, str) or not model.strip():
         return None
     path = _default_pi_models_path() if models_path is None else models_path
@@ -84,7 +92,11 @@ def pi_model_context_window(provider: str | None, model: str | None, *, models_p
         index = _pi_context_windows(str(path.resolve()), int(stat.st_mtime_ns))
     except Exception:
         return None
-    return index.get((provider.strip(), model.strip()))
+    if isinstance(provider, str) and provider.strip():
+        direct = index.get((provider.strip(), model.strip()))
+        if direct is not None:
+            return direct
+    return _fallback_context_window_for_model(index, model)
 
 
 def read_pi_session_header(path: Path) -> dict[str, Any] | None:
@@ -252,6 +264,61 @@ def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None) -> 
     }
 
 
+def _merge_pi_run_settings(
+    provider: str | None,
+    model: str | None,
+    thinking_level: str | None,
+    obj: dict[str, Any],
+) -> tuple[str | None, str | None, str | None]:
+    typ = obj.get("type")
+    if typ == "model_change":
+        raw_provider = obj.get("provider")
+        raw_model = obj.get("modelId")
+        if isinstance(raw_provider, str) and raw_provider.strip():
+            provider = raw_provider
+        if isinstance(raw_model, str) and raw_model.strip():
+            model = raw_model
+    elif typ == "thinking_level_change":
+        raw_thinking = obj.get("thinkingLevel")
+        if isinstance(raw_thinking, str) and raw_thinking.strip():
+            thinking_level = raw_thinking
+    return provider, model, thinking_level
+
+
+def _scan_pi_run_settings_range(
+    path: Path,
+    *,
+    start: int,
+    limit_bytes: int,
+    provider: str | None,
+    model: str | None,
+    thinking_level: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    if limit_bytes <= 0:
+        return provider, model, thinking_level
+    with path.open("rb") as f:
+        if start > 0:
+            f.seek(start)
+            _ = f.readline()
+        consumed = 0
+        for raw in f:
+            consumed += len(raw)
+            if consumed > limit_bytes:
+                break
+            if not raw.strip():
+                continue
+            try:
+                obj = json.loads(raw.decode("utf-8"))
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            provider, model, thinking_level = _merge_pi_run_settings(
+                provider, model, thinking_level, obj
+            )
+    return provider, model, thinking_level
+
+
 def read_pi_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -> tuple[str | None, str | None, str | None]:
     provider: str | None = None
     model: str | None = None
@@ -276,34 +343,26 @@ def read_pi_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -
     except Exception:
         return provider, model, thinking_level
 
-    start = max(0, size - int(max_scan_bytes))
+    head_scan_bytes = min(size, 256 * 1024)
+    tail_scan_bytes = min(size, int(max_scan_bytes))
     try:
-        with path.open("rb") as f:
-            if start > 0:
-                f.seek(start)
-                _ = f.readline()
-            for raw in f:
-                if not raw.strip():
-                    continue
-                try:
-                    obj = json.loads(raw.decode("utf-8"))
-                except Exception:
-                    continue
-                if not isinstance(obj, dict):
-                    continue
-                typ = obj.get("type")
-                if typ == "model_change":
-                    raw_provider = obj.get("provider")
-                    raw_model = obj.get("modelId")
-                    if isinstance(raw_provider, str) and raw_provider.strip():
-                        provider = raw_provider
-                    if isinstance(raw_model, str) and raw_model.strip():
-                        model = raw_model
-                    continue
-                if typ == "thinking_level_change":
-                    raw_thinking = obj.get("thinkingLevel")
-                    if isinstance(raw_thinking, str) and raw_thinking.strip():
-                        thinking_level = raw_thinking
+        provider, model, thinking_level = _scan_pi_run_settings_range(
+            path,
+            start=0,
+            limit_bytes=head_scan_bytes,
+            provider=provider,
+            model=model,
+            thinking_level=thinking_level,
+        )
+        if size > tail_scan_bytes:
+            provider, model, thinking_level = _scan_pi_run_settings_range(
+                path,
+                start=max(0, size - tail_scan_bytes),
+                limit_bytes=tail_scan_bytes,
+                provider=provider,
+                model=model,
+                thinking_level=thinking_level,
+            )
     except FileNotFoundError:
         return provider, model, thinking_level
     return provider, model, thinking_level

@@ -1820,6 +1820,30 @@ def _session_list_payload(
             grouped[key] = []
         grouped[key].append(row)
 
+    def _page_rows_for_group(group_rows: list[dict[str, Any]], page_size: int) -> list[dict[str, Any]]:
+        if len(group_rows) <= page_size:
+            return list(group_rows)
+        page_rows = list(group_rows[:page_size])
+        focused_rows = [row for row in group_rows if bool(row.get("focused"))]
+        if not focused_rows:
+            return page_rows
+        existing_ids = {id(row) for row in page_rows}
+        extras = [row for row in focused_rows if id(row) not in existing_ids]
+        if not extras:
+            return page_rows
+        keep = [row for row in page_rows if bool(row.get("focused"))]
+        keep.extend(extras)
+        keep = keep[:page_size]
+        keep_ids = {id(item) for item in keep}
+        for row in group_rows:
+            if len(keep) >= page_size:
+                break
+            if id(row) in keep_ids:
+                continue
+            keep.append(row)
+            keep_ids.add(id(row))
+        return keep
+
     def _group_sort_key(key: str) -> tuple[int, float]:
         group_rows = grouped[key]
         busy = any(bool(row.get("busy")) for row in group_rows)
@@ -1842,7 +1866,7 @@ def _session_list_payload(
     selected_group_keys = set(group_order[:SESSION_LIST_RECENT_GROUP_LIMIT])
     omitted_group_count = 0
     for key, group_rows in grouped.items():
-        if any(bool(row.get("busy")) for row in group_rows):
+        if any(bool(row.get("busy")) for row in group_rows) or any(bool(row.get("focused")) for row in group_rows):
             selected_group_keys.add(key)
 
     if group_offset > 0 or group_limit != SESSION_LIST_RECENT_GROUP_LIMIT:
@@ -1857,7 +1881,7 @@ def _session_list_payload(
         if key not in selected_group_keys:
             continue
         group_rows = grouped[key]
-        page_rows = group_rows[:SESSION_LIST_GROUP_PAGE_SIZE]
+        page_rows = _page_rows_for_group(group_rows, SESSION_LIST_GROUP_PAGE_SIZE)
         sessions.extend(_frontend_session_list_row(row) for row in page_rows)
         remaining = len(group_rows) - len(page_rows)
         if remaining > 0:

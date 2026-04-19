@@ -11,6 +11,7 @@ from codoxear.page_state_sqlite import PageStateDB
 from codoxear.server import Session
 from codoxear.server import SessionManager
 from codoxear.server import _frontend_session_list_row
+from codoxear.server import _session_list_payload
 
 
 def _make_manager() -> SessionManager:
@@ -122,6 +123,17 @@ class TestSessionSidebarPriority(unittest.TestCase):
         meta = mgr.sidebar_meta_get("sess-1")
 
         self.assertFalse(meta["focused"])
+
+    def test_session_list_payload_keeps_focused_rows_visible(self) -> None:
+        payload = _session_list_payload(
+            [
+                {"session_id": f"sess-{idx}", "cwd": "/tmp/project", "updated_ts": 100 - idx, "focused": idx == 6}
+                for idx in range(7)
+            ]
+        )
+
+        session_ids = [row["session_id"] for row in payload["sessions"]]
+        self.assertIn("sess-6", session_ids)
 
     def test_list_sessions_includes_pending_sqlite_sessions_as_live_placeholders(
         self,

@@ -17,6 +17,8 @@ interface SessionsPaneProps {
   onNewSession?: () => void;
 }
 
+type SessionsSurfaceTab = "sessions" | "focus";
+
 const FALLBACK_GROUP_KEY = "__no_working_directory__";
 const FALLBACK_GROUP_TITLE = "No working directory";
 const FALLBACK_GROUP_SUBTITLE = "Sessions without a cwd";
@@ -87,8 +89,14 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
   const [actionError, setActionError] = useState("");
   const [pendingGroupKey, setPendingGroupKey] = useState<string | null>(null);
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
+  const [surfaceTab, setSurfaceTab] = useState<SessionsSurfaceTab>("sessions");
 
+  const focusedItems = useMemo(
+    () => items.filter((session) => session.focused === true && session.historical !== true),
+    [items],
+  );
   const groupedSessions = useMemo(() => groupSessions(items, cwdGroups), [cwdGroups, items]);
+  const groupedFocusedSessions = useMemo(() => groupSessions(focusedItems, cwdGroups), [cwdGroups, focusedItems]);
 
   const toggleSessionFocus = async (session: SessionSummary) => {
     try {
@@ -235,13 +243,37 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
             New session
           </Button>
         </div>
+        <div className="sessionsSurfaceTabs" role="tablist" aria-label="Session views">
+          <Button
+            type="button"
+            size="sm"
+            variant={surfaceTab === "sessions" ? "default" : "outline"}
+            className="sessionsSurfaceTab"
+            role="tab"
+            aria-selected={surfaceTab === "sessions"}
+            onClick={() => setSurfaceTab("sessions")}
+          >
+            Sessions
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={surfaceTab === "focus" ? "default" : "outline"}
+            className="sessionsSurfaceTab"
+            role="tab"
+            aria-selected={surfaceTab === "focus"}
+            onClick={() => setSurfaceTab("focus")}
+          >
+            Focus
+          </Button>
+        </div>
         {actionError ? <p className="px-1 pb-2 text-sm font-medium text-red-600">{actionError}</p> : null}
         <ScrollArea className="sessionsSurfaceBody">
           <div className="sessionsList">
-            {groupedSessions.map((group) => {
+            {(surfaceTab === "focus" ? groupedFocusedSessions : groupedSessions).map((group) => {
               const visibleSessions = group.sessions;
               const hiddenSessionCount = Math.max(0, Number(remainingByGroup[group.key] || 0));
-              const hasHiddenSessions = hiddenSessionCount > 0;
+              const hasHiddenSessions = surfaceTab === "sessions" && hiddenSessionCount > 0;
 
               return (
                 <SessionGroup
@@ -305,7 +337,10 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
                 </SessionGroup>
               );
             })}
-            {omittedGroupCount > 0 ? (
+            {surfaceTab === "focus" && groupedFocusedSessions.length === 0 ? (
+              <div className="focusRailEmpty">No sessions are in Focus.</div>
+            ) : null}
+            {surfaceTab === "sessions" && omittedGroupCount > 0 ? (
               <button
                 type="button"
                 className="sessionGroupMoreButton"

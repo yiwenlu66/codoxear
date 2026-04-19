@@ -494,6 +494,26 @@ select {
   flex: 0 0 auto;
 }
 
+.sessionsSurfaceTabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding: 0 0 0.75rem;
+}
+
+.sessionsSurfaceTab {
+  min-height: 2.2rem;
+}
+
+.focusRailEmpty {
+  padding: 0.9rem 0.95rem;
+  border: 1px dashed color-mix(in srgb, var(--legacy-border) 68%, white);
+  border-radius: 14px;
+  color: var(--legacy-muted);
+  background: color-mix(in srgb, white 96%, var(--panel));
+  font-size: 0.9rem;
+}
+
 .sessionsSurfaceBody {
   min-height: 0;
   flex: 1 1 auto;
@@ -2319,7 +2339,8 @@ select {
 :root[data-theme="dark"] .composerQueueButton,
 :root[data-theme="dark"] .composerCommandMenu,
 :root[data-theme="dark"] .focusSessionItem,
-:root[data-theme="dark"] .focusSessionEmpty {
+:root[data-theme="dark"] .focusSessionEmpty,
+:root[data-theme="dark"] .focusRailEmpty {
   background: var(--chrome-elevated);
 }
 
@@ -2336,7 +2357,8 @@ select {
 :root[data-theme="dark"] .workspaceRail,
 :root[data-theme="dark"] .sidebarFooter,
 :root[data-theme="dark"] .focusSessionItem,
-:root[data-theme="dark"] .focusSessionEmpty {
+:root[data-theme="dark"] .focusSessionEmpty,
+:root[data-theme="dark"] .focusRailEmpty {
   border-color: var(--chrome-border);
 }
 
@@ -2495,6 +2517,10 @@ select {
   .sessionsNewButton {
     min-height: 2.2rem;
     padding-inline: 0.8rem;
+  }
+
+  .sessionsSurfaceTabs {
+    padding-bottom: 0.65rem;
   }
 
   .sessionsList {
