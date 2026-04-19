@@ -98,6 +98,13 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
   const groupedSessions = useMemo(() => groupSessions(items, cwdGroups), [cwdGroups, items]);
   const groupedFocusedSessions = useMemo(() => groupSessions(focusedItems, cwdGroups), [cwdGroups, focusedItems]);
 
+  const switchSurfaceTab = (nextTab: SessionsSurfaceTab) => {
+    setSurfaceTab(nextTab);
+    if (nextTab === "focus") {
+      void sessionsStoreApi.refresh().catch(() => undefined);
+    }
+  };
+
   const toggleSessionFocus = async (session: SessionSummary) => {
     try {
       setActionError("");
@@ -250,7 +257,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
             className="sessionsSurfaceTab"
             role="tab"
             aria-selected={surfaceTab === "sessions"}
-            onClick={() => setSurfaceTab("sessions")}
+            onClick={() => switchSurfaceTab("sessions")}
           >
             Sessions
           </Button>
@@ -261,7 +268,7 @@ export function SessionsPane({ onNewSession }: SessionsPaneProps) {
             className="sessionsSurfaceTab"
             role="tab"
             aria-selected={surfaceTab === "focus"}
-            onClick={() => setSurfaceTab("focus")}
+            onClick={() => switchSurfaceTab("focus")}
           >
             Focus
           </Button>

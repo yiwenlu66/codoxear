@@ -157,7 +157,7 @@ describe("SessionsPane", () => {
   });
 
   it("switches between Sessions and Focus tabs", async () => {
-    renderSessionsPane({
+    const sessionsStore = renderSessionsPane({
       items: [
         { session_id: "sess-1", alias: "Inbox cleanup", agent_backend: "pi", focused: true, cwd: "/tmp/a" },
         { session_id: "sess-2", alias: "Release prep", agent_backend: "pi", focused: false, cwd: "/tmp/b" },
@@ -180,6 +180,7 @@ describe("SessionsPane", () => {
 
     expect(root?.textContent).toContain("Inbox cleanup");
     expect(root?.textContent).not.toContain("Release prep");
+    expect(sessionsStore.refresh).toHaveBeenCalled();
   });
 
   it("toggles Focus from the session rail", async () => {
