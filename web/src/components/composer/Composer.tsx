@@ -274,7 +274,11 @@ async function toJpegBlob(file: File, options: { maxDim: number; quality: number
   }
 }
 
-export function Composer() {
+interface ComposerProps {
+  compactMobile?: boolean;
+}
+
+export function Composer({ compactMobile = false }: ComposerProps = {}) {
   const { activeSessionId, items } = useSessionsStore();
   const { bySessionId = {} } = useMessagesStore() as {
     bySessionId?: Record<string, MessageEvent[]>;
@@ -882,36 +886,44 @@ export function Composer() {
                 </div>
               ) : null}
             </div>
-            <div className="composerControlsColumn">
-              {composerTurnElapsedLabel ? <div className="composerTurnTiming">{composerTurnElapsedLabel}</div> : null}
-              {composerContextUsageLabel ? <div className="composerContextUsage">{composerContextUsageLabel}</div> : null}
-              <div className="composerControlsRow">
+            <div className={cn("composerControlsColumn", compactMobile && "compactMobile") }>
+              {composerTurnElapsedLabel || composerContextUsageLabel ? (
+                <div className={cn("composerMetaRow", compactMobile && "compactMobile")}>
+                  {composerTurnElapsedLabel ? <div className="composerTurnTiming">{composerTurnElapsedLabel}</div> : null}
+                  {composerContextUsageLabel ? <div className="composerContextUsage">{composerContextUsageLabel}</div> : null}
+                </div>
+              ) : null}
+              <div className={cn("composerControlsRow", compactMobile && "compactMobile")}>
                 <input ref={fileInputRef} type="file" hidden tabIndex={-1} onChange={handleAttachChange} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="composerAttachButton"
-                  aria-label="Attach file"
-                  title={attachButtonTitle}
-                  disabled={!attachmentsSupported || attachmentUploading || sending}
-                  onClick={handleAttachClick}
-                >
-                  <span className="buttonGlyph">📎</span>
-                  {activeAttachmentCount > 0 ? <span className="composerAttachBadge">{activeAttachmentCount}</span> : null}
-                  <span className="visuallyHidden">Attach file</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="composerQueueButton"
-                  aria-label="Queued messages"
-                  disabled={sending || !draft.trim()}
-                  onClick={queueCurrentDraft}
-                >
-                  Queue
-                </Button>
+                {!compactMobile ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="composerAttachButton"
+                    aria-label="Attach file"
+                    title={attachButtonTitle}
+                    disabled={!attachmentsSupported || attachmentUploading || sending}
+                    onClick={handleAttachClick}
+                  >
+                    <span className="buttonGlyph">📎</span>
+                    {activeAttachmentCount > 0 ? <span className="composerAttachBadge">{activeAttachmentCount}</span> : null}
+                    <span className="visuallyHidden">Attach file</span>
+                  </Button>
+                ) : null}
+                {!compactMobile ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="composerQueueButton"
+                    aria-label="Queued messages"
+                    disabled={sending || !draft.trim()}
+                    onClick={queueCurrentDraft}
+                  >
+                    Queue
+                  </Button>
+                ) : null}
                 {activeSessionBusy ? (
                   <Button
                     type="button"

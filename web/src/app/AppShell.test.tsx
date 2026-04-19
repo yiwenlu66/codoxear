@@ -318,6 +318,7 @@ describe("AppShell", () => {
       renderAppShell({ activeSessionId: null, diagnostics: null });
       expect(getRoot().querySelector('[data-testid="mobile-shell"]')).not.toBeNull();
       expect(findButtonByText("Sessions")).not.toBeNull();
+      expect(findButtonByText("Read")).not.toBeNull();
       expect(findButtonByText("Chat")).not.toBeNull();
       expect(findButtonByText("Tools")).not.toBeNull();
       expect(findButtonByAriaLabel("Conversation tools")).toBeNull();
@@ -341,6 +342,37 @@ describe("AppShell", () => {
     expect(findButtonByAriaLabel("Interrupt (Esc)")?.querySelector("svg")).not.toBeNull();
   });
 
+  it("defaults to read mode on narrow viewports when a session is active", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 880px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn().mockReturnValue(false),
+      })),
+    });
+
+    try {
+      renderAppShell({ diagnostics: { status: "ok" } });
+      await flush();
+
+      expect(getRoot().textContent).toContain("Read");
+      expect(findButtonByAriaLabel("Conversation tools")).toBeNull();
+      expect(getRoot().querySelector("[data-testid='composer-card']")).toBeNull();
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
   it("switches to the tools page on narrow viewports", async () => {
     const originalMatchMedia = window.matchMedia;
     Object.defineProperty(window, "matchMedia", {
@@ -361,7 +393,7 @@ describe("AppShell", () => {
       renderAppShell({ diagnostics: { status: "ok" } });
       await flush();
 
-      expect(getRoot().textContent).toContain("Active session");
+      expect(getRoot().textContent).toContain("Read");
       expect(findButtonByAriaLabel("Conversation tools")).toBeNull();
 
       act(() => {
@@ -445,6 +477,44 @@ describe("AppShell", () => {
     }
   });
 
+  it("switches to compact chat mode on narrow viewports without queue or attach actions", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === "(max-width: 880px)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn().mockReturnValue(false),
+      })),
+    });
+
+    try {
+      renderAppShell({ diagnostics: { status: "ok" } });
+      await flush();
+
+      act(() => {
+        findButtonByText("Chat")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await flush();
+
+      expect(getRoot().querySelector("[data-testid='composer-card']")).not.toBeNull();
+      expect(getRoot().textContent).toContain("Chat");
+      expect(findButtonByText("Queue")).toBeUndefined();
+      expect(findButtonByAriaLabel("Attach file")).toBeNull();
+      expect(findButtonByAriaLabel("Cancel current loop")).not.toBeNull();
+    } finally {
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
   it("switches back to the sessions page from bottom navigation on narrow viewports", async () => {
     const originalMatchMedia = window.matchMedia;
     Object.defineProperty(window, "matchMedia", {
@@ -465,7 +535,7 @@ describe("AppShell", () => {
       renderAppShell({ diagnostics: { status: "ok" } });
       await flush();
 
-      expect(getRoot().textContent).toContain("Active session");
+      expect(getRoot().textContent).toContain("Read");
       act(() => {
         findButtonByText("Sessions")?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       });

@@ -5,7 +5,7 @@ import { Composer } from "@/components/composer/Composer";
 import { ConversationPane } from "@/components/conversation/ConversationPane";
 import { FileIcon, HarnessIcon, StopIcon, TodoListIcon, WorkspaceIcon } from "./icons";
 
-export type MobileShellTab = "sessions" | "chat" | "tools";
+export type MobileShellTab = "sessions" | "read" | "chat" | "tools";
 
 interface MobileShellProps {
   activeSessionId: string | null;
@@ -145,11 +145,13 @@ export function MobileShell({
   onToggleAnnouncements,
   onToggleNotifications,
 }: MobileShellProps) {
-  const [tab, setTab] = useState<MobileShellTab>(activeSessionId ? "chat" : "sessions");
+  const [tab, setTab] = useState<MobileShellTab>(activeSessionId ? "read" : "sessions");
 
   useEffect(() => {
     if (activeSessionId) {
-      setTab("chat");
+      setTab("read");
+    } else {
+      setTab("sessions");
     }
     blurActiveInteractiveElement();
   }, [activeSessionId]);
@@ -168,11 +170,34 @@ export function MobileShell({
             <SessionsPane onNewSession={onNewSession} />
           </div>
         ) : null}
+        {tab === "read" ? (
+          <section className="mobilePane mobileReadPane">
+            <header className="mobileReadHeader">
+              <div className="mobileChatHeading">
+                <p className="mobileSectionEyebrow">Read</p>
+                <h1 className="mobileChatTitle">{activeSessionId ? activeTitle : "No session selected"}</h1>
+              </div>
+              <div className="mobileReadHeaderActions">
+                {canInterrupt ? (
+                  <Button type="button" variant="outline" size="sm" className="mobileInterruptButton" onClick={onInterrupt}>
+                    <StopIcon />
+                    <span>Interrupt</span>
+                  </Button>
+                ) : null}
+                <Button type="button" variant="outline" size="sm" className="mobileReplyButton" onClick={() => setTab("chat")}>Reply</Button>
+              </div>
+            </header>
+            <ConversationPane
+              key={activeSessionId || "no-session"}
+              onOpenFilePath={(path, line) => onOpenFilePath(path, line ?? null)}
+            />
+          </section>
+        ) : null}
         {tab === "chat" ? (
           <section className="mobilePane mobileChatPane">
             <header className="mobileChatHeader">
               <div className="mobileChatHeading">
-                <p className="mobileSectionEyebrow">Active session</p>
+                <p className="mobileSectionEyebrow">Chat</p>
                 <h1 className="mobileChatTitle">{activeSessionId ? activeTitle : "No session selected"}</h1>
               </div>
               {canInterrupt ? (
@@ -186,7 +211,7 @@ export function MobileShell({
               key={activeSessionId || "no-session"}
               onOpenFilePath={(path, line) => onOpenFilePath(path, line ?? null)}
             />
-            <Composer />
+            <Composer compactMobile />
           </section>
         ) : null}
         {tab === "tools" ? (
@@ -217,6 +242,14 @@ export function MobileShell({
           onClick={() => setTab("sessions")}
         >
           Sessions
+        </Button>
+        <Button
+          type="button"
+          variant={tab === "read" ? "default" : "outline"}
+          className="mobileBottomNavButton"
+          onClick={() => setTab("read")}
+        >
+          Read
         </Button>
         <Button
           type="button"

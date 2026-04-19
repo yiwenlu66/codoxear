@@ -424,12 +424,14 @@ select {
   flex-direction: column;
 }
 
-.mobileChatPane {
+.mobileChatPane,
+.mobileReadPane {
   min-height: 0;
   background: color-mix(in srgb, var(--panel) 97%, white);
 }
 
 .mobileChatHeader,
+.mobileReadHeader,
 .mobileSectionHeader {
   display: flex;
   align-items: flex-start;
@@ -467,6 +469,17 @@ select {
 }
 
 .mobileInterruptButton {
+  flex: 0 0 auto;
+}
+
+.mobileReadHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.mobileReplyButton {
   flex: 0 0 auto;
 }
 
@@ -551,8 +564,8 @@ select {
 
 .mobileBottomNav {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
   padding: 0.75rem 0.9rem calc(0.75rem + env(safe-area-inset-bottom));
   border-top: 1px solid color-mix(in srgb, var(--legacy-border) 78%, white);
   background: color-mix(in srgb, var(--panel) 94%, white);
@@ -561,6 +574,7 @@ select {
 .mobileBottomNavButton {
   min-height: 2.9rem;
   border-radius: 999px;
+  padding-inline: 0.45rem;
 }
 
 .conversationToolbar {
@@ -2083,6 +2097,26 @@ select {
   min-width: fit-content;
 }
 
+.composerMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.composerControlsColumn.compactMobile {
+  min-width: 0;
+  width: 100%;
+  align-items: stretch;
+}
+
+.composerMetaRow.compactMobile {
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+}
+
 .composerControlsRow {
   flex: 0 0 auto;
   display: flex;
@@ -2842,6 +2876,10 @@ select {
     padding: 0 0.9rem;
   }
 
+  .mobileReadHeaderActions {
+    gap: 0.35rem;
+  }
+
   .mobileToggleStack {
     padding: 0 0.9rem;
   }
@@ -3032,6 +3070,19 @@ select {
     gap: 8px;
   }
 
+  .composerMetaRow {
+    width: 100%;
+  }
+
+  .composerControlsColumn.compactMobile {
+    gap: 7px;
+  }
+
+  .composerMetaRow.compactMobile {
+    gap: 0.4rem;
+    justify-content: space-between;
+  }
+
   .composerInputWrap {
     width: 100%;
     min-height: 56px;
@@ -3051,6 +3102,20 @@ select {
   .composerQueueButton {
     min-width: fit-content;
     margin-left: auto;
+  }
+
+  .composerControlsRow.compactMobile {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+  }
+
+  .composerControlsRow.compactMobile .composerInterruptButton {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .composerControlsRow.compactMobile .sendButton {
+    flex: 0 0 auto;
   }
 
   .composerTextarea {
