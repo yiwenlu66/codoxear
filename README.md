@@ -13,7 +13,7 @@ Currently supported agent backends:
 - Codex
 - Pi
 
-It now also includes an MVP Pi backend for browser-created `pi-coding-agent` sessions. The Pi path currently focuses on web-owned sessions started from the UI; it does not yet attach to an already-running interactive Pi TUI session.
+Pi support covers both web-owned sessions started from Codoxear and brokered terminal-owned sessions started via `piox`. Codoxear talks to Pi through a `pi-rpc` broker sidecar, surfaces live UI requests and streamed assistant output, and keeps bridge-sent prompts buffered while Pi is compacting. It still does not attach to an arbitrary already-running interactive Pi TUI process unless that session was launched through the Codoxear broker path.
 
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
@@ -79,7 +79,7 @@ If you are running from a source checkout and want the latest frontend bundle, b
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
-   The New session dialog can start either a Codex-backed session or a Pi-backed session. Codex remains the default.
+   The New session dialog can start either a Codex-backed session or a Pi-backed session. Codex remains the default. The dialog also has a Focus tab for pinning a manual shortlist of sessions you want to jump back to quickly.
 
 6. (Optional) Enable Harness mode for a session:
 
@@ -148,7 +148,26 @@ Codoxear shows three kinds of sessions:
 
 The current UI offers Delete for all session kinds. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
+Live Pi sessions expose two identifiers:
+
+- `session_id`: durable session identity used by the UI, history, and persisted page state
+- `runtime_id`: the current live broker/runtime handle for a running session
+
+This split lets a resumed Pi session keep one durable identity while the live runtime sidecar changes.
+
 If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly.
+
+## Pi live behavior
+
+For Pi `pi-rpc` sessions, Codoxear shows more than the durable JSONL history:
+
+- live streamed assistant text before it lands in the session file
+- live browser UI requests such as AskUser prompts
+- compact machine-trace rows for tool, reasoning, and todo snapshots
+- bridge transport/system events, including buffered prompts during compaction and visible compaction start/end events
+- model context usage derived from Pi token updates
+
+Browser-submitted prompts to a busy Pi session do not go straight into Pi's internal queue. Codoxear keeps its own outbound bridge queue and drains it only when the broker reports the session is ready. During compaction, requests stay buffered instead of failing immediately.
 
 ## Known limitations
 
@@ -200,7 +219,9 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_GIT_CHANGED_FILES_MAX` (default `400`)
 - `CODEX_WEB_FD_POLL_SECONDS` (default `1.0`) - how often the broker scans `/proc` to detect the active `rollout-*.jsonl`
 
-Runtime state is stored under `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
+Runtime state is stored under `~/.local/share/codoxear` by default (legacy `~/.local/share/codex-web` is no longer used). Override this with `CODOXEAR_APP_DIR` when you want an isolated app dir for another deployment or test instance.
+
+Durable page state is stored in SQLite under the app dir. Session conversation content remains in the backend JSONL logs.
 
 Backend-specific session logs live under the backend home:
 
