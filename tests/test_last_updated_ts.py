@@ -84,25 +84,25 @@ class TestLastConversationTimestamp(unittest.TestCase):
             ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
             self.assertAlmostEqual(ts or 0.0, msg_ts, places=3)
 
-    def test_counts_turn_complete_with_last_agent_message(self) -> None:
+    def test_ignores_turn_complete_with_last_agent_message(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout-2026-02-05T00-00-00-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbd.jsonl"
             t0 = time.time()
-            done_ts = t0 - 4
+            user_ts = t0 - 10
             _write_jsonl(
                 p,
                 [
                     {"type": "session_meta", "payload": {"id": "main", "source": "cli"}},
-                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}, "ts": t0 - 10},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}, "ts": user_ts},
                     {
                         "type": "event_msg",
                         "payload": {"type": "turn_complete", "turn_id": "t1", "last_agent_message": "done"},
-                        "ts": done_ts,
+                        "ts": t0 - 4,
                     },
                 ],
             )
             ts = _last_conversation_ts_from_tail(p, max_scan_bytes=64 * 1024)
-            self.assertAlmostEqual(ts or 0.0, done_ts, places=3)
+            self.assertAlmostEqual(ts or 0.0, user_ts, places=3)
 
     def test_returns_none_when_no_conversation(self) -> None:
         with TemporaryDirectory() as td:

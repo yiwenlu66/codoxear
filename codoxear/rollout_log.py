@@ -61,10 +61,6 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
         pt = p.get("type")
         if pt == "user_message" and isinstance(p.get("message"), str):
             return _event_ts(obj)
-        if pt in ("task_complete", "turn_complete"):
-            last_msg = p.get("last_agent_message")
-            if isinstance(last_msg, str) and last_msg.strip():
-                return _event_ts(obj)
         if pt == "agent_message":
             msg = p.get("message")
             phase = p.get("phase")
