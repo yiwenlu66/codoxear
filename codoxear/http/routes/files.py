@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import base64
 import json
-from pathlib import Path
 import urllib.parse
-
+from pathlib import Path
 
 _SERVER = None
 

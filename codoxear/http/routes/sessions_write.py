@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-
+from typing import Any
 
 _SERVER = None
 
@@ -84,7 +84,7 @@ def handle_post(handler, path: str, _u) -> bool:
                 name=payload["name"],
             )
         except ValueError as e:
-            response_payload = {"error": str(e)}
+            response_payload: dict[str, Any] = {"error": str(e)}
             if str(e).startswith("cwd "):
                 response_payload["field"] = "cwd"
             sv._json_response(handler, 400, response_payload)

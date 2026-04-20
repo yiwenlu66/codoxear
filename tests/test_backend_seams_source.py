@@ -74,8 +74,9 @@ class TestBackendSeamsSource(unittest.TestCase):
 
     def test_voice_push_uses_attention_namespace(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
-        self.assertIn("from .attention.derive import compact_notification_state", source)
-        self.assertIn("from .attention.derive import final_response_attention_feed", source)
+        self.assertIn("from .attention.derive import", source)
+        self.assertIn("compact_notification_state", source)
+        self.assertIn("final_response_attention_feed", source)
         self.assertIn("return final_response_attention_feed(", source)
         self.assertNotIn("from codoxear import server as sv", source)
 

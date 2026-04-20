@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 import os
 import queue
-import signal
 import secrets
+import signal
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any
-
 
 PI_BIN = os.environ.get("PI_BIN", "pi")
 

@@ -6,7 +6,6 @@ import re
 import struct
 import termios
 
-
 _ESCAPE_ONLY_RE = re.compile(
     r"(?:\\[\\'\"abfnrtv]|\\x[0-9A-Fa-f]{2}|\\u[0-9A-Fa-f]{4}|\\U[0-9A-Fa-f]{8}|\\N\{[^}]+\}|\\[0-7]{1,3})+\Z"
 )

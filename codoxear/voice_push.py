@@ -10,22 +10,19 @@ import subprocess
 import tempfile
 import threading
 import time
-from urllib.parse import urlparse
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from .page_state_sqlite import PageStateDB
-from .attention.derive import compact_notification_state
-from .attention.derive import final_response_attention_feed
+from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
-from pywebpush import WebPushException
-from pywebpush import webpush
+from pywebpush import WebPushException, webpush
 
+from .attention.derive import compact_notification_state, final_response_attention_feed
+from .page_state_sqlite import PageStateDB
 
 DEFAULT_SUMMARIZATION_MODEL = "gpt-4.1-mini"
 DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"

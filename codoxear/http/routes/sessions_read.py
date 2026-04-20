@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 import time
 import urllib.parse
+from pathlib import Path
 from typing import Any
-
 
 _SERVER = None
 

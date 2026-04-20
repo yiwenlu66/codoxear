@@ -6,19 +6,19 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any
-from typing import Iterator
+from typing import Any, Iterator
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
-from .pi_log import pi_assistant_thinking_count
-from .pi_log import pi_assistant_tool_use_count
-from .pi_log import pi_assistant_text
-from .pi_log import pi_assistant_is_final_turn_end
-from .pi_log import pi_message_role
-from .pi_log import pi_token_update
-from .pi_log import pi_user_text
+from .pi_log import (
+    pi_assistant_is_final_turn_end,
+    pi_assistant_text,
+    pi_assistant_thinking_count,
+    pi_assistant_tool_use_count,
+    pi_message_role,
+    pi_token_update,
+    pi_user_text,
+)
 from .voice_push import ClassifiedAssistantMessage
-
 
 _OAI_MEM_CITATION_TAIL_RE = re.compile(r"\s*<oai-mem-citation>\s*.*?</oai-mem-citation>\s*\Z", re.DOTALL)
 

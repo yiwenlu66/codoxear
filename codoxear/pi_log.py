@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import functools
 import json
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -135,19 +134,20 @@ def pi_model_context_window(
 ) -> int | None:
     if not isinstance(model, str) or not model.strip():
         return None
-    path = _default_pi_models_path() if models_path is None else models_path
-    builtin_path = _default_pi_builtin_models_path() if builtin_models_path is None else builtin_models_path
+    path: Path | None = _default_pi_models_path() if models_path is None else models_path
+    builtin_path: Path | None = _default_pi_builtin_models_path() if builtin_models_path is None else builtin_models_path
     models_path_str: str | None = None
     models_mtime_ns = 0
-    try:
-        stat = path.stat()
-    except FileNotFoundError:
-        path = None
-    except Exception:
-        path = None
-    else:
-        models_path_str = str(path.resolve())
-        models_mtime_ns = int(stat.st_mtime_ns)
+    if path is not None:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            path = None
+        except Exception:
+            path = None
+        else:
+            models_path_str = str(path.resolve())
+            models_mtime_ns = int(stat.st_mtime_ns)
     builtin_path_str: str | None = None
     builtin_mtime_ns = 0
     if builtin_path is not None:
@@ -207,9 +207,9 @@ def _text_parts(content: Any) -> list[str]:
             continue
         if part.get("type") != "text":
             continue
-        text = part.get("text")
-        if isinstance(text, str) and text.strip():
-            out.append(text)
+        raw_text = part.get("text")
+        if isinstance(raw_text, str) and raw_text.strip():
+            out.append(raw_text)
     return out
 
 

@@ -18,13 +18,13 @@ import mimetypes
 import os
 import re
 import secrets
-import signal
 import shlex
 import shutil
+import signal
 import socket
 import socketserver
-import subprocess
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -37,22 +37,34 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .agent_backend import get_agent_backend
-from .agent_backend import infer_agent_backend_from_log_path
-from .agent_backend import normalize_agent_backend
-from . import pi_messages as _pi_messages
 from . import pi_messages as _pi_messages
 from . import rollout_log as _rollout_log
-from .pi_log import pi_model_context_window as _pi_model_context_window
+from .agent_backend import (
+    get_agent_backend,
+    infer_agent_backend_from_log_path,
+    normalize_agent_backend,
+)
+from .http.routes import assets as _http_assets_routes
+from .http.routes import auth as _http_auth_routes
+from .http.routes import files as _http_file_routes
+from .http.routes import notifications as _http_notification_routes
+from .http.routes import sessions_read as _http_session_read_routes
+from .http.routes import sessions_write as _http_session_write_routes
+from .page_state_sqlite import (
+    DurableSessionRecord,
+    PageStateDB,
+    SessionRef,
+    import_legacy_app_dir_to_db,
+)
+from .pi import ui_bridge as _pi_ui_bridge
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .pi_log import read_pi_session_id as _read_pi_session_id
-from .page_state_sqlite import DurableSessionRecord
-from .page_state_sqlite import PageStateDB
-from .page_state_sqlite import SessionRef
-from .page_state_sqlite import import_legacy_app_dir_to_db
+from .sessions import live_payloads as _session_live_payloads
+from .sessions import payloads as _session_payloads
+from .sessions import sidebar_state as _sidebar_state_module
+from .sessions.sidebar_state import SidebarStateFacade
 from .util import default_app_dir as _default_app_dir
-from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
 from .util import (
     find_session_log_for_session_id as _find_session_log_for_session_id_impl,
@@ -65,17 +77,6 @@ from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .voice_push import VoicePushCoordinator
-from .http.routes import assets as _http_assets_routes
-from .http.routes import auth as _http_auth_routes
-from .http.routes import files as _http_file_routes
-from .http.routes import notifications as _http_notification_routes
-from .http.routes import sessions_read as _http_session_read_routes
-from .http.routes import sessions_write as _http_session_write_routes
-from .sessions import live_payloads as _session_live_payloads
-from .sessions import payloads as _session_payloads
-from .sessions import sidebar_state as _sidebar_state_module
-from .sessions.sidebar_state import SidebarStateFacade
-from .pi import ui_bridge as _pi_ui_bridge
 
 for _seam_module in (
     _http_assets_routes,
@@ -3226,7 +3227,6 @@ def _list_resume_candidates_for_cwd(
 
 
 def _iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
 
     ranked_rows: list[tuple[float, dict[str, Any]]] = []
@@ -7135,7 +7135,6 @@ class SessionManager:
             session_path2 = s3.session_path
             off3 = int(s3.chat_index_log_off)
             prev_events = list(s3.chat_index_events)
-            scan_complete2 = bool(s3.chat_index_scan_complete)
         if session_path2 is None or (not session_path2.exists()):
             return prev_events, off3, False, 0, {"tool_names": [], "last_tool": None}
         size2 = int(session_path2.stat().st_size)
