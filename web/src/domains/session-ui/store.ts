@@ -29,6 +29,7 @@ export function createSessionUiStore(): SessionUiStore {
   };
   const listeners = new Set<() => void>();
   let currentRefreshId = 0;
+  let inFlightRefresh: { key: string; promise: Promise<void> } | null = null;
 
   const emit = () => {
     for (const listener of listeners) {
@@ -45,6 +46,11 @@ export function createSessionUiStore(): SessionUiStore {
       };
     },
     async refresh(sessionId: string, _options?: SessionUiRefreshOptions) {
+      const refreshKey = `${sessionId}:${String(_options?.runtimeId || "")}`;
+      if (inFlightRefresh && inFlightRefresh.key === refreshKey) {
+        return inFlightRefresh.promise;
+      }
+
       const refreshId = ++currentRefreshId;
       const preserveCurrentState = state.sessionId === sessionId;
       state = {
@@ -56,31 +62,41 @@ export function createSessionUiStore(): SessionUiStore {
       };
       emit();
 
-      try {
-        const workspace = _options?.runtimeId
-          ? await api.getWorkspace(sessionId, undefined, _options.runtimeId)
-          : await api.getWorkspace(sessionId);
-        if (refreshId !== currentRefreshId) {
-          return;
-        }
+      let request: Promise<void> | null = null;
+      request = (async () => {
+        try {
+          const workspace = _options?.runtimeId
+            ? await api.getWorkspace(sessionId, undefined, _options.runtimeId)
+            : await api.getWorkspace(sessionId);
+          if (refreshId !== currentRefreshId) {
+            return;
+          }
 
-        state = {
-          sessionId,
-          runtimeId: typeof workspace.runtime_id === "string" && workspace.runtime_id.trim()
-            ? workspace.runtime_id
-            : (_options?.runtimeId ?? null),
-          diagnostics: (workspace.diagnostics ?? null) as Record<string, unknown> | null,
-          queue: (workspace.queue ?? null) as Record<string, unknown> | null,
-          loading: false,
-        };
-        emit();
-      } catch (error) {
-        if (refreshId === currentRefreshId) {
-          state = { ...state, loading: false };
+          state = {
+            sessionId,
+            runtimeId: typeof workspace.runtime_id === "string" && workspace.runtime_id.trim()
+              ? workspace.runtime_id
+              : (_options?.runtimeId ?? null),
+            diagnostics: (workspace.diagnostics ?? null) as Record<string, unknown> | null,
+            queue: (workspace.queue ?? null) as Record<string, unknown> | null,
+            loading: false,
+          };
           emit();
-          throw error;
+        } catch (error) {
+          if (refreshId === currentRefreshId) {
+            state = { ...state, loading: false };
+            emit();
+            throw error;
+          }
+        } finally {
+          if (inFlightRefresh?.promise === request) {
+            inFlightRefresh = null;
+          }
         }
-      }
+      })();
+
+      inFlightRefresh = { key: refreshKey, promise: request };
+      return request;
     },
   };
 }

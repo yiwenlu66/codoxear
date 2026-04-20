@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives import serialization
@@ -718,6 +718,7 @@ class VoicePushCoordinator:
         delivery_ledger_path: Path,
         vapid_private_key_path: Path,
         page_state_db: PageStateDB | None = None,
+        publish_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._app_dir = Path(app_dir)
         self._stop = stop_event
@@ -726,6 +727,7 @@ class VoicePushCoordinator:
         self._delivery_ledger_path = Path(delivery_ledger_path)
         self._vapid_private_key_path = Path(vapid_private_key_path)
         self._page_state_db = page_state_db
+        self._publish_callback = publish_callback
         self._hls = MergedHLSStream(root_dir=self._app_dir / "audio")
         self._client = OpenAICompatibleClient()
         self._lock = threading.Lock()
@@ -1705,6 +1707,15 @@ class VoicePushCoordinator:
                 raw = {}
         self._voice_settings = _clean_voice_settings(raw)
 
+    def _publish_event(self, event: dict[str, Any]) -> None:
+        callback = self._publish_callback
+        if callback is None:
+            return
+        try:
+            callback(dict(event))
+        except Exception:
+            return
+
     def _save_settings(self) -> None:
         with self._lock:
             payload = dict(self._voice_settings)
@@ -1747,21 +1758,22 @@ class VoicePushCoordinator:
             payload = list(self._subscriptions.values())
         if self._page_state_db is not None:
             self._page_state_db.save_push_subscriptions(payload)
-            return
-        os.makedirs(self._subscriptions_path.parent, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=self._subscriptions_path.parent,
-            prefix=self._subscriptions_path.name + ".",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp.write(
-                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-            )
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._subscriptions_path)
+        else:
+            os.makedirs(self._subscriptions_path.parent, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self._subscriptions_path.parent,
+                prefix=self._subscriptions_path.name + ".",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp.write(
+                    json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+                )
+                tmp_path = Path(tmp.name)
+            os.replace(tmp_path, self._subscriptions_path)
+        self._publish_event({"type": "notifications.invalidate", "reason": "subscription_changed"})
 
     def _load_delivery_ledger(self) -> None:
         if self._page_state_db is not None:
@@ -1779,18 +1791,20 @@ class VoicePushCoordinator:
             payload = dict(self._delivery_ledger)
         if self._page_state_db is not None:
             self._page_state_db.save_delivery_ledger(payload)
-            return
-        os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=self._delivery_ledger_path.parent,
-            prefix=self._delivery_ledger_path.name + ".",
-            suffix=".tmp",
-            delete=False,
-        ) as tmp:
-            tmp.write(
-                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-            )
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._delivery_ledger_path)
+        else:
+            os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=self._delivery_ledger_path.parent,
+                prefix=self._delivery_ledger_path.name + ".",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp.write(
+                    json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+                )
+                tmp_path = Path(tmp.name)
+            os.replace(tmp_path, self._delivery_ledger_path)
+        self._publish_event({"type": "notifications.invalidate", "reason": "delivery_ledger_changed"})
+        self._publish_event({"type": "attention.invalidate", "reason": "delivery_ledger_changed"})

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { api } from "../../lib/api";
 import type { NotificationSubscriptionStateResponse, VoiceSettingsResponse } from "../../lib/types";
 import { toPublicAssetUrl } from "../../lib/publicAssetUrl";
@@ -15,6 +15,8 @@ import {
 const NOTIFICATION_MESSAGE_RETRY_MS = 15000;
 const FINAL_NOTIFICATION_SUMMARY_STATUSES = new Set(["sent", "skipped", "error"]);
 const REPLY_SOUND_TEXT_DEDUPE_MS = 30000;
+const NOTIFICATION_FEED_POLL_MS = 5000;
+const SSE_NOTIFICATION_FALLBACK_MS = 60000;
 
 function isDocumentVisible() {
   if (typeof document === "undefined") {
@@ -33,6 +35,7 @@ interface UseAppShellNotificationsOptions {
   activeTitle: string;
   bySessionId: Record<string, unknown[]>;
   playReplyBeep(): void;
+  realtimeConnected?: boolean;
   suppressedReplySoundSessionIdsRef: { current: Set<string> };
   voiceSettings: VoiceSettingsResponse;
 }
@@ -42,6 +45,7 @@ export function useAppShellNotifications({
   activeTitle,
   bySessionId,
   playReplyBeep,
+  realtimeConnected = false,
   suppressedReplySoundSessionIdsRef,
   voiceSettings,
 }: UseAppShellNotificationsOptions) {
@@ -177,63 +181,56 @@ export function useAppShellNotifications({
     if (id) deliveredNotificationIdsRef.current.add(id);
   };
 
-  useEffect(() => {
+  const refreshNotificationFeed = useCallback(async (prime = false) => {
     const desktopNotificationsEnabled = (
       notificationsEnabled
       && notificationPermission === "granted"
       && typeof Notification !== "undefined"
       && notificationDeviceClass() === "desktop"
     );
-
     if (!pageVisible || (!replySoundEnabled && !desktopNotificationsEnabled)) {
       return;
     }
-
-    notificationFeedCursorRef.current = Date.now() / 1000;
-    let cancelled = false;
-
-    const pollFeed = async (prime = false) => {
-      const response = await api.getNotificationsFeed(notificationFeedCursorRef.current);
-      if (cancelled) return;
-      let maxSeen = notificationFeedCursorRef.current;
-      for (const item of response.items || []) {
-        const updatedTs = Number(item.updated_ts || 0);
-        if (updatedTs > maxSeen) maxSeen = updatedTs;
-        if (prime) continue;
-        const messageId = typeof item.message_id === "string" ? item.message_id.trim() : "";
-        const replySoundKey = messageId ? `id:${messageId}` : "";
-        const replySoundSessionId = typeof (item as any).session_id === "string"
-          ? String((item as any).session_id)
-          : String(item.session_display_name || "");
-        const replySoundRow = {
-          message_id: messageId,
-          notification_text: item.notification_text,
-        } satisfies Record<string, unknown>;
-        if (replySoundEnabled && replySoundKey && !hasPlayedReplySound(replySoundSessionId, replySoundRow, replySoundKey)) {
-          playReplyBeepRef.current();
-          rememberPlayedReplySound(replySoundSessionId, replySoundRow);
-        }
-        if (desktopNotificationsEnabled) {
-          showDesktopNotification(
-            String(item.session_display_name || "Session"),
-            String(item.notification_text || ""),
-            item.message_id,
-          );
-        }
+    const response = await api.getNotificationsFeed(notificationFeedCursorRef.current);
+    let maxSeen = notificationFeedCursorRef.current;
+    for (const item of response.items || []) {
+      const updatedTs = Number(item.updated_ts || 0);
+      if (updatedTs > maxSeen) maxSeen = updatedTs;
+      if (prime) continue;
+      const messageId = typeof item.message_id === "string" ? item.message_id.trim() : "";
+      const replySoundKey = messageId ? `id:${messageId}` : "";
+      const replySoundSessionId = typeof (item as any).session_id === "string"
+        ? String((item as any).session_id)
+        : String(item.session_display_name || "");
+      const replySoundRow = {
+        message_id: messageId,
+        notification_text: item.notification_text,
+      } satisfies Record<string, unknown>;
+      if (replySoundEnabled && replySoundKey && !hasPlayedReplySound(replySoundSessionId, replySoundRow, replySoundKey)) {
+        playReplyBeepRef.current();
+        rememberPlayedReplySound(replySoundSessionId, replySoundRow);
       }
-      notificationFeedCursorRef.current = maxSeen;
-    };
+      if (desktopNotificationsEnabled) {
+        showDesktopNotification(
+          String(item.session_display_name || "Session"),
+          String(item.notification_text || ""),
+          item.message_id,
+        );
+      }
+    }
+    notificationFeedCursorRef.current = maxSeen;
+  }, [notificationPermission, notificationsEnabled, pageVisible, replySoundEnabled]);
 
-    void pollFeed(true);
+  useEffect(() => {
+    notificationFeedCursorRef.current = Date.now() / 1000;
+    void refreshNotificationFeed(true);
     const intervalId = window.setInterval(() => {
-      void pollFeed(false);
-    }, 5000);
-
+      void refreshNotificationFeed(false);
+    }, realtimeConnected ? SSE_NOTIFICATION_FALLBACK_MS : NOTIFICATION_FEED_POLL_MS);
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [notificationPermission, notificationsEnabled, pageVisible, replySoundEnabled]);
+  }, [realtimeConnected, refreshNotificationFeed]);
 
   useEffect(() => {
     const nextSeen = new Set<string>();
@@ -403,6 +400,7 @@ export function useAppShellNotifications({
     notificationLabel,
     notificationsEnabled,
     pushNotificationsEnabled,
+    refreshNotificationFeed: () => refreshNotificationFeed(false),
     replySoundEnabled,
     setReplySoundEnabled,
     toggleNotifications,

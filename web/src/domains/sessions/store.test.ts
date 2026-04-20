@@ -165,4 +165,21 @@ describe("createSessionsStore", () => {
 
     expect(store.getState().items.map((session) => session.session_id)).toEqual(["runtime-1", "runtime-3"]);
   });
+
+  it("reuses an in-flight refresh for repeated identical requests", async () => {
+    let resolveRefresh!: (value: unknown) => void;
+    vi.mocked(api.listSessions).mockReturnValueOnce(new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }) as never);
+    const store = createSessionsStore();
+
+    const first = store.refresh();
+    const second = store.refresh();
+
+    expect(api.listSessions).toHaveBeenCalledTimes(1);
+    resolveRefresh({ sessions: [{ session_id: "s1" }] });
+    await Promise.all([first, second]);
+
+    expect(store.getState().items).toEqual([{ session_id: "s1" }]);
+  });
 });

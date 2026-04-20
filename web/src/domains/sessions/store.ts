@@ -76,6 +76,7 @@ export function createSessionsStore(): SessionsStore {
   let currentBootstrapRefreshId = 0;
   let hasResolvedInitialSelection = false;
   let loadedLimit = PAGE_SIZE;
+  let inFlightRefresh: { key: string; promise: Promise<void> } | null = null;
 
   const emit = () => {
     for (const listener of listeners) {
@@ -84,47 +85,62 @@ export function createSessionsStore(): SessionsStore {
   };
 
   const refresh = async (options?: RefreshSessionsOptions) => {
+    const refreshKey = `${loadedLimit}:${options?.preferNewest === true ? "newest" : "preserve"}`;
+    if (inFlightRefresh && inFlightRefresh.key === refreshKey) {
+      return inFlightRefresh.promise;
+    }
+
     const refreshId = ++currentRefreshId;
     state = { ...state, loading: true };
     emit();
 
-    try {
-      const data = await api.listSessions({ limit: loadedLimit });
-      if (refreshId !== currentRefreshId) {
-        return;
-      }
-      const deduped = dedupeSessions(Array.isArray(data.sessions) ? data.sessions : []);
-      const sessions = deduped.sessions;
-      const representativeBySessionId = deduped.representativeBySessionId;
-      const sessionIds = new Set(sessions.map((session) => session.session_id));
-      const activeRepresentativeSessionId = state.activeSessionId
-        ? representativeBySessionId.get(state.activeSessionId) ?? state.activeSessionId
-        : null;
-      const preservedActiveSessionId = activeRepresentativeSessionId && sessionIds.has(activeRepresentativeSessionId)
-        ? activeRepresentativeSessionId
-        : null;
-      const nextActiveSessionId = options?.preferNewest
-        ? sessions[0]?.session_id ?? null
-        : preservedActiveSessionId
-          ?? (!hasResolvedInitialSelection ? sessions[0]?.session_id ?? null : null);
-      if (nextActiveSessionId) {
-        hasResolvedInitialSelection = true;
-      }
-      state = {
-        ...state,
-        items: sessions,
-        activeSessionId: nextActiveSessionId,
-        loading: false,
-        remainingCount: Math.max(0, Number(data.remaining_count || 0)),
-      };
-      emit();
-    } catch (error) {
-      if (refreshId === currentRefreshId) {
-        state = { ...state, loading: false };
+    let request: Promise<void> | null = null;
+    request = (async () => {
+      try {
+        const data = await api.listSessions({ limit: loadedLimit });
+        if (refreshId !== currentRefreshId) {
+          return;
+        }
+        const deduped = dedupeSessions(Array.isArray(data.sessions) ? data.sessions : []);
+        const sessions = deduped.sessions;
+        const representativeBySessionId = deduped.representativeBySessionId;
+        const sessionIds = new Set(sessions.map((session) => session.session_id));
+        const activeRepresentativeSessionId = state.activeSessionId
+          ? representativeBySessionId.get(state.activeSessionId) ?? state.activeSessionId
+          : null;
+        const preservedActiveSessionId = activeRepresentativeSessionId && sessionIds.has(activeRepresentativeSessionId)
+          ? activeRepresentativeSessionId
+          : null;
+        const nextActiveSessionId = options?.preferNewest
+          ? sessions[0]?.session_id ?? null
+          : preservedActiveSessionId
+            ?? (!hasResolvedInitialSelection ? sessions[0]?.session_id ?? null : null);
+        if (nextActiveSessionId) {
+          hasResolvedInitialSelection = true;
+        }
+        state = {
+          ...state,
+          items: sessions,
+          activeSessionId: nextActiveSessionId,
+          loading: false,
+          remainingCount: Math.max(0, Number(data.remaining_count || 0)),
+        };
         emit();
-        throw error;
+      } catch (error) {
+        if (refreshId === currentRefreshId) {
+          state = { ...state, loading: false };
+          emit();
+          throw error;
+        }
+      } finally {
+        if (inFlightRefresh?.promise === request) {
+          inFlightRefresh = null;
+        }
       }
-    }
+    })();
+
+    inFlightRefresh = { key: refreshKey, promise: request };
+    return request;
   };
 
   return {

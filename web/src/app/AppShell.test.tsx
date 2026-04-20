@@ -5,6 +5,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppProviders } from "./providers";
 import { AppShell } from "./AppShell";
 
+const eventStreamMocks = vi.hoisted(() => ({
+  openAppEventStream: vi.fn((_options: { onEvent?: (event: Record<string, unknown>) => void }) => ({
+    close: vi.fn(),
+  })),
+}));
+
+vi.mock("../domains/events/stream", () => ({
+  openAppEventStream: eventStreamMocks.openAppEventStream,
+}));
+
 vi.mock("../lib/api", () => ({
   api: {
     getVoiceSettings: vi.fn().mockResolvedValue({
@@ -267,6 +277,90 @@ describe("AppShell", () => {
     restoreProperty(HTMLMediaElement.prototype, "play", originalMediaPlay);
     restoreProperty(HTMLMediaElement.prototype, "canPlayType", originalMediaCanPlayType);
     vi.clearAllMocks();
+  });
+
+  it("keeps one SSE connection while session state changes", async () => {
+    const { liveSessionStore, sessionsStore } = renderAppShell({
+      activeSessionId: "sess-1",
+      items: [
+        { session_id: "sess-1", alias: "Alpha", agent_backend: "pi", busy: true },
+        { session_id: "sess-2", alias: "Beta", agent_backend: "pi", busy: false },
+      ],
+    });
+
+    await flush();
+    expect(eventStreamMocks.openAppEventStream).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      sessionsStore.setState({
+        ...sessionsStore.getState(),
+        activeSessionId: "sess-2",
+        items: [
+          { session_id: "sess-1", alias: "Alpha", agent_backend: "pi", busy: false },
+          { session_id: "sess-2", alias: "Beta", agent_backend: "pi", busy: true },
+        ],
+      });
+    });
+    await flush();
+
+    act(() => {
+      sessionsStore.setState({
+        ...sessionsStore.getState(),
+        items: [
+          { session_id: "sess-2", alias: "Beta", agent_backend: "pi", busy: true },
+          { session_id: "sess-1", alias: "Alpha", agent_backend: "pi", busy: false },
+        ],
+      });
+    });
+    await flush();
+
+    expect(eventStreamMocks.openAppEventStream).toHaveBeenCalledTimes(1);
+
+    const streamOptions = eventStreamMocks.openAppEventStream.mock.calls[0]?.[0];
+    expect(streamOptions).toBeTruthy();
+    if (!streamOptions?.onEvent) {
+      throw new Error("SSE handler missing");
+    }
+    const onStreamEvent = streamOptions.onEvent;
+    act(() => {
+      onStreamEvent({
+        type: "session.live.invalidate",
+        session_id: "sess-2",
+        runtime_id: null,
+      });
+    });
+    await flush();
+
+    expect(liveSessionStore.poll).toHaveBeenCalledWith("sess-2");
+  });
+
+  it("does not force a sessions refresh for transport-only invalidations", async () => {
+    const { liveSessionStore, sessionsStore } = renderAppShell({
+      activeSessionId: "sess-1",
+      items: [{ session_id: "sess-1", alias: "Alpha", agent_backend: "pi", busy: true }],
+    });
+
+    await flush();
+    vi.mocked(sessionsStore.refresh).mockClear();
+    vi.mocked(liveSessionStore.poll).mockClear();
+
+    const streamOptions = eventStreamMocks.openAppEventStream.mock.calls[0]?.[0];
+    expect(streamOptions).toBeTruthy();
+    if (!streamOptions?.onEvent) {
+      throw new Error("SSE handler missing");
+    }
+    const onStreamEvent = streamOptions.onEvent;
+    act(() => {
+      onStreamEvent({
+        type: "session.transport.invalidate",
+        session_id: "sess-1",
+        runtime_id: null,
+      });
+    });
+    await flush();
+
+    expect(liveSessionStore.poll).toHaveBeenCalledWith("sess-1");
+    expect(sessionsStore.refresh).not.toHaveBeenCalled();
   });
 
   it("renders a two-part shell with sessions rail and conversation column", () => {

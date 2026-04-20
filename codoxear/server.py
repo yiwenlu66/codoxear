@@ -44,8 +44,10 @@ from .agent_backend import (
     infer_agent_backend_from_log_path,
     normalize_agent_backend,
 )
+from .events.hub import EventHub
 from .http.routes import assets as _http_assets_routes
 from .http.routes import auth as _http_auth_routes
+from .http.routes import events as _http_events_routes
 from .http.routes import files as _http_file_routes
 from .http.routes import notifications as _http_notification_routes
 from .http.routes import sessions_read as _http_session_read_routes
@@ -84,6 +86,7 @@ SessionStateKey = SessionRef | str
 for _seam_module in (
     _http_assets_routes,
     _http_auth_routes,
+    _http_events_routes,
     _http_file_routes,
     _http_notification_routes,
     _http_session_read_routes,
@@ -97,6 +100,132 @@ for _seam_module in (
 
 
 LOG = logging.getLogger(__name__)
+EVENT_HUB = EventHub(max_events=1024)
+
+
+def _publish_invalidate_event(
+    event_type: str,
+    *,
+    session_id: str | None = None,
+    runtime_id: str | None = None,
+    reason: str,
+    hints: dict[str, Any] | None = None,
+    coalesce_ms: int = 300,
+) -> dict[str, Any] | None:
+    payload: dict[str, Any] = {
+        "type": event_type,
+        "reason": str(reason).strip() or "update",
+        "_coalesce_ms": int(coalesce_ms),
+        "_coalesce_key": (str(event_type), str(session_id or "")),
+    }
+    clean_session_id = _clean_optional_text(session_id)
+    clean_runtime_id = _clean_optional_text(runtime_id)
+    if clean_session_id is not None:
+        payload["session_id"] = clean_session_id
+    if clean_runtime_id is not None:
+        payload["runtime_id"] = clean_runtime_id
+    if isinstance(hints, dict) and hints:
+        payload["hints"] = dict(hints)
+    return EVENT_HUB.publish(payload)
+
+
+
+def _publish_sessions_invalidate(*, reason: str, coalesce_ms: int = 500) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "sessions.invalidate",
+        reason=reason,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _publish_session_live_invalidate(
+    session_id: str,
+    *,
+    runtime_id: str | None = None,
+    reason: str,
+    hints: dict[str, Any] | None = None,
+    coalesce_ms: int = 300,
+) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "session.live.invalidate",
+        session_id=session_id,
+        runtime_id=runtime_id,
+        reason=reason,
+        hints=hints,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _publish_session_workspace_invalidate(
+    session_id: str,
+    *,
+    runtime_id: str | None = None,
+    reason: str,
+    coalesce_ms: int = 300,
+) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "session.workspace.invalidate",
+        session_id=session_id,
+        runtime_id=runtime_id,
+        reason=reason,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _publish_session_transport_invalidate(
+    session_id: str,
+    *,
+    runtime_id: str | None = None,
+    reason: str,
+    coalesce_ms: int = 300,
+) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "session.transport.invalidate",
+        session_id=session_id,
+        runtime_id=runtime_id,
+        reason=reason,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _publish_notifications_invalidate(*, reason: str, coalesce_ms: int = 500) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "notifications.invalidate",
+        reason=reason,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _publish_attention_invalidate(
+    *,
+    reason: str,
+    session_id: str | None = None,
+    coalesce_ms: int = 500,
+) -> dict[str, Any] | None:
+    return _publish_invalidate_event(
+        "attention.invalidate",
+        session_id=session_id,
+        reason=reason,
+        coalesce_ms=coalesce_ms,
+    )
+
+
+
+def _voice_push_publish_callback(event: dict[str, Any]) -> None:
+    _publish_invalidate_event(
+        str(event.get("type") or "notifications.invalidate"),
+        session_id=_clean_optional_text(event.get("session_id")),
+        runtime_id=_clean_optional_text(event.get("runtime_id")),
+        reason=str(event.get("reason") or "update"),
+        hints=event.get("hints") if isinstance(event.get("hints"), dict) else None,
+        coalesce_ms=int(event.get("coalesce_ms") or 500),
+    )
+
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -4027,6 +4156,7 @@ class SessionManager:
             delivery_ledger_path=DELIVERY_LEDGER_PATH,
             vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
             page_state_db=self._page_state_db,
+            publish_callback=_voice_push_publish_callback,
         )
         self._discover_existing(force=True, skip_invalid_sidecars=True)
         self._refresh_durable_session_catalog(force=True)
@@ -4053,6 +4183,7 @@ class SessionManager:
 
     def stop(self) -> None:
         self._stop.set()
+        EVENT_HUB.close()
 
     def _page_state_ref_for_session(self, session: Session) -> SessionRef | None:
         durable_id = _clean_optional_text(session.thread_id) or _clean_optional_text(session.session_id)
@@ -4120,7 +4251,8 @@ class SessionManager:
             rows = rows_by_session[key]
             if len(rows) > 64:
                 rows_by_session[key] = rows[-64:]
-            return stamped
+        _publish_session_live_invalidate(key, reason="bridge_event")
+        return stamped
 
     def _bridge_events_since(self, durable_session_id: str, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
         key = _clean_optional_text(durable_session_id)
@@ -4151,13 +4283,32 @@ class SessionManager:
         error: str | None = None,
         checked_ts: float | None = None,
     ) -> None:
+        publish = False
+        durable_session_id: str | None = None
         with self._lock:
             session = self._sessions.get(runtime_id)
             if session is None:
                 return
+            next_error = _clean_optional_text(error)
+            publish = (
+                session.bridge_transport_state != state
+                or session.bridge_transport_error != next_error
+            )
             session.bridge_transport_state = state
-            session.bridge_transport_error = _clean_optional_text(error)
+            session.bridge_transport_error = next_error
             session.bridge_transport_checked_ts = float(checked_ts if checked_ts is not None else time.time())
+            durable_session_id = self._durable_session_id_for_session(session)
+        if publish and durable_session_id is not None:
+            _publish_session_transport_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="transport_state",
+            )
+            _publish_session_live_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="transport_state",
+            )
 
     def _probe_bridge_transport(self, session_id: str, *, force_rpc: bool = False) -> tuple[str, str | None]:
         runtime_id = self._runtime_session_id_for_identifier(session_id)
@@ -4477,9 +4628,11 @@ class SessionManager:
                     pending_startup=False,
                 )
             )
+            _publish_sessions_invalidate(reason="session_created")
         except Exception:
             self._delete_durable_session_record(ref)
             self._clear_deleted_session_state(durable_session_id)
+            _publish_sessions_invalidate(reason="session_removed")
 
     def _persist_session_ui_state(self) -> None:
         self._sidebar_state_facade().persist_session_ui_state()
@@ -4824,13 +4977,16 @@ class SessionManager:
         )
 
     def alias_set(self, session_id: str, name: str) -> str:
-        return self._sidebar_state_facade().alias_set(session_id, name)
+        alias = self._sidebar_state_facade().alias_set(session_id, name)
+        _publish_sessions_invalidate(reason="alias_changed")
+        return alias
 
     def alias_get(self, session_id: str) -> str:
         return self._sidebar_state_facade().alias_get(session_id)
 
     def alias_clear(self, session_id: str) -> None:
         self._sidebar_state_facade().alias_clear(session_id)
+        _publish_sessions_invalidate(reason="alias_cleared")
 
     def sidebar_meta_get(self, session_id: str) -> dict[str, Any]:
         return self._sidebar_state_facade().sidebar_meta_get(session_id)
@@ -4843,15 +4999,19 @@ class SessionManager:
         snooze_until: Any,
         dependency_session_id: Any,
     ) -> dict[str, Any]:
-        return self._sidebar_state_facade().sidebar_meta_set(
+        payload = self._sidebar_state_facade().sidebar_meta_set(
             session_id,
             priority_offset=priority_offset,
             snooze_until=snooze_until,
             dependency_session_id=dependency_session_id,
         )
+        _publish_sessions_invalidate(reason="sidebar_meta_changed")
+        return payload
 
     def focus_set(self, session_id: str, focused: Any) -> bool:
-        return self._sidebar_state_facade().focus_set(session_id, focused)
+        value = self._sidebar_state_facade().focus_set(session_id, focused)
+        _publish_sessions_invalidate(reason="focus_changed")
+        return value
 
     def edit_session(
         self,
@@ -4862,13 +5022,15 @@ class SessionManager:
         snooze_until: Any,
         dependency_session_id: Any,
     ) -> tuple[str, dict[str, Any]]:
-        return self._sidebar_state_facade().edit_session(
+        payload = self._sidebar_state_facade().edit_session(
             session_id,
             name=name,
             priority_offset=priority_offset,
             snooze_until=snooze_until,
             dependency_session_id=dependency_session_id,
         )
+        _publish_sessions_invalidate(reason="session_edited")
+        return payload
 
     def _clear_deleted_session_state(self, session_id: str) -> None:
         changed_sidebar = False
@@ -5366,6 +5528,12 @@ class SessionManager:
         touched_ts: float | None = None
         ref = self._page_state_ref_for_session_id(session_id)
         runtime_id = self._runtime_session_id_for_identifier(session_id)
+        durable_session_id = _clean_optional_text(session_id)
+        with self._lock:
+            if runtime_id is not None:
+                s0 = self._sessions.get(runtime_id)
+                if s0 is not None:
+                    durable_session_id = self._durable_session_id_for_session(s0)
         if ref is None:
             raise KeyError("unknown session")
         with self._lock:
@@ -5386,6 +5554,17 @@ class SessionManager:
                 s.pi_idle_activity_ts = None
                 s.pi_busy_activity_floor = touched_ts
         self._save_queues()
+        if durable_session_id is not None:
+            _publish_session_workspace_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="queue_changed",
+            )
+            _publish_session_live_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="queue_changed",
+            )
         return {"queued": True, "queue_len": int(ql)}
 
     def _queue_delete_local(self, session_id: str, index: int) -> dict[str, Any]:
@@ -5394,8 +5573,10 @@ class SessionManager:
         if ref is None or runtime_id is None:
             raise KeyError("unknown session")
         with self._lock:
-            if runtime_id not in self._sessions:
+            session = self._sessions.get(runtime_id)
+            if session is None:
                 raise KeyError("unknown session")
+            durable_session_id = self._durable_session_id_for_session(session)
             q = self._queues.get(runtime_id)
             if not isinstance(q, list):
                 q = []
@@ -5408,6 +5589,16 @@ class SessionManager:
                 self._queues.pop(runtime_id, None)
                 self._queues.pop(ref, None)
         self._save_queues()
+        _publish_session_workspace_invalidate(
+            durable_session_id,
+            runtime_id=runtime_id,
+            reason="queue_changed",
+        )
+        _publish_session_live_invalidate(
+            durable_session_id,
+            runtime_id=runtime_id,
+            reason="queue_changed",
+        )
         return {"ok": True, "queue_len": int(ql)}
 
     def _queue_update_local(
@@ -5421,8 +5612,10 @@ class SessionManager:
         if ref is None or runtime_id is None:
             raise KeyError("unknown session")
         with self._lock:
-            if runtime_id not in self._sessions:
+            session = self._sessions.get(runtime_id)
+            if session is None:
                 raise KeyError("unknown session")
+            durable_session_id = self._durable_session_id_for_session(session)
             q = self._queues.get(runtime_id)
             if not isinstance(q, list):
                 q = []
@@ -5432,6 +5625,11 @@ class SessionManager:
             q[int(index)] = t
             ql = len(q)
         self._save_queues()
+        _publish_session_workspace_invalidate(
+            durable_session_id,
+            runtime_id=runtime_id,
+            reason="queue_changed",
+        )
         return {"ok": True, "queue_len": int(ql)}
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, SessionRef, "Session"]:
@@ -6254,15 +6452,39 @@ class SessionManager:
             _validated_session_state(resp)
         except Exception as e:
             return False, e
+        publish_sessions = False
+        publish_live = False
+        publish_workspace = False
+        durable_session_id: str | None = None
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2:
-                s2.busy = _state_busy_value(resp)
-                s2.queue_len = _state_queue_len_value(resp)
-                if "token" in resp:
-                    tok = resp.get("token")
-                    if isinstance(tok, dict):
-                        s2.token = tok
+                next_busy = _state_busy_value(resp)
+                next_queue_len = _state_queue_len_value(resp)
+                next_token = resp.get("token") if isinstance(resp.get("token"), dict) else s2.token
+                durable_session_id = self._durable_session_id_for_session(s2)
+                publish_sessions = s2.busy != next_busy
+                publish_live = publish_sessions or s2.queue_len != next_queue_len or next_token != s2.token
+                publish_workspace = s2.queue_len != next_queue_len
+                s2.busy = next_busy
+                s2.queue_len = next_queue_len
+                if isinstance(resp.get("token"), dict):
+                    s2.token = resp.get("token")
+        if durable_session_id is not None:
+            if publish_sessions:
+                _publish_sessions_invalidate(reason="session_state_changed")
+            if publish_live:
+                _publish_session_live_invalidate(
+                    durable_session_id,
+                    runtime_id=session_id,
+                    reason="session_state_changed",
+                )
+            if publish_workspace:
+                _publish_session_workspace_invalidate(
+                    durable_session_id,
+                    runtime_id=session_id,
+                    reason="session_state_changed",
+                )
         return True, None
 
     def _prune_dead_sessions(self) -> None:
@@ -6283,13 +6505,28 @@ class SessionManager:
             dead.append((sid, s.sock_path))
         if not dead:
             return
+        dead_events: list[tuple[str, str]] = []
         with self._lock:
             for sid, _sock in dead:
-                self._sessions.pop(sid, None)
+                session = self._sessions.pop(sid, None)
+                if session is not None:
+                    dead_events.append((self._durable_session_id_for_session(session), sid))
         for sid, sock in dead:
             self._clear_deleted_session_state(sid)
             _unlink_quiet(sock)
             _unlink_quiet(sock.with_suffix(".json"))
+        _publish_sessions_invalidate(reason="session_removed")
+        for durable_session_id, runtime_id in dead_events:
+            _publish_session_live_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="session_removed",
+            )
+            _publish_session_workspace_invalidate(
+                durable_session_id,
+                runtime_id=runtime_id,
+                reason="session_removed",
+            )
 
     def _update_meta_counters(self) -> None:
         with self._lock:
@@ -7400,9 +7637,11 @@ class SessionManager:
         self._append_chat_events(
             session_id, new_events, new_off=new_off, latest_token=token_update
         )
+        durable_session_id: str | None = None
         with self._lock:
             s = self._sessions.get(session_id)
             if s:
+                durable_session_id = self._durable_session_id_for_session(s)
                 if isinstance(last_ts, (int, float)):
                     tsf = float(last_ts)
                     s.last_chat_ts = (
@@ -7413,6 +7652,19 @@ class SessionManager:
                 if reasoning_effort is not None:
                     s.reasoning_effort = reasoning_effort
                 s.idle_cache_log_off = -1
+        if durable_session_id is not None and (new_events or token_update is not None or model is not None or reasoning_effort is not None):
+            _publish_session_live_invalidate(
+                durable_session_id,
+                runtime_id=session_id,
+                reason="log_delta",
+            )
+            _publish_session_workspace_invalidate(
+                durable_session_id,
+                runtime_id=session_id,
+                reason="log_delta",
+            )
+            if any(_is_attention_worthy_session_event(event) for event in new_events):
+                _publish_sessions_invalidate(reason="conversation_changed")
 
     def idle_from_log(self, session_id: str) -> bool:
         with self._lock:
@@ -8009,15 +8261,19 @@ class SessionManager:
                     },
                     daemon=True,
                 ).start()
-                return {
+                payload = {
                     "session_id": created_pending_session_id,
                     "runtime_id": None,
                     "backend": "pi",
                     "pending_startup": True,
                 }
+                _publish_sessions_invalidate(reason="session_created")
+                return payload
             _wait_or_raise(proc, label="pi broker", timeout_s=1.5)
             meta = _wait_for_spawned_broker_meta(spawn_nonce)
-            return _spawn_result_from_meta(meta)
+            payload = _spawn_result_from_meta(meta)
+            _publish_sessions_invalidate(reason="session_created")
+            return payload
         if resume_session_id is not None and worktree_branch is not None:
             raise ValueError("worktree_branch cannot be used when resuming a session")
         spawn_cwd = cwd_path
@@ -8246,7 +8502,9 @@ class SessionManager:
         # Prevent zombies when the broker exits.
         threading.Thread(target=proc.wait, daemon=True).start()
         meta = _wait_for_spawned_broker_meta(spawn_nonce)
-        return _spawn_result_from_meta(meta)
+        payload = _spawn_result_from_meta(meta)
+        _publish_sessions_invalidate(reason="session_created")
+        return payload
 
     def delete_session(self, session_id: str) -> bool:
         runtime_id = self._runtime_session_id_for_identifier(session_id)
@@ -8763,6 +9021,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for route_module in (
                 _http_assets_routes,
                 _http_auth_routes,
+                _http_events_routes,
                 _http_notification_routes,
                 _http_session_read_routes,
                 _http_file_routes,

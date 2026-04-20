@@ -14,6 +14,7 @@ interface UseAppShellSessionEffectsOptions {
   activeSessionLiveBusy: boolean;
   items: SessionSummary[];
   liveSessionStoreApi: LiveSessionStore;
+  realtimeConnected?: boolean;
   replySoundEnabled: boolean;
   sessionUiStoreApi: SessionUiStore;
   sessionsStoreApi: SessionsStore;
@@ -29,6 +30,10 @@ const ACTIVE_BUSY_LIVE_REFRESH_MS = 2000;
 const ACTIVE_IDLE_LIVE_REFRESH_MS = 12000;
 const BACKGROUND_BUSY_LIVE_REFRESH_MS = 5000;
 const WORKSPACE_REFRESH_MS = 15000;
+const SSE_SESSIONS_FALLBACK_MS = 60000;
+const SSE_ACTIVE_LIVE_FALLBACK_MS = 30000;
+const SSE_BACKGROUND_LIVE_FALLBACK_MS = 30000;
+const SSE_WORKSPACE_FALLBACK_MS = 60000;
 
 function isDocumentVisible() {
   if (typeof document === "undefined") {
@@ -46,6 +51,7 @@ export function useAppShellSessionEffects({
   activeSessionLiveBusy,
   items,
   liveSessionStoreApi,
+  realtimeConnected = false,
   replySoundEnabled,
   sessionUiStoreApi,
   sessionsStoreApi,
@@ -56,10 +62,14 @@ export function useAppShellSessionEffects({
 }: UseAppShellSessionEffectsOptions) {
   const [pageVisible, setPageVisible] = useState(isDocumentVisible);
   const hasBusySession = items.some((session) => Boolean(session.busy || session.pending_startup));
-  const sessionsRefreshIntervalMs = hasBusySession ? BUSY_SESSIONS_REFRESH_MS : IDLE_SESSIONS_REFRESH_MS;
+  const sessionsRefreshIntervalMs = realtimeConnected
+    ? SSE_SESSIONS_FALLBACK_MS
+    : (hasBusySession ? BUSY_SESSIONS_REFRESH_MS : IDLE_SESSIONS_REFRESH_MS);
   const activeSessionBusy = activeSessionLiveBusy
     || items.some((session) => session.session_id === activeSessionId && session.busy);
-  const activeLiveRefreshIntervalMs = activeSessionBusy ? ACTIVE_BUSY_LIVE_REFRESH_MS : ACTIVE_IDLE_LIVE_REFRESH_MS;
+  const activeLiveRefreshIntervalMs = realtimeConnected
+    ? SSE_ACTIVE_LIVE_FALLBACK_MS
+    : (activeSessionBusy ? ACTIVE_BUSY_LIVE_REFRESH_MS : ACTIVE_IDLE_LIVE_REFRESH_MS);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -142,9 +152,9 @@ export function useAppShellSessionEffects({
       (activeSessionRuntimeId
         ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend, runtimeId: activeSessionRuntimeId })
         : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend })).catch(recoverMissingSession);
-    }, WORKSPACE_REFRESH_MS);
+    }, realtimeConnected ? SSE_WORKSPACE_FALLBACK_MS : WORKSPACE_REFRESH_MS);
     return () => window.clearInterval(intervalId);
-  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionPending, activeSessionRuntimeId, pageVisible, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
+  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionPending, activeSessionRuntimeId, pageVisible, realtimeConnected, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
 
   useEffect(() => {
     if (!pageVisible || !replySoundEnabled) {
@@ -191,7 +201,10 @@ export function useAppShellSessionEffects({
     };
 
     pollBackgroundBusySessions();
-    const intervalId = window.setInterval(pollBackgroundBusySessions, BACKGROUND_BUSY_LIVE_REFRESH_MS);
+    const intervalId = window.setInterval(
+      pollBackgroundBusySessions,
+      realtimeConnected ? SSE_BACKGROUND_LIVE_FALLBACK_MS : BACKGROUND_BUSY_LIVE_REFRESH_MS,
+    );
     return () => window.clearInterval(intervalId);
-  }, [activeSessionId, backgroundReplySoundPrimedSessionIdsRef, items, liveSessionStoreApi, pageVisible, replySoundEnabled]);
+  }, [activeSessionId, backgroundReplySoundPrimedSessionIdsRef, items, liveSessionStoreApi, pageVisible, realtimeConnected, replySoundEnabled]);
 }

@@ -11,6 +11,7 @@ import { AppShellWorkspaceOverlays } from "./app-shell/AppShellWorkspaceOverlays
 import { MobileShell } from "./app-shell/MobileShell";
 import { VoiceSettingsDialog } from "./app-shell/VoiceSettingsDialog";
 import { useAppShellAudio } from "./app-shell/useAppShellAudio";
+import { useAppShellEvents } from "./app-shell/useAppShellEvents";
 import { useAppShellNotifications } from "./app-shell/useAppShellNotifications";
 import { useAppShellSessionEffects } from "./app-shell/useAppShellSessionEffects";
 import { useLiveSessionStore, useLiveSessionStoreApi, useMessagesStore, useSessionUiStore, useSessionUiStoreApi, useSessionsStore, useSessionsStoreApi } from "./providers";
@@ -71,6 +72,7 @@ export function AppShell() {
   const [fileViewerRequestKey, setFileViewerRequestKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [themeMode, setThemeMode] = useState(() => readThemeMode());
+  const [sseConnected, setSseConnected] = useState(false);
   const {
     announcementEnabled,
     announcementLabel,
@@ -153,6 +155,7 @@ export function AppShell() {
   const {
     notificationLabel,
     notificationsEnabled,
+    refreshNotificationFeed,
     replySoundEnabled,
     setReplySoundEnabled,
     toggleNotifications,
@@ -161,8 +164,24 @@ export function AppShell() {
     activeTitle,
     bySessionId,
     playReplyBeep,
+    realtimeConnected: sseConnected,
     suppressedReplySoundSessionIdsRef,
     voiceSettings,
+  });
+
+  useAppShellEvents({
+    activeSessionBackend: activeSession?.agent_backend,
+    activeSessionHistorical: activeSession?.historical === true,
+    activeSessionId,
+    activeSessionPending,
+    activeSessionRuntimeId,
+    items,
+    liveSessionStoreApi,
+    onConnectionChange: setSseConnected,
+    refreshNotificationsFeed: refreshNotificationFeed,
+    sessionUiStoreApi,
+    sessionsStoreApi,
+    workspaceOpen: workspaceOpen || detailsOpen,
   });
 
   useAppShellSessionEffects({
@@ -175,6 +194,7 @@ export function AppShell() {
     backgroundReplySoundPrimedSessionIdsRef,
     items,
     liveSessionStoreApi,
+    realtimeConnected: sseConnected,
     replySoundEnabled,
     sessionUiStoreApi,
     sessionsStoreApi,

@@ -126,4 +126,30 @@ describe("createSessionUiStore", () => {
       loading: false,
     });
   });
+
+  it("reuses an in-flight refresh for the same session and runtime", async () => {
+    const deferred = createDeferred<Record<string, unknown>>();
+    vi.mocked(api.getWorkspace).mockReturnValueOnce(deferred.promise as any);
+
+    const store = createSessionUiStore();
+    const first = store.refresh("s1", { runtimeId: "rt-1" });
+    const second = store.refresh("s1", { runtimeId: "rt-1" });
+
+    expect(api.getWorkspace).toHaveBeenCalledTimes(1);
+
+    deferred.resolve({
+      runtime_id: "rt-1",
+      diagnostics: { todo_snapshot: { progress_text: "1/1 completed" } },
+      queue: { items: ["queued"] },
+    });
+    await Promise.all([first, second]);
+
+    expect(store.getState()).toEqual({
+      sessionId: "s1",
+      runtimeId: "rt-1",
+      diagnostics: { todo_snapshot: { progress_text: "1/1 completed" } },
+      queue: { items: ["queued"] },
+      loading: false,
+    });
+  });
 });

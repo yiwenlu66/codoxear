@@ -95,6 +95,7 @@ def handle_post(handler: Any, path: str, _u: Any) -> bool:
         response_payload = {"ok": True, **res}
         if alias:
             response_payload["alias"] = alias
+        sv._publish_sessions_invalidate(reason="session_created")
         sv._json_response(handler, 200, response_payload)
         return True
     session_id = sv._match_session_route(path, "delete")
@@ -107,6 +108,7 @@ def handle_post(handler: Any, path: str, _u: Any) -> bool:
         if not ok:
             sv._json_response(handler, 404, {"error": "unknown session"})
             return True
+        sv._publish_sessions_invalidate(reason="session_deleted")
         sv._json_response(handler, 200, {"ok": True})
         return True
     if path.startswith("/api/sessions/") and path.endswith("/edit"):
@@ -245,6 +247,13 @@ def handle_post(handler: Any, path: str, _u: Any) -> bool:
         except ValueError as e:
             sv._json_response(handler, 502, {"error": str(e)})
             return True
+        durable_session_id = sv.MANAGER._durable_session_id_for_identifier(session_id) or session_id
+        runtime_id = sv.MANAGER._runtime_session_id_for_identifier(session_id)
+        sv._publish_session_workspace_invalidate(
+            durable_session_id,
+            runtime_id=runtime_id,
+            reason="ui_response",
+        )
         sv._json_response(handler, 200, {"ok": True})
         return True
     if path.startswith("/api/sessions/") and path.endswith("/enqueue"):
@@ -399,6 +408,13 @@ def handle_post(handler: Any, path: str, _u: Any) -> bool:
         except ValueError as e:
             sv._json_response(handler, 502, {"error": str(e)})
             return True
+        durable_session_id = sv.MANAGER._durable_session_id_for_identifier(session_id) or session_id
+        runtime_id = sv.MANAGER._runtime_session_id_for_identifier(session_id)
+        sv._publish_session_live_invalidate(
+            durable_session_id,
+            runtime_id=runtime_id,
+            reason="interrupt",
+        )
         sv._json_response(handler, 200, {"ok": True, "broker": resp})
         return True
     return False
