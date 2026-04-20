@@ -84,7 +84,10 @@ def session_live_payload(
     state = manager.get_state(session_id)
     busy, _broker_busy = sv._display_session_busy(manager, session_id, s, state)
     state_token = state.get("token") if isinstance(state, dict) else None
-    token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
+    token_val = sv._resolved_session_token(
+        s,
+        state_token if isinstance(state_token, dict) else None,
+    )
     requests: list[dict[str, Any]] = []
     if s.backend == "pi":
         requests_payload = manager.get_ui_state(session_id)

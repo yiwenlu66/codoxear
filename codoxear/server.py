@@ -3888,6 +3888,24 @@ def _resolved_session_run_settings(
     return model_provider, preferred_auth_method, model, reasoning_effort
 
 
+def _resolved_session_token(
+    s: Session, token: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    if isinstance(token, dict):
+        return token
+    if isinstance(s.token, dict):
+        return s.token
+    source_path: Path | None = None
+    if s.backend == "pi" and s.session_path is not None and s.session_path.exists():
+        source_path = s.session_path
+    elif s.log_path is not None and s.log_path.exists():
+        source_path = s.log_path
+    if source_path is None:
+        return None
+    token_update = _rollout_log._find_latest_token_update(source_path)
+    return token_update if isinstance(token_update, dict) else None
+
+
 def _session_context_usage_payload(
     s: Session, token_val: dict[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -6211,6 +6229,8 @@ class SessionManager:
             items = list(self._sessions.items())
         for sid, s in items:
             lp = s.log_path
+            if (lp is None or (not lp.exists())) and s.backend == "pi":
+                lp = s.session_path
             if lp is None or (not lp.exists()):
                 continue
             sz = int(lp.stat().st_size)

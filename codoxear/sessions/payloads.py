@@ -64,10 +64,11 @@ def session_context_usage_payload(s, token_val: dict[str, Any] | None) -> dict[s
 def session_diagnostics_payload(manager, session_id: str, s, state: dict[str, Any]) -> dict[str, Any]:
     sv = _sv()
     state = sv._validated_session_state(state)
-    token_val: dict[str, Any] | None = None
     st_token = state.get("token")
-    if isinstance(st_token, dict) or st_token is None:
-        token_val = st_token if isinstance(st_token, dict) else (s.token if isinstance(s.token, dict) else None)
+    token_val = sv._resolved_session_token(
+        s,
+        st_token if isinstance(st_token, dict) else None,
+    )
     model_provider, preferred_auth_method, model, reasoning_effort = sv._resolved_session_run_settings(s)
     service_tier = s.service_tier
     sidebar_meta = manager.sidebar_meta_get(session_id)

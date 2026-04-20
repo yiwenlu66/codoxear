@@ -2122,6 +2122,79 @@ class TestPiBackendRouting(unittest.TestCase):
             ],
         )
 
+    def test_session_live_payload_falls_back_to_pi_session_file_for_context_usage(
+        self,
+    ) -> None:
+        mgr = _make_manager()
+        with tempfile.TemporaryDirectory() as td:
+            sock = Path(td) / "pi.sock"
+            sock.touch()
+            session_path = Path(td) / "pi-session.jsonl"
+            _write_jsonl(
+                session_path,
+                [
+                    {"type": "session", "id": "pi-thread-001", "cwd": td},
+                    {
+                        "type": "message",
+                        "timestamp": "2026-04-19T18:20:08.000Z",
+                        "message": {
+                            "role": "assistant",
+                            "provider": "openai",
+                            "model": "gpt-5.4",
+                            "usage": {"totalTokens": 196077},
+                            "content": [{"type": "text", "text": "done"}],
+                        },
+                    },
+                ],
+            )
+            mgr._sessions["pi-session"] = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=sock,
+                session_path=session_path,
+                transport="pi-rpc",
+                supports_live_ui=True,
+                ui_protocol_version=1,
+            )
+
+            def _sock_call(
+                _sock: Path, req: dict[str, object], timeout_s: float = 0.0
+            ) -> dict[str, object]:
+                if req["cmd"] == "state":
+                    return {"busy": True, "queue_len": 0, "token": None}
+                if req["cmd"] == "ui_state":
+                    return {"requests": []}
+                if req["cmd"] == "live_messages":
+                    return {"offset": 0, "events": []}
+                raise AssertionError(f"unexpected broker command: {req['cmd']!r}")
+
+            mgr._sock_call = _sock_call  # type: ignore[method-assign]
+            mgr.get_messages_page = lambda *_args, **_kwargs: {
+                "thread_id": "pi-thread-001",
+                "log_path": str(session_path),
+                "offset": 1,
+                "events": [{"role": "user", "text": "hello", "ts": 1.0}],
+                "busy": True,
+                "queue_len": 0,
+                "token": None,
+            }  # type: ignore[method-assign]
+
+            payload = _session_live_payload(mgr, "pi-session", offset=0)
+
+        self.assertEqual(payload["token"]["tokens_in_context"], 196077)
+        self.assertEqual(
+            payload["context_usage"],
+            {"used_tokens": 196077, "total_tokens": 272000, "percent_used": 72},
+        )
+
     def test_session_live_payload_omits_streaming_event_once_durable_assistant_exists(
         self,
     ) -> None:
@@ -2410,6 +2483,74 @@ class TestPiBackendRouting(unittest.TestCase):
         self.assertEqual(payload["queue"], {"items": ["Queued follow-up"]})
         self.assertNotIn("events", payload)
         self.assertNotIn("requests", payload)
+
+    def test_workspace_diagnostics_fall_back_to_pi_session_file_token_update(self) -> None:
+        handler = _HandlerHarness("/api/sessions/pi-session/workspace")
+        with tempfile.TemporaryDirectory() as td:
+            session_path = Path(td) / "pi-session.jsonl"
+            _write_jsonl(
+                session_path,
+                [
+                    {"type": "session", "id": "pi-session-001", "cwd": td},
+                    {
+                        "type": "message",
+                        "timestamp": "2026-04-19T18:20:08.000Z",
+                        "message": {
+                            "role": "assistant",
+                            "provider": "openai",
+                            "model": "gpt-5.4",
+                            "usage": {"totalTokens": 196077},
+                            "content": [{"type": "text", "text": "done"}],
+                        },
+                    },
+                ],
+            )
+            session = Session(
+                session_id="pi-session",
+                thread_id="pi-thread-001",
+                agent_backend="pi",
+                backend="pi",
+                broker_pid=3333,
+                codex_pid=4444,
+                owned=True,
+                start_ts=123.0,
+                cwd=td,
+                log_path=None,
+                sock_path=Path(td) / "pi.sock",
+                session_path=session_path,
+            )
+
+            with (
+                patch("codoxear.server._require_auth", return_value=True),
+                patch("codoxear.server.MANAGER") as manager,
+                patch("codoxear.server._current_git_branch", return_value=None),
+                patch(
+                    "codoxear.server._pi_messages.read_latest_pi_todo_snapshot",
+                    return_value=None,
+                ),
+            ):
+                manager.refresh_session_meta.return_value = None
+                manager.get_session.return_value = session
+                manager.get_state.return_value = {
+                    "busy": False,
+                    "queue_len": 1,
+                    "token": None,
+                }
+                manager._queue_len.return_value = 1
+                manager.queue_list.return_value = ["Queued follow-up"]
+                manager.sidebar_meta_get.return_value = {
+                    "priority_offset": 0.0,
+                    "snooze_until": None,
+                    "dependency_session_id": None,
+                }
+
+                Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertEqual(
+            payload["diagnostics"]["context_usage"],
+            {"used_tokens": 196077, "total_tokens": 272000, "percent_used": 72},
+        )
 
     def test_pi_session_messages_and_ui_state_can_coexist_for_ask_user(self) -> None:
         mgr = _make_manager()
