@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { LiveSessionStore } from "../../domains/live-session/store";
 import { openAppEventStream, type AppEventStreamEvent } from "../../domains/events/stream";
+import type { LiveSessionStore } from "../../domains/live-session/store";
 import type { SessionUiStore } from "../../domains/session-ui/store";
 import type { SessionsStore } from "../../domains/sessions/store";
 import { getSessionRuntimeId } from "../../lib/session-identity";
@@ -18,6 +18,18 @@ interface UseAppShellEventsOptions {
   refreshNotificationsFeed: () => Promise<void>;
   sessionUiStoreApi: SessionUiStore;
   sessionsStoreApi: SessionsStore;
+  workspaceOpen: boolean;
+}
+
+interface LatestAppShellEventContext {
+  activeSessionBackend?: string;
+  activeSessionHistorical?: boolean;
+  activeSessionId: string | null;
+  activeSessionPending?: boolean;
+  activeSessionRuntimeId?: string | null;
+  items: SessionSummary[];
+  onConnectionChange?: (connected: boolean) => void;
+  refreshNotificationsFeed: () => Promise<void>;
   workspaceOpen: boolean;
 }
 
@@ -41,19 +53,45 @@ export function useAppShellEvents({
 }: UseAppShellEventsOptions) {
   const [connected, setConnected] = useState(false);
   const lastSeqRef = useRef(0);
+  const latestRef = useRef<LatestAppShellEventContext>({
+    activeSessionBackend,
+    activeSessionHistorical,
+    activeSessionId,
+    activeSessionPending,
+    activeSessionRuntimeId,
+    items,
+    onConnectionChange,
+    refreshNotificationsFeed,
+    workspaceOpen,
+  });
+
+  useEffect(() => {
+    latestRef.current = {
+      activeSessionBackend,
+      activeSessionHistorical,
+      activeSessionId,
+      activeSessionPending,
+      activeSessionRuntimeId,
+      items,
+      onConnectionChange,
+      refreshNotificationsFeed,
+      workspaceOpen,
+    };
+  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionPending, activeSessionRuntimeId, items, onConnectionChange, refreshNotificationsFeed, workspaceOpen]);
 
   useEffect(() => {
     const refreshSessions = () => sessionsStoreApi.refresh().catch(() => undefined);
     const refreshActiveWorkspace = () => {
-      if (!activeSessionId || !workspaceOpen) {
+      const latest = latestRef.current;
+      if (!latest.activeSessionId || !latest.workspaceOpen) {
         return Promise.resolve();
       }
-      if ((activeSessionHistorical && activeSessionBackend === "pi") || activeSessionPending) {
+      if ((latest.activeSessionHistorical && latest.activeSessionBackend === "pi") || latest.activeSessionPending) {
         return Promise.resolve();
       }
-      return (activeSessionRuntimeId
-        ? sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend, runtimeId: activeSessionRuntimeId })
-        : sessionUiStoreApi.refresh(activeSessionId, { agentBackend: activeSessionBackend }))
+      return (latest.activeSessionRuntimeId
+        ? sessionUiStoreApi.refresh(latest.activeSessionId, { agentBackend: latest.activeSessionBackend, runtimeId: latest.activeSessionRuntimeId })
+        : sessionUiStoreApi.refresh(latest.activeSessionId, { agentBackend: latest.activeSessionBackend }))
         .catch((error) => {
           if (isRecoverableNotFound(error)) {
             return refreshSessions();
@@ -73,12 +111,17 @@ export function useAppShellEvents({
         });
     };
     const resyncAll = () => {
+      const latest = latestRef.current;
       void refreshSessions();
-      void refreshNotificationsFeed();
-      if (activeSessionId) {
-        void pollLiveSession(activeSessionId, activeSessionRuntimeId);
+      void latest.refreshNotificationsFeed();
+      if (latest.activeSessionId) {
+        void pollLiveSession(latest.activeSessionId, latest.activeSessionRuntimeId);
       }
       void refreshActiveWorkspace();
+    };
+    const updateConnectionState = (isOpen: boolean) => {
+      setConnected(isOpen);
+      latestRef.current.onConnectionChange?.(isOpen);
     };
 
     const handleEvent = (event: AppEventStreamEvent) => {
@@ -98,26 +141,27 @@ export function useAppShellEvents({
         return;
       }
       if (eventType === "notifications.invalidate") {
-        void refreshNotificationsFeed();
+        void latestRef.current.refreshNotificationsFeed();
         return;
       }
 
+      const latest = latestRef.current;
       const targetRuntimeId = typeof event.runtime_id === "string" && event.runtime_id.trim()
         ? event.runtime_id.trim()
         : null;
       const targetSessionId = typeof event.session_id === "string" && event.session_id.trim()
         ? event.session_id.trim()
         : null;
-      const session = items.find((item) => (
+      const session = latest.items.find((item) => (
         (targetSessionId && item.session_id === targetSessionId)
         || (targetRuntimeId && getSessionRuntimeId(item) === targetRuntimeId)
       )) ?? null;
 
       if (eventType === "session.workspace.invalidate") {
-        if (!workspaceOpen || !activeSessionId || !targetSessionId) {
+        if (!latest.workspaceOpen || !latest.activeSessionId || !targetSessionId) {
           return;
         }
-        if (activeSessionId !== targetSessionId && activeSessionRuntimeId !== targetRuntimeId) {
+        if (latest.activeSessionId !== targetSessionId && latest.activeSessionRuntimeId !== targetRuntimeId) {
           return;
         }
         void refreshActiveWorkspace();
@@ -135,7 +179,7 @@ export function useAppShellEvents({
         }
         const runtimeId = targetRuntimeId || getSessionRuntimeId(session);
         const liveState = liveSessionStoreApi.getState();
-        const isTracked = session.session_id === activeSessionId
+        const isTracked = session.session_id === latest.activeSessionId
           || session.busy === true
           || typeof liveState.offsetsBySessionId[session.session_id] === "number";
         if (!isTracked) {
@@ -152,16 +196,14 @@ export function useAppShellEvents({
       cursor: lastSeqRef.current,
       onEvent: handleEvent,
       onStateChange: (state) => {
-        const isOpen = state === "open";
-        setConnected(isOpen);
-        onConnectionChange?.(isOpen);
+        updateConnectionState(state === "open");
       },
     });
 
     return () => {
       stream.close();
     };
-  }, [activeSessionBackend, activeSessionHistorical, activeSessionId, activeSessionPending, activeSessionRuntimeId, items, liveSessionStoreApi, onConnectionChange, refreshNotificationsFeed, sessionUiStoreApi, sessionsStoreApi, workspaceOpen]);
+  }, [liveSessionStoreApi, sessionUiStoreApi, sessionsStoreApi]);
 
   return { connected };
 }
