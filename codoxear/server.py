@@ -57,6 +57,7 @@ from .page_state_sqlite import (
     import_legacy_app_dir_to_db,
 )
 from .pi import ui_bridge as _pi_ui_bridge
+from .pi_log import pi_model_context_window as _pi_model_context_window_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .pi_log import read_pi_session_id as _read_pi_session_id
@@ -8542,6 +8543,10 @@ def _asset_version_from_manifest(manifest: dict[str, object]) -> str:
             if css_token:
                 parts.append(css_token)
     return "-".join(parts) or "dev"
+
+
+def _pi_model_context_window(provider: str | None, model: str | None) -> int | None:
+    return _pi_model_context_window_impl(provider, model)
 
 
 def _current_app_version() -> str:

@@ -72,6 +72,9 @@ class TestBackendSeamsSource(unittest.TestCase):
             module.bind_server_runtime(server_module)
             self.assertIs(module._sv(), server_module)
 
+    def test_server_runtime_exposes_pi_context_window_helper(self) -> None:
+        self.assertTrue(callable(getattr(server_module, "_pi_model_context_window", None)))
+
     def test_voice_push_uses_attention_namespace(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
         self.assertIn("from .attention.derive import", source)
