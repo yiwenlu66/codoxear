@@ -5,31 +5,27 @@ import argparse
 import json
 import os
 import pty
+import re
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 import traceback
-import select
-import sys
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .agent_backend import get_agent_backend
-from .agent_backend import normalize_agent_backend
-from .agent_backend import resolve_agent_backend
 from . import pty_util as _pty_util
+from .agent_backend import get_agent_backend, resolve_agent_backend
+from .util import _send_socket_json_line as _send_socket_json_line
+from .util import _socket_peer_disconnected as _socket_peer_disconnected
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload
-from .util import _send_socket_json_line as _send_socket_json_line
-from .util import _socket_peer_disconnected as _socket_peer_disconnected
-
 
 APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"

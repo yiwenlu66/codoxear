@@ -22,7 +22,6 @@ from .util import _send_socket_json_line as _send_socket_json_line
 from .util import _socket_peer_disconnected as _socket_peer_disconnected
 from .util import default_app_dir as _default_app_dir
 
-
 APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
 PI_SESSION_DIR = APP_DIR / "pi-sessions"

@@ -7,6 +7,7 @@ import os
 import pty
 import pwd
 import re
+import shlex
 import signal
 import socket
 import sys
@@ -15,28 +16,31 @@ import threading
 import time
 import traceback
 import tty
-import shlex
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from codoxear.agent_backend import get_agent_backend
-from codoxear.agent_backend import normalize_agent_backend
-from codoxear.agent_backend import resolve_agent_backend
+from codoxear import pty_util as _pty_util
+from codoxear.agent_backend import (
+    get_agent_backend,
+    normalize_agent_backend,
+    resolve_agent_backend,
+)
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear.pi_broker import PiBroker
-from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import (
     pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end,
 )
+from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
 from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_use_count
 from codoxear.pi_log import pi_message_role as _pi_message_role
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
-from codoxear import pty_util as _pty_util
+from codoxear.util import _send_socket_json_line as _send_socket_json_line
+from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import (
@@ -46,10 +50,7 @@ from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
-from codoxear.util import _send_socket_json_line as _send_socket_json_line
-from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
-
 
 APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"

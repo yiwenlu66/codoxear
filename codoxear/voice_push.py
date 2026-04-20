@@ -10,20 +10,19 @@ import subprocess
 import tempfile
 import threading
 import time
-from urllib.parse import urlparse
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-from .page_state_sqlite import PageStateDB
+from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
-from pywebpush import WebPushException
-from pywebpush import webpush
+from pywebpush import WebPushException, webpush
 
+from .attention.derive import compact_notification_state, final_response_attention_feed
+from .page_state_sqlite import PageStateDB
 
 DEFAULT_SUMMARIZATION_MODEL = "gpt-4.1-mini"
 DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
@@ -1164,51 +1163,12 @@ class VoicePushCoordinator:
             row = self._delivery_ledger.get(message_id)
             if not isinstance(row, dict):
                 return None
-            return {
-                "message_id": message_id,
-                "message_class": row.get("message_class"),
-                "summary_status": row.get("summary_status"),
-                "push_status": row.get("push_status"),
-                "notification_text": _compact_text(row.get("notification_text") or ""),
-            }
+        return compact_notification_state(row, _compact_text)
 
     def notification_feed_since(self, since_ts: float) -> list[dict[str, Any]]:
         with self._lock:
-            rows = list(self._delivery_ledger.values())
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            if row.get("message_class") != "final_response":
-                continue
-            updated_ts = float(row.get("updated_ts") or 0.0)
-            if updated_ts <= float(since_ts):
-                continue
-            summary_status = str(row.get("summary_status") or "")
-            if summary_status not in {"sent", "skipped", "error"}:
-                continue
-            text = _compact_text(row.get("notification_text") or "")
-            if not text:
-                continue
-            out.append(
-                {
-                    "message_id": str(row.get("message_id") or ""),
-                    "session_id": str(row.get("session_id") or ""),
-                    "session_display_name": str(
-                        row.get("session_display_name") or ""
-                    ).strip()
-                    or "Session",
-                    "notification_text": text,
-                    "updated_ts": updated_ts,
-                }
-            )
-        out.sort(
-            key=lambda item: (
-                float(item.get("updated_ts") or 0.0),
-                str(item.get("message_id") or ""),
-            )
-        )
-        return out
+            rows = [row for row in self._delivery_ledger.values() if isinstance(row, dict)]
+        return final_response_attention_feed(rows, since_ts=since_ts, compact_text=_compact_text)
 
     def _keepalive_loop(self) -> None:
         while not self._stop.is_set():

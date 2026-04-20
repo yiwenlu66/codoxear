@@ -2532,6 +2532,28 @@ class TestPiBackendRouting(unittest.TestCase):
             },
         )
 
+    def test_session_write_routes_return_json_404_for_malformed_paths(self) -> None:
+        cases = [
+            ("/api/sessions//rename", b'{"name":"alias"}'),
+            ("/api/sessions//focus", b'{"focused":true}'),
+            ("/api/sessions//send", b'{"text":"hello"}'),
+            ("/api/sessions//ui_response", b'{"id":"ui-1","value":"x"}'),
+            ("/api/sessions//enqueue", b'{"text":"later"}'),
+        ]
+        with patch("codoxear.server._require_auth", return_value=True):
+            for raw_path, body in cases:
+                handler = _HandlerHarness(raw_path, body=body)
+                handler._unauthorized = lambda: None  # type: ignore[attr-defined]
+                handler.send_error = lambda code: setattr(handler, "status", code)  # type: ignore[attr-defined]
+
+                Handler.do_POST(handler)  # type: ignore[arg-type]
+
+                self.assertEqual(handler.status, 404, raw_path)
+                self.assertEqual(
+                    handler.wfile.getvalue().decode("utf-8"),
+                    '{"error":"unknown session"}',
+                )
+
     def test_ui_response_route_does_not_fallback_to_send_for_live_pi_rpc_session(
         self,
     ) -> None:

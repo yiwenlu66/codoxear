@@ -11,13 +11,12 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from .agent_backend import get_agent_backend
-from .agent_backend import infer_agent_backend_from_log_path
-from .agent_backend import normalize_agent_backend
-from .pi_log import read_pi_log_cwd
-from .pi_log import read_pi_session_header
-from .pi_log import read_pi_session_id
-
+from .agent_backend import (
+    get_agent_backend,
+    infer_agent_backend_from_log_path,
+    normalize_agent_backend,
+)
+from .pi_log import read_pi_session_header, read_pi_session_id
 
 _LEGACY_WARNED = False
 
