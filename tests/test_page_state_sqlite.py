@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -161,6 +162,44 @@ class TestPageStateSQLite(unittest.TestCase):
             assert row is not None
             self.assertEqual(row["source_name"], "session_aliases.json")
             self.assertEqual(row["legacy_key"], "missing-runtime")
+            db.close()
+
+    def test_concurrent_session_ui_state_saves_share_one_connection_safely(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db = PageStateDB(Path(td) / "state.sqlite")
+            errors: list[BaseException] = []
+            start = threading.Barrier(3)
+
+            def worker(prefix: str) -> None:
+                try:
+                    start.wait()
+                    for i in range(40):
+                        db.save_session_ui_state(
+                            aliases={("pi", f"{prefix}-{i}"): f"Alias {i}"},
+                            sidebar_meta={
+                                ("pi", f"{prefix}-{i}"): {
+                                    "priority_offset": float(i % 3),
+                                    "focused": bool(i % 2),
+                                }
+                            },
+                            hidden_keys={f"thread:pi:{prefix}-{i}"},
+                        )
+                except BaseException as exc:
+                    errors.append(exc)
+
+            t1 = threading.Thread(target=worker, args=("a",))
+            t2 = threading.Thread(target=worker, args=("b",))
+            t1.start()
+            t2.start()
+            start.wait()
+            t1.join()
+            t2.join()
+
+            self.assertEqual(errors, [])
+            aliases, sidebar_meta, hidden_keys = db.load_session_ui_state()
+            self.assertEqual(len(aliases), 1)
+            self.assertEqual(len(sidebar_meta), 1)
+            self.assertEqual(len(hidden_keys), 1)
             db.close()
 
 

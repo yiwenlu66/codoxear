@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 SessionRef = tuple[str, str]
+
+
+def _db_locked(fn):
+    @functools.wraps(fn)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return fn(self, *args, **kwargs)
+
+    return wrapped
 
 
 @dataclass(frozen=True)
@@ -68,6 +79,7 @@ class PageStateDB:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
@@ -75,9 +87,11 @@ class PageStateDB:
         self._conn.execute("PRAGMA synchronous = NORMAL")
         self._migrate()
 
+    @_db_locked
     def close(self) -> None:
         self._conn.close()
 
+    @_db_locked
     def is_empty(self) -> bool:
         row = self._conn.execute(
             "SELECT COUNT(*) AS n FROM session_ui_state"
@@ -119,6 +133,7 @@ class PageStateDB:
         ).fetchone()
         return not (row is not None and int(row["n"] or 0) > 0)
 
+    @_db_locked
     def _migrate(self) -> None:
         with self._conn:
             self._conn.executescript(
@@ -218,6 +233,7 @@ class PageStateDB:
                     "ALTER TABLE sessions ADD COLUMN pending_startup INTEGER NOT NULL DEFAULT 0"
                 )
 
+    @_db_locked
     def load_sessions(self) -> dict[SessionRef, DurableSessionRecord]:
         out: dict[SessionRef, DurableSessionRecord] = {}
         for row in self._conn.execute(
@@ -237,6 +253,7 @@ class PageStateDB:
             )
         return out
 
+    @_db_locked
     def save_sessions(self, rows: dict[SessionRef, DurableSessionRecord]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM sessions")
@@ -261,6 +278,7 @@ class PageStateDB:
                     ),
                 )
 
+    @_db_locked
     def upsert_session(self, row: DurableSessionRecord) -> None:
         with self._conn:
             self._conn.execute(
@@ -291,6 +309,7 @@ class PageStateDB:
                 ),
             )
 
+    @_db_locked
     def delete_session(self, ref: SessionRef) -> None:
         with self._conn:
             self._conn.execute(
@@ -298,6 +317,7 @@ class PageStateDB:
                 (ref[0], ref[1]),
             )
 
+    @_db_locked
     def known_session_refs(self) -> set[SessionRef]:
         refs: set[SessionRef] = set()
         queries = [
@@ -311,6 +331,7 @@ class PageStateDB:
                 refs.add((_normalize_backend(row["backend"]), str(row["session_id"])))
         return refs
 
+    @_db_locked
     def load_session_ui_state(self) -> tuple[dict[SessionRef, str], dict[SessionRef, dict[str, Any]], set[str]]:
         aliases: dict[SessionRef, str] = {}
         sidebar_meta: dict[SessionRef, dict[str, Any]] = {}
@@ -341,6 +362,7 @@ class PageStateDB:
                 hidden_keys.add(key)
         return aliases, sidebar_meta, hidden_keys
 
+    @_db_locked
     def save_session_ui_state(
         self,
         aliases: dict[SessionRef, str],
@@ -378,6 +400,7 @@ class PageStateDB:
                     (key,),
                 )
 
+    @_db_locked
     def load_files(self) -> dict[SessionRef, list[str]]:
         out: dict[SessionRef, list[tuple[int, str]]] = {}
         for row in self._conn.execute(
@@ -387,6 +410,7 @@ class PageStateDB:
             out.setdefault(ref, []).append((int(row["ordinal"]), str(row["path"])))
         return {ref: [path for _ordinal, path in rows] for ref, rows in out.items()}
 
+    @_db_locked
     def save_files(self, files: dict[SessionRef, list[str]]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM session_files")
@@ -397,6 +421,7 @@ class PageStateDB:
                         (backend, session_id, path, ordinal, time.time()),
                     )
 
+    @_db_locked
     def load_queues(self) -> dict[SessionRef, list[str]]:
         out: dict[SessionRef, list[tuple[int, str]]] = {}
         for row in self._conn.execute(
@@ -406,6 +431,7 @@ class PageStateDB:
             out.setdefault(ref, []).append((int(row["ordinal"]), str(row["text"])))
         return {ref: [text for _ordinal, text in rows] for ref, rows in out.items()}
 
+    @_db_locked
     def save_queues(self, queues: dict[SessionRef, list[str]]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM session_queue_items")
@@ -416,12 +442,14 @@ class PageStateDB:
                         (backend, session_id, ordinal, text),
                     )
 
+    @_db_locked
     def load_recent_cwds(self) -> dict[str, float]:
         out: dict[str, float] = {}
         for row in self._conn.execute("SELECT cwd, last_used_ts FROM recent_cwds"):
             out[str(row["cwd"])] = float(row["last_used_ts"])
         return out
 
+    @_db_locked
     def save_recent_cwds(self, recent_cwds: dict[str, float]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM recent_cwds")
@@ -431,6 +459,7 @@ class PageStateDB:
                     (cwd, float(ts)),
                 )
 
+    @_db_locked
     def load_cwd_groups(self) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
         for row in self._conn.execute("SELECT cwd, label, collapsed FROM cwd_groups"):
@@ -441,6 +470,7 @@ class PageStateDB:
             out[str(row["cwd"])] = entry
         return out
 
+    @_db_locked
     def save_cwd_groups(self, cwd_groups: dict[str, dict[str, Any]]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM cwd_groups")
@@ -450,6 +480,7 @@ class PageStateDB:
                     (cwd, _clean_text(entry.get("label")), 1 if entry.get("collapsed") else 0),
                 )
 
+    @_db_locked
     def load_app_kv(self, namespace: str) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for row in self._conn.execute(
@@ -462,6 +493,7 @@ class PageStateDB:
                 continue
         return out
 
+    @_db_locked
     def save_app_kv(self, namespace: str, values: dict[str, Any]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM app_kv WHERE namespace = ?", (namespace,))
@@ -471,6 +503,7 @@ class PageStateDB:
                     (namespace, key, json.dumps(value, ensure_ascii=False, sort_keys=True)),
                 )
 
+    @_db_locked
     def load_push_subscriptions(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for row in self._conn.execute(
@@ -484,6 +517,7 @@ class PageStateDB:
                 out.append(payload)
         return out
 
+    @_db_locked
     def load_delivery_ledger(self) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
         for row in self._conn.execute(
@@ -497,12 +531,15 @@ class PageStateDB:
                 out[str(row["message_id"])] = payload
         return out
 
+    @_db_locked
     def save_push_subscriptions(self, rows: list[dict[str, Any]]) -> None:
         self._save_push_subscriptions(rows)
 
+    @_db_locked
     def save_delivery_ledger(self, rows: dict[str, dict[str, Any]]) -> None:
         self._save_delivery_ledger(rows)
 
+    @_db_locked
     def import_legacy_app_dir(self, app_dir: Path) -> LegacyImportReport:
         source = Path(app_dir)
         runtime_map = self._legacy_runtime_map(source / "socks")
@@ -625,6 +662,7 @@ class PageStateDB:
 
         return LegacyImportReport(**{**report.__dict__, "unmapped_rows": unmapped_rows})
 
+    @_db_locked
     def _save_push_subscriptions(self, rows: list[Any]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM push_subscriptions")
@@ -644,6 +682,7 @@ class PageStateDB:
                     (row_id, json.dumps(row, ensure_ascii=False, sort_keys=True), ts),
                 )
 
+    @_db_locked
     def _save_delivery_ledger(self, rows: dict[str, Any]) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM delivery_ledger")
@@ -662,6 +701,7 @@ class PageStateDB:
                     (message_id, json.dumps(row, ensure_ascii=False, sort_keys=True), ts),
                 )
 
+    @_db_locked
     def _record_unmapped(self, source_name: str, legacy_key: str, payload: Any, imported_at: float) -> None:
         with self._conn:
             self._conn.execute(
@@ -669,12 +709,14 @@ class PageStateDB:
                 (source_name, legacy_key, json.dumps(payload, ensure_ascii=False, sort_keys=True), imported_at),
             )
 
+    @_db_locked
     def _read_json(self, path: Path, *, default: Any) -> Any:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return default
 
+    @_db_locked
     def _legacy_runtime_map(self, socks_dir: Path) -> dict[str, SessionRef]:
         out: dict[str, SessionRef] = {}
         for meta_path in sorted(socks_dir.glob("*.json")):
