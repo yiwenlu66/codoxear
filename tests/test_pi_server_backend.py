@@ -6,29 +6,28 @@ import os
 import socket
 import tempfile
 import threading
-import urllib.parse
 import unittest
+import urllib.parse
 import uuid
 from pathlib import Path
-from typing import Any
-from typing import cast
-from unittest.mock import ANY
-from unittest.mock import Mock
-from unittest.mock import patch
+from typing import Any, cast
+from unittest.mock import ANY, Mock, patch
 
 from codoxear import pi_messages
-from codoxear.server import Handler
-from codoxear.server import Session
-from codoxear.server import SessionManager
-from codoxear.server import _parse_create_session_request
-from codoxear.server import _provider_choice_for_backend
-from codoxear.server import _json_response
-from codoxear.server import _session_details_payload
-from codoxear.server import _session_live_payload
-from codoxear.server import _session_workspace_payload
-from codoxear.server import _ui_requests_version
-from tests.pi_fixtures import pi_persisted_session_file
-from tests.pi_fixtures import pi_runtime_session_file
+from codoxear.server import (
+    Handler,
+    Session,
+    SessionManager,
+    _json_response,
+    _parse_create_session_request,
+    _provider_choice_for_backend,
+    _session_details_payload,
+    _session_live_payload,
+    _session_workspace_payload,
+    _ui_requests_version,
+)
+
+from tests.pi_fixtures import pi_persisted_session_file, pi_runtime_session_file
 
 
 def _pi_message_entry(
@@ -2183,6 +2182,52 @@ class TestPiBackendRouting(unittest.TestCase):
         payload = json.loads(handler.wfile.getvalue().decode("utf-8"))
         self.assertEqual(handler.status, 200)
         self.assertEqual(payload["events"], [{"type": "assistant", "text": "hello"}])
+
+    def test_messages_route_defaults_history_page_size_to_300(self) -> None:
+        mgr = _make_manager()
+        session_path = Path("/tmp/pi-session.jsonl")
+        sock = Path("/tmp/pi-session.sock")
+        mgr._sessions["pi-session"] = Session(
+            session_id="pi-session",
+            thread_id="pi-thread-001",
+            agent_backend="pi",
+            backend="pi",
+            broker_pid=111,
+            codex_pid=222,
+            owned=True,
+            start_ts=123.0,
+            cwd="/tmp/pi-cwd",
+            log_path=None,
+            sock_path=sock,
+            session_path=session_path,
+        )
+        mgr.refresh_session_meta = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        captured: dict[str, object] = {}
+
+        def get_messages_page(_sid: str, **kwargs: object) -> dict[str, object]:
+            captured.update(kwargs)
+            return {
+                "events": [],
+                "diag": {},
+                "offset": 0,
+                "busy": False,
+                "queue_len": 0,
+                "token": None,
+                "has_older": False,
+                "next_before": 0,
+            }
+
+        mgr.get_messages_page = get_messages_page  # type: ignore[method-assign]
+        handler = _HandlerHarness("/api/sessions/pi-session/messages?init=1")
+
+        with (
+            patch("codoxear.server._require_auth", return_value=True),
+            patch("codoxear.server.MANAGER", mgr),
+        ):
+            Handler.do_GET(handler)  # type: ignore[arg-type]
+
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(captured.get("limit"), 300)
 
     def test_session_details_payload_falls_back_to_historical_row(self) -> None:
         mgr = _make_manager()
@@ -6242,7 +6287,6 @@ class TestPiMessageNormalization(unittest.TestCase):
             session_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             old_mtime = 1700000100.0
             os.utime(session_path, (old_mtime, old_mtime))
-            initial_offset = session_path.stat().st_size
 
             with session_path.open("a", encoding="utf-8") as f:
                 f.write(

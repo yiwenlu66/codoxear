@@ -150,6 +150,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
   const [resumeOffset, setResumeOffset] = useState(0);
   const [resumeRemaining, setResumeRemaining] = useState(0);
   const [resumeLoading, setResumeLoading] = useState(false);
+  const [refreshingPiModels, setRefreshingPiModels] = useState(false);
   const [useWorktree, setUseWorktree] = useState(false);
   const [worktreeBranch, setWorktreeBranch] = useState("");
   const [cwdInfo, setCwdInfo] = useState<SessionCwdInfo>({
@@ -233,6 +234,7 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
     setResumeOffset(0);
     setResumeRemaining(0);
     setResumeLoading(false);
+    setRefreshingPiModels(false);
     setUseWorktree(false);
     setWorktreeBranch("");
     setCwdInfo({ exists: false, willCreate: false, gitRepo: false, gitRoot: "", gitBranch: "" });
@@ -422,6 +424,21 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
       return;
     }
     setModel(defaultPiModelForProvider(backendDefaults, nextProviderChoice));
+  };
+
+  const refreshPiModels = async () => {
+    if (refreshingPiModels) {
+      return;
+    }
+    setRefreshingPiModels(true);
+    setError("");
+    try {
+      await sessionsStoreApi.refreshBootstrap({ refreshPiModels: true });
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh Pi models");
+    } finally {
+      setRefreshingPiModels(false);
+    }
   };
 
   return (
@@ -664,9 +681,24 @@ export function NewSessionDialog({ open, onClose }: NewSessionDialogProps) {
               <Separator className="bg-border/70" />
 
               <section className="dialogSection space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-foreground">Model settings</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">Tune provider, model, and reasoning without leaving the launch flow.</p>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Model settings</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Tune provider, model, and reasoning without leaving the launch flow.</p>
+                  </div>
+                  {backend === "pi" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3"
+                      disabled={refreshingPiModels}
+                      onClick={() => {
+                        void refreshPiModels();
+                      }}
+                    >
+                      {refreshingPiModels ? "Refreshing Pi models..." : "Refresh Pi models"}
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="fieldGrid threeCol gap-3">
                   <label className="fieldBlock space-y-2">

@@ -363,6 +363,7 @@ SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xh
 PI_COMMANDS_CACHE_TTL_SECONDS = float(
     os.environ.get("CODEX_WEB_PI_COMMANDS_CACHE_TTL_SECONDS", "45.0")
 )
+PI_MODELS_CACHE_NAMESPACE = "pi_models"
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -1938,6 +1939,7 @@ SESSION_LIST_ROW_KEYS = (
 SESSION_LIST_PAGE_SIZE = 50
 SESSION_LIST_GROUP_PAGE_SIZE = 12
 SESSION_LIST_RECENT_GROUP_LIMIT = 12
+SESSION_HISTORY_PAGE_SIZE = 300
 SESSION_LIST_FALLBACK_GROUP_KEY = "__no_working_directory__"
 
 
@@ -2956,20 +2958,47 @@ def _read_codex_launch_defaults() -> dict[str, Any]:
     return defaults
 
 
-def _read_pi_launch_defaults() -> dict[str, Any]:
-    configured_provider: str | None = None
-    configured_model: str | None = None
-    configured_effort: str | None = "high"
+def _normalize_pi_provider_models_snapshot(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    provider_models_raw = raw.get("provider_models")
+    if not isinstance(provider_models_raw, dict):
+        return None
+    provider_choices_raw = raw.get("provider_choices")
+    provider_choices: list[str] = []
+    if isinstance(provider_choices_raw, list):
+        for value in provider_choices_raw:
+            name = _clean_optional_text(value)
+            if name is None or name in provider_choices:
+                continue
+            provider_choices.append(name)
+    provider_models: dict[str, list[str]] = {}
+    for key, value in provider_models_raw.items():
+        name = _clean_optional_text(key)
+        if name is None:
+            continue
+        model_choices: list[str] = []
+        if isinstance(value, list):
+            for item in value:
+                model_id = _clean_optional_text(item)
+                if model_id is None or model_id in model_choices:
+                    continue
+                model_choices.append(model_id)
+        provider_models[name] = model_choices
+        if name not in provider_choices:
+            provider_choices.append(name)
+    cached_at = raw.get("cached_at")
+    return {
+        "provider_choices": provider_choices,
+        "provider_models": provider_models,
+        "cached_at": float(cached_at) if isinstance(cached_at, (int, float)) else None,
+    }
+
+
+
+def _read_pi_provider_models_snapshot_from_source() -> dict[str, Any]:
     provider_choices: list[str] = []
     provider_models: dict[str, list[str]] = {}
-
-    if PI_SETTINGS_PATH.exists():
-        data = json.loads(PI_SETTINGS_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Pi settings in {PI_SETTINGS_PATH}")
-        configured_provider = _clean_optional_text(data.get("defaultProvider"))
-        configured_model = _clean_optional_text(data.get("defaultModel"))
-
     if PI_MODELS_PATH.exists():
         data = json.loads(PI_MODELS_PATH.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
@@ -2977,10 +3006,8 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
         providers = data.get("providers")
         if isinstance(providers, dict):
             for key, value in providers.items():
-                if not isinstance(key, str):
-                    continue
-                name = key.strip()
-                if not name or name in provider_choices:
+                name = _clean_optional_text(key)
+                if name is None or name in provider_choices:
                     continue
                 provider_choices.append(name)
                 model_choices: list[str] = []
@@ -2995,6 +3022,58 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
                                 continue
                             model_choices.append(model_id)
                 provider_models[name] = model_choices
+    return {
+        "provider_choices": provider_choices,
+        "provider_models": provider_models,
+        "cached_at": time.time(),
+    }
+
+
+
+def _read_pi_provider_models_snapshot(
+    *,
+    page_state_db: PageStateDB | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    if not force_refresh and page_state_db is not None:
+        cached = _normalize_pi_provider_models_snapshot(
+            page_state_db.load_app_kv(PI_MODELS_CACHE_NAMESPACE).get("snapshot")
+        )
+        if cached is not None:
+            return cached
+    snapshot = _read_pi_provider_models_snapshot_from_source()
+    if page_state_db is not None:
+        page_state_db.save_app_kv(PI_MODELS_CACHE_NAMESPACE, {"snapshot": snapshot})
+    return snapshot
+
+
+
+def _read_pi_launch_defaults(
+    *,
+    page_state_db: PageStateDB | None = None,
+    force_refresh: bool = False,
+) -> dict[str, Any]:
+    configured_provider: str | None = None
+    configured_model: str | None = None
+    configured_effort: str | None = "high"
+
+    if PI_SETTINGS_PATH.exists():
+        data = json.loads(PI_SETTINGS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Pi settings in {PI_SETTINGS_PATH}")
+        configured_provider = _clean_optional_text(data.get("defaultProvider"))
+        configured_model = _clean_optional_text(data.get("defaultModel"))
+
+    snapshot = _read_pi_provider_models_snapshot(
+        page_state_db=page_state_db,
+        force_refresh=force_refresh,
+    )
+    provider_choices = list(snapshot.get("provider_choices") or [])
+    provider_models = {
+        str(key): [str(item) for item in value]
+        for key, value in dict(snapshot.get("provider_models") or {}).items()
+        if isinstance(key, str) and isinstance(value, list)
+    }
 
     fallback_provider = next(
         (name for name in provider_choices if provider_models.get(name)),
@@ -3025,16 +3104,24 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
         "reasoning_efforts": list(SUPPORTED_PI_REASONING_EFFORTS),
         "service_tier": None,
         "supports_fast": False,
+        "models_cached_at": snapshot.get("cached_at"),
     }
 
 
-def _read_new_session_defaults() -> dict[str, Any]:
+def _read_new_session_defaults(
+    *,
+    page_state_db: PageStateDB | None = None,
+    refresh_pi_models: bool = False,
+) -> dict[str, Any]:
     codex = _read_codex_launch_defaults()
     codex["agent_backend"] = "codex"
     codex["provider_choices"] = list(codex.get("model_providers") or [])
     codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
     codex["supports_fast"] = True
-    pi = _read_pi_launch_defaults()
+    pi = _read_pi_launch_defaults(
+        page_state_db=page_state_db,
+        force_refresh=refresh_pi_models,
+    )
     return {
         "default_backend": DEFAULT_AGENT_BACKEND,
         "backends": {

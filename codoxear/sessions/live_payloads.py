@@ -41,7 +41,7 @@ def session_live_payload(
                 session_id,
                 offset=max(0, int(offset)),
                 init=(offset <= 0),
-                limit=80,
+                limit=sv.SESSION_HISTORY_PAGE_SIZE,
                 before=0,
             )
         except KeyError:
@@ -80,7 +80,7 @@ def session_live_payload(
         session_id,
         offset=max(0, int(offset)),
         init=(offset <= 0),
-        limit=80,
+        limit=sv.SESSION_HISTORY_PAGE_SIZE,
         before=0,
     )
     state = manager.get_state(session_id)

@@ -74,10 +74,10 @@ function createSessionsStore(initialState: any) {
       }
       listeners.forEach((listener) => listener());
     },
-    async refreshBootstrap() {
+    refreshBootstrap: vi.fn(async (_options?: { refreshPiModels?: boolean }) => {
       state = { ...state, bootstrapLoaded: true };
       listeners.forEach((listener) => listener());
-    },
+    }),
     select: vi.fn((sessionId: string) => {
       state = { ...state, activeSessionId: sessionId };
       listeners.forEach((listener) => listener());
@@ -565,6 +565,88 @@ describe("NewSessionDialog", () => {
     });
     expect(api.renameSession).not.toHaveBeenCalled();
     expect(sessionsStore.select).toHaveBeenCalledWith("new-from-server");
+  });
+
+  it("refreshes cached Pi model suggestions on demand", async () => {
+    const sessionsStore = createSessionsStore({
+      items: [],
+      activeSessionId: null,
+      loading: false,
+      recentCwds: [],
+      tmuxAvailable: false,
+      newSessionDefaults: {
+        default_backend: "pi",
+        backends: {
+          pi: {
+            provider_choice: "macaron",
+            provider_choices: ["macaron"],
+            model: "gpt-5.4",
+            models: ["gpt-5.4"],
+            provider_models: {
+              macaron: ["gpt-5.4"],
+            },
+            reasoning_effort: "high",
+            reasoning_efforts: ["medium", "high"],
+          } as any,
+          codex: { provider_choice: "chatgpt" },
+        },
+      },
+    });
+    vi.mocked(sessionsStore.refreshBootstrap).mockImplementation(async (options?: { refreshPiModels?: boolean }) => {
+      if (options?.refreshPiModels) {
+        sessionsStore.setState({
+          ...sessionsStore.getState(),
+          bootstrapLoaded: true,
+          newSessionDefaults: {
+            default_backend: "pi",
+            backends: {
+              pi: {
+                provider_choice: "macaron",
+                provider_choices: ["macaron"],
+                model: "gpt-5.4-mini",
+                models: ["gpt-5.4-mini", "gpt-5.4"],
+                provider_models: {
+                  macaron: ["gpt-5.4-mini", "gpt-5.4"],
+                },
+                reasoning_effort: "high",
+                reasoning_efforts: ["medium", "high"],
+              } as any,
+              codex: { provider_choice: "chatgpt" },
+            },
+          },
+        });
+        return;
+      }
+      sessionsStore.setState({ ...sessionsStore.getState(), bootstrapLoaded: true });
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    expect((root.querySelector('input[name="model"]') as HTMLInputElement).value).toBe("gpt-5.4");
+
+    const refreshButton = Array.from(root.querySelectorAll("button")).find((button) => button.textContent?.includes("Refresh Pi models")) as HTMLButtonElement;
+    expect(refreshButton).not.toBeNull();
+    await act(async () => {
+      refreshButton.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(sessionsStore.refreshBootstrap).toHaveBeenCalledWith({ refreshPiModels: true });
+    expect(Array.from(root.querySelectorAll('#new-session-models option')).map((option) => option.getAttribute("value"))).toEqual([
+      "gpt-5.4-mini",
+      "gpt-5.4",
+    ]);
   });
 
   it("updates Pi model suggestions when the provider changes", async () => {

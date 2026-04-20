@@ -102,6 +102,24 @@ describe("api", () => {
     });
   });
 
+  it("requests bootstrap with a forced Pi model refresh", async () => {
+    const payload: SessionBootstrapResponse = {
+      new_session_defaults: { default_backend: "pi" },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(payload),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.getSessionsBootstrap({ refreshPiModels: true })).resolves.toEqual(payload);
+    expect(fetchMock).toHaveBeenCalledWith("api/sessions/bootstrap?refresh_pi_models=1", {
+      headers: { Accept: "application/json" },
+      signal: undefined,
+    });
+  });
+
   it("requests session details", async () => {
     const payload: SessionDetailsResponse = {
       ok: true,

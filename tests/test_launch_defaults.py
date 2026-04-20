@@ -3,12 +3,15 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from codoxear.server import _normalize_requested_model_provider
-from codoxear.server import _normalize_requested_preferred_auth_method
-from codoxear.server import _normalize_requested_service_tier
-from codoxear.server import _read_codex_launch_defaults
-from codoxear.server import _read_new_session_defaults
-from codoxear.server import _read_pi_launch_defaults
+from codoxear.page_state_sqlite import PageStateDB
+from codoxear.server import (
+    _normalize_requested_model_provider,
+    _normalize_requested_preferred_auth_method,
+    _normalize_requested_service_tier,
+    _read_codex_launch_defaults,
+    _read_new_session_defaults,
+    _read_pi_launch_defaults,
+)
 
 
 class TestLaunchDefaults(unittest.TestCase):
@@ -248,6 +251,41 @@ base_url = "https://example.com/v1"
         self.assertEqual(defaults["provider_choice"], "anthropic")
         self.assertEqual(defaults["model"], "claude-sonnet-4-6")
         self.assertEqual(defaults["models"], ["claude-sonnet-4-6", "claude-opus-4-6"])
+
+    def test_read_pi_launch_defaults_uses_sqlite_cache_until_forced_refresh(
+        self,
+    ) -> None:
+        with TemporaryDirectory() as td:
+            settings_path = Path(td) / "settings.json"
+            models_path = Path(td) / "models.json"
+            auth_path = Path(td) / "missing-auth.json"
+            db_path = Path(td) / "state.sqlite"
+            settings_path.write_text(
+                '{"defaultProvider":"macaron","defaultModel":"gpt-5.4"}\n',
+                encoding="utf-8",
+            )
+            models_path.write_text(
+                '{"providers":{"macaron":{"models":[{"id":"gpt-5.4"}]}}}\n',
+                encoding="utf-8",
+            )
+            db = PageStateDB(db_path)
+            with (
+                patch("codoxear.server.PI_SETTINGS_PATH", settings_path),
+                patch("codoxear.server.PI_MODELS_PATH", models_path),
+                patch("codoxear.server.PI_AUTH_PATH", auth_path),
+            ):
+                first = _read_pi_launch_defaults(page_state_db=db)
+                models_path.write_text(
+                    '{"providers":{"macaron":{"models":[{"id":"gpt-5.4-mini"}]}}}\n',
+                    encoding="utf-8",
+                )
+                cached = _read_pi_launch_defaults(page_state_db=db)
+                refreshed = _read_pi_launch_defaults(page_state_db=db, force_refresh=True)
+            db.close()
+
+        self.assertEqual(first["models"], ["gpt-5.4"])
+        self.assertEqual(cached["models"], ["gpt-5.4"])
+        self.assertEqual(refreshed["models"], ["gpt-5.4-mini"])
 
     def test_read_pi_launch_defaults_keeps_valid_default_provider_and_model(
         self,

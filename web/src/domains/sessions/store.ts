@@ -17,11 +17,15 @@ export interface RefreshSessionsOptions {
   preferNewest?: boolean;
 }
 
+export interface RefreshBootstrapOptions {
+  refreshPiModels?: boolean;
+}
+
 export interface SessionsStore {
   getState(): SessionsState;
   subscribe(listener: () => void): () => void;
   refresh(options?: RefreshSessionsOptions): Promise<void>;
-  refreshBootstrap(): Promise<void>;
+  refreshBootstrap(options?: RefreshBootstrapOptions): Promise<void>;
   loadMore(limit?: number): Promise<void>;
   select(sessionId: string): void;
 }
@@ -152,9 +156,9 @@ export function createSessionsStore(): SessionsStore {
       };
     },
     refresh,
-    async refreshBootstrap() {
+    async refreshBootstrap(options?: RefreshBootstrapOptions) {
       const refreshId = ++currentBootstrapRefreshId;
-      const data = await api.getSessionsBootstrap();
+      const data = await api.getSessionsBootstrap(options);
       if (refreshId !== currentBootstrapRefreshId) {
         return;
       }

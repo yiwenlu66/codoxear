@@ -27,13 +27,18 @@ def handle_get(handler: Any, path: str, u: Any) -> bool:
         if not sv._require_auth(handler):
             handler._unauthorized()
             return True
+        qs = urllib.parse.parse_qs(u.query)
+        refresh_pi_models = (qs.get("refresh_pi_models") or ["0"])[0] == "1"
         sv._json_response(
             handler,
             200,
             {
                 "recent_cwds": sv.MANAGER.recent_cwds(),
                 "cwd_groups": sv.MANAGER.cwd_groups_get(),
-                "new_session_defaults": sv._read_new_session_defaults(),
+                "new_session_defaults": sv._read_new_session_defaults(
+                    page_state_db=getattr(sv.MANAGER, "_page_state_db", None),
+                    refresh_pi_models=refresh_pi_models,
+                ),
                 "tmux_available": sv._tmux_available(),
             },
         )
@@ -578,8 +583,8 @@ def handle_get(handler: Any, path: str, u: Any) -> bool:
         before = 0 if before_q is None else int(before_q[0])
         before = max(0, before)
         limit_q = qs.get("limit")
-        limit = 80 if limit_q is None else int(limit_q[0])
-        limit = max(20, min(200, limit))
+        limit = sv.SESSION_HISTORY_PAGE_SIZE if limit_q is None else int(limit_q[0])
+        limit = max(20, min(sv.SESSION_HISTORY_PAGE_SIZE, limit))
         payload = sv.MANAGER.get_messages_page(session_id, offset=offset, init=init, limit=limit, before=before)
         if isinstance(payload.get("diag"), dict) and s is not None and s.backend != "pi":
             payload["diag"]["meta_refresh_ms"] = round(dt_meta_ms, 3)

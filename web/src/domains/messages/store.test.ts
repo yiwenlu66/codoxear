@@ -250,7 +250,7 @@ describe("createMessagesStore", () => {
     await store.loadInitial("s1");
     await store.loadOlder("s1");
 
-    expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", true, undefined, undefined, 2, 80);
+    expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", true, undefined, undefined, 2, 300);
     expect(store.getState().bySessionId.s1).toEqual([{ id: "m0" }, { id: "m1" }, { id: "m2" }, { id: "m3" }]);
     expect(store.getState().hasOlderBySessionId.s1).toBe(false);
     expect(store.getState().olderBeforeBySessionId.s1).toBe(0);
@@ -284,8 +284,8 @@ describe("createMessagesStore", () => {
     await store.loadInitial("s1");
     await store.loadOlder("s1");
 
-    expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", true, undefined, undefined, 2, 80);
-    expect(api.listMessages).toHaveBeenNthCalledWith(3, "s1", true, undefined, undefined, 4, 80);
+    expect(api.listMessages).toHaveBeenNthCalledWith(2, "s1", true, undefined, undefined, 2, 300);
+    expect(api.listMessages).toHaveBeenNthCalledWith(3, "s1", true, undefined, undefined, 4, 300);
     expect(store.getState().bySessionId.s1).toEqual([
       { id: "m1", role: "user", text: "anchor" },
       { id: "tool-1", type: "tool", name: "read" },

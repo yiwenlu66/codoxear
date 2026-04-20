@@ -11,6 +11,7 @@ export interface LaunchBackendDefaults {
   reasoning_efforts?: string[];
   service_tier?: string | null;
   supports_fast?: boolean;
+  models_cached_at?: number | null;
 }
 
 export interface NewSessionDefaults {

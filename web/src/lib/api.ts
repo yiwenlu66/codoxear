@@ -57,8 +57,13 @@ export const api = {
     const suffix = query.size ? `?${query.toString()}` : "";
     return getJson<SessionsResponse>(`/api/sessions${suffix}`, signal);
   },
-  getSessionsBootstrap(signal?: AbortSignal) {
-    return getJson<SessionBootstrapResponse>("/api/sessions/bootstrap", signal);
+  getSessionsBootstrap(options?: { refreshPiModels?: boolean }, signal?: AbortSignal) {
+    const query = new URLSearchParams();
+    if (options?.refreshPiModels) {
+      query.set("refresh_pi_models", "1");
+    }
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return getJson<SessionBootstrapResponse>(`/api/sessions/bootstrap${suffix}`, signal);
   },
   getSessionDetails(sessionId: string, signal?: AbortSignal, runtimeId?: string | null) {
     const routeId = getSessionRouteId(sessionId, runtimeId);

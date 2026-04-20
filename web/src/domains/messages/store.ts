@@ -1,6 +1,8 @@
 import { api } from "../../lib/api";
 import type { MessageEvent } from "../../lib/types";
 
+const HISTORY_PAGE_SIZE = 300;
+
 const MACHINE_TRACE_TYPES = new Set(["reasoning", "tool", "tool_result", "todo_snapshot"]);
 
 export interface MessagesState {
@@ -215,7 +217,7 @@ export function createMessagesStore(): MessagesStore {
     return request;
   };
 
-  const loadOlder = async (sessionId: string, limit = 80) => {
+  const loadOlder = async (sessionId: string, limit = HISTORY_PAGE_SIZE) => {
     const before = state.olderBeforeBySessionId[sessionId] ?? 0;
     if (before <= 0 && !state.hasOlderBySessionId[sessionId]) {
       return;
