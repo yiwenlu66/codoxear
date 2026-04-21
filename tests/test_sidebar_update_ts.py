@@ -7,7 +7,7 @@ from codoxear.server import SessionManager
 
 
 class TestSidebarUpdateTimestamp(unittest.TestCase):
-    def test_append_chat_events_does_not_advance_sidebar_ts_for_midturn_assistant(self) -> None:
+    def test_mark_log_delta_does_not_advance_sidebar_ts_for_midturn_assistant(self) -> None:
         mgr = SessionManager.__new__(SessionManager)
         mgr._lock = threading.Lock()
         mgr._sessions = {}
@@ -25,11 +25,20 @@ class TestSidebarUpdateTimestamp(unittest.TestCase):
             last_chat_ts=50.0,
         )
         mgr._sessions[session.session_id] = session
-        mgr._append_chat_events(
+        mgr.mark_log_delta(
             session.session_id,
-            [{"role": "assistant", "text": "working", "ts": 120.0}],
+            objs=[
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "working"}],
+                    },
+                    "ts": 120.0,
+                }
+            ],
             new_off=10,
-            latest_token=None,
         )
         self.assertEqual(session.last_chat_ts, 50.0)
 
