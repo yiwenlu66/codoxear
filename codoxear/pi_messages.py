@@ -322,6 +322,29 @@ def _message_event_info(entry: dict[str, Any]) -> tuple[str | None, str | None, 
     return role, text, has_ts
 
 
+def _empty_assistant_message_event(
+    entry: dict[str, Any], payload: dict[str, Any], *, ts: float
+) -> dict[str, Any] | None:
+    if payload.get("role") != "assistant":
+        return None
+    content = payload.get("content")
+    if isinstance(content, list) and content:
+        return None
+    if _entry_text(payload):
+        return None
+    details = {key: value for key, value in payload.items() if key != "role"}
+    event: dict[str, Any] = {
+        "type": "pi_event",
+        "summary": "Assistant returned empty message",
+        "text": "Provider emitted an assistant message with no visible content.",
+        "is_error": True,
+        "ts": float(ts),
+    }
+    if details:
+        event["details"] = details
+    return event
+
+
 def _synthetic_ts_start_from_offset(*, offset: int) -> float:
     # Offset-based synthetic timestamps stay monotonic across delta polls
     # without rescanning the entire session file.
@@ -1011,6 +1034,7 @@ def normalize_pi_entries(
         if payload.get("role") == "assistant":
             content = payload.get("content")
             if isinstance(content, list):
+                entry_event_count = len(events)
                 text_parts: list[str] = []
                 assistant_ts = payload_ts if payload_ts is not None else entry_ts
                 assistant_message_class = _assistant_payload_message_class(
@@ -1143,7 +1167,8 @@ def normalize_pi_entries(
                     preferred_ts=assistant_ts,
                     message_class=assistant_message_class or "narration",
                 )
-                continue
+                if len(events) > entry_event_count:
+                    continue
 
         role, text, has_ts = _message_event_info(entry)
         if role is not None and text is not None:
@@ -1175,6 +1200,16 @@ def normalize_pi_entries(
                         ts=float(ts),
                     )
             events.append(event)
+            continue
+
+        empty_assistant_event = _empty_assistant_message_event(
+            entry,
+            payload,
+            ts=_event_ts_value(preferred_ts=entry_ts or payload_ts, fallback_ts=fallback_ts),
+        )
+        if empty_assistant_event is not None:
+            events.append(empty_assistant_event)
+            fallback_ts = float(empty_assistant_event["ts"]) + 0.1
             continue
 
         if entry_type in _PI_TOOL_EVENT_TYPES or payload_type in _PI_TOOL_EVENT_TYPES:

@@ -1392,6 +1392,65 @@ class TestPiBackendRouting(unittest.TestCase):
             ).resolve(),
         )
 
+    def test_spawn_web_session_waits_for_pi_startup_before_draining_stderr(
+        self,
+    ) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        started_targets: list[Any] = []
+
+        class _ProcWithStderr:
+            pid = 2468
+            stderr = io.BytesIO(b"startup failed\n")
+
+            def wait(self) -> int:
+                return 0
+
+        class _FakeThread:
+            def __init__(self, *, target: Any = None, args: tuple[Any, ...] = (), kwargs: dict[str, Any] | None = None, daemon: bool | None = None, name: str | None = None) -> None:
+                self.target = target
+                self.args = args
+                self.kwargs = kwargs or {}
+                self.daemon = daemon
+                self.name = name
+
+            def start(self) -> None:
+                started_targets.append(self.target)
+
+        def _wait_side_effect(*_args: Any, **_kwargs: Any) -> None:
+            target_names = {getattr(target, "__name__", "") for target in started_targets}
+            self.assertNotIn("_drain_stream", target_names)
+
+        with tempfile.TemporaryDirectory() as td:
+            session_path = Path(td) / "resume.jsonl"
+            session_path.write_text('{"type":"session","id":"resume-a","cwd":"/tmp"}\n', encoding="utf-8")
+            with (
+                patch(
+                    "codoxear.server._list_resume_candidates_for_cwd",
+                    return_value=[{"session_id": "resume-a", "session_path": str(session_path)}],
+                ),
+                patch(
+                    "codoxear.server.subprocess.Popen", return_value=_ProcWithStderr()
+                ),
+                patch("codoxear.server._wait_or_raise", side_effect=_wait_side_effect),
+                patch(
+                    "codoxear.server._wait_for_spawned_broker_meta",
+                    return_value={"broker_pid": 2468, "session_id": "resume-a", "runtime_id": "runtime-a"},
+                ),
+                patch("codoxear.server.threading.Thread", _FakeThread),
+            ):
+                result = SessionManager.spawn_web_session(
+                    manager,
+                    cwd=td,
+                    backend="pi",
+                    resume_session_id="resume-a",
+                )
+
+        self.assertEqual(result["session_id"], "resume-a")
+        target_names = [getattr(target, "__name__", "") for target in started_targets]
+        self.assertIn("wait", target_names)
+        self.assertIn("_drain_stream", target_names)
+        self.assertLess(target_names.index("wait"), target_names.index("_drain_stream"))
+
     def test_create_session_defaults_to_codex_backend(self) -> None:
         payload = _parse_create_session_request({"cwd": "/tmp/codex-cwd"})
 
@@ -6209,6 +6268,36 @@ class TestPiMessageNormalization(unittest.TestCase):
         self.assertEqual(events[0]["display"], False)
         self.assertEqual(events[0]["details"]["taskId"], "3")
         self.assertIn("ts", events[0])
+
+    def test_empty_assistant_message_emits_visible_pi_event(self) -> None:
+        entries = [
+            {
+                "type": "message",
+                "timestamp": "2026-04-21T10:29:10.404Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [],
+                    "api": "openai-responses",
+                    "provider": "openai",
+                    "model": "gpt-5.4",
+                    "stopReason": "stop",
+                    "usage": {"input": 0, "output": 0, "totalTokens": 0},
+                },
+            },
+        ]
+
+        events, _meta, _flags, _diag = pi_messages.normalize_pi_entries(entries)
+
+        self.assertEqual(events[0]["type"], "pi_event")
+        self.assertEqual(events[0]["summary"], "Assistant returned empty message")
+        self.assertEqual(
+            events[0]["text"],
+            "Provider emitted an assistant message with no visible content.",
+        )
+        self.assertTrue(events[0]["is_error"])
+        self.assertEqual(events[0]["details"]["provider"], "openai")
+        self.assertEqual(events[0]["details"]["model"], "gpt-5.4")
+        self.assertEqual(events[0]["details"]["stopReason"], "stop")
 
     def test_claude_todo_v2_context_custom_message_is_normalized(self) -> None:
         entries = [

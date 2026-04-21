@@ -1796,6 +1796,42 @@ class TestPiBroker(unittest.TestCase):
             ],
         )
 
+    def test_live_messages_dedup_empty_output_terminal_events_for_same_turn(
+        self,
+    ) -> None:
+        rpc = _FakeRpc()
+        rpc.events = [
+            {"type": "turn.started", "turn_id": "turn-001", "role": "user", "text": "hello"},
+            {"type": "tool.started", "turn_id": "turn-001", "tool_name": "bash"},
+            {"type": "turn.completed", "turn_id": "turn-001"},
+            {"type": "turn_end", "turn_id": "turn-001", "toolResults": []},
+        ]
+        broker = PiBroker(cwd="/tmp")
+        broker.state = PiBrokerState(
+            session_id="pi-session-001",
+            codex_pid=123,
+            sock_path=Path("/tmp/pi.sock"),
+            session_path=Path("/tmp/pi-session.jsonl"),
+            start_ts=0.0,
+            rpc=rpc,
+        )
+
+        resp = _roundtrip_json(broker, {"cmd": "live_messages"})
+
+        self.assertEqual(resp["offset"], 1)
+        self.assertEqual(
+            resp["events"],
+            [
+                {
+                    "type": "pi_event",
+                    "summary": "Turn finished without assistant output",
+                    "text": "Pi ended the turn after tool or reasoning activity without a final assistant message.",
+                    "is_error": True,
+                    "ts": 0.0,
+                }
+            ],
+        )
+
     def test_live_messages_returns_one_accumulating_assistant_stream(self) -> None:
         rpc = _FakeRpc()
         rpc.events = [

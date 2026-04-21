@@ -218,6 +218,9 @@ describe("ConversationPane", () => {
               type: "custom_message",
               custom_type: "claude-todo-v2-task-note",
               text: "Task note added",
+              details: {
+                note: "Need another sample before folding into snapshot.",
+              },
               ts: 200,
             },
           ],
@@ -239,6 +242,53 @@ describe("ConversationPane", () => {
 
     expect(root.querySelector("[data-testid='message-surface'][data-kind='custom_message']")).not.toBeNull();
     expect(root.textContent).toContain("Task note added");
+    expect(root.textContent).toContain("Need another sample before folding into snapshot.");
+  });
+
+  it("renders pi events with raw details when the upstream assistant message is empty", () => {
+    const sessionsStore = createStaticStore(
+      { items: [], activeSessionId: "sess-empty-assistant", loading: false, newSessionDefaults: null },
+      { refresh: () => Promise.resolve(), select: () => undefined },
+    );
+    const messagesStore = createStaticStore(
+      {
+        bySessionId: {
+          "sess-empty-assistant": [
+            {
+              type: "pi_event",
+              summary: "Assistant returned empty message",
+              text: "Provider emitted an assistant message with no visible content.",
+              details: {
+                provider: "openai",
+                model: "gpt-5.4",
+                stopReason: "stop",
+                usage: { totalTokens: 0 },
+              },
+              is_error: true,
+              ts: 210,
+            },
+          ],
+        },
+        offsetsBySessionId: { "sess-empty-assistant": 1 },
+        loading: false,
+      },
+      { loadInitial: () => Promise.resolve(), poll: () => Promise.resolve() },
+    );
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    render(
+      <AppProviders sessionsStore={sessionsStore as any} messagesStore={messagesStore as any}>
+        <ConversationPane />
+      </AppProviders>,
+      root,
+    );
+
+    expect(root.querySelector("[data-testid='message-surface'][data-kind='pi_event']")).not.toBeNull();
+    expect(root.textContent).toContain("Assistant returned empty message");
+    expect(root.textContent).toContain("Provider emitted an assistant message with no visible content.");
+    expect(root.textContent).toContain("gpt-5.4");
+    expect(root.textContent).toContain("stopReason");
   });
 
   it("renders ad-process custom messages as compact process icons", () => {

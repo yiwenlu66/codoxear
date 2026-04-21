@@ -387,6 +387,20 @@ def _append_live_message_event(st: "State", event: dict[str, Any]) -> None:
     st.live_message_events.append({"offset": st.live_message_offset, "event": event})
 
 
+def _empty_output_terminal_event_key(st: "State", event: dict[str, Any]) -> str | None:
+    event_type = _extract_event_type(event)
+    if event_type not in {"turn.completed", "turn_end"}:
+        return None
+    turn_id = _extract_turn_id(event)
+    if isinstance(turn_id, str) and turn_id:
+        return f"turn:{turn_id}"
+    if st.prompt_sent_at > 0:
+        return f"prompt:{st.prompt_sent_at:.9f}"
+    if isinstance(st.last_turn_id, str) and st.last_turn_id:
+        return f"turn:{st.last_turn_id}"
+    return f"fallback:{event_type}:{_live_event_ts(st, event):.6f}"
+
+
 def _coalesce_live_message_events(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     coalesced: list[dict[str, Any]] = []
     latest_open_index_by_stream: dict[str, int] = {}
@@ -432,6 +446,7 @@ class State:
     live_message_offset: int = 0
     live_message_events: list[dict[str, Any]] = field(default_factory=list)
     live_message_snapshots: dict[str, dict[str, Any]] = field(default_factory=dict)
+    last_empty_output_event_key: str | None = None
 
 
 class PiBroker:
@@ -652,7 +667,11 @@ class PiBroker:
                     has_snapshot_text=has_snapshot_text,
                 )
                 if terminal_event is not None:
-                    _append_live_message_event(st, terminal_event)
+                    empty_output_key = _empty_output_terminal_event_key(st, event)
+                    if empty_output_key is None or empty_output_key != st.last_empty_output_event_key:
+                        _append_live_message_event(st, terminal_event)
+                        if empty_output_key is not None:
+                            st.last_empty_output_event_key = empty_output_key
             output = _event_output_text(event)
             if output:
                 st.output_tail = (st.output_tail + output)[-st.output_tail_max :]
@@ -708,6 +727,7 @@ class PiBroker:
                     streaming_behavior = "steer"
                 st.busy = True
                 st.prompt_sent_at = time.monotonic()
+                st.last_empty_output_event_key = None
         try:
             result = st.rpc.prompt(text, streaming_behavior=streaming_behavior)
         except Exception:

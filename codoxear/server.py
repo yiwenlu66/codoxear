@@ -645,6 +645,13 @@ def _drain_stream(f: Any) -> None:
     f.close()
 
 
+def _start_proc_stderr_drain(proc: subprocess.Popen[Any]) -> None:
+    stderr = getattr(proc, "stderr", None)
+    if stderr is None:
+        return
+    threading.Thread(target=_drain_stream, args=(stderr,), daemon=True).start()
+
+
 def _tmux_available() -> bool:
     return shutil.which("tmux") is not None
 
@@ -4931,6 +4938,7 @@ class SessionManager:
         try:
             if proc is not None:
                 _wait_or_raise(proc, label="pi broker", timeout_s=0.25)
+                _start_proc_stderr_drain(proc)
             meta = _wait_for_spawned_broker_meta(spawn_nonce)
             live_session_id = _clean_optional_text(meta.get("session_id")) or durable_session_id
             if live_session_id != durable_session_id:
@@ -8614,10 +8622,6 @@ class SessionManager:
                 elif pending_restore_record is not None:
                     self._persist_durable_session_record(pending_restore_record)
                 raise RuntimeError(f"spawn failed: {e}") from e
-            if proc.stderr is not None:
-                threading.Thread(
-                    target=_drain_stream, args=(proc.stderr,), daemon=True
-                ).start()
             threading.Thread(target=proc.wait, daemon=True).start()
             if pending_session_id is not None:
                 threading.Thread(
@@ -8642,6 +8646,7 @@ class SessionManager:
                 _publish_sessions_invalidate(reason="session_created")
                 return payload
             _wait_or_raise(proc, label="pi broker", timeout_s=1.5)
+            _start_proc_stderr_drain(proc)
             meta = _wait_for_spawned_broker_meta(spawn_nonce)
             payload = _spawn_result_from_meta(meta)
             _publish_sessions_invalidate(reason="session_created")

@@ -1214,10 +1214,14 @@ function renderCustomMessageCard(event: MessageEvent, options: MarkdownRenderOpt
     );
   }
 
+  const body = firstNonEmptyText(event.description, event.text, event.summary, event.name);
+  const detailsText = event.details ? JSON.stringify(event.details, null, 2) : "";
+
   return (
     <MessageSurface kind="custom_message">
-      {renderCardHeader("custom_message", firstNonEmptyText(event.text, event.summary, event.name), customType || undefined, event.ts)}
-      {event.description ? renderRichText(event.description, "messageBody", options) : null}
+      {renderCardHeader("custom_message", firstNonEmptyText(event.text, event.summary, event.name, customType, "Custom message"), customType || undefined, event.ts)}
+      {body ? renderRichText(body, "messageBody", options) : null}
+      {detailsText ? <pre className="messageCardPre overflow-x-auto rounded-xl bg-background/80 p-3 text-sm">{detailsText}</pre> : null}
     </MessageSurface>
   );
 }
@@ -1225,11 +1229,13 @@ function renderCustomMessageCard(event: MessageEvent, options: MarkdownRenderOpt
 function renderSystemCard(event: MessageEvent, kind: string, options: MarkdownRenderOptions) {
   const title = firstNonEmptyText(event.summary, event.name);
   const body = firstNonEmptyText(event.text, event.context, event.question, title === event.summary ? "" : event.summary);
+  const detailsText = event.details ? JSON.stringify(event.details, null, 2) : "";
 
   return (
     <MessageSurface kind={kind}>
       {renderCardHeader(kind, title || undefined, undefined, event.ts)}
       {body ? renderRichText(body, "messageBody", options) : null}
+      {detailsText ? <pre className="messageCardPre overflow-x-auto rounded-xl bg-background/80 p-3 text-sm">{detailsText}</pre> : null}
     </MessageSurface>
   );
 }
