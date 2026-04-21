@@ -23,6 +23,8 @@ class TestVoicePlaybackSource(unittest.TestCase):
         self.assertIn("if (!liveAudioHasReadySegments())", play_block)
         self.assertIn("use Safari or an installed iOS PWA", play_block)
         self.assertIn("wait for the first announcement and try again", play_block)
+        self.assertIn("if (resetSource) {", play_block)
+        self.assertIn("resetLiveAudioState();", play_block)
         self.assertIn("if (resetSource || liveAudio.currentSrc !== nextSrc)", play_block)
 
         err_start = source.index("function describeLiveAudioStartError(error) {")
@@ -30,6 +32,29 @@ class TestVoicePlaybackSource(unittest.TestCase):
         err_block = source[err_start:err_end]
         self.assertIn("if (/unsupported/i.test(message))", err_block)
         self.assertIn("no live audio segments are available yet", err_block)
+
+    def test_live_audio_watchdog_detects_non_progress_and_hard_resets(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("LIVE_AUDIO_WATCHDOG_MS", source)
+        self.assertIn("LIVE_AUDIO_STALL_GRACE_MS", source)
+        self.assertIn("LIVE_AUDIO_RESTART_THROTTLE_MS", source)
+        self.assertIn("function markLiveAudioProgress()", source)
+        self.assertIn("function resetLiveAudioState()", source)
+        self.assertIn("function noteLiveAudioPotentialStall(_reason = \"\")", source)
+        self.assertIn("function queueLiveAudioHardRestart(_reason = \"\")", source)
+        self.assertIn("function runLiveAudioWatchdog()", source)
+        self.assertIn("currentTime > liveAudioLastCurrentTime + 0.05", source)
+        self.assertIn("queueLiveAudioHardRestart(\"watchdog\")", source)
+        self.assertIn("scheduleLiveAudioRetry(150, { resetSource: true });", source)
+        self.assertIn("function startLiveAudioWatchdog()", source)
+        self.assertIn("function stopLiveAudioWatchdog()", source)
+        self.assertIn('liveAudio.addEventListener("timeupdate"', source)
+        self.assertIn('liveAudio.addEventListener("waiting"', source)
+        self.assertIn('liveAudio.addEventListener("stalled"', source)
+        self.assertIn('liveAudio.addEventListener("suspend"', source)
+        self.assertIn('document.addEventListener("visibilitychange"', source)
+        self.assertIn('window.addEventListener("pageshow"', source)
+        self.assertIn('window.addEventListener("online"', source)
 
     def test_voice_controls_attempt_to_arm_live_audio_from_user_gesture(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
