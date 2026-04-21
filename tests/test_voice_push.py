@@ -8,6 +8,7 @@ from codoxear.rollout_log import _extract_delivery_messages
 from codoxear.voice_push import AnnouncementTask
 from codoxear.voice_push import GeneratedAnnouncement
 from codoxear.voice_push import MergedHLSStream
+from codoxear.voice_push import OpenAICompatibleClient
 from codoxear.voice_push import _default_vapid_subject
 from codoxear.voice_push import VoicePushCoordinator
 
@@ -167,6 +168,35 @@ class TestDeliveryExtraction(unittest.TestCase):
         self.assertEqual(messages[0].text, "done")
 
 
+class TestOpenAICompatibleClient(unittest.TestCase):
+    def test_narration_summary_prompt_is_compression_only(self) -> None:
+        client = OpenAICompatibleClient(timeout_seconds=1.0)
+        captured = {}
+
+        def fake_request_json(**kwargs):
+            captured.update(kwargs)
+            return {"choices": [{"message": {"content": "working on it"}}]}
+
+        client._request_json = fake_request_json  # type: ignore[method-assign]
+        summary = client.summarize(
+            base_url="https://api.openai.com/v1",
+            api_key="test-key",
+            model="gpt-test",
+            session_name="Repo",
+            source_label="Narration updates",
+            text="working on it",
+            target_words=15,
+        )
+        self.assertEqual(summary, "working on it")
+        payload = captured["payload"]
+        self.assertEqual(payload["temperature"], 0.0)
+        self.assertEqual(payload["max_completion_tokens"], 48)
+        system_prompt = payload["messages"][0]["content"]
+        self.assertIn("Use at most 15 words.", system_prompt)
+        self.assertIn("do not expand it", system_prompt)
+        self.assertIn("never add filler", system_prompt)
+
+
 class TestVoicePushCoordinator(unittest.TestCase):
     def test_final_response_summarizes_and_enqueues_audio(self) -> None:
         with TemporaryDirectory() as td:
@@ -263,7 +293,15 @@ class TestVoicePushCoordinator(unittest.TestCase):
                         "payload": {
                             "type": "message",
                             "role": "assistant",
-                            "content": [{"type": "output_text", "text": "Long and verbose narration body"}],
+                            "content": [
+                                {
+                                    "type": "output_text",
+                                    "text": (
+                                        "Investigating the rollout log, broker metadata, queue state, listener heartbeat, "
+                                        "and delivery ledger before changing the worker path."
+                                    ),
+                                }
+                            ],
                         },
                         "ts": 4.0,
                     }
@@ -288,6 +326,61 @@ class TestVoicePushCoordinator(unittest.TestCase):
             row = coord._delivery_ledger[message.message_id]
             self.assertEqual(row["summary_status"], "sent")
             self.assertEqual(row["summary_text"], "short narration summary")
+            self.assertEqual(row["narrated_status"], "sent")
+
+    def test_short_narration_skips_summarization_and_speaks_raw_text(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _FakeClient()
+            fake_hls = _FakeHLS()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord._hls = fake_hls  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": False,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.listener_heartbeat(client_id="listener-1", enabled=True)
+            message = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "checking logs now"}],
+                        },
+                        "ts": 4.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[message])
+            with coord._lock:
+                task = coord._queue[0]
+            coord._process_task(task)
+            with coord._lock:
+                prepared = coord._prepared
+            self.assertIsNotNone(prepared)
+            assert prepared is not None
+            coord._append_prepared(prepared)
+            self.assertEqual(fake_client.summary_calls, [])
+            self.assertEqual(len(fake_client.speech_calls), 1)
+            self.assertEqual(fake_client.speech_calls[0]["text"], "From Repo. checking logs now")
+            row = coord._delivery_ledger[message.message_id]
+            self.assertEqual(row["summary_status"], "skipped")
+            self.assertEqual(row["summary_text"], "")
             self.assertEqual(row["narrated_status"], "sent")
 
     def test_notification_text_falls_back_to_raw_when_no_api_key(self) -> None:
@@ -616,6 +709,69 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(newer_row["narrated_status"], "pending")
             self.assertEqual(newer_row["last_error"], "")
 
+    def test_queued_narration_is_summarized_only_when_dequeued(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            fake_client = _FakeClient()
+            fake_hls = _FakeHLS()
+            coord._client = fake_client  # type: ignore[assignment]
+            coord._hls = fake_hls  # type: ignore[assignment]
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": False,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "test-key",
+                }
+            )
+            coord.listener_heartbeat(client_id="listener-1", enabled=True)
+            older = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "older narration"}],
+                        },
+                        "ts": 1.0,
+                    }
+                ]
+            )[0]
+            newer = _extract_delivery_messages(
+                [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": "newer narration"}],
+                        },
+                        "ts": 2.0,
+                    }
+                ]
+            )[0]
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[older])
+            coord.observe_messages(session_id="sid-1", session_display_name="Repo", messages=[newer])
+            self.assertEqual(fake_client.summary_calls, [])
+            with coord._lock:
+                self.assertEqual(len(coord._queue), 1)
+                task = coord._queue.pop(0)
+                self.assertEqual(task.source_text, "older narration\n\nnewer narration")
+            coord._process_task(task)
+            self.assertEqual(fake_client.summary_calls, [])
+            self.assertEqual(len(fake_client.speech_calls), 1)
+            self.assertEqual(fake_client.speech_calls[0]["text"], "From Repo. older narration newer narration")
+
     def test_generating_message_is_protected_from_queue_eviction(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()
@@ -687,7 +843,7 @@ class TestVoicePushCoordinator(unittest.TestCase):
                 self.assertEqual(current.source_message_ids, (newer.message_id,))
                 self.assertEqual(current.source_text, "newer narration")
             old_row = [row for row in coord._delivery_ledger.values() if row["preview_text"] == "older narration"][0]
-            self.assertEqual(old_row["summary_status"], "sent")
+            self.assertEqual(old_row["summary_status"], "skipped")
             self.assertEqual(old_row["narrated_status"], "sent")
 
     def test_listener_drop_clears_pending_voice_state_and_resets_hls(self) -> None:

@@ -304,17 +304,22 @@ class OpenAICompatibleClient:
         text: str,
         target_words: int,
     ) -> str:
-        if int(target_words) <= 15:
+        max_words = 15 if int(target_words) <= 15 else 30
+        if max_words <= 15:
             system_content = (
-                "You write spoken mobile notifications. "
-                "Return one plain sentence of about 15 words. "
-                "Aim for roughly 12 to 18 words, no markdown, no quotes, no prefixes."
+                "You compress assistant progress narration for spoken mobile notifications. "
+                "Return exactly one plain sentence with only the concrete progress fact. "
+                "Use at most 15 words. If the source is already 15 words or fewer, do not expand it. "
+                "Compression only: never add filler, politeness, waiting language, stage directions, or meta-commentary. "
+                "No markdown, no quotes, no prefixes."
             )
         else:
             system_content = (
-                "You write spoken mobile notifications. "
-                "Return one plain sentence of about 30 words. "
-                "Aim for roughly 24 to 36 words, no markdown, no quotes, no prefixes."
+                "You compress assistant final responses for spoken mobile notifications. "
+                "Return exactly one plain sentence with only the main result. "
+                "Use at most 30 words. Prefer compression over paraphrase. "
+                "Never add filler, politeness, stage directions, or meta-commentary, and never invent details not present in the source. "
+                "No markdown, no quotes, no prefixes."
             )
         obj = self._request_json(
             base_url=base_url,
@@ -322,8 +327,8 @@ class OpenAICompatibleClient:
             route="/chat/completions",
             payload={
                 "model": model,
-                "temperature": 0.2,
-                "max_completion_tokens": 90,
+                "temperature": 0.0,
+                "max_completion_tokens": 48 if max_words <= 15 else 72,
                 "messages": [
                     {
                         "role": "system",
@@ -355,6 +360,9 @@ class OpenAICompatibleClient:
             raise ValueError("chat completions response missing content")
         if not summary:
             raise ValueError("empty summary response")
+        summary_word_count = len(summary.split())
+        if summary_word_count > max_words:
+            raise ValueError(f"summary exceeded {max_words} words")
         return summary
 
     def synthesize(self, *, base_url: str, api_key: str, model: str, voice: str, text: str) -> bytes:
@@ -1009,17 +1017,23 @@ class VoicePushCoordinator:
         self._set_task_ledger_fields(task, {"voice": task.voice})
         spoken_text = task.spoken_text
         if task.summary_word_target is not None:
-            summary_text = self._client.summarize(
-                base_url=settings["tts_base_url"],
-                api_key=settings["tts_api_key"],
-                model=settings["summarization_model"],
-                session_name=task.session_display_name,
-                source_label="Narration updates",
-                text=task.source_text,
-                target_words=task.summary_word_target,
-            )
-            self._set_task_ledger_fields(task, {"summary_status": "sent", "summary_text": summary_text})
-            spoken_text = f"From {task.session_display_name}. {summary_text}"
+            compact_source = _compact_text(task.source_text)
+            source_word_count = len(compact_source.split())
+            if source_word_count and source_word_count < int(task.summary_word_target):
+                self._set_task_ledger_fields(task, {"summary_status": "skipped", "summary_text": ""})
+                spoken_text = f"From {task.session_display_name}. {compact_source}"
+            else:
+                summary_text = self._client.summarize(
+                    base_url=settings["tts_base_url"],
+                    api_key=settings["tts_api_key"],
+                    model=settings["summarization_model"],
+                    session_name=task.session_display_name,
+                    source_label="Narration updates",
+                    text=task.source_text,
+                    target_words=task.summary_word_target,
+                )
+                self._set_task_ledger_fields(task, {"summary_status": "sent", "summary_text": summary_text})
+                spoken_text = f"From {task.session_display_name}. {summary_text}"
         with self._lock:
             if task.listener_epoch != self._listener_epoch or self._active_listener_count_locked(now_ts=time.time()) <= 0:
                 stale = True
