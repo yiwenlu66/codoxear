@@ -236,7 +236,7 @@ export function SessionCard({ session, active, onSelect, onToggleFocus, onEdit, 
                           <div
                             role="menu"
                             aria-label="Session actions"
-                            className="sessionActionMenu absolute right-0 top-[calc(100%+0.3rem)] z-30 min-w-[12rem] rounded-xl border border-border/70 bg-card/95 p-1 shadow-xl backdrop-blur"
+                            className="sessionActionMenu absolute right-0 top-[calc(100%+0.3rem)] z-30 min-w-[12rem] rounded-xl border border-border bg-card p-1 shadow-2xl"
                             onClick={(event) => stopActionClick(event as MouseEvent)}
                           >
                             {onDuplicate ? (
