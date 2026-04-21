@@ -101,6 +101,47 @@ describe("NewSessionDialog", () => {
     }
   });
 
+  it("defaults the cwd field to /root/docs when opening the dialog", async () => {
+    const { api } = await import("../../lib/api");
+    vi.mocked(api.getSessionResumeCandidates).mockResolvedValue({
+      exists: true,
+      will_create: false,
+      git_repo: false,
+      sessions: [],
+    } as any);
+    const sessionsStore = createSessionsStore({
+      items: [
+        { session_id: "sess-1", cwd: "/tmp/other", agent_backend: "pi" },
+      ],
+      activeSessionId: "sess-1",
+      loading: false,
+      bootstrapLoaded: true,
+      recentCwds: ["/tmp/recent"],
+      tmuxAvailable: true,
+      newSessionDefaults: {
+        default_backend: "pi",
+        backends: {
+          pi: {},
+        },
+      },
+    });
+
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    await act(async () => {
+      render(
+        <AppProviders sessionsStore={sessionsStore as any}>
+          <NewSessionDialog open onClose={() => undefined} />
+        </AppProviders>,
+        root!,
+      );
+    });
+    await flush();
+
+    const cwdInput = root.querySelector('input[placeholder="/path/to/project"]') as HTMLInputElement;
+    expect(cwdInput.value).toBe("/root/docs");
+  });
+
   it("creates a session and selects the returned session id", async () => {
     const { api } = await import("../../lib/api");
     vi.mocked(api.createSession).mockResolvedValue({ session_id: "new", broker_pid: 42, backend: "codex", ok: true } as any);
@@ -272,7 +313,7 @@ describe("NewSessionDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("prefills the working directory from the active session", async () => {
+  it("uses /root/docs instead of inheriting the active session cwd", async () => {
     const sessionsStore = createSessionsStore({
       items: [
         { session_id: "active", cwd: "/Users/demo/current-project" },
@@ -305,7 +346,7 @@ describe("NewSessionDialog", () => {
     await flush();
 
     const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
-    expect(cwdInput.value).toBe("/Users/demo/current-project");
+    expect(cwdInput.value).toBe("/root/docs");
   });
 
   it("selects and closes without a second rename request after launch", async () => {
@@ -539,6 +580,10 @@ describe("NewSessionDialog", () => {
         root!,
       );
     });
+    await flush();
+
+    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
+    await setInputValue(cwdInput, "/tmp/project");
     await flush();
 
     const nameInput = root.querySelector('input[name="sessionName"]') as HTMLInputElement;
@@ -931,6 +976,8 @@ describe("NewSessionDialog", () => {
         root!,
       );
     });
+    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
+    await setInputValue(cwdInput, "/tmp/pi-project");
     await wait(220);
     await flush();
 
@@ -1003,10 +1050,11 @@ describe("NewSessionDialog", () => {
         root!,
       );
     });
+    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
+    await setInputValue(cwdInput, "/tmp/old-project");
     await wait(220);
     await flush();
 
-    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
     const select = root.querySelector('select[name="resumeSessionId"]') as HTMLSelectElement;
     expect(select.textContent).toContain("codoxear new 修复");
 
@@ -1081,6 +1129,10 @@ describe("NewSessionDialog", () => {
         root!,
       );
     });
+    await flush();
+
+    const cwdInput = root.querySelector('input[name="cwd"]') as HTMLInputElement;
+    await setInputValue(cwdInput, "/tmp/pi-project");
     await flush();
 
     const tmuxCheckbox = root.querySelector('input[name="createInTmux"]') as HTMLInputElement;

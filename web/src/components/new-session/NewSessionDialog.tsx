@@ -30,6 +30,8 @@ interface SessionCwdInfo {
 type LaunchSettingField = "backend" | "model" | "providerChoice" | "reasoningEffort" | "createInTmux" | "fastMode";
 type NewSessionSurfaceTab = "launch" | "focus";
 
+const DEFAULT_NEW_SESSION_CWD = "/root/docs";
+
 function baseName(value: string) {
   const trimmed = value.trim().replace(/[\\/]+$/, "");
   if (!trimmed) return "";
@@ -50,10 +52,8 @@ function uniqueStrings(values: Array<string | null | undefined>) {
   return result;
 }
 
-function initialCwdForDialog(activeSessionCwd: string | null | undefined, recentCwds: string[]) {
-  const active = activeSessionCwd?.trim();
-  if (active) return active;
-  return recentCwds.find((cwd) => typeof cwd === "string" && cwd.trim())?.trim() || "";
+function initialCwdForDialog(_activeSessionCwd: string | null | undefined, _recentCwds: string[]) {
+  return DEFAULT_NEW_SESSION_CWD;
 }
 
 function providerChoicesForDefaults(defaults: LaunchBackendDefaults) {
