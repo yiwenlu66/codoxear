@@ -1344,6 +1344,7 @@
         })();
         let announcementHeartbeatTimer = null;
         let liveAudioRetryTimer = null;
+        let liveAudioWatchdogTimer = null;
         let notificationState = {
           desktop_supported: false,
           push_supported: false,
@@ -1354,6 +1355,13 @@
           subscriptions: [],
         };
         let liveAudioStarted = false;
+        let liveAudioLastProgressTs = 0;
+        let liveAudioLastCurrentTime = 0;
+        let liveAudioSuspectSinceTs = 0;
+        let liveAudioLastRestartTs = 0;
+        const LIVE_AUDIO_WATCHDOG_MS = 2500;
+        const LIVE_AUDIO_STALL_GRACE_MS = 12000;
+        const LIVE_AUDIO_RESTART_THROTTLE_MS = 4000;
         let swRegistration = null;
          const recentEventKeys = [];
          const recentEventKeySet = new Set();
@@ -3949,14 +3957,13 @@
           else localStorage.removeItem("codoxear.announcementEnabled");
           if (!localAnnouncementEnabled) {
             stopAnnouncementHeartbeat();
-            try {
-              liveAudio.pause();
-            } catch (_error) {}
-            liveAudio.removeAttribute("src");
-            liveAudio.load();
-            liveAudioStarted = false;
+            stopLiveAudioWatchdog();
+            if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
+            liveAudioRetryTimer = null;
+            resetLiveAudioState();
           } else {
             startAnnouncementHeartbeat();
+            startLiveAudioWatchdog();
           }
           updateVoiceUi();
         }
@@ -4015,6 +4022,79 @@
           void sendAnnouncementHeartbeat(false);
         }
 
+        function markLiveAudioProgress() {
+          liveAudioLastProgressTs = Date.now();
+          liveAudioSuspectSinceTs = 0;
+          liveAudioLastCurrentTime = Number(liveAudio.currentTime || 0);
+        }
+
+        function resetLiveAudioState() {
+          try {
+            liveAudio.pause();
+          } catch (_error) {}
+          liveAudio.removeAttribute("src");
+          liveAudio.load();
+          liveAudioStarted = false;
+          liveAudioLastProgressTs = 0;
+          liveAudioLastCurrentTime = 0;
+          liveAudioSuspectSinceTs = 0;
+        }
+
+        function noteLiveAudioPotentialStall(_reason = "") {
+          if (!localAnnouncementEnabled) return;
+          if (!liveAudioStarted || liveAudio.paused || liveAudio.ended) return;
+          if (!liveAudioHasReadySegments()) return;
+          if (!liveAudioSuspectSinceTs) liveAudioSuspectSinceTs = Date.now();
+        }
+
+        function queueLiveAudioHardRestart(_reason = "") {
+          if (!localAnnouncementEnabled) return;
+          if (!browserSupportsLiveAudioPlayback()) return;
+          if (!liveAudioHasReadySegments()) return;
+          const now = Date.now();
+          if ((now - liveAudioLastRestartTs) < LIVE_AUDIO_RESTART_THROTTLE_MS) return;
+          liveAudioLastRestartTs = now;
+          liveAudioStarted = false;
+          liveAudioSuspectSinceTs = 0;
+          updateVoiceUi();
+          scheduleLiveAudioRetry(150, { resetSource: true });
+        }
+
+        function runLiveAudioWatchdog() {
+          if (!localAnnouncementEnabled) return;
+          if (!browserSupportsLiveAudioPlayback()) return;
+          if (!liveAudioHasReadySegments()) return;
+          const now = Date.now();
+          const currentTime = Number(liveAudio.currentTime || 0);
+          if (currentTime > liveAudioLastCurrentTime + 0.05) {
+            markLiveAudioProgress();
+            return;
+          }
+          liveAudioLastCurrentTime = currentTime;
+          if (!liveAudioStarted || liveAudio.paused || liveAudio.ended) {
+            liveAudioSuspectSinceTs = 0;
+            return;
+          }
+          if (!liveAudioSuspectSinceTs) liveAudioSuspectSinceTs = now;
+          const baselineTs = Math.max(liveAudioLastProgressTs || 0, liveAudioSuspectSinceTs || 0);
+          if (!baselineTs) return;
+          if ((now - baselineTs) < LIVE_AUDIO_STALL_GRACE_MS) return;
+          queueLiveAudioHardRestart("watchdog");
+        }
+
+        function stopLiveAudioWatchdog() {
+          if (liveAudioWatchdogTimer) clearInterval(liveAudioWatchdogTimer);
+          liveAudioWatchdogTimer = null;
+        }
+
+        function startLiveAudioWatchdog() {
+          runLiveAudioWatchdog();
+          if (liveAudioWatchdogTimer) clearInterval(liveAudioWatchdogTimer);
+          liveAudioWatchdogTimer = setInterval(() => {
+            runLiveAudioWatchdog();
+          }, LIVE_AUDIO_WATCHDOG_MS);
+        }
+
         function startAnnouncementHeartbeat() {
           void sendAnnouncementHeartbeat(true);
           if (announcementHeartbeatTimer) clearInterval(announcementHeartbeatTimer);
@@ -4028,6 +4108,7 @@
           if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
           liveAudioRetryTimer = setTimeout(async () => {
             liveAudioRetryTimer = null;
+            if (!localAnnouncementEnabled) return;
             try {
               await startLiveAudioPlayback({ resetSource });
             } catch (e) {
@@ -4392,11 +4473,15 @@
             throw new Error("no live audio segments are available yet; wait for the first announcement and try again");
           }
           const nextSrc = currentVoiceStreamUrl();
+          if (resetSource) {
+            resetLiveAudioState();
+          }
           if (resetSource || liveAudio.currentSrc !== nextSrc) {
             liveAudio.src = nextSrc;
           }
           await liveAudio.play();
           liveAudioStarted = true;
+          markLiveAudioProgress();
           updateVoiceUi();
         }
 
@@ -4464,20 +4549,39 @@
         };
         liveAudio.addEventListener("error", () => {
           liveAudioStarted = false;
+          liveAudioSuspectSinceTs = 0;
           updateVoiceUi();
           scheduleLiveAudioRetry(1200, { resetSource: true });
         });
         liveAudio.addEventListener("playing", () => {
           liveAudioStarted = true;
+          markLiveAudioProgress();
           updateVoiceUi();
+        });
+        liveAudio.addEventListener("timeupdate", () => {
+          markLiveAudioProgress();
+        });
+        liveAudio.addEventListener("waiting", () => {
+          noteLiveAudioPotentialStall("waiting");
+          runLiveAudioWatchdog();
+        });
+        liveAudio.addEventListener("stalled", () => {
+          noteLiveAudioPotentialStall("stalled");
+          runLiveAudioWatchdog();
+        });
+        liveAudio.addEventListener("suspend", () => {
+          noteLiveAudioPotentialStall("suspend");
+          runLiveAudioWatchdog();
         });
         liveAudio.addEventListener("ended", () => {
           liveAudioStarted = false;
+          liveAudioSuspectSinceTs = 0;
           updateVoiceUi();
           scheduleLiveAudioRetry(500, { resetSource: true });
         });
         liveAudio.addEventListener("pause", () => {
           liveAudioStarted = false;
+          liveAudioSuspectSinceTs = 0;
           updateVoiceUi();
         });
         narrationSettingToggle.onchange = (e) => {
@@ -8409,7 +8513,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          try {
               await loadVoiceSettings();
               await syncNotificationState();
-              if (localAnnouncementEnabled) startAnnouncementHeartbeat();
+              if (localAnnouncementEnabled) {
+                startAnnouncementHeartbeat();
+                startLiveAudioWatchdog();
+              }
               if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
               const hashed = sessionIdFromHash();
@@ -8452,6 +8559,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               });
               window.addEventListener("beforeunload", () => {
                 stopAnnouncementHeartbeat();
+                stopLiveAudioWatchdog();
+              });
+              document.addEventListener("visibilitychange", () => {
+                if (document.visibilityState !== "visible") return;
+                runLiveAudioWatchdog();
+              });
+              window.addEventListener("pageshow", () => {
+                runLiveAudioWatchdog();
+              });
+              window.addEventListener("online", () => {
+                runLiveAudioWatchdog();
               });
 	          }
 	        })();
