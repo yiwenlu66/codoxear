@@ -1,107 +1,100 @@
 import json
-import threading
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest.mock import patch
 
-from codoxear.server import Session
-from codoxear.server import SessionManager
-
-
-def _make_manager() -> SessionManager:
-    mgr = SessionManager.__new__(SessionManager)
-    mgr._lock = threading.Lock()
-    mgr._sessions = {}
-    mgr._harness = {}
-    mgr._harness_last_injected = {}
-    mgr._harness_last_injected_scope = {}
-    mgr._last_discover_ts = 0.0
-    mgr._discover_existing = lambda force=False: None  # type: ignore[method-assign]
-    mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
-    return mgr
+from codoxear.rollout_log import _read_chat_history_page
+from codoxear.rollout_log import _read_chat_legacy_count_page
+from codoxear.rollout_log import _read_chat_live_delta
+from codoxear.rollout_log import _read_chat_tail_page
 
 
-def _make_session(*, sid: str, log_path: Path) -> Session:
-    return Session(
-        session_id=sid,
-        thread_id="thread-1",
-        broker_pid=1,
-        codex_pid=1,
-        agent_backend="codex",
-        owned=False,
-        start_ts=0.0,
-        cwd="/tmp",
-        log_path=log_path,
-        sock_path=log_path.with_suffix(".sock"),
-    )
+def _write_assistant_rows(path: Path, count: int) -> None:
+    rows = []
+    for i in range(count):
+        rows.append(
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": f"a{i}"}],
+                    "phase": "final_answer",
+                },
+                "ts": float(i),
+            }
+        )
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
 class TestMessageIndex(unittest.TestCase):
-    def test_init_pagination_returns_stable_windows(self) -> None:
+    def test_tail_and_history_pages_reach_bof_in_order(self) -> None:
         with TemporaryDirectory() as td:
-            p = Path(td) / "rollout.jsonl"
-            rows = []
-            for i in range(200):
-                rows.append(
-                    {
-                        "type": "response_item",
-                        "payload": {
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [{"type": "output_text", "text": f"a{i}"}],
-                        },
-                        "ts": float(i),
-                    }
-                )
-            p.write_text("".join(json.dumps(x) + "\n" for x in rows), encoding="utf-8")
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 200)
 
-            mgr = _make_manager()
-            mgr._sessions["sid"] = _make_session(sid="sid", log_path=p)
-
-            page1, off1, has_older1, next_before1, _tok1 = mgr._ensure_chat_index("sid", min_events=80, before=0)
-            self.assertEqual(len(page1), 80)
-            self.assertTrue(has_older1)
-            self.assertEqual(next_before1, 80)
-            self.assertEqual(page1[0].get("text"), "a120")
+            page1, before1, after1, has_older1 = _read_chat_tail_page(path, limit=80)
+            self.assertEqual([ev.get("text") for ev in page1[:2]], ["a120", "a121"])
             self.assertEqual(page1[-1].get("text"), "a199")
-            self.assertGreater(off1, 0)
+            self.assertTrue(has_older1)
+            self.assertGreater(before1, 0)
+            self.assertGreater(after1, before1)
 
-            page2, _off2, has_older2, next_before2, _tok2 = mgr._ensure_chat_index("sid", min_events=80, before=next_before1)
-            self.assertEqual(len(page2), 80)
-            self.assertTrue(has_older2)
-            self.assertEqual(next_before2, 160)
-            self.assertEqual(page2[0].get("text"), "a40")
+            page2, before2, has_older2 = _read_chat_history_page(path, before_byte=before1, limit=80)
+            self.assertEqual([ev.get("text") for ev in page2[:2]], ["a40", "a41"])
             self.assertEqual(page2[-1].get("text"), "a119")
+            self.assertTrue(has_older2)
+            self.assertGreater(before2, 0)
+            self.assertLess(before2, before1)
 
-            page3, _off3, has_older3, next_before3, _tok3 = mgr._ensure_chat_index("sid", min_events=80, before=next_before2)
-            self.assertEqual(len(page3), 40)
-            self.assertFalse(has_older3)
-            self.assertEqual(next_before3, 0)
+            page3, before3, has_older3 = _read_chat_history_page(path, before_byte=before2, limit=80)
             self.assertEqual(page3[0].get("text"), "a0")
             self.assertEqual(page3[-1].get("text"), "a39")
+            self.assertFalse(has_older3)
+            self.assertEqual(before3, 0)
 
-    def test_idle_fallback_uses_log_size_cache(self) -> None:
+    def test_legacy_count_page_is_stateless_and_stable(self) -> None:
         with TemporaryDirectory() as td:
-            p = Path(td) / "rollout.jsonl"
-            p.write_text(
-                "\n".join(
-                    [
-                        json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}}),
-                        json.dumps({"type": "event_msg", "payload": {"type": "agent_reasoning"}}),
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 200)
 
-            mgr = _make_manager()
-            mgr._sessions["sid"] = _make_session(sid="sid", log_path=p)
+            page1, next_before1, has_older1, after1 = _read_chat_legacy_count_page(path, before=0, limit=80)
+            self.assertEqual(page1[0].get("text"), "a120")
+            self.assertEqual(page1[-1].get("text"), "a199")
+            self.assertTrue(has_older1)
+            self.assertEqual(next_before1, 80)
 
-            with patch("codoxear.server._compute_idle_from_log", return_value=False) as compute_idle:
-                self.assertFalse(mgr.idle_from_log("sid"))
-                self.assertFalse(mgr.idle_from_log("sid"))
-                self.assertEqual(compute_idle.call_count, 1)
+            page2, next_before2, has_older2, after2 = _read_chat_legacy_count_page(path, before=next_before1, limit=80)
+            self.assertEqual(page2[0].get("text"), "a40")
+            self.assertEqual(page2[-1].get("text"), "a119")
+            self.assertTrue(has_older2)
+            self.assertEqual(next_before2, 160)
+            self.assertEqual(after1, after2)
+
+            page3, next_before3, has_older3, _after3 = _read_chat_legacy_count_page(path, before=next_before2, limit=80)
+            self.assertEqual(page3[0].get("text"), "a0")
+            self.assertEqual(page3[-1].get("text"), "a39")
+            self.assertFalse(has_older3)
+            self.assertEqual(next_before3, 0)
+
+    def test_stale_live_delta_does_not_affect_history_order(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 200)
+
+            _tail_page, before1, _after1, _has_older1 = _read_chat_tail_page(path, limit=60)
+            live_events, next_after, _meta, _flags, _diag, _token = _read_chat_live_delta(path, after_byte=0)
+            self.assertEqual(live_events[0].get("text"), "a0")
+            self.assertEqual(live_events[-1].get("text"), "a199")
+            self.assertGreater(next_after, 0)
+
+            history_page, before2, has_older2 = _read_chat_history_page(path, before_byte=before1, limit=60)
+            texts = [ev.get("text") for ev in history_page]
+            self.assertEqual(texts, sorted(texts, key=lambda value: int(value[1:])))
+            self.assertEqual(texts[0], "a80")
+            self.assertEqual(texts[-1], "a139")
+            self.assertTrue(has_older2)
+            self.assertGreater(before1, before2)
 
 
 if __name__ == "__main__":

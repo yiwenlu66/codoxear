@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from typing import Iterator
@@ -21,6 +22,20 @@ from .voice_push import ClassifiedAssistantMessage
 
 
 _OAI_MEM_CITATION_TAIL_RE = re.compile(r"\s*<oai-mem-citation>\s*.*?</oai-mem-citation>\s*\Z", re.DOTALL)
+
+
+@dataclass(frozen=True)
+class JsonlRecord:
+    start: int
+    end: int
+    obj: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PositionedChatEvent:
+    event: dict[str, Any]
+    start: int
+    end: int
 
 
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
@@ -109,6 +124,86 @@ def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -
     return int(round((remaining / effective) * 100.0))
 
 
+def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
+    ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
+    payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
+    typ = obj.get("type")
+    if typ == "message":
+        user_text = pi_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            ets = _event_ts(obj)
+            evp: dict[str, Any] = {"role": "user", "text": user_text}
+            if ets is not None:
+                evp["ts"] = ets
+            return evp
+
+        assistant_text = pi_assistant_text(obj)
+        if isinstance(assistant_text, str) and assistant_text:
+            ets = _event_ts(obj)
+            message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
+            eva: dict[str, Any] = {
+                "role": "assistant",
+                "text": assistant_text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+            }
+            if ets is not None:
+                eva["ts"] = ets
+            return eva
+        return None
+
+    if typ == "event_msg":
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid event_msg payload")
+        if p.get("type") != "user_message":
+            return None
+        msg = p.get("message")
+        if not isinstance(msg, str):
+            return None
+        ets = _event_ts(obj)
+        ev: dict[str, Any] = {"role": "user", "text": msg}
+        if ets is not None:
+            ev["ts"] = ets
+        return ev
+
+    if typ == "response_item":
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid response_item payload")
+        if p.get("type") != "message" or p.get("role") != "assistant":
+            return None
+        content = p.get("content")
+        if not isinstance(content, list):
+            raise ValueError("invalid assistant message content")
+        out_text_parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                out_text_parts.append(part["text"])
+        if not out_text_parts:
+            return None
+        text = "".join(out_text_parts)
+        ets = _event_ts(obj)
+        message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
+        ev2: dict[str, Any] = {
+            "role": "assistant",
+            "text": text,
+            "message_class": message_class,
+            "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
+        }
+        if ets is not None:
+            ev2["ts"] = ets
+        return ev2
+
+    return None
+
+
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     # Prefer the newest token_count in this batch.
     for obj in reversed(objs):
@@ -188,6 +283,48 @@ def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
     return out
 
 
+def _read_jsonl_records_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[list[JsonlRecord], int]:
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        start = max(0, min(int(offset), size))
+        f.seek(start)
+        target = max(1, int(max_bytes))
+        chunk_size = max(64 * 1024, min(target, 1024 * 1024))
+        data = f.read(target)
+        if b"\n" not in data:
+            extra: list[bytes] = []
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                extra.append(chunk)
+                if b"\n" in chunk:
+                    break
+            if extra:
+                data += b"".join(extra)
+
+    if not data:
+        return [], start
+
+    last_nl = data.rfind(b"\n")
+    if last_nl < 0:
+        return [], start
+    data = data[: last_nl + 1]
+    new_off = start + last_nl + 1
+
+    out: list[JsonlRecord] = []
+    pos = start
+    for raw_line in data.splitlines(keepends=True):
+        end = pos + len(raw_line)
+        line = raw_line.rstrip(b"\r\n")
+        obj = _parse_jsonl_line(line)
+        if obj is not None:
+            out.append(JsonlRecord(start=pos, end=end, obj=obj))
+        pos = end
+    return out, new_off
+
+
 def _iter_jsonl_objects_reverse(path: Path, *, block_bytes: int = 64 * 1024) -> Iterator[dict[str, Any]]:
     if block_bytes <= 0:
         raise ValueError("block_bytes must be positive")
@@ -220,6 +357,127 @@ def _iter_jsonl_objects_reverse(path: Path, *, block_bytes: int = 64 * 1024) -> 
                 obj = _parse_jsonl_line(line)
                 if obj is not None:
                     yield obj
+
+
+def _iter_jsonl_records_reverse(path: Path, *, before: int | None = None, block_bytes: int = 64 * 1024) -> Iterator[JsonlRecord]:
+    if block_bytes <= 0:
+        raise ValueError("block_bytes must be positive")
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        end = size if before is None else max(0, min(int(before), size))
+        offset = end
+        carry = b""
+        drop_trailing_partial = False
+        if end > 0:
+            f.seek(end - 1)
+            drop_trailing_partial = f.read(1) != b"\n"
+        while offset > 0:
+            read_size = min(block_bytes, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            data = chunk + carry
+            parts = data.split(b"\n")
+            if drop_trailing_partial and parts:
+                parts = parts[:-1]
+                drop_trailing_partial = False
+            if offset > 0:
+                leading = parts[0] if parts else b""
+                carry = leading
+                parts = parts[1:] if parts else []
+                pos = offset + len(leading) + 1
+            else:
+                carry = b""
+                pos = 0
+            batch: list[JsonlRecord] = []
+            for raw_line in parts:
+                start = pos
+                end_off = start + len(raw_line) + 1
+                pos = end_off
+                line = raw_line.rstrip(b"\r")
+                if not line:
+                    continue
+                obj = _parse_jsonl_line(line)
+                if obj is not None:
+                    batch.append(JsonlRecord(start=start, end=end_off, obj=obj))
+            for record in reversed(batch):
+                yield record
+
+
+def _read_chat_page_reverse(
+    log_path: Path,
+    *,
+    limit: int,
+    before_byte: int | None = None,
+    skip_events: int = 0,
+) -> tuple[list[dict[str, Any]], int, bool, int]:
+    size = int(log_path.stat().st_size)
+    end = size if before_byte is None else max(0, min(int(before_byte), size))
+    page_limit = max(0, int(limit))
+    skip = max(0, int(skip_events))
+    if page_limit <= 0 or end <= 0:
+        return [], 0, False, size
+
+    newest_first: list[PositionedChatEvent] = []
+    skipped = 0
+    has_older = False
+    for record in _iter_jsonl_records_reverse(log_path, before=end):
+        event = _single_chat_event(record.obj)
+        if event is None:
+            continue
+        if skipped < skip:
+            skipped += 1
+            continue
+        if len(newest_first) < page_limit:
+            newest_first.append(PositionedChatEvent(event=event, start=record.start, end=record.end))
+            continue
+        has_older = True
+        break
+
+    newest_first.reverse()
+    events = [item.event for item in newest_first]
+    next_before = newest_first[0].start if newest_first else 0
+    return events, next_before, has_older, size
+
+
+def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
+    events, before_byte, has_older, after_byte = _read_chat_page_reverse(log_path, limit=limit, before_byte=None, skip_events=0)
+    return events, before_byte, after_byte, has_older
+
+
+def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
+    events, next_before, has_older, _after_byte = _read_chat_page_reverse(
+        log_path,
+        limit=limit,
+        before_byte=before_byte,
+        skip_events=0,
+    )
+    return events, next_before, has_older
+
+
+def _read_chat_legacy_count_page(log_path: Path, *, before: int, limit: int) -> tuple[list[dict[str, Any]], int, bool, int]:
+    events, _next_before_byte, has_older, after_byte = _read_chat_page_reverse(
+        log_path,
+        limit=limit,
+        before_byte=None,
+        skip_events=before,
+    )
+    next_before = max(0, int(before)) + len(events) if has_older else 0
+    return events, next_before, has_older, after_byte
+
+
+def _read_chat_live_delta(
+    log_path: Path,
+    *,
+    after_byte: int,
+    max_bytes: int = 2 * 1024 * 1024,
+) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
+    records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
+    objs = [record.obj for record in records]
+    events, meta, flags, diag = _extract_chat_events(objs)
+    token_update = _extract_token_update(objs)
+    return events, next_after, meta, flags, diag, token_update
 
 
 def _find_latest_token_update(log_path: Path, max_scan_bytes: int = 32 * 1024 * 1024) -> dict[str, Any] | None:

@@ -1242,8 +1242,8 @@
         chatWrap.appendChild(jumpBtn);
         const composer = el("div", { class: "composer" });
 
-	        let selected = null;
-        let offset = 0;
+        let selected = null;
+        let afterByte = 0;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
         const INIT_PAGE_LIMIT_MOBILE = 24;
         const OLDER_PAGE_LIMIT = 60;
@@ -1255,7 +1255,7 @@
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
-        let olderBefore = 0;
+        let beforeByte = 0;
         let hasOlder = false;
         let loadingOlder = false;
         let olderLoadRequestId = 0;
@@ -1366,7 +1366,6 @@
          const recentEventKeys = [];
          const recentEventKeySet = new Set();
          const RECENT_EVENT_KEYS_MAX = 320;
-         let lastAssistantKey = "";
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
               let harnessMenuOpen = false;
@@ -2278,8 +2277,7 @@
           localEchoSeq = 0;
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
-          lastAssistantKey = "";
-          olderBefore = 0;
+          beforeByte = 0;
           hasOlder = false;
           loadingOlder = false;
           olderAutoTriggerAt = 0;
@@ -2313,16 +2311,7 @@
         }
 
         function cacheStorageKey(sid) {
-          return `codexweb.cache.v6.${sid}`;
-        }
-
-        function countChatEvents(events) {
-          let count = 0;
-          for (const ev of events || []) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            count += 1;
-          }
-          return count;
+          return `codexweb.cache.v7.${sid}`;
         }
 
         function normalizeCacheEvent(ev) {
@@ -2330,30 +2319,6 @@
           if (typeof ev.text !== "string" || !ev.text.trim()) return null;
           const out = { role: ev.role, text: ev.text };
           if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
-          return out;
-        }
-
-        function assistantTextKey(ev) {
-          if (!ev || ev.role !== "assistant") return "";
-          if (typeof ev.text !== "string") return "";
-          return pendingMatchKey(ev.text);
-        }
-
-        function isAdjacentAssistantDuplicate(prev, ev) {
-          if (!prev || !ev) return false;
-          if (prev.role !== "assistant" || ev.role !== "assistant") return false;
-          const a = assistantTextKey(prev);
-          if (!a) return false;
-          return a === assistantTextKey(ev);
-        }
-
-        function dedupeAdjacentAssistantDuplicates(events) {
-          const out = [];
-          for (const ev of events || []) {
-            const prev = out.length ? out[out.length - 1] : null;
-            if (isAdjacentAssistantDuplicate(prev, ev)) continue;
-            out.push(ev);
-          }
           return out;
         }
 
@@ -2372,23 +2337,16 @@
               if (norm) events.push(norm);
             }
             if (!events.length) return;
-            const deduped = dedupeAdjacentAssistantDuplicates(events);
-            const cacheChanged = deduped.length !== events.length;
-            if (cacheChanged) {
-              events.length = 0;
-              events.push(...deduped);
-            }
             if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
             const cache = {
               thread_id: typeof obj.thread_id === "string" ? obj.thread_id : null,
               log_path: typeof obj.log_path === "string" ? obj.log_path : null,
-              offset: Number(obj.offset) || 0,
-              older_before: Number(obj.older_before) || 0,
+              after_byte: Number(obj.after_byte) || 0,
+              before_byte: Number(obj.before_byte) || 0,
               has_older: Boolean(obj.has_older),
               events,
             };
             cacheBySession.set(sid, cache);
-            if (cacheChanged) scheduleCacheSave(sid);
           } catch {
             // ignore corrupted cache
           }
@@ -2410,8 +2368,8 @@
           const payload = {
             thread_id: typeof cache.thread_id === "string" ? cache.thread_id : null,
             log_path: cache.log_path || null,
-            offset: Number(cache.offset) || 0,
-            older_before: Number(cache.older_before) || 0,
+            after_byte: Number(cache.after_byte) || 0,
+            before_byte: Number(cache.before_byte) || 0,
             has_older: Boolean(cache.has_older),
             events: Array.isArray(cache.events) ? cache.events : [],
           };
@@ -2433,10 +2391,10 @@
           cacheSaveTimers.set(sid, t);
         }
 
-        function setCacheMeta(sid, { threadId, logPath, offset: off, olderBefore, hasOlder } = {}) {
+        function setCacheMeta(sid, { threadId, logPath, afterByte: after, beforeByte: before, hasOlder } = {}) {
           if (!sid) return;
           const cache =
-            getCache(sid) || { thread_id: null, log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+            getCache(sid) || { thread_id: null, log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
           const nextThreadId =
             threadId === undefined ? (typeof cache.thread_id === "string" ? cache.thread_id : null) : threadId || null;
           const nextLogPath =
@@ -2446,14 +2404,14 @@
             (typeof cache.log_path === "string" ? cache.log_path : null) !== nextLogPath;
           if (identityChanged) {
             cache.events = [];
-            cache.offset = 0;
-            cache.older_before = 0;
+            cache.after_byte = 0;
+            cache.before_byte = 0;
             cache.has_older = false;
           }
           if (threadId !== undefined) cache.thread_id = nextThreadId;
           if (logPath !== undefined) cache.log_path = logPath || null;
-          if (typeof off === "number" && Number.isFinite(off)) cache.offset = off;
-          if (typeof olderBefore === "number" && Number.isFinite(olderBefore)) cache.older_before = olderBefore;
+          if (typeof after === "number" && Number.isFinite(after)) cache.after_byte = after;
+          if (typeof before === "number" && Number.isFinite(before)) cache.before_byte = before;
           if (typeof hasOlder === "boolean") cache.has_older = hasOlder;
           cacheBySession.set(sid, cache);
           scheduleCacheSave(sid);
@@ -2472,13 +2430,11 @@
         function replaceCacheEvents(sid, events) {
           if (!sid) return;
           const cache =
-            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+            getCache(sid) || { log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
           const out = [];
           for (const ev of events || []) {
             const norm = normalizeCacheEvent(ev);
             if (!norm) continue;
-            const prev = out.length ? out[out.length - 1] : null;
-            if (isAdjacentAssistantDuplicate(prev, norm)) continue;
             out.push(norm);
           }
           if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
@@ -2490,15 +2446,12 @@
         function appendCacheEvents(sid, events) {
           if (!sid || !events || !events.length) return;
           const cache =
-            getCache(sid) || { log_path: null, offset: 0, older_before: 0, has_older: false, events: [] };
+            getCache(sid) || { log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
           const list = Array.isArray(cache.events) ? cache.events : [];
-          let prev = list.length ? list[list.length - 1] : null;
           for (const ev of events) {
             const norm = normalizeCacheEvent(ev);
             if (!norm) continue;
-            if (isAdjacentAssistantDuplicate(prev, norm)) continue;
             list.push(norm);
-            prev = norm;
           }
           if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
           cache.events = list;
@@ -2944,11 +2897,11 @@
                closeOpenSwipe();
                if (!confirm("Delete this session?")) return;
                try {
-                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                 clearCache(s.session_id);
-                 if (selected === s.session_id) {
-                   selected = null;
-                   offset = 0;
+                await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
+                clearCache(s.session_id);
+                if (selected === s.session_id) {
+                  selected = null;
+                   afterByte = 0;
                    activeLogPath = null;
                    activeThreadId = null;
                    turnOpen = false;
@@ -3180,7 +3133,7 @@
 	          }
           if (selected && !sessionIndex.has(selected)) {
             selected = null;
-            offset = 0;
+            afterByte = 0;
             activeLogPath = null;
             activeThreadId = null;
             pollGen += 1;
@@ -3209,10 +3162,6 @@
         function appendEvent(ev) {
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
           if (consumePendingUserIfMatches(ev)) return;
-          if (!ev.pending && ev.role === "assistant") {
-            const k = assistantTextKey(ev);
-            if (k && k === lastAssistantKey) return;
-          }
           if (isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
@@ -3232,8 +3181,6 @@
             requestAnimationFrame(() => scrollToBottom());
           }
           syncJumpButton();
-          if (ev.role === "user") lastAssistantKey = "";
-          else if (!ev.pending && ev.role === "assistant") lastAssistantKey = assistantTextKey(ev) || "";
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
@@ -3281,18 +3228,18 @@
           olderLoadController = ctl;
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
-            const reqBefore = Math.max(0, Number(olderBefore) || 0);
-            const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${olderPageLimit()}&before=${reqBefore}`, {
+            const reqBefore = Math.max(0, Number(beforeByte) || 0);
+            const data = await api(`/api/sessions/${sid}/messages/history?before_byte=${reqBefore}&limit=${olderPageLimit()}`, {
               signal: ctl.signal,
             });
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             const evs = Array.isArray(data.events) ? data.events : [];
-            const nextBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : reqBefore;
+            const nextBefore = Number.isFinite(Number(data.before_byte)) ? Number(data.before_byte) : reqBefore;
             const nextHasOlder = Boolean(data.has_older);
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
-            olderBefore = nextBefore;
-            setCacheMeta(sid, { olderBefore, hasOlder: nextHasOlder });
+            beforeByte = nextBefore;
+            setCacheMeta(sid, { beforeByte, hasOlder: nextHasOlder });
           } catch {
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             setOlderState({ hasMore: hasOlder, isLoading: false });
@@ -3326,21 +3273,9 @@
              const k = eventKey(ev);
              if (k && initDedup.has(k)) continue;
              if (k) initDedup.add(k);
-             const prev = msgs.length ? msgs[msgs.length - 1] : null;
-             if (isAdjacentAssistantDuplicate(prev, ev)) continue;
                msgs.push(ev);
          }
            if (!msgs.length) return;
-           lastAssistantKey = "";
-           for (let i = msgs.length - 1; i >= 0; i--) {
-             const ev = msgs[i];
-             if (!ev) continue;
-             if (ev.role === "user") break;
-             if (ev.role === "assistant") {
-               lastAssistantKey = assistantTextKey(ev) || "";
-               break;
-             }
-           }
            if (selected) replaceCacheEvents(selected, msgs);
            recentEventKeys.length = 0;
            recentEventKeySet.clear();
@@ -3372,9 +3307,9 @@
 			        async function pollMessages(sid = selected, gen = pollGen) {
 			          if (!sid) return;
 			          try {
-	            const prevOffset = offset;
-	            const reqOffset = offset;
-		            const data = await api(`/api/sessions/${sid}/messages?offset=${reqOffset}`);
+	            const prevAfter = afterByte;
+	            const reqAfter = afterByte;
+		            const data = await api(`/api/sessions/${sid}/messages/live?after_byte=${reqAfter}`);
 	            if (gen !== pollGen || sid !== selected) return;
 	            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
 	            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
@@ -3383,14 +3318,14 @@
 	            if (activeLogPath && !lp) {
 	              activeLogPath = null;
 	              activeThreadId = tid;
-	              offset = 0;
+	              afterByte = 0;
 	              resetChatRenderState();
 	              setAttachCount(0);
 	              setTyping(false);
 	              turnOpen = false;
 	              setOlderState({ hasMore: false, isLoading: false });
-	              olderBefore = 0;
-                setCacheMeta(sid, { threadId: activeThreadId, logPath: null, offset: 0, olderBefore: 0, hasOlder: false });
+	              beforeByte = 0;
+                setCacheMeta(sid, { threadId: activeThreadId, logPath: null, afterByte: 0, beforeByte: 0, hasOlder: false });
                 replaceCacheEvents(sid, []);
 	              setStatus({ running: Boolean(nowBusy), queueLen: data.queue_len });
 	              setContext(data.token);
@@ -3400,35 +3335,31 @@
 	            if (activeLogPath && lp && lp !== activeLogPath) {
 	              activeLogPath = lp;
 	              activeThreadId = tid;
-	              offset = 0;
+	              afterByte = 0;
 	              resetChatRenderState();
               setAttachCount(0);
               setTyping(false);
               turnOpen = false;
               setStatus({ running: false, queueLen: 0 });
               try {
-                const d2 = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+                const d2 = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
                 if (gen !== pollGen || sid !== selected) return;
                 if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
                 if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
-                offset = d2.offset;
+                afterByte = Number(d2.after_byte) || 0;
                 const evs2 = Array.isArray(d2.events) ? d2.events : [];
                 if (evs2.length) startInitialRender(evs2);
-                olderBefore = Number.isFinite(Number(d2.next_before)) ? Number(d2.next_before) : 0;
+                beforeByte = Number.isFinite(Number(d2.before_byte)) ? Number(d2.before_byte) : 0;
                 setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
                 setCacheMeta(sid, {
                   threadId: activeThreadId,
                   logPath: activeLogPath,
-                  offset,
-                  olderBefore,
+                  afterByte,
+                  beforeByte,
                   hasOlder: Boolean(d2.has_older),
                 });
-	                const nowBusy2 = Boolean(d2.busy);
-	                const turnStart2 = Boolean(d2.turn_start);
-	                const turnEnd2 = Boolean(d2.turn_end);
-	                const turnAborted2 = Boolean(d2.turn_aborted);
-	                if (turnStart2 || nowBusy2) turnOpen = true;
-	                if (turnEnd2 || turnAborted2 || !nowBusy2) turnOpen = false;
+                const nowBusy2 = Boolean(d2.busy);
+                turnOpen = Boolean(nowBusy2);
                 setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
                 setContext(d2.token);
                 setTyping(Boolean(turnOpen || nowBusy2));
@@ -3439,24 +3370,16 @@
                 return;
              }
 	
-		            offset = data.offset;
+		            afterByte = Number(data.after_byte) || reqAfter;
 	            const evs = Array.isArray(data.events) ? data.events : [];
-              const nextHasOlder = Boolean(data.has_older);
-              if (reqOffset === 0) {
-                olderBefore = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
-                setOlderState({ hasMore: nextHasOlder, isLoading: false });
-              } else {
-                const polledEventCount = countChatEvents(evs);
-                if (polledEventCount > 0) olderBefore += polledEventCount;
-              }
               setCacheMeta(sid, {
                 threadId: tid || activeThreadId,
                 logPath: activeLogPath || lp || null,
-                offset,
-                olderBefore,
-                hasOlder: nextHasOlder,
+                afterByte,
+                beforeByte,
+                hasOlder,
               });
-	            if (prevOffset === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
+	            if (prevAfter === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
 	              startInitialRender(evs);
             } else {
               for (const ev of evs) appendEvent(ev);
@@ -3488,7 +3411,7 @@
             if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 404) {
               selected = null;
-              offset = 0;
+              afterByte = 0;
               activeLogPath = null;
               activeThreadId = null;
               pollGen += 1;
@@ -3555,50 +3478,52 @@
         }
 
         async function refreshInitPageState(sid, gen, { rerender = false } = {}) {
-          const data = await api(`/api/sessions/${sid}/messages?offset=0&init=1&limit=${initPageLimit()}&before=0`);
+          const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== gen || selected !== sid) return null;
           const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
           const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
-          const nextOlderBeforeBase = Number.isFinite(Number(data.next_before)) ? Number(data.next_before) : 0;
+          const nextBeforeByteBase = Number.isFinite(Number(data.before_byte)) ? Number(data.before_byte) : 0;
           const nextHasOlder = Boolean(data.has_older);
           const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;
-          const nextOlderBefore =
-            rerender || identityChanged ? nextOlderBeforeBase : Math.max(Math.max(0, Number(olderBefore) || 0), nextOlderBeforeBase);
+          const nextAfterByte = Number(data.after_byte) || 0;
+          const previousAfterByte = Number(afterByte) || 0;
+          const tailAdvanced = previousAfterByte !== nextAfterByte;
+          const shouldRerender = rerender || identityChanged || tailAdvanced;
+          const nextBeforeByte =
+            shouldRerender || !(Number(beforeByte) > 0) ? nextBeforeByteBase : Number(beforeByte);
 
           activeLogPath = nextLogPath;
           activeThreadId = nextThreadId;
-          olderBefore = nextOlderBefore;
+          afterByte = nextAfterByte;
+          beforeByte = nextBeforeByte;
           setOlderState({ hasMore: nextHasOlder, isLoading: false });
           setCacheMeta(sid, {
             threadId: activeThreadId,
             logPath: activeLogPath,
-            olderBefore,
+            afterByte,
+            beforeByte,
             hasOlder: nextHasOlder,
           });
 
           const nowBusy = Boolean(data.busy);
-          const turnStart = Boolean(data.turn_start);
-          const turnEnd = Boolean(data.turn_end);
-          const turnAborted = Boolean(data.turn_aborted);
-          if (turnStart || nowBusy) turnOpen = true;
-          if (turnEnd || turnAborted || !nowBusy) turnOpen = false;
+          turnOpen = Boolean(nowBusy);
           setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
           setContext(data.token);
           setTyping(Boolean(turnOpen || nowBusy));
 
-          if (rerender || identityChanged) {
-            offset = Number(data.offset) || 0;
+          if (shouldRerender) {
+            afterByte = nextAfterByte;
             resetChatRenderState();
             const evs = Array.isArray(data.events) ? data.events : [];
             if (evs.length) startInitialRender(evs);
             else replaceCacheEvents(sid, []);
-            olderBefore = nextOlderBefore;
+            beforeByte = nextBeforeByte;
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             setCacheMeta(sid, {
               threadId: activeThreadId,
               logPath: activeLogPath,
-              offset,
-              olderBefore,
+              afterByte,
+              beforeByte,
               hasOlder: nextHasOlder,
             });
           }
@@ -3635,7 +3560,7 @@
 		          pollKickPending = false;
             const sid = id;
             selected = sid;
-            offset = 0;
+            afterByte = 0;
             activeLogPath = null;
             activeThreadId = null;
             resetChatRenderState();
@@ -3664,13 +3589,13 @@
                     cacheMatchesSession(cached, s0) &&
                     Array.isArray(cached.events) &&
                     cached.events.length &&
-                    Number(cached.offset) > 0
+                    Number(cached.after_byte) > 0
                 );
                 if (hasCached) {
                   activeThreadId = typeof cached.thread_id === "string" ? cached.thread_id : null;
                   activeLogPath = typeof cached.log_path === "string" ? cached.log_path : null;
-                  offset = Number(cached.offset) || 0;
-                  olderBefore = Number(cached.older_before) || 0;
+                  afterByte = Number(cached.after_byte) || 0;
+                  beforeByte = Number(cached.before_byte) || 0;
                   setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
                   startInitialRender(cached.events);
                   try {

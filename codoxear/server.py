@@ -27,7 +27,7 @@ import tomllib
 import traceback
 import urllib.parse
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -175,11 +175,6 @@ VOICE_PUSH_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_VOICE_PUSH_SWEEP_SECO
 QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
 HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
-CHAT_INIT_SEED_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_SEED_SCAN_BYTES", str(512 * 1024)))
-CHAT_INIT_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INIT_MAX_SCAN_BYTES", str(128 * 1024 * 1024)))
-CHAT_INDEX_INCREMENT_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_INCREMENT_BYTES", str(2 * 1024 * 1024)))
-CHAT_INDEX_RESEED_THRESHOLD_BYTES = int(os.environ.get("CODEX_WEB_CHAT_INDEX_RESEED_THRESHOLD_BYTES", str(16 * 1024 * 1024)))
-CHAT_INDEX_MAX_EVENTS = int(os.environ.get("CODEX_WEB_CHAT_INDEX_MAX_EVENTS", "12000"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
@@ -2062,31 +2057,25 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[Any]:
     return _rollout_log._extract_delivery_messages(objs)
 
 
-def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
-    return _rollout_log._read_jsonl_tail(path, max_bytes)
-
-
-def _read_chat_events_from_tail(
-    log_path: Path,
-    min_events: int = 120,
-    max_scan_bytes: int = 128 * 1024 * 1024,
-) -> list[dict[str, Any]]:
-    return _rollout_log._read_chat_events_from_tail(log_path, min_events=min_events, max_scan_bytes=max_scan_bytes)
-
-
-def _read_chat_tail_snapshot(
-    log_path: Path,
+def _read_jsonl_records_from_offset(
+    path: Path,
+    offset: int,
     *,
-    min_events: int,
-    initial_scan_bytes: int,
-    max_scan_bytes: int,
-) -> tuple[list[dict[str, Any]], dict[str, Any] | None, int, bool, int]:
-    return _rollout_log._read_chat_tail_snapshot(
-        log_path,
-        min_events=min_events,
-        initial_scan_bytes=initial_scan_bytes,
-        max_scan_bytes=max_scan_bytes,
-    )
+    max_bytes: int = 2 * 1024 * 1024,
+) -> tuple[list[Any], int]:
+    return _rollout_log._read_jsonl_records_from_offset(path, offset, max_bytes=max_bytes)
+
+
+def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
+    return _rollout_log._read_chat_tail_page(log_path, limit=limit)
+
+
+def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
+    return _rollout_log._read_chat_history_page(log_path, before_byte=before_byte, limit=limit)
+
+
+def _read_chat_legacy_count_page(log_path: Path, *, before: int, limit: int) -> tuple[list[dict[str, Any]], int, bool, int]:
+    return _rollout_log._read_chat_legacy_count_page(log_path, before=before, limit=limit)
 
 
 def _event_ts(obj: dict[str, Any]) -> float | None:
@@ -2145,10 +2134,6 @@ class Session:
     meta_tools: int = 0
     meta_system: int = 0
     meta_log_off: int = 0
-    chat_index_events: list[dict[str, Any]] = field(default_factory=list)
-    chat_index_scan_bytes: int = 0
-    chat_index_scan_complete: bool = False
-    chat_index_log_off: int = 0
     delivery_log_off: int = 0
     idle_cache_log_off: int = -1
     idle_cache_value: bool | None = None
@@ -2213,10 +2198,6 @@ class SessionManager:
         s.last_chat_ts = None
         s.last_chat_history_scanned = False
         s.meta_log_off = int(meta_log_off)
-        s.chat_index_events = []
-        s.chat_index_scan_bytes = 0
-        s.chat_index_scan_complete = False
-        s.chat_index_log_off = int(meta_log_off)
         s.delivery_log_off = int(meta_log_off)
         s.idle_cache_log_off = -1
         s.idle_cache_value = None
@@ -3720,132 +3701,6 @@ class SessionManager:
         if self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
-    def _set_chat_index_snapshot(
-        self,
-        *,
-        session_id: str,
-        events: list[dict[str, Any]],
-        token_update: dict[str, Any] | None,
-        scan_bytes: int,
-        scan_complete: bool,
-        log_off: int,
-    ) -> None:
-        def event_key(ev: dict[str, Any]) -> tuple[str, int, str] | None:
-            role = ev.get("role")
-            if role not in ("user", "assistant"):
-                return None
-            text = ev.get("text")
-            if not isinstance(text, str):
-                return None
-            ts = ev.get("ts")
-            if not isinstance(ts, (int, float)):
-                return None
-            return role, int(round(float(ts) * 1000.0)), text
-
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                return
-            # Deduplicate to avoid re-appending overlapping tail events across incremental scans.
-            # Also guard against runtimes emitting the same assistant message twice with slightly
-            # different timestamps by deduping assistant text within the current assistant stretch
-            # (resetting when we see a user message).
-            tail = list(events[-CHAT_INDEX_MAX_EVENTS:])
-            uniq_rev: list[dict[str, Any]] = []
-            seen_exact: set[tuple[str, int, str]] = set()
-            seen_assistant_stretch: set[str] = set()
-            for ev in reversed(tail):
-                k = event_key(ev)
-                if k is not None and k in seen_exact:
-                    continue
-                if k is not None:
-                    seen_exact.add(k)
-                role = ev.get("role")
-                if role == "user":
-                    seen_assistant_stretch.clear()
-                elif role == "assistant":
-                    text = ev.get("text")
-                    if isinstance(text, str):
-                        if text in seen_assistant_stretch:
-                            continue
-                        seen_assistant_stretch.add(text)
-                uniq_rev.append(ev)
-            s.chat_index_events = list(reversed(uniq_rev))
-            s.chat_index_scan_bytes = int(scan_bytes)
-            s.chat_index_scan_complete = bool(scan_complete) and (len(events) <= CHAT_INDEX_MAX_EVENTS)
-            s.chat_index_log_off = int(log_off)
-            if token_update is not None:
-                s.token = token_update
-
-    def _append_chat_events(self, session_id: str, new_events: list[dict[str, Any]], *, new_off: int, latest_token: dict[str, Any] | None) -> None:
-        def event_key(ev: dict[str, Any]) -> tuple[str, int, str] | None:
-            role = ev.get("role")
-            if role not in ("user", "assistant"):
-                return None
-            text = ev.get("text")
-            if not isinstance(text, str):
-                return None
-            ts = ev.get("ts")
-            if not isinstance(ts, (int, float)):
-                return None
-            return role, int(round(float(ts) * 1000.0)), text
-
-        if not new_events and latest_token is None:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if s:
-                    s.chat_index_log_off = int(new_off)
-            return
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                return
-            if new_events:
-                merged = list(s.chat_index_events)
-                recent = merged[-256:] if len(merged) > 256 else merged
-                seen_exact: set[tuple[str, int, str]] = set()
-                for ev in recent:
-                    k = event_key(ev)
-                    if k is not None:
-                        seen_exact.add(k)
-                # Build assistant stretch state from the end of the merged list.
-                # If the current tail already has assistant messages (after the last user),
-                # avoid appending the same assistant text again.
-                assistant_stretch: set[str] = set()
-                for ev in reversed(merged):
-                    role = ev.get("role")
-                    if role == "user":
-                        break
-                    if role == "assistant":
-                        text = ev.get("text")
-                        if isinstance(text, str):
-                            assistant_stretch.add(text)
-                appended: list[dict[str, Any]] = []
-                for ev in new_events:
-                    k = event_key(ev)
-                    if k is not None and k in seen_exact:
-                        continue
-                    if k is not None:
-                        seen_exact.add(k)
-                    role = ev.get("role")
-                    if role == "user":
-                        assistant_stretch.clear()
-                    elif role == "assistant":
-                        text = ev.get("text")
-                        if isinstance(text, str):
-                            if text in assistant_stretch:
-                                continue
-                            assistant_stretch.add(text)
-                    merged.append(ev)
-                    appended.append(ev)
-                if len(merged) > CHAT_INDEX_MAX_EVENTS:
-                    merged = merged[-CHAT_INDEX_MAX_EVENTS:]
-                    s.chat_index_scan_complete = False
-                s.chat_index_events = merged
-            s.chat_index_log_off = int(new_off)
-            if latest_token is not None:
-                s.token = latest_token
-
     def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         voice_push = getattr(self, "_voice_push", None)
         if voice_push is None:
@@ -3871,120 +3726,8 @@ class SessionManager:
             out.append(ev2)
         return out
 
-    def _ensure_chat_index(self, session_id: str, *, min_events: int, before: int) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                return [], 0, False, 0, None
-            lp = s.log_path
-            scan_bytes = int(s.chat_index_scan_bytes) if s.chat_index_scan_bytes > 0 else CHAT_INIT_SEED_SCAN_BYTES
-            idx_off = int(s.chat_index_log_off)
-        if lp is None or (not lp.exists()):
-            return [], 0, False, 0, None
-
-        sz = int(lp.stat().st_size)
-
-        if sz < idx_off:
-            idx_off = 0
-            self._set_chat_index_snapshot(
-                session_id=session_id,
-                events=[],
-                token_update=None,
-                scan_bytes=CHAT_INIT_SEED_SCAN_BYTES,
-                scan_complete=False,
-                log_off=0,
-            )
-
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            ready = bool(s2 and ((s2.chat_index_events is not None)))
-            cached_count = len(s2.chat_index_events) if s2 else 0
-            scan_complete = bool(s2.chat_index_scan_complete) if s2 else False
-
-        target_events = max(0, int(min_events) + max(0, int(before)))
-        if (not ready) or ((target_events > cached_count) and (not scan_complete)):
-            events, token_update, used_scan, complete, log_size = _read_chat_tail_snapshot(
-                lp,
-                min_events=max(20, target_events),
-                initial_scan_bytes=max(CHAT_INIT_SEED_SCAN_BYTES, scan_bytes),
-                max_scan_bytes=CHAT_INIT_MAX_SCAN_BYTES,
-            )
-            self._set_chat_index_snapshot(
-                session_id=session_id,
-                events=events,
-                token_update=token_update,
-                scan_bytes=used_scan,
-                scan_complete=complete,
-                log_off=log_size,
-            )
-
-        with self._lock:
-            s3 = self._sessions.get(session_id)
-            if not s3:
-                return [], 0, False, 0, None
-            lp3 = s3.log_path
-            off3 = int(s3.chat_index_log_off)
-            prev_events = list(s3.chat_index_events)
-        if lp3 is None or (not lp3.exists()):
-            return [], off3, False, 0, None
-
-        sz2 = int(lp3.stat().st_size)
-
-        if sz2 > off3:
-            delta = sz2 - off3
-            if delta >= CHAT_INDEX_RESEED_THRESHOLD_BYTES:
-                events, token_update, used_scan, complete, log_size = _read_chat_tail_snapshot(
-                    lp3,
-                    min_events=max(20, target_events),
-                    initial_scan_bytes=max(CHAT_INIT_SEED_SCAN_BYTES, scan_bytes),
-                    max_scan_bytes=CHAT_INIT_MAX_SCAN_BYTES,
-                )
-                self._set_chat_index_snapshot(
-                    session_id=session_id,
-                    events=events,
-                    token_update=token_update,
-                    scan_bytes=used_scan,
-                    scan_complete=complete,
-                    log_off=log_size,
-                )
-            else:
-                cur = off3
-                loops = 0
-                latest_token: dict[str, Any] | None = None
-                aggregated_events: list[dict[str, Any]] = []
-                while cur < sz2 and loops < 16:
-                    objs, new_off = _read_jsonl_from_offset(lp3, cur, max_bytes=CHAT_INDEX_INCREMENT_BYTES)
-                    if new_off <= cur:
-                        break
-                    _th, _tools, _sys, _last_ts, token_update, new_events = _analyze_log_chunk(objs)
-                    if token_update is not None:
-                        latest_token = token_update
-                    if new_events:
-                        aggregated_events.extend(new_events)
-                    cur = new_off
-                    loops += 1
-                self._append_chat_events(session_id, aggregated_events, new_off=cur, latest_token=latest_token)
-
-        with self._lock:
-            s4 = self._sessions.get(session_id)
-            if not s4:
-                return prev_events, off3, False, 0, None
-            events2 = list(s4.chat_index_events)
-            log_off2 = int(s4.chat_index_log_off)
-            scan_complete2 = bool(s4.chat_index_scan_complete)
-            token2 = s4.token if isinstance(s4.token, dict) or s4.token is None else None
-
-        n = len(events2)
-        b = max(0, int(before))
-        end = max(0, n - b)
-        start = max(0, end - max(20, int(min_events)))
-        page = self._attach_notification_texts(events2[start:end])
-        has_older = (start > 0) or ((not scan_complete2) and bool(page))
-        next_before = b + len(page) if has_older else 0
-        return page, log_off2, has_older, next_before, token2
-
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
-        _th, _tools, _sys, last_ts, token_update, new_events = _analyze_log_chunk(objs)
+        _th, _tools, _sys, last_ts, token_update, _chat_events = _analyze_log_chunk(objs)
         model = None
         reasoning_effort = None
         for obj in reversed(objs):
@@ -3992,7 +3735,6 @@ class SessionManager:
                 continue
             model, reasoning_effort = _turn_context_run_settings(obj.get("payload"))
             break
-        self._append_chat_events(session_id, new_events, new_off=new_off, latest_token=token_update)
         with self._lock:
             s = self._sessions.get(session_id)
             if s:
@@ -4438,6 +4180,40 @@ def _read_static_bytes(path: Path) -> bytes:
         if placeholder in data:
             data = data.replace(placeholder, value)
     return data
+
+
+def _message_runtime_snapshot(
+    session_id: str,
+    s: Session,
+    *,
+    token_update: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
+    state = MANAGER.get_state(session_id)
+    if not isinstance(state, dict):
+        raise ValueError("invalid broker state response")
+    if "busy" not in state:
+        raise ValueError("missing busy from broker state response")
+    if "queue_len" not in state:
+        raise ValueError("missing queue_len from broker state response")
+    state_busy = bool(state.get("busy"))
+    if s.log_path is not None and s.log_path.exists():
+        idle_val = MANAGER.idle_from_log(session_id)
+        if s.agent_backend == "pi":
+            busy_val = not bool(idle_val)
+        else:
+            busy_val = state_busy or (not bool(idle_val))
+    else:
+        busy_val = False
+    queue_val = MANAGER._queue_len(session_id)
+    token_val: dict[str, Any] | None = None
+    if "token" in state:
+        state_token = state.get("token")
+        if not (isinstance(state_token, dict) or state_token is None):
+            raise ValueError("invalid token from broker state response")
+        token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
+    elif isinstance(token_update, dict):
+        token_val = token_update
+    return state, bool(busy_val), int(queue_val), token_val
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -5327,6 +5103,206 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
+            session_id = _match_session_route(path, "messages", "tail")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                t0_total = time.perf_counter()
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                limit_q = qs.get("limit")
+                if limit_q is None:
+                    limit = 80
+                else:
+                    if not limit_q:
+                        raise ValueError("invalid limit")
+                    limit = int(limit_q[0])
+                limit = max(20, min(200, limit))
+                if s.log_path is None or (not s.log_path.exists()):
+                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "thread_id": s.thread_id,
+                            "log_path": None,
+                            "after_byte": 0,
+                            "before_byte": 0,
+                            "events": [],
+                            "has_older": False,
+                            "busy": bool(busy_val),
+                            "queue_len": int(queue_val),
+                            "token": token_val,
+                        },
+                    )
+                    _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
+                    return
+                events, before_byte, after_byte, has_older = _read_chat_tail_page(s.log_path, limit=limit)
+                events = MANAGER._attach_notification_texts(events)
+                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "thread_id": s.thread_id,
+                        "log_path": str(s.log_path),
+                        "after_byte": int(after_byte),
+                        "before_byte": int(before_byte),
+                        "events": events,
+                        "has_older": bool(has_older),
+                        "busy": bool(busy_val),
+                        "queue_len": int(queue_val),
+                        "token": token_val,
+                    },
+                )
+                _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
+                return
+
+            session_id = _match_session_route(path, "messages", "history")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                before_q = qs.get("before_byte")
+                if before_q is None or not before_q:
+                    _json_response(self, 400, {"error": "before_byte required"})
+                    return
+                before_byte = max(0, int(before_q[0]))
+                limit_q = qs.get("limit")
+                if limit_q is None:
+                    limit = 60
+                else:
+                    if not limit_q:
+                        raise ValueError("invalid limit")
+                    limit = int(limit_q[0])
+                limit = max(20, min(200, limit))
+                if s.log_path is None or (not s.log_path.exists()):
+                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "thread_id": s.thread_id,
+                            "log_path": None,
+                            "after_byte": 0,
+                            "before_byte": 0,
+                            "events": [],
+                            "has_older": False,
+                            "busy": bool(busy_val),
+                            "queue_len": int(queue_val),
+                            "token": token_val,
+                        },
+                    )
+                    return
+                events, next_before, has_older = _read_chat_history_page(s.log_path, before_byte=before_byte, limit=limit)
+                events = MANAGER._attach_notification_texts(events)
+                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "thread_id": s.thread_id,
+                        "log_path": str(s.log_path),
+                        "after_byte": int(s.log_path.stat().st_size),
+                        "before_byte": int(next_before),
+                        "events": events,
+                        "has_older": bool(has_older),
+                        "busy": bool(busy_val),
+                        "queue_len": int(queue_val),
+                        "token": token_val,
+                    },
+                )
+                return
+
+            session_id = _match_session_route(path, "messages", "live")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                t0_total = time.perf_counter()
+                t0_meta = time.perf_counter()
+                MANAGER.refresh_session_meta(session_id)
+                dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                after_q = qs.get("after_byte")
+                if after_q is None:
+                    after_byte = 0
+                else:
+                    if not after_q:
+                        raise ValueError("invalid after_byte")
+                    after_byte = max(0, int(after_q[0]))
+                if s.log_path is None or (not s.log_path.exists()):
+                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "thread_id": s.thread_id,
+                            "log_path": None,
+                            "after_byte": 0,
+                            "events": [],
+                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
+                            "turn_start": False,
+                            "turn_end": False,
+                            "turn_aborted": False,
+                            "diag": {"pending_log": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
+                            "busy": bool(busy_val),
+                            "queue_len": int(queue_val),
+                            "token": token_val,
+                        },
+                    )
+                    _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
+                    return
+                records, next_after = _read_jsonl_records_from_offset(s.log_path, after_byte)
+                objs = [record.obj for record in records]
+                events, meta_delta, flags, diag = _extract_chat_events(objs)
+                token_update = _extract_token_update(objs)
+                if objs:
+                    MANAGER.mark_log_delta(session_id, objs=objs, new_off=next_after)
+                s2 = MANAGER.get_session(session_id)
+                if token_update is not None and s2 is not None:
+                    s2.token = token_update
+                events = MANAGER._attach_notification_texts(events)
+                t0_state = time.perf_counter()
+                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
+                diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
+                diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
+                _json_response(
+                    self,
+                    200,
+                    {
+                        "thread_id": s.thread_id,
+                        "log_path": str(s.log_path),
+                        "after_byte": int(next_after),
+                        "events": events,
+                        "meta_delta": meta_delta,
+                        "turn_start": bool(flags.get("turn_start")),
+                        "turn_end": bool(flags.get("turn_end")),
+                        "turn_aborted": bool(flags.get("turn_aborted")),
+                        "diag": diag,
+                        "busy": bool(busy_val),
+                        "queue_len": int(queue_val),
+                        "token": token_val,
+                    },
+                )
+                _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
+                return
+
             if path.startswith("/api/sessions/") and path.endswith("/messages"):
                 if not _require_auth(self):
                     self._unauthorized()
@@ -5351,9 +5327,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     if not offset_q:
                         raise ValueError("invalid offset")
-                    offset = int(offset_q[0])
-                if offset < 0:
-                    offset = 0
+                    offset = max(0, int(offset_q[0]))
                 init_q = qs.get("init")
                 init = bool(init_q and init_q[0] == "1")
                 before_q = qs.get("before")
@@ -5362,21 +5336,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     if not before_q:
                         raise ValueError("invalid before")
-                    before = int(before_q[0])
-                before = max(0, before)
+                    before = max(0, int(before_q[0]))
+                limit_q = qs.get("limit")
+                if limit_q is None:
+                    limit = 80
+                else:
+                    if not limit_q:
+                        raise ValueError("invalid limit")
+                    limit = int(limit_q[0])
+                limit = max(20, min(200, limit))
                 if s.log_path is None or (not s.log_path.exists()):
-                    state = MANAGER.get_state(session_id)
-                    if not isinstance(state, dict):
-                        raise ValueError("invalid broker state response")
-                    if "busy" not in state:
-                        raise ValueError("missing busy from broker state response")
-                    if "queue_len" not in state:
-                        raise ValueError("missing queue_len from broker state response")
-                    queue_val = MANAGER._queue_len(session_id)
-                    state_token = state.get("token")
-                    if not (isinstance(state_token, dict) or (state_token is None)):
-                        raise ValueError("invalid token from broker state response")
-                    token_val = state_token
+                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                     _json_response(
                         self,
                         200,
@@ -5389,89 +5359,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "turn_start": False,
                             "turn_end": False,
                             "turn_aborted": False,
-                            "diag": {"pending_log": True},
-                            # Definition: a session with no associated rollout log is idle.
-                            "busy": False,
+                            "diag": {"pending_log": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
+                            "busy": bool(busy_val),
                             "queue_len": int(queue_val),
                             "token": token_val,
                             "has_older": False,
                             "next_before": 0,
                         },
                     )
-                    dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
-                    _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
+                    _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
                     return
-
                 if offset == 0:
-                    limit_q = qs.get("limit")
-                    if limit_q is None:
-                        limit = 80
-                    else:
-                        if not limit_q:
-                            raise ValueError("invalid limit")
-                        limit = int(limit_q[0])
-                    limit = max(20, min(200, limit))
-                    t0_index = time.perf_counter()
-                    events, new_off, has_older, next_before, token_update = MANAGER._ensure_chat_index(
-                        session_id,
-                        min_events=limit,
-                        before=before,
-                    )
-                    dt_index_ms = (time.perf_counter() - t0_index) * 1000.0
+                    events, next_before, has_older, new_off = _read_chat_legacy_count_page(s.log_path, before=before, limit=limit)
+                    events = MANAGER._attach_notification_texts(events)
                     meta_delta = {"thinking": 0, "tool": 0, "system": 0}
                     flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
-                    diag_key = "init_index_ms" if init else "bootstrap_index_ms"
-                    diag = {"tool_names": [], "last_tool": None, diag_key: round(dt_index_ms, 3)}
+                    diag = {"legacy": True, "meta_refresh_ms": round(dt_meta_ms, 3)}
+                    token_update = None
                 else:
-                    has_older = False
-                    next_before = 0
-                    objs, new_off = _read_jsonl_from_offset(s.log_path, offset)
+                    records, new_off = _read_jsonl_records_from_offset(s.log_path, offset)
+                    objs = [record.obj for record in records]
                     events, meta_delta, flags, diag = _extract_chat_events(objs)
                     token_update = _extract_token_update(objs)
-                    MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
+                    if objs:
+                        MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
+                    s2 = MANAGER.get_session(session_id)
+                    if token_update is not None and s2 is not None:
+                        s2.token = token_update
+                    events = MANAGER._attach_notification_texts(events)
+                    has_older = False
+                    next_before = 0
+                    diag["legacy"] = True
+                    diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
                 t0_state = time.perf_counter()
-                state = MANAGER.get_state(session_id)
-                dt_state_ms = (time.perf_counter() - t0_state) * 1000.0
-                s2 = MANAGER.get_session(session_id)
-                if token_update is not None and s2 is not None:
-                    s2.token = token_update
-                if not isinstance(state, dict):
-                    raise ValueError("invalid broker state response")
-                if "busy" not in state:
-                    raise ValueError("missing busy from broker state response")
-                if "queue_len" not in state:
-                    raise ValueError("missing queue_len from broker state response")
-                state_busy = bool(state.get("busy"))
-                state_queue = int(state.get("queue_len"))
-
-                t0_idle = time.perf_counter()
-                idle_val = MANAGER.idle_from_log(session_id)
-                dt_idle_ms = (time.perf_counter() - t0_idle) * 1000.0
-                diag["idle_from_log_ms"] = round(dt_idle_ms, 3)
-
-                if s.agent_backend == "pi":
-                    busy_val = not bool(idle_val)
-                else:
-                    busy_val = bool(state_busy) or (not bool(idle_val))
-                queue_val = MANAGER._queue_len(session_id)
-
-                token_val: dict[str, Any] | None = None
-                if "token" in state:
-                    state_token = state.get("token")
-                    if not (isinstance(state_token, dict) or (state_token is None)):
-                        raise ValueError("invalid token from broker state response")
-                    token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
-                elif isinstance(token_update, dict):
-                    token_val = token_update
-                diag["state_ms"] = round(dt_state_ms, 3)
-                diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
+                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
+                diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
                 _json_response(
                     self,
                     200,
                     {
                         "thread_id": s.thread_id,
                         "log_path": str(s.log_path),
-                        "offset": new_off,
+                        "offset": int(new_off),
                         "events": events,
                         "meta_delta": meta_delta,
                         "turn_start": bool(flags.get("turn_start")),
@@ -5485,8 +5414,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "next_before": int(next_before),
                     },
                 )
-                dt_total_ms = (time.perf_counter() - t0_total) * 1000.0
-                _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", dt_total_ms)
+                _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/tail"):
