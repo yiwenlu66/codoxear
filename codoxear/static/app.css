@@ -1940,16 +1940,73 @@ select {
         -webkit-overflow-scrolling: touch;
       }
       .queueItem {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
         gap: 8px;
-        align-items: flex-start;
+        padding: 6px 0;
+      }
+      .queueEditorShell {
+        min-width: 0;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.96);
+        padding: 8px 10px;
+      }
+      .queueActionRail {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        align-self: start;
+      }
+      .queueSendingTag {
+        font-size: 11px;
+        line-height: 1;
+        padding: 0 2px 0 0;
+      }
+      .queueIconBtn {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(248, 250, 252, 0.98);
+        border-color: rgba(148, 163, 184, 0.28);
+        color: rgba(30, 41, 59, 0.92);
+        box-shadow: none;
+      }
+      .queueIconBtn:hover:not(:disabled) {
+        background: rgba(241, 245, 249, 1);
+        border-color: rgba(100, 116, 139, 0.38);
+      }
+      .queueIconBtn:disabled {
+        opacity: 0.38;
+      }
+      .queueIconBtn.danger {
+        color: rgba(185, 28, 28, 0.96);
+        border-color: rgba(185, 28, 28, 0.26);
+        background: rgba(254, 242, 242, 0.98);
+      }
+      .queueIconBtn.danger:hover:not(:disabled) {
+        background: rgba(254, 226, 226, 1);
+        border-color: rgba(185, 28, 28, 0.34);
       }
       .queueText {
-        flex: 1 1 auto;
-        min-height: 64px;
+        min-height: 42px;
         max-height: 160px;
-        resize: vertical;
+        resize: none;
         font-size: 13px;
+        line-height: 1.4;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        background: transparent;
+        box-shadow: none;
+        overflow-y: auto;
+      }
+      .queueText:focus {
+        outline: none;
+      }
+      .queueText:disabled {
+        color: rgba(71, 85, 105, 0.88);
       }
       .sendChoice {
         display: none;

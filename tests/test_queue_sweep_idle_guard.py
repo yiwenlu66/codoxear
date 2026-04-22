@@ -6,6 +6,10 @@ from unittest.mock import patch
 from codoxear.server import QUEUE_IDLE_GRACE_SECONDS, Session, SessionManager
 
 
+def _queue_item(item_id: str, text: str) -> dict[str, object]:
+    return {"id": item_id, "text": text, "created_ts": 1.0}
+
+
 class TestQueueSweepIdleGuard(unittest.TestCase):
     def _mgr(self) -> SessionManager:
         mgr = SessionManager.__new__(SessionManager)
@@ -35,7 +39,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
             log_path=lp,
             sock_path=Path("/tmp/s1.sock"),
         )
-        mgr._queues[sid] = ["queued"]
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
         mgr.idle_from_log = lambda _sid: False
         sent = []
@@ -43,7 +47,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
 
         SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [])
-        self.assertEqual(mgr._queues[sid], ["queued"])
+        self.assertEqual([item["text"] for item in mgr._queues[sid]], ["queued"])
 
     def test_queue_sweep_injects_when_log_idle(self) -> None:
         mgr = self._mgr()
@@ -63,7 +67,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
             log_path=lp,
             sock_path=Path("/tmp/s1.sock"),
         )
-        mgr._queues[sid] = ["queued"]
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
         mgr.idle_from_log = lambda _sid: True
         sent = []
@@ -97,7 +101,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
             log_path=lp,
             sock_path=Path("/tmp/s1.sock"),
         )
-        mgr._queues[sid] = ["queued"]
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
         sent = []
         mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
 
@@ -126,3 +130,39 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         with patch("codoxear.server.time.time", return_value=205.0 + QUEUE_IDLE_GRACE_SECONDS + 0.1):
             SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [(sid, "queued")])
+
+    def test_queue_sweep_pops_duplicate_texts_by_item_id(self) -> None:
+        mgr = self._mgr()
+        sid = "s1"
+        lp = Path("/tmp/codoxear-test-rollout4.jsonl")
+        lp.write_text('{"type":"event_msg","payload":{"type":"task_complete"},"timestamp":"2026-03-06T00:00:00Z"}\n', encoding="utf-8")
+        self.addCleanup(lambda: lp.unlink(missing_ok=True))
+        mgr._sessions[sid] = Session(
+            session_id=sid,
+            thread_id="t1",
+            broker_pid=1,
+            codex_pid=1,
+            agent_backend="codex",
+            owned=False,
+            start_ts=0.0,
+            cwd="/tmp",
+            log_path=lp,
+            sock_path=Path("/tmp/s1.sock"),
+        )
+        mgr._queues[sid] = [_queue_item("q1", "dup"), _queue_item("q2", "dup")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
+        mgr.idle_from_log = lambda _sid: True
+        sent = []
+        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+
+        with patch("codoxear.server.time.time", return_value=300.0):
+            SessionManager._queue_sweep(mgr)
+        with patch("codoxear.server.time.time", return_value=300.0 + QUEUE_IDLE_GRACE_SECONDS + 0.1):
+            SessionManager._queue_sweep(mgr)
+
+        self.assertEqual(sent, [(sid, "dup")])
+        self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q2"])
+
+
+if __name__ == "__main__":
+    unittest.main()

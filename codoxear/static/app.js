@@ -7502,19 +7502,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
             if (!raw || !sid) return;
-              clearComposer();
-              try {
-                const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-              const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
-                if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
-                else setToast("sent");
-                pollFastUntilMs = Date.now() + 5000;
-                kickPoll(0);
-                await refreshSessions();
-              updateQueueBadge();
-            } catch (e) {
-              setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
-            }
+            clearComposer();
+            await enqueueComposerText(raw, { sid });
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
@@ -7523,30 +7512,149 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         sendChoiceBackdrop.onclick = () => hideSendChoice();
 
         const queueUpdateTimers = new Map();
+        const queueMutationLocks = new Set();
+        const queuePendingDeletes = new Set();
+        const queueDraftTexts = new Map();
         let queueLastEditMs = 0;
+        let queueSubmitBusy = false;
         let queueViewerSid = null;
         let queueViewerItems = [];
 
-        function scheduleQueueUpdate(sid, idx, text) {
+        function normalizeQueueItems(data) {
+          if (data && Array.isArray(data.items)) {
+            return data.items
+              .filter((item) => item && typeof item === "object")
+              .map((item) => ({
+                id: typeof item.id === "string" ? item.id : "",
+                text: typeof item.text === "string" ? item.text : "",
+                sending: !!item.sending,
+              }))
+              .filter((item) => item.id && item.text.trim());
+          }
+          if (data && Array.isArray(data.queue)) {
+            return data.queue
+              .filter((text) => typeof text === "string" && text.trim())
+              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false }));
+          }
+          return [];
+        }
+
+        function syncQueueSubmitState() {
+          if (queueBtn) queueBtn.disabled = !!queueSubmitBusy;
+        }
+
+        async function enqueueComposerText(raw, { sid = null } = {}) {
+          const sessionId = sid || selected;
+          const text = String(raw || "");
+          if (!sessionId || !text.trim()) return;
+          if (queueSubmitBusy) return;
+          queueSubmitBusy = true;
+          syncQueueSubmitState();
+          try {
+            const res = await api(`/api/sessions/${sessionId}/enqueue`, { method: "POST", body: { text } });
+            const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
+            if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
+            else setToast("sent");
+            pollFastUntilMs = Date.now() + 5000;
+            kickPoll(0);
+            await refreshSessions();
+            updateQueueBadge();
+            if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
+              await refreshQueueViewer();
+            }
+          } catch (e) {
+            setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
+          } finally {
+            queueSubmitBusy = false;
+            syncQueueSubmitState();
+          }
+        }
+
+        async function deleteQueueItem(sid, itemId) {
+          const key = String(itemId || "");
+          if (!sid || !key) return;
+          const timerKey = `${sid}:${key}`;
+          const pendingUpdate = queueUpdateTimers.get(timerKey);
+          if (pendingUpdate) {
+            clearTimeout(pendingUpdate);
+            queueUpdateTimers.delete(timerKey);
+          }
+          if (queueMutationLocks.has(key)) {
+            queuePendingDeletes.add(key);
+            setToast("delete queued");
+            return;
+          }
+          queueLastEditMs = 0;
+          queuePendingDeletes.delete(key);
+          queueMutationLocks.add(key);
+          queueViewerItems = queueViewerItems.filter((item) => String(item.id || "") !== key);
+          queueDraftTexts.delete(key);
+          renderQueueList();
+          try {
+            await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key } });
+            await refreshQueueViewer();
+            await refreshSessions();
+            updateQueueBadge();
+          } catch (e) {
+            await refreshQueueViewer();
+            setToast(`queue delete error: ${e && e.message ? e.message : "unknown error"}`);
+          } finally {
+            queueMutationLocks.delete(key);
+          }
+        }
+
+        async function moveQueueItem(sid, itemId, toIndex) {
+          const key = String(itemId || "");
+          if (!sid || !key) return;
+          if (queueMutationLocks.has(key)) {
+            setToast("queue item busy; retry in a moment");
+            return;
+          }
+          queueMutationLocks.add(key);
+          try {
+            await api(`/api/sessions/${sid}/queue/move`, { method: "POST", body: { id: key, to_index: toIndex } });
+            await refreshQueueViewer();
+            await refreshSessions();
+            updateQueueBadge();
+          } catch (e) {
+            setToast(`queue move error: ${e && e.message ? e.message : "unknown error"}`);
+          } finally {
+            queueMutationLocks.delete(key);
+          }
+        }
+
+        function scheduleQueueUpdate(sid, itemId, text) {
           if (!sid) return;
+          const itemKey = String(itemId || "");
+          if (!itemKey) return;
           if (!String(text || "").trim()) {
-            const key0 = `${sid}:${idx}`;
+            const key0 = `${sid}:${itemKey}`;
             const existing0 = queueUpdateTimers.get(key0);
             if (existing0) clearTimeout(existing0);
             queueUpdateTimers.delete(key0);
             return;
           }
-          const key = `${sid}:${idx}`;
+          const key = `${sid}:${itemKey}`;
           const existing = queueUpdateTimers.get(key);
           if (existing) clearTimeout(existing);
           const t = setTimeout(async () => {
             queueUpdateTimers.delete(key);
+            queueMutationLocks.add(itemKey);
             try {
-              await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { index: idx, text } });
+              await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { id: itemKey, text } });
+              queueLastEditMs = 0;
+              queueDraftTexts.set(itemKey, text);
+              await refreshQueueViewer();
               await refreshSessions();
               updateQueueBadge();
             } catch (e) {
               setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
+            } finally {
+              queueMutationLocks.delete(itemKey);
+              if (queuePendingDeletes.has(itemKey)) {
+                queuePendingDeletes.delete(itemKey);
+                void deleteQueueItem(sid, itemKey);
+              }
             }
           }, 350);
           queueUpdateTimers.set(key, t);
@@ -7562,29 +7670,58 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const q = Array.isArray(queueViewerItems) ? queueViewerItems : [];
           queueEmpty.style.display = q.length ? "none" : "block";
           if (!q.length) return;
-          q.forEach((text, idx) => {
+          const autosizeQueueText = (ta) => {
+            if (!ta) return;
+            ta.style.height = "0px";
+            ta.style.height = `${Math.max(58, Math.min(220, ta.scrollHeight))}px`;
+          };
+          const minMoveIndex = q[0] && q[0].sending ? 1 : 0;
+          q.forEach((item, idx) => {
+            const itemId = String(item.id || "");
+            const sending = !!item.sending;
+            const locked = sending || queueMutationLocks.has(itemId);
             const row = el("div", { class: "queueItem" });
+            const editorShell = el("div", { class: "queueEditorShell" });
             const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
-            ta.value = text;
+            ta.value = queueDraftTexts.has(itemId) ? String(queueDraftTexts.get(itemId) || "") : String(item.text || "");
+            ta.disabled = locked;
             ta.oninput = () => {
               queueLastEditMs = Date.now();
-              scheduleQueueUpdate(sid, idx, String(ta.value || ""));
+              const nextText = String(ta.value || "");
+              queueDraftTexts.set(itemId, nextText);
+              autosizeQueueText(ta);
+              scheduleQueueUpdate(sid, itemId, nextText);
             };
-            const del = el("button", { class: "icon-btn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
+            autosizeQueueText(ta);
+            editorShell.appendChild(ta);
+            const actions = el("div", { class: "queueActionRail" });
+            if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
+            const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
+            up.disabled = locked || idx <= minMoveIndex;
+            up.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void moveQueueItem(sid, itemId, idx - 1);
+            };
+            const down = el("button", { class: "icon-btn queueIconBtn", title: "Move down", "aria-label": "Move down", type: "button", html: iconSvg("down") });
+            down.disabled = locked || idx >= q.length - 1;
+            down.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void moveQueueItem(sid, itemId, idx + 1);
+            };
+            const del = el("button", { class: "icon-btn queueIconBtn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
+            del.disabled = locked;
             del.onclick = async (e) => {
               e.preventDefault();
               e.stopPropagation();
-              try {
-                await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { index: idx } });
-                await refreshQueueViewer();
-                await refreshSessions();
-                updateQueueBadge();
-              } catch (e2) {
-                setToast(`queue delete error: ${e2 && e2.message ? e2.message : "unknown error"}`);
-              }
+              await deleteQueueItem(sid, itemId);
             };
-            row.appendChild(ta);
-            row.appendChild(del);
+            actions.appendChild(up);
+            actions.appendChild(down);
+            actions.appendChild(del);
+            row.appendChild(editorShell);
+            row.appendChild(actions);
             queueList.appendChild(row);
           });
         }
@@ -7597,7 +7734,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const data = await api(`/api/sessions/${sid}/queue`);
             if (queueViewerSid && queueViewerSid !== sid) return;
-            const q = data && Array.isArray(data.queue) ? data.queue.filter((x) => typeof x === "string") : [];
+            const q = normalizeQueueItems(data);
+            const nextDrafts = new Map();
+            q.forEach((item) => {
+              const itemId = String(item.id || "");
+              if (!itemId) return;
+              if (queueDraftTexts.has(itemId)) {
+                const draft = String(queueDraftTexts.get(itemId) || "");
+                if (draft.trim()) {
+                  item.text = draft;
+                  nextDrafts.set(itemId, draft);
+                  return;
+                }
+              }
+              nextDrafts.set(itemId, String(item.text || ""));
+            });
+            queueDraftTexts.clear();
+            nextDrafts.forEach((value, key) => queueDraftTexts.set(key, value));
             queueViewerSid = sid;
             queueViewerItems = q;
             queueEmpty.textContent = "No queued messages.";
@@ -7715,25 +7868,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (!selected) return;
               const sid = selected;
               clearComposer();
-              void (async () => {
-                try {
-                  const res = await api(`/api/sessions/${sid}/enqueue`, { method: "POST", body: { text: raw } });
-                  const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
-                  if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
-                  else setToast("sent");
-                  pollFastUntilMs = Date.now() + 5000;
-                  kickPoll(0);
-                  await refreshSessions();
-                  updateQueueBadge();
-                } catch (e2) {
-                  setToast(`queue error: ${e2 && e2.message ? e2.message : "unknown error"}`);
-                }
-              })();
+              void enqueueComposerText(raw, { sid });
               return;
             }
             showQueueViewer();
           };
         }
+        syncQueueSubmitState();
         queueCloseBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
