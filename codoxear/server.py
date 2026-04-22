@@ -667,6 +667,63 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
         return None
 
 
+class MessageCursorError(ValueError):
+    pass
+
+
+def _sign_message_cursor(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    sig = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
+    return f"{_b64u(raw)}.{_b64u(sig)}"
+
+
+def _verify_message_cursor(token: str) -> dict[str, Any]:
+    try:
+        a, b = token.split(".", 1)
+        raw = _b64u_dec(a)
+        sig = _b64u_dec(b)
+        want = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
+        if not hmac.compare_digest(sig, want):
+            raise MessageCursorError("cursor_invalid")
+        payload = json.loads(raw.decode("utf-8"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise MessageCursorError("cursor_invalid")
+    if not isinstance(payload, dict):
+        raise MessageCursorError("cursor_invalid")
+    return payload
+
+
+def _encode_message_cursor(*, kind: str, session: "Session", pos: int) -> str:
+    return _sign_message_cursor(
+        {
+            "v": 1,
+            "kind": kind,
+            "thread_id": session.thread_id,
+            "log_path": str(session.log_path) if session.log_path is not None else None,
+            "pos": int(pos),
+        }
+    )
+
+
+def _decode_message_cursor(token: str, *, kind: str, session: "Session") -> int:
+    payload = _verify_message_cursor(token)
+    if payload.get("v") != 1 or payload.get("kind") != kind:
+        raise MessageCursorError("cursor_invalid")
+    if payload.get("thread_id") != session.thread_id:
+        raise MessageCursorError("cursor_invalid")
+    expected_log_path = str(session.log_path) if session.log_path is not None else None
+    if payload.get("log_path") != expected_log_path:
+        raise MessageCursorError("cursor_invalid")
+    pos = payload.get("pos")
+    if not isinstance(pos, int) or pos < 0:
+        raise MessageCursorError("cursor_invalid")
+    if session.log_path is not None and session.log_path.exists():
+        size = int(session.log_path.stat().st_size)
+        if pos > size:
+            raise MessageCursorError("cursor_invalid")
+    return int(pos)
+
+
 def _parse_cookies(header: str | None) -> dict[str, str]:
     if not header:
         return {}
@@ -2072,10 +2129,6 @@ def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, 
 
 def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
     return _rollout_log._read_chat_history_page(log_path, before_byte=before_byte, limit=limit)
-
-
-def _read_chat_legacy_count_page(log_path: Path, *, before: int, limit: int) -> tuple[list[dict[str, Any]], int, bool, int]:
-    return _rollout_log._read_chat_legacy_count_page(log_path, before=before, limit=limit)
 
 
 def _event_ts(obj: dict[str, Any]) -> float | None:
@@ -5131,8 +5184,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         {
                             "thread_id": s.thread_id,
                             "log_path": None,
-                            "after_byte": 0,
-                            "before_byte": 0,
+                            "live_cursor": None,
+                            "history_cursor": None,
                             "events": [],
                             "has_older": False,
                             "busy": bool(busy_val),
@@ -5144,6 +5197,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 events, before_byte, after_byte, has_older = _read_chat_tail_page(s.log_path, limit=limit)
                 events = MANAGER._attach_notification_texts(events)
+                live_cursor = _encode_message_cursor(kind="live", session=s, pos=after_byte)
+                history_cursor = _encode_message_cursor(kind="history", session=s, pos=before_byte) if has_older and before_byte > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                 _json_response(
                     self,
@@ -5151,8 +5206,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     {
                         "thread_id": s.thread_id,
                         "log_path": str(s.log_path),
-                        "after_byte": int(after_byte),
-                        "before_byte": int(before_byte),
+                        "live_cursor": live_cursor,
+                        "history_cursor": history_cursor,
                         "events": events,
                         "has_older": bool(has_older),
                         "busy": bool(busy_val),
@@ -5174,11 +5229,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
-                before_q = qs.get("before_byte")
-                if before_q is None or not before_q:
-                    _json_response(self, 400, {"error": "before_byte required"})
+                cursor_q = qs.get("cursor")
+                if cursor_q is None or not cursor_q or not cursor_q[0].strip():
+                    _json_response(self, 400, {"error": "cursor required"})
                     return
-                before_byte = max(0, int(before_q[0]))
                 limit_q = qs.get("limit")
                 if limit_q is None:
                     limit = 60
@@ -5195,8 +5249,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         {
                             "thread_id": s.thread_id,
                             "log_path": None,
-                            "after_byte": 0,
-                            "before_byte": 0,
+                            "history_cursor": None,
                             "events": [],
                             "has_older": False,
                             "busy": bool(busy_val),
@@ -5205,8 +5258,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
+                try:
+                    before_byte = _decode_message_cursor(cursor_q[0], kind="history", session=s)
+                except MessageCursorError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 events, next_before, has_older = _read_chat_history_page(s.log_path, before_byte=before_byte, limit=limit)
                 events = MANAGER._attach_notification_texts(events)
+                history_cursor = _encode_message_cursor(kind="history", session=s, pos=next_before) if has_older and next_before > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                 _json_response(
                     self,
@@ -5214,8 +5273,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     {
                         "thread_id": s.thread_id,
                         "log_path": str(s.log_path),
-                        "after_byte": int(s.log_path.stat().st_size),
-                        "before_byte": int(next_before),
+                        "history_cursor": history_cursor,
                         "events": events,
                         "has_older": bool(has_older),
                         "busy": bool(busy_val),
@@ -5239,13 +5297,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
-                after_q = qs.get("after_byte")
-                if after_q is None:
-                    after_byte = 0
-                else:
-                    if not after_q:
-                        raise ValueError("invalid after_byte")
-                    after_byte = max(0, int(after_q[0]))
+                cursor_q = qs.get("cursor")
+                if cursor_q is None or not cursor_q or not cursor_q[0].strip():
+                    _json_response(self, 400, {"error": "cursor required"})
+                    return
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                     _json_response(
@@ -5254,7 +5309,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         {
                             "thread_id": s.thread_id,
                             "log_path": None,
-                            "after_byte": 0,
+                            "live_cursor": None,
                             "events": [],
                             "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
                             "turn_start": False,
@@ -5268,6 +5323,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                     _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
                     return
+                try:
+                    after_byte = _decode_message_cursor(cursor_q[0], kind="live", session=s)
+                except MessageCursorError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 records, next_after = _read_jsonl_records_from_offset(s.log_path, after_byte)
                 objs = [record.obj for record in records]
                 events, meta_delta, flags, diag = _extract_chat_events(objs)
@@ -5278,6 +5338,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if token_update is not None and s2 is not None:
                     s2.token = token_update
                 events = MANAGER._attach_notification_texts(events)
+                live_cursor = _encode_message_cursor(kind="live", session=s, pos=next_after)
                 t0_state = time.perf_counter()
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
                 diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
@@ -5288,7 +5349,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     {
                         "thread_id": s.thread_id,
                         "log_path": str(s.log_path),
-                        "after_byte": int(next_after),
+                        "live_cursor": live_cursor,
                         "events": events,
                         "meta_delta": meta_delta,
                         "turn_start": bool(flags.get("turn_start")),
@@ -5301,120 +5362,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     },
                 )
                 _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
-                return
-
-            if path.startswith("/api/sessions/") and path.endswith("/messages"):
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                t0_total = time.perf_counter()
-                parts = path.split("/")
-                if len(parts) < 4:
-                    self.send_error(404)
-                    return
-                session_id = parts[3]
-                t0_meta = time.perf_counter()
-                MANAGER.refresh_session_meta(session_id)
-                dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                offset_q = qs.get("offset")
-                if offset_q is None:
-                    offset = 0
-                else:
-                    if not offset_q:
-                        raise ValueError("invalid offset")
-                    offset = max(0, int(offset_q[0]))
-                init_q = qs.get("init")
-                init = bool(init_q and init_q[0] == "1")
-                before_q = qs.get("before")
-                if before_q is None:
-                    before = 0
-                else:
-                    if not before_q:
-                        raise ValueError("invalid before")
-                    before = max(0, int(before_q[0]))
-                limit_q = qs.get("limit")
-                if limit_q is None:
-                    limit = 80
-                else:
-                    if not limit_q:
-                        raise ValueError("invalid limit")
-                    limit = int(limit_q[0])
-                limit = max(20, min(200, limit))
-                if s.log_path is None or (not s.log_path.exists()):
-                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "thread_id": s.thread_id,
-                            "log_path": None,
-                            "offset": 0,
-                            "events": [],
-                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
-                            "turn_start": False,
-                            "turn_end": False,
-                            "turn_aborted": False,
-                            "diag": {"pending_log": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
-                            "busy": bool(busy_val),
-                            "queue_len": int(queue_val),
-                            "token": token_val,
-                            "has_older": False,
-                            "next_before": 0,
-                        },
-                    )
-                    _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
-                    return
-                if offset == 0:
-                    events, next_before, has_older, new_off = _read_chat_legacy_count_page(s.log_path, before=before, limit=limit)
-                    events = MANAGER._attach_notification_texts(events)
-                    meta_delta = {"thinking": 0, "tool": 0, "system": 0}
-                    flags = {"turn_start": False, "turn_end": False, "turn_aborted": False}
-                    diag = {"legacy": True, "meta_refresh_ms": round(dt_meta_ms, 3)}
-                    token_update = None
-                else:
-                    records, new_off = _read_jsonl_records_from_offset(s.log_path, offset)
-                    objs = [record.obj for record in records]
-                    events, meta_delta, flags, diag = _extract_chat_events(objs)
-                    token_update = _extract_token_update(objs)
-                    if objs:
-                        MANAGER.mark_log_delta(session_id, objs=objs, new_off=new_off)
-                    s2 = MANAGER.get_session(session_id)
-                    if token_update is not None and s2 is not None:
-                        s2.token = token_update
-                    events = MANAGER._attach_notification_texts(events)
-                    has_older = False
-                    next_before = 0
-                    diag["legacy"] = True
-                    diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
-                t0_state = time.perf_counter()
-                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
-                diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "thread_id": s.thread_id,
-                        "log_path": str(s.log_path),
-                        "offset": int(new_off),
-                        "events": events,
-                        "meta_delta": meta_delta,
-                        "turn_start": bool(flags.get("turn_start")),
-                        "turn_end": bool(flags.get("turn_end")),
-                        "turn_aborted": bool(flags.get("turn_aborted")),
-                        "diag": diag,
-                        "busy": bool(busy_val),
-                        "queue_len": int(queue_val),
-                        "token": token_val,
-                        "has_older": bool(has_older),
-                        "next_before": int(next_before),
-                    },
-                )
-                _record_metric("api_messages_init_ms" if init else "api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/tail"):

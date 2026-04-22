@@ -1243,11 +1243,10 @@
         const composer = el("div", { class: "composer" });
 
         let selected = null;
-        let afterByte = 0;
+        let liveCursor = null;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
         const INIT_PAGE_LIMIT_MOBILE = 24;
         const OLDER_PAGE_LIMIT = 60;
-        const CACHE_LIMIT = 40;
         const CHAT_DOM_WINDOW = 260;
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
@@ -1255,7 +1254,7 @@
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
-        let beforeByte = 0;
+        let historyCursor = null;
         let hasOlder = false;
         let loadingOlder = false;
         let olderLoadRequestId = 0;
@@ -1269,15 +1268,13 @@
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
-	         let currentRunning = false;
-	         let openSwipeContent = null;
-	         let openSwipeSessionId = null;
-	         let openSwipeTargetX = 0;
-	         let swipeRefreshDeferred = false;
-	        const cacheBySession = new Map();
-        const cacheLoaded = new Set();
-        const cacheSaveTimers = new Map();
+         let currentRunning = false;
+         let openSwipeContent = null;
+         let openSwipeSessionId = null;
+         let openSwipeTargetX = 0;
+         let swipeRefreshDeferred = false;
 	        let sessionIndex = new Map(); // session_id -> session info
+        const sessionTailCache = new Map();
         let recentCwds = [];
 	        let sending = false;
 	        let localEchoSeq = 0;
@@ -2272,19 +2269,16 @@
         function resetChatRenderState() {
           invalidateOlderLoad();
           autoScroll = true;
-          pendingUser.length = 0;
           sending = false;
-          localEchoSeq = 0;
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
-          beforeByte = 0;
+          liveCursor = null;
+          historyCursor = null;
           hasOlder = false;
           loadingOlder = false;
           olderAutoTriggerAt = 0;
               clickMetricPending = false;
-		          chatInner.innerHTML = "";
-	          chatInner.appendChild(olderWrap);
-	          chatInner.appendChild(bottomSentinel);
+          clearTranscriptDom();
               setOlderState({ hasMore: false, isLoading: false });
 	          typingRow = null;
 	          jumpBtn.style.display = "none";
@@ -2293,6 +2287,12 @@
 	          lastScrollTop = 0;
 	          chat.scrollTop = 0;
 	        }
+
+        function clearTranscriptDom() {
+          chatInner.innerHTML = "";
+          chatInner.appendChild(olderWrap);
+          chatInner.appendChild(bottomSentinel);
+        }
 
         function setOlderState({ hasMore, isLoading }) {
           hasOlder = Boolean(hasMore);
@@ -2310,161 +2310,83 @@
           return OLDER_PAGE_LIMIT;
         }
 
-        function cacheStorageKey(sid) {
-          return `codexweb.cache.v7.${sid}`;
-        }
-
-        function normalizeCacheEvent(ev) {
+        function normalizeTailEvent(ev) {
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
           if (typeof ev.text !== "string" || !ev.text.trim()) return null;
           const out = { role: ev.role, text: ev.text };
           if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+          if (typeof ev.message_class === "string") out.message_class = ev.message_class;
+          if (typeof ev.message_id === "string") out.message_id = ev.message_id;
+          if (typeof ev.notification_text === "string") out.notification_text = ev.notification_text;
           return out;
         }
 
-        function loadCacheFromStorage(sid) {
-          if (!sid || cacheLoaded.has(sid)) return;
-          cacheLoaded.add(sid);
-          try {
-            const raw = localStorage.getItem(cacheStorageKey(sid));
-            if (!raw) return;
-            const obj = JSON.parse(raw);
-            if (!obj || typeof obj !== "object") return;
-            const eventsIn = Array.isArray(obj.events) ? obj.events : [];
-            const events = [];
-            for (const ev of eventsIn) {
-              const norm = normalizeCacheEvent(ev);
-              if (norm) events.push(norm);
-            }
-            if (!events.length) return;
-            if (events.length > CACHE_LIMIT) events.splice(0, events.length - CACHE_LIMIT);
-            const cache = {
-              thread_id: typeof obj.thread_id === "string" ? obj.thread_id : null,
-              log_path: typeof obj.log_path === "string" ? obj.log_path : null,
-              after_byte: Number(obj.after_byte) || 0,
-              before_byte: Number(obj.before_byte) || 0,
-              has_older: Boolean(obj.has_older),
-              events,
-            };
-            cacheBySession.set(sid, cache);
-          } catch {
-            // ignore corrupted cache
-          }
-        }
-
-        function getCache(sid) {
-          if (!sid) return null;
-          loadCacheFromStorage(sid);
-          return cacheBySession.get(sid) || null;
-        }
-
-        function saveCacheNow(sid) {
-          if (!sid) return;
-          const cache = cacheBySession.get(sid);
-          if (!cache) {
-            localStorage.removeItem(cacheStorageKey(sid));
-            return;
-          }
-          const payload = {
-            thread_id: typeof cache.thread_id === "string" ? cache.thread_id : null,
-            log_path: cache.log_path || null,
-            after_byte: Number(cache.after_byte) || 0,
-            before_byte: Number(cache.before_byte) || 0,
-            has_older: Boolean(cache.has_older),
-            events: Array.isArray(cache.events) ? cache.events : [],
-          };
-          try {
-            localStorage.setItem(cacheStorageKey(sid), JSON.stringify(payload));
-          } catch {
-            // ignore quota issues
-          }
-        }
-
-        function scheduleCacheSave(sid) {
-          if (!sid) return;
-          const existing = cacheSaveTimers.get(sid);
-          if (existing) clearTimeout(existing);
-          const t = setTimeout(() => {
-            cacheSaveTimers.delete(sid);
-            saveCacheNow(sid);
-          }, 400);
-          cacheSaveTimers.set(sid, t);
-        }
-
-        function setCacheMeta(sid, { threadId, logPath, afterByte: after, beforeByte: before, hasOlder } = {}) {
-          if (!sid) return;
-          const cache =
-            getCache(sid) || { thread_id: null, log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
-          const nextThreadId =
-            threadId === undefined ? (typeof cache.thread_id === "string" ? cache.thread_id : null) : threadId || null;
-          const nextLogPath =
-            logPath === undefined ? (typeof cache.log_path === "string" ? cache.log_path : null) : logPath || null;
-          const identityChanged =
-            (typeof cache.thread_id === "string" ? cache.thread_id : null) !== nextThreadId ||
-            (typeof cache.log_path === "string" ? cache.log_path : null) !== nextLogPath;
-          if (identityChanged) {
-            cache.events = [];
-            cache.after_byte = 0;
-            cache.before_byte = 0;
-            cache.has_older = false;
-          }
-          if (threadId !== undefined) cache.thread_id = nextThreadId;
-          if (logPath !== undefined) cache.log_path = logPath || null;
-          if (typeof after === "number" && Number.isFinite(after)) cache.after_byte = after;
-          if (typeof before === "number" && Number.isFinite(before)) cache.before_byte = before;
-          if (typeof hasOlder === "boolean") cache.has_older = hasOlder;
-          cacheBySession.set(sid, cache);
-          scheduleCacheSave(sid);
-        }
-
-        function cacheMatchesSession(cache, session) {
+        function tailCacheMatchesSession(cache, session) {
           if (!cache || !session) return false;
-          const cacheThreadId = typeof cache.thread_id === "string" ? cache.thread_id : null;
-          const cacheLogPath = typeof cache.log_path === "string" ? cache.log_path : null;
+          const cacheThreadId = typeof cache.threadId === "string" ? cache.threadId : null;
+          const cacheLogPath = typeof cache.logPath === "string" ? cache.logPath : null;
           const sessionThreadId = typeof session.thread_id === "string" ? session.thread_id : null;
           const sessionLogPath = typeof session.log_path === "string" ? session.log_path : null;
-          if (cacheThreadId !== sessionThreadId) return false;
-          return cacheLogPath === sessionLogPath;
+          return cacheThreadId === sessionThreadId && cacheLogPath === sessionLogPath;
         }
 
-        function replaceCacheEvents(sid, events) {
-          if (!sid) return;
-          const cache =
-            getCache(sid) || { log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
-          const out = [];
-          for (const ev of events || []) {
-            const norm = normalizeCacheEvent(ev);
-            if (!norm) continue;
-            out.push(norm);
+        function rememberTailSnapshot(sessionId, session, data) {
+          if (!sessionId || !session || !data || typeof data !== "object") return;
+          const events = [];
+          for (const ev of Array.isArray(data.events) ? data.events : []) {
+            const norm = normalizeTailEvent(ev);
+            if (norm) events.push(norm);
           }
-          if (out.length > CACHE_LIMIT) out.splice(0, out.length - CACHE_LIMIT);
-          cache.events = out;
-          cacheBySession.set(sid, cache);
-          scheduleCacheSave(sid);
+          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
+          if (events.length > maxEvents) events.splice(0, events.length - maxEvents);
+          sessionTailCache.set(sessionId, {
+            threadId: typeof session.thread_id === "string" ? session.thread_id : null,
+            logPath: typeof session.log_path === "string" ? session.log_path : null,
+            liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
+            historyCursor: typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null,
+            hasOlder: Boolean(data.has_older),
+            busy: Boolean(data.busy),
+            queueLen: Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0,
+            token: data.token || null,
+            events,
+          });
         }
 
-        function appendCacheEvents(sid, events) {
-          if (!sid || !events || !events.length) return;
-          const cache =
-            getCache(sid) || { log_path: null, after_byte: 0, before_byte: 0, has_older: false, events: [] };
-          const list = Array.isArray(cache.events) ? cache.events : [];
+        function appendTailSnapshotEvents(sessionId, events, { session = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
+          if (!sessionId || !events || !events.length) return;
+          const current = sessionTailCache.get(sessionId);
+          const list = current && Array.isArray(current.events) ? current.events.slice() : [];
           for (const ev of events) {
-            const norm = normalizeCacheEvent(ev);
+            const norm = normalizeTailEvent(ev);
             if (!norm) continue;
             list.push(norm);
           }
-          if (list.length > CACHE_LIMIT) list.splice(0, list.length - CACHE_LIMIT);
-          cache.events = list;
-          cacheBySession.set(sid, cache);
-          scheduleCacheSave(sid);
+          const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
+          if (list.length > maxEvents) list.splice(0, list.length - maxEvents);
+          const meta = session || sessionIndex.get(sessionId) || null;
+          sessionTailCache.set(sessionId, {
+            threadId: meta && typeof meta.thread_id === "string" ? meta.thread_id : current ? current.threadId : null,
+            logPath: meta && typeof meta.log_path === "string" ? meta.log_path : current ? current.logPath : null,
+            liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
+            historyCursor: current ? current.historyCursor : null,
+            hasOlder: current ? Boolean(current.hasOlder) : false,
+            busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
+            queueLen: Number.isFinite(Number(queueLen)) ? Number(queueLen) : current ? Number(current.queueLen || 0) : 0,
+            token: token !== undefined ? token : current ? current.token : null,
+            events: list,
+          });
         }
 
-        function clearCache(sid) {
-          if (!sid) return;
-          cacheBySession.delete(sid);
-          cacheLoaded.delete(sid);
-          cacheSaveTimers.delete(sid);
-          localStorage.removeItem(cacheStorageKey(sid));
+        function restorePendingUserRowsForSession(sessionId) {
+          if (!sessionId) return;
+          const items = pendingUser
+            .filter((item) => item && item.sessionId === sessionId)
+            .sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0));
+          for (const item of items) {
+            if (!item || !item.id) continue;
+            if (chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`)) continue;
+            appendEvent({ role: "user", text: item.text, pending: true, localId: item.id, ts: item.t0 });
+          }
         }
 
         function updateQueueBadge() {
@@ -2689,6 +2611,34 @@
           return { row, bubble };
         }
 
+        function safeMakeRow(ev, opts) {
+          try {
+            return makeRow(ev, opts);
+          } catch (err) {
+            console.error("makeRow failed", err);
+            const role = ev && ev.role === "user" ? "user" : "assistant";
+            const ts = opts && typeof opts.ts === "number" && Number.isFinite(opts.ts) ? opts.ts : null;
+            const pending = Boolean(opts && opts.pending);
+            const row = el("div", { class: `msg-row ${role}` });
+            row.dataset.role = role;
+            if (ts !== null) row.dataset.ts = String(ts);
+            const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
+            const md = el("div", { class: "md" });
+            md.textContent = typeof ev?.text === "string" ? ev.text : String(ev?.text ?? "");
+            bubble.appendChild(md);
+            if (ts !== null) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
+            if (pending) {
+              bubble.style.opacity = "0.72";
+              bubble.setAttribute("data-pending", "1");
+              if (ev && ev.localId) bubble.setAttribute("data-local-id", String(ev.localId));
+            }
+            const shell = el("div", { class: `msg-shell ${role}` });
+            shell.appendChild(bubble);
+            row.appendChild(shell);
+            return { row, bubble };
+          }
+        }
+
       function normalizeTextForPendingMatch(s) {
         // Normalize common platform newline differences to improve pending->ack reconciliation.
         return String(s || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -2728,7 +2678,7 @@
           return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
         }
 
-        function consumePendingUserIfMatches(ev) {
+        function consumePendingUserIfMatches(ev, sessionId = selected) {
           if (ev.role !== "user" || ev.pending) return false;
           const key = pendingMatchKey(ev.text);
           const loose = normalizeTextForPendingMatch(ev.text);
@@ -2736,6 +2686,7 @@
           const candidates = [];
           for (let i = 0; i < pendingUser.length; i++) {
             const x = pendingUser[i];
+            if (!x || x.sessionId !== sessionId) continue;
             if (x.key === key || x.loose === loose) candidates.push({ i, x });
           }
           if (!candidates.length) return false;
@@ -2769,9 +2720,6 @@
           const tsEl = pendingEl.querySelector(".ts");
           if (tsEl && typeof ev.ts === "number" && Number.isFinite(ev.ts)) tsEl.textContent = time24(new Date(ev.ts * 1000));
           rebuildDecorations({ preserveScroll: true });
-          if (selected) {
-            appendCacheEvents(selected, [ev]);
-          }
           markEventSeen(ev);
           return true;
         }
@@ -2894,16 +2842,16 @@
                  e.preventDefault();
                  e.stopPropagation();
                }
-               closeOpenSwipe();
-               if (!confirm("Delete this session?")) return;
-               try {
+              closeOpenSwipe();
+              if (!confirm("Delete this session?")) return;
+              try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                clearCache(s.session_id);
                 if (selected === s.session_id) {
                   selected = null;
-                   afterByte = 0;
                    activeLogPath = null;
                    activeThreadId = null;
+                   liveCursor = null;
+                   historyCursor = null;
                    turnOpen = false;
                    localStorage.removeItem("codexweb.selected");
                    setSessionHash("");
@@ -3131,26 +3079,7 @@
 	            openSwipeTargetX = 0;
 	            openSwipeContent = null;
 	          }
-          if (selected && !sessionIndex.has(selected)) {
-            selected = null;
-            afterByte = 0;
-            activeLogPath = null;
-            activeThreadId = null;
-            pollGen += 1;
-            if (pollTimer) clearTimeout(pollTimer);
-            pollTimer = null;
-            pollKickPending = false;
-            localStorage.removeItem("codexweb.selected");
-            setSessionHash("");
-            titleLabel.textContent = "No session selected";
-            setStatus({ running: false, queueLen: 0 });
-            setTyping(false);
-            resetChatRenderState();
-            turnOpen = false;
-            if (harnessMenuOpen) hideHarnessMenu();
-            updateHarnessBtnState();
-            updateQueueBadge();
-          } else if (selected) {
+          if (selected) {
             const s = sessionIndex.get(selected);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
           }
@@ -3166,21 +3095,47 @@
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-           const { row } = makeRow(ev, { ts, pending: Boolean(ev.pending) });
+           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });
           rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
-            if (!ev.pending && selected) {
-              appendCacheEvents(selected, [ev]);
-            }
           markEventSeen(ev);
 
           if (stick) {
             requestAnimationFrame(() => scrollToBottom());
           }
           syncJumpButton();
+        }
+
+        function renderTranscript(events, { preserveScroll = false } = {}) {
+          const msgs = [];
+          const seen = new Set();
+          for (const ev of events || []) {
+            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            if (consumePendingUserIfMatches(ev)) continue;
+            const k = eventKey(ev);
+            if (k && seen.has(k)) continue;
+            if (k) seen.add(k);
+            msgs.push(ev);
+          }
+          clearTranscriptDom();
+          if (!msgs.length) {
+            restorePendingUserRowsForSession(selected);
+            return;
+          }
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          const frag = document.createDocumentFragment();
+          for (const ev of msgs) {
+            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+            markEventSeen(ev);
+            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
+          }
+          chatInner.insertBefore(frag, bottomSentinel);
+          rebuildDecorations({ preserveScroll });
+          restorePendingUserRowsForSession(selected);
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
@@ -3194,7 +3149,7 @@
           const frag = document.createDocumentFragment();
           for (const ev of msgs) {
             const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
+            frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
           }
           const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;
           const anchorOffset = anchorRow ? anchorRow.offsetTop - chat.scrollTop : 0;
@@ -3228,20 +3183,23 @@
           olderLoadController = ctl;
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
-            const reqBefore = Math.max(0, Number(beforeByte) || 0);
-            const data = await api(`/api/sessions/${sid}/messages/history?before_byte=${reqBefore}&limit=${olderPageLimit()}`, {
+            if (!historyCursor) throw new Error("history cursor missing");
+            const reqCursor = historyCursor;
+            const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
               signal: ctl.signal,
             });
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             const evs = Array.isArray(data.events) ? data.events : [];
-            const nextBefore = Number.isFinite(Number(data.before_byte)) ? Number(data.before_byte) : reqBefore;
             const nextHasOlder = Boolean(data.has_older);
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
-            beforeByte = nextBefore;
-            setCacheMeta(sid, { beforeByte, hasOlder: nextHasOlder });
-          } catch {
+            historyCursor = typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
+          } catch (e) {
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
+            if (e && e.status === 409) {
+              await openSession(sid, { useCache: false });
+              return;
+            }
             setOlderState({ hasMore: hasOlder, isLoading: false });
           } finally {
             if (olderLoadController === ctl) olderLoadController = null;
@@ -3253,63 +3211,100 @@
           void loadOlderMessages({ auto: true });
         }
 
-       function startInitialRender(allEvents) {
-         backfillToken += 1;
-         const myToken = backfillToken;
+        function applySessionRuntimeFromTail(sessionId, data) {
+          activeLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
+          activeThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
+          liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+          historyCursor = typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
+          setOlderState({ hasMore: Boolean(data && data.has_older), isLoading: false });
+          const nowBusy = Boolean(data && data.busy);
+          turnOpen = nowBusy;
+          const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
+          setStatus({ running: nowBusy, queueLen });
+          setContext(data ? data.token : null);
+          setTyping(nowBusy);
+          const s = sessionIndex.get(sessionId);
+          if (s) rememberTailSnapshot(sessionId, s, data);
+        }
 
-         // Guardrail: startInitialRender is intended to backfill an empty chat view.
-         // If it is invoked again (e.g., due to a race), clear existing rendered rows
-         // to avoid duplicating the last assistant message.
-         if (chatInner.querySelector(".msg-row:not(.typing-row)")) {
-           for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
-           for (const n of Array.from(chatInner.querySelectorAll(".msg-row:not(.typing-row)"))) n.remove();
-         }
+        function renderSessionTail(events) {
+          renderTranscript(events, { preserveScroll: false });
+          markClickFirstPaint();
+          requestAnimationFrame(() => {
+            scrollToBottom();
+            requestAnimationFrame(() => scrollToBottom());
+          });
+        }
 
-         const msgs = [];
-         const initDedup = new Set();
-         for (const ev of allEvents) {
-               if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-               if (consumePendingUserIfMatches(ev)) continue;
-             const k = eventKey(ev);
-             if (k && initDedup.has(k)) continue;
-             if (k) initDedup.add(k);
-               msgs.push(ev);
-         }
-           if (!msgs.length) return;
-           if (selected) replaceCacheEvents(selected, msgs);
-           recentEventKeys.length = 0;
-           recentEventKeySet.clear();
-           for (const ev of msgs) {
-             markEventSeen(ev);
+        function applyCachedTail(sessionId, cache, sessionMeta) {
+          activeLogPath = cache.logPath || null;
+          activeThreadId = cache.threadId || null;
+          liveCursor = cache.liveCursor || null;
+          historyCursor = cache.historyCursor || null;
+          setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
+          renderSessionTail(cache.events);
+          const cachedBusy = Boolean(cache.busy);
+          turnOpen = cachedBusy;
+          setStatus({ running: cachedBusy, queueLen: Number.isFinite(Number(cache.queueLen)) ? Number(cache.queueLen) : 0 });
+          setContext(cache.token || (sessionMeta ? sessionMeta.token : null));
+          setTyping(cachedBusy);
+        }
+
+        async function openSession(sessionId, { useCache = true } = {}) {
+          pollGen += 1;
+          const myGen = pollGen;
+          if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
           }
-	          const frag = document.createDocumentFragment();
-          for (const ev of msgs) {
-            const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-            frag.appendChild(makeRow(ev, { ts, pending: false }).row);
-	          }
-	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
-	          chatInner.insertBefore(frag, anchor);
-            trimRenderedRows({ fromTop: true });
-	          rebuildDecorations({ preserveScroll: false });
-            markClickFirstPaint();
-	          // Ensure scroll-to-bottom happens after layout.
-	          requestAnimationFrame(() => {
-	            if (myToken !== backfillToken) return;
-	            scrollToBottom();
-	            requestAnimationFrame(() => {
-	              if (myToken !== backfillToken) return;
-	              scrollToBottom();
-	            });
-	          });
-	          backfillState = null;
-	        }
+          pollKickPending = false;
+
+          selected = sessionId;
+          localStorage.setItem("codexweb.selected", sessionId);
+          setSessionHash(sessionId);
+          activeLogPath = null;
+          activeThreadId = null;
+          liveCursor = null;
+          historyCursor = null;
+          turnOpen = false;
+          setAttachCount(0);
+          updateQueueBadge();
+          setStatus({ running: false, queueLen: 0 });
+          setContext(null);
+          setTyping(false);
+          resetChatRenderState();
+
+          const s = sessionIndex.get(sessionId);
+          titleLabel.textContent = s ? sessionTitleWithId(s) : sessionId ? String(sessionId) : "No session selected";
+          clickLoadT0 = performance.now();
+          clickMetricPending = true;
+
+          const cachedTail = s ? sessionTailCache.get(sessionId) : null;
+          if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
+            applyCachedTail(sessionId, cachedTail, s);
+          }
+
+          const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
+          if (pollGen !== myGen || selected !== sessionId) return null;
+          applySessionRuntimeFromTail(sessionId, data);
+          renderSessionTail(Array.isArray(data.events) ? data.events : []);
+
+          kickPoll(900);
+          if (isMobile()) setSidebarOpen(false);
+          updateHarnessBtnState();
+          if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
+          return data;
+        }
 
 			        async function pollMessages(sid = selected, gen = pollGen) {
 			          if (!sid) return;
 			          try {
-	            const prevAfter = afterByte;
-	            const reqAfter = afterByte;
-		            const data = await api(`/api/sessions/${sid}/messages/live?after_byte=${reqAfter}`);
+	            if (!liveCursor) {
+	              await openSession(sid, { useCache: false });
+	              return;
+	            }
+	            const reqCursor = liveCursor;
+		            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);
 	            if (gen !== pollGen || sid !== selected) return;
 	            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
 	            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
@@ -3318,102 +3313,58 @@
 	            if (activeLogPath && !lp) {
 	              activeLogPath = null;
 	              activeThreadId = tid;
-	              afterByte = 0;
 	              resetChatRenderState();
 	              setAttachCount(0);
 	              setTyping(false);
 	              turnOpen = false;
-	              setOlderState({ hasMore: false, isLoading: false });
-	              beforeByte = 0;
-                setCacheMeta(sid, { threadId: activeThreadId, logPath: null, afterByte: 0, beforeByte: 0, hasOlder: false });
-                replaceCacheEvents(sid, []);
-	              setStatus({ running: Boolean(nowBusy), queueLen: data.queue_len });
+	              setStatus({ running: nowBusy, queueLen: data.queue_len });
 	              setContext(data.token);
-	              setTyping(Boolean(nowBusy));
+	              setTyping(nowBusy);
 	              return;
 	            }
 	            if (activeLogPath && lp && lp !== activeLogPath) {
-	              activeLogPath = lp;
-	              activeThreadId = tid;
-	              afterByte = 0;
-	              resetChatRenderState();
-              setAttachCount(0);
-              setTyping(false);
-              turnOpen = false;
-              setStatus({ running: false, queueLen: 0 });
-              try {
-                const d2 = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
-                if (gen !== pollGen || sid !== selected) return;
-                if (d2 && typeof d2.log_path === "string") activeLogPath = d2.log_path;
-                if (d2 && typeof d2.thread_id === "string") activeThreadId = d2.thread_id;
-                afterByte = Number(d2.after_byte) || 0;
-                const evs2 = Array.isArray(d2.events) ? d2.events : [];
-                if (evs2.length) startInitialRender(evs2);
-                beforeByte = Number.isFinite(Number(d2.before_byte)) ? Number(d2.before_byte) : 0;
-                setOlderState({ hasMore: Boolean(d2.has_older), isLoading: false });
-                setCacheMeta(sid, {
-                  threadId: activeThreadId,
-                  logPath: activeLogPath,
-                  afterByte,
-                  beforeByte,
-                  hasOlder: Boolean(d2.has_older),
-                });
-                const nowBusy2 = Boolean(d2.busy);
-                turnOpen = Boolean(nowBusy2);
-                setStatus({ running: Boolean(turnOpen || nowBusy2), queueLen: d2.queue_len });
-                setContext(d2.token);
-                setTyping(Boolean(turnOpen || nowBusy2));
-                } catch (e2) {
-                  console.error("poll init reload failed", e2);
-                  throw e2;
-                }
-                return;
-             }
-	
-		            afterByte = Number(data.after_byte) || reqAfter;
+	              await openSession(sid, { useCache: false });
+	              return;
+	            }
+
+	            liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
 	            const evs = Array.isArray(data.events) ? data.events : [];
-              setCacheMeta(sid, {
-                threadId: tid || activeThreadId,
-                logPath: activeLogPath || lp || null,
-                afterByte,
-                beforeByte,
-                hasOlder,
-              });
-	            if (prevAfter === 0 && !chatInner.querySelector(".msg-row:not(.typing-row)") && evs.length) {
-	              startInitialRender(evs);
-            } else {
-              for (const ev of evs) appendEvent(ev);
-            }
+	            for (const ev of evs) appendEvent(ev);
 
             const turnStart = Boolean(data.turn_start);
             const turnEnd = Boolean(data.turn_end);
             const turnAborted = Boolean(data.turn_aborted);
-            if (turnStart) {
-              turnOpen = true;
-            }
-            if (!turnOpen && nowBusy) {
-              turnOpen = true;
-            }
-
-            if ((turnEnd || turnAborted) && turnOpen) {
-              turnOpen = false;
-            }
-		            if (turnOpen && !nowBusy) {
-		              turnOpen = false;
-		            }
+            if (turnStart) turnOpen = true;
+            if (!turnOpen && nowBusy) turnOpen = true;
+            if ((turnEnd || turnAborted) && turnOpen) turnOpen = false;
+		            if (turnOpen && !nowBusy) turnOpen = false;
 
 				            setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
 				            setContext(data.token);
 				            setTyping(Boolean(turnOpen || nowBusy));
-	            const s = sessionIndex.get(sid);
-            if (s) titleLabel.textContent = sessionTitleWithId(s);
+	            const s2 = sessionIndex.get(sid);
+            if (evs.length) {
+              appendTailSnapshotEvents(sid, evs, {
+                session: s2,
+                liveCursor,
+                busy: Boolean(turnOpen || nowBusy),
+                queueLen: data.queue_len,
+                token: data.token,
+              });
+            }
+            if (s2) titleLabel.textContent = sessionTitleWithId(s2);
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
+            if (e && e.status === 409) {
+              await openSession(sid, { useCache: false });
+              return;
+            }
             if (e && e.status === 404) {
               selected = null;
-              afterByte = 0;
               activeLogPath = null;
               activeThreadId = null;
+              liveCursor = null;
+              historyCursor = null;
               pollGen += 1;
               if (pollTimer) clearTimeout(pollTimer);
               pollTimer = null;
@@ -3477,72 +3428,18 @@
           pollTimer = setTimeout(pollLoop, ms);
         }
 
-        async function refreshInitPageState(sid, gen, { rerender = false } = {}) {
-          const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
-          if (pollGen !== gen || selected !== sid) return null;
-          const nextLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
-          const nextThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
-          const nextBeforeByteBase = Number.isFinite(Number(data.before_byte)) ? Number(data.before_byte) : 0;
-          const nextHasOlder = Boolean(data.has_older);
-          const identityChanged = (activeLogPath || null) !== nextLogPath || (activeThreadId || null) !== nextThreadId;
-          const nextAfterByte = Number(data.after_byte) || 0;
-          const previousAfterByte = Number(afterByte) || 0;
-          const tailAdvanced = previousAfterByte !== nextAfterByte;
-          const shouldRerender = rerender || identityChanged || tailAdvanced;
-          const nextBeforeByte =
-            shouldRerender || !(Number(beforeByte) > 0) ? nextBeforeByteBase : Number(beforeByte);
-
-          activeLogPath = nextLogPath;
-          activeThreadId = nextThreadId;
-          afterByte = nextAfterByte;
-          beforeByte = nextBeforeByte;
-          setOlderState({ hasMore: nextHasOlder, isLoading: false });
-          setCacheMeta(sid, {
-            threadId: activeThreadId,
-            logPath: activeLogPath,
-            afterByte,
-            beforeByte,
-            hasOlder: nextHasOlder,
-          });
-
-          const nowBusy = Boolean(data.busy);
-          turnOpen = Boolean(nowBusy);
-          setStatus({ running: Boolean(turnOpen || nowBusy), queueLen: data.queue_len });
-          setContext(data.token);
-          setTyping(Boolean(turnOpen || nowBusy));
-
-          if (shouldRerender) {
-            afterByte = nextAfterByte;
-            resetChatRenderState();
-            const evs = Array.isArray(data.events) ? data.events : [];
-            if (evs.length) startInitialRender(evs);
-            else replaceCacheEvents(sid, []);
-            beforeByte = nextBeforeByte;
-            setOlderState({ hasMore: nextHasOlder, isLoading: false });
-            setCacheMeta(sid, {
-              threadId: activeThreadId,
-              logPath: activeLogPath,
-              afterByte,
-              beforeByte,
-              hasOlder: nextHasOlder,
-            });
-          }
-          return data;
-        }
-
         async function jumpToLatest() {
           if (!selected) return;
           const sid = selected;
-          const gen = pollGen;
           invalidateOlderLoad();
           autoScroll = true;
           try {
-            await refreshInitPageState(sid, gen, { rerender: true });
+            await openSession(sid, { useCache: false });
           } catch (e) {
-            if (selected !== sid || pollGen !== gen) return;
+            if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
           }
-          if (selected !== sid || pollGen !== gen) return;
+          if (selected !== sid) return;
           requestAnimationFrame(() => {
             scrollToBottom();
             syncJumpButton();
@@ -3550,81 +3447,9 @@
           kickPoll(0);
         }
 
-		        async function selectSession(id) {
-	          pollGen += 1;
-	          const myGen = pollGen;
-	          if (pollTimer) {
-	            clearTimeout(pollTimer);
-	            pollTimer = null;
-	          }
-		          pollKickPending = false;
-            const sid = id;
-            selected = sid;
-            afterByte = 0;
-            activeLogPath = null;
-            activeThreadId = null;
-            resetChatRenderState();
-            setAttachCount(0);
-            localStorage.setItem("codexweb.selected", sid);
-            setSessionHash(sid);
-            updateQueueBadge();
-            setStatus({ running: false, queueLen: 0 });
-            setContext(null);
-            setTyping(false);
-            turnOpen = false;
-		          {
-		            const s = sessionIndex.get(sid);
-            if (s) titleLabel.textContent = sessionTitleWithId(s);
-            else titleLabel.textContent = sid ? String(sid) : "No session selected";
-		          }
-                clickLoadT0 = performance.now();
-                clickMetricPending = true;
-          if (pollGen !== myGen || selected !== sid) return;
-			          const s0 = sessionIndex.get(sid);
-			          if (s0 && s0.token) setContext(s0.token);
-                const cached = getCache(sid);
-                if (cached && !cacheMatchesSession(cached, s0)) clearCache(sid);
-                const hasCached = Boolean(
-                  cached &&
-                    cacheMatchesSession(cached, s0) &&
-                    Array.isArray(cached.events) &&
-                    cached.events.length &&
-                    Number(cached.after_byte) > 0
-                );
-                if (hasCached) {
-                  activeThreadId = typeof cached.thread_id === "string" ? cached.thread_id : null;
-                  activeLogPath = typeof cached.log_path === "string" ? cached.log_path : null;
-                  afterByte = Number(cached.after_byte) || 0;
-                  beforeByte = Number(cached.before_byte) || 0;
-                  setOlderState({ hasMore: Boolean(cached.has_older), isLoading: false });
-                  startInitialRender(cached.events);
-                  try {
-                    await refreshInitPageState(sid, myGen);
-                  } catch {
-                    // ignore and rely on poll refresh
-                  }
-                  try {
-                    await pollMessages(sid, myGen);
-                  } catch {
-                    // ignore and rely on next poll
-                  }
-                  if (pollGen !== myGen || selected !== sid) return;
-                } else {
-				            try {
-						            const data = await refreshInitPageState(sid, myGen, { rerender: true });
-					            if (pollGen !== myGen || selected !== sid) return;
-                    if (!data) return;
-			          } catch {
-			            await pollMessages(sid, myGen);
-			            if (pollGen !== myGen || selected !== sid) return;
-			          }
-                }
-            refreshSessions().catch((e) => console.error("refreshSessions failed", e));
-           kickPoll(900);
-           if (isMobile()) setSidebarOpen(false);
-           updateHarnessBtnState();
-           if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
-         }
+        async function selectSession(id) {
+          await openSession(id, { useCache: true });
+        }
 
         function parseHarnessDraftInt(name) {
           const raw = String(harnessNumberDraft[name] ?? "").trim();
@@ -8388,7 +8213,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const t0 = Date.now() / 1000;
           const renderHere = sessionId === selected;
           if (renderHere) {
-            pendingUser.push({ id: localId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
+            pendingUser.push({ id: localId, sessionId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
             appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
             turnOpen = true;
             currentRunning = true;
@@ -8400,7 +8225,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setAttachCount(0);
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
-            await refreshSessions();
+            void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
           } catch (e2) {
             setToast(`send error: ${e2.message}`);
             if (renderHere) {
@@ -8448,7 +8273,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            const remembered = localStorage.getItem("codexweb.selected");
 	            const first = sessions && sessions.length ? sessions[0].session_id : null;
 	            const pick = hashed && sessionIndex.has(hashed) ? hashed : remembered && sessionIndex.has(remembered) ? remembered : first;
-	            if (pick) selectSession(pick);
+	            if (pick) await selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {
 	              renderLogin(renderApp);

@@ -6,94 +6,76 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 
 class TestChatScrollbackSource(unittest.TestCase):
-    def test_jump_button_reloads_latest_tail_before_scroll(self) -> None:
+    def test_jump_button_reloads_selected_tail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function jumpToLatest() {")
         end = source.index("async function selectSession(id) {", start)
         block = source[start:end]
         self.assertIn("invalidateOlderLoad();", block)
-        self.assertIn("await refreshInitPageState(sid, gen, { rerender: true });", block)
+        self.assertIn("await openSession(sid, { useCache: false });", block)
         self.assertIn("kickPoll(0);", block)
 
-    def test_cached_session_selection_uses_byte_cursors(self) -> None:
+    def test_open_session_is_single_render_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function selectSession(id) {")
-        end = source.index("function parseHarnessDraftInt(", start)
+        start = source.index("async function openSession(")
+        end = source.index("async function pollMessages(", start)
         block = source[start:end]
-        self.assertIn("Number(cached.after_byte) > 0", block)
-        self.assertIn("afterByte = Number(cached.after_byte) || 0;", block)
-        self.assertIn("beforeByte = Number(cached.before_byte) || 0;", block)
-        self.assertIn("await refreshInitPageState(sid, myGen);", block)
+        self.assertIn("const cachedTail = s ? sessionTailCache.get(sessionId) : null;", block)
+        self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
+        self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
+        self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
+        self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
+        self.assertIn("renderSessionTail(Array.isArray(data.events) ? data.events : []);", block)
+        self.assertNotIn("refreshInitPageState", block)
 
-    def test_scroll_listener_triggers_older_autoload_at_top(self) -> None:
+    def test_refresh_sessions_is_sidebar_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index('chat.addEventListener("scroll", () => {')
-        end = source.index('chat.addEventListener(\n          "wheel"', start)
+        start = source.index("async function refreshSessions() {")
+        end = source.index("function appendEvent(ev) {", start)
         block = source[start:end]
-        self.assertIn("if (loadingOlder && cur > OLDER_CANCEL_PX) invalidateOlderLoad();", block)
-        self.assertIn("if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();", block)
+        self.assertNotIn("/messages/tail", block)
+        self.assertNotIn("/messages/live", block)
+        self.assertNotIn("/messages/history", block)
+        self.assertNotIn("await openSession(", block)
 
-    def test_prepending_older_events_keeps_view_near_top_boundary(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {")
-        end = source.index("async function loadOlderMessages", start)
-        block = source[start:end]
-        self.assertIn("const anchorRow = preserveViewport ? firstVisibleMessageRow() : null;", block)
-        self.assertIn("trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
-        self.assertIn("chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);", block)
-        self.assertIn("chat.scrollTop = 1;", block)
-
-    def test_load_older_messages_uses_history_before_byte_cursor(self) -> None:
+    def test_load_older_messages_uses_history_cursor_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function loadOlderMessages({ auto = false } = {}) {")
         end = source.index("function maybeAutoLoadOlder()", start)
         block = source[start:end]
-        self.assertIn("const reqBefore = Math.max(0, Number(beforeByte) || 0);", block)
-        self.assertIn("`/api/sessions/${sid}/messages/history?before_byte=${reqBefore}&limit=${olderPageLimit()}`", block)
-        self.assertIn("const nextBefore = Number.isFinite(Number(data.before_byte)) ? Number(data.before_byte) : reqBefore;", block)
-        self.assertIn("beforeByte = nextBefore;", block)
+        self.assertIn("if (!historyCursor) throw new Error(\"history cursor missing\");", block)
+        self.assertIn("`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`", block)
+        self.assertIn("historyCursor = typeof data.history_cursor === \"string\" && data.history_cursor ? data.history_cursor : null;", block)
+        self.assertIn("await openSession(sid, { useCache: false });", block)
 
-    def test_cache_metadata_tracks_thread_identity_and_byte_cursors(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("return `codexweb.cache.v7.${sid}`;", source)
-        start = source.index("function setCacheMeta(")
-        end = source.index("function cacheMatchesSession(", start)
-        block = source[start:end]
-        self.assertIn("afterByte: after", block)
-        self.assertIn("beforeByte: before", block)
-        self.assertIn("cache.after_byte = 0;", block)
-        self.assertIn("cache.before_byte = 0;", block)
-
-    def test_polling_uses_live_after_byte_cursor(self) -> None:
+    def test_poll_messages_uses_live_cursor_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function pollMessages(")
         end = source.index("async function pollLoop()", start)
         block = source[start:end]
-        self.assertIn("const reqAfter = afterByte;", block)
-        self.assertIn("await api(`/api/sessions/${sid}/messages/live?after_byte=${reqAfter}`);", block)
-        self.assertIn("afterByte = Number(data.after_byte) || reqAfter;", block)
-        self.assertNotIn("olderBefore += polledEventCount;", block)
+        self.assertIn("if (!liveCursor) {", block)
+        self.assertIn("await openSession(sid, { useCache: false });", block)
+        self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);", block)
+        self.assertIn("liveCursor = typeof data.live_cursor === \"string\" && data.live_cursor ? data.live_cursor : null;", block)
+        self.assertNotIn("after_byte", block)
+        self.assertNotIn("before_byte", block)
 
-    def test_refresh_init_uses_tail_and_preserves_existing_before_byte(self) -> None:
+    def test_no_transcript_localstorage_cache(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function refreshInitPageState(")
-        end = source.index("async function jumpToLatest()", start)
-        block = source[start:end]
-        self.assertIn("await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn("const nextAfterByte = Number(data.after_byte) || 0;", block)
-        self.assertIn("const previousAfterByte = Number(afterByte) || 0;", block)
-        self.assertIn("const tailAdvanced = previousAfterByte !== nextAfterByte;", block)
-        self.assertIn("const shouldRerender = rerender || identityChanged || tailAdvanced;", block)
-        self.assertIn("shouldRerender || !(Number(beforeByte) > 0) ? nextBeforeByteBase : Number(beforeByte);", block)
-        self.assertIn("afterByte = nextAfterByte;", block)
+        self.assertNotIn("codexweb.cache.v7", source)
+        self.assertNotIn("cacheStorageKey(", source)
+        self.assertNotIn("setCacheMeta(", source)
+        self.assertNotIn("replaceCacheEvents(", source)
+        self.assertNotIn("appendCacheEvents(", source)
 
-    def test_pending_log_transition_clears_cached_messages_and_byte_cursors(self) -> None:
+    def test_send_text_keeps_session_scoped_optimistic_echo(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function pollMessages(")
-        end = source.index("async function pollLoop()", start)
+        start = source.index("async function sendText(")
+        end = source.index("form.onsubmit = async", start)
         block = source[start:end]
-        self.assertIn("setCacheMeta(sid, { threadId: activeThreadId, logPath: null, afterByte: 0, beforeByte: 0, hasOlder: false });", block)
-        self.assertIn("replaceCacheEvents(sid, []);", block)
+        self.assertIn("pendingUser.push({ id: localId, sessionId, key: pendingMatchKey(raw)", block)
+        self.assertIn("appendEvent({ role: \"user\", text: raw, pending: true, localId, ts: t0 });", block)
+        self.assertIn("void refreshSessions().catch((e) => console.error(\"refreshSessions failed\", e));", block)
 
 
 if __name__ == "__main__":

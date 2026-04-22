@@ -456,17 +456,6 @@ def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> 
     return events, next_before, has_older
 
 
-def _read_chat_legacy_count_page(log_path: Path, *, before: int, limit: int) -> tuple[list[dict[str, Any]], int, bool, int]:
-    events, _next_before_byte, has_older, after_byte = _read_chat_page_reverse(
-        log_path,
-        limit=limit,
-        before_byte=None,
-        skip_events=before,
-    )
-    next_before = max(0, int(before)) + len(events) if has_older else 0
-    return events, next_before, has_older, after_byte
-
-
 def _read_chat_live_delta(
     log_path: Path,
     *,

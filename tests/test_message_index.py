@@ -4,7 +4,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codoxear.rollout_log import _read_chat_history_page
-from codoxear.rollout_log import _read_chat_legacy_count_page
 from codoxear.rollout_log import _read_chat_live_delta
 from codoxear.rollout_log import _read_chat_tail_page
 
@@ -52,30 +51,6 @@ class TestMessageIndex(unittest.TestCase):
             self.assertEqual(page3[-1].get("text"), "a39")
             self.assertFalse(has_older3)
             self.assertEqual(before3, 0)
-
-    def test_legacy_count_page_is_stateless_and_stable(self) -> None:
-        with TemporaryDirectory() as td:
-            path = Path(td) / "rollout.jsonl"
-            _write_assistant_rows(path, 200)
-
-            page1, next_before1, has_older1, after1 = _read_chat_legacy_count_page(path, before=0, limit=80)
-            self.assertEqual(page1[0].get("text"), "a120")
-            self.assertEqual(page1[-1].get("text"), "a199")
-            self.assertTrue(has_older1)
-            self.assertEqual(next_before1, 80)
-
-            page2, next_before2, has_older2, after2 = _read_chat_legacy_count_page(path, before=next_before1, limit=80)
-            self.assertEqual(page2[0].get("text"), "a40")
-            self.assertEqual(page2[-1].get("text"), "a119")
-            self.assertTrue(has_older2)
-            self.assertEqual(next_before2, 160)
-            self.assertEqual(after1, after2)
-
-            page3, next_before3, has_older3, _after3 = _read_chat_legacy_count_page(path, before=next_before2, limit=80)
-            self.assertEqual(page3[0].get("text"), "a0")
-            self.assertEqual(page3[-1].get("text"), "a39")
-            self.assertFalse(has_older3)
-            self.assertEqual(next_before3, 0)
 
     def test_stale_live_delta_does_not_affect_history_order(self) -> None:
         with TemporaryDirectory() as td:
