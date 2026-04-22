@@ -48,6 +48,8 @@ class TestVoicePlaybackSource(unittest.TestCase):
         self.assertIn("scheduleLiveAudioRetry(150, { resetSource: true });", source)
         self.assertIn("function startLiveAudioWatchdog()", source)
         self.assertIn("function stopLiveAudioWatchdog()", source)
+        self.assertIn("function resumeAnnouncementRuntime({ resetSource = false } = {})", source)
+        self.assertIn("startAnnouncementHeartbeat();", source)
         self.assertIn('liveAudio.addEventListener("timeupdate"', source)
         self.assertIn('liveAudio.addEventListener("waiting"', source)
         self.assertIn('liveAudio.addEventListener("stalled"', source)
@@ -55,6 +57,9 @@ class TestVoicePlaybackSource(unittest.TestCase):
         self.assertIn('document.addEventListener("visibilitychange"', source)
         self.assertIn('window.addEventListener("pageshow"', source)
         self.assertIn('window.addEventListener("online"', source)
+        self.assertIn('window.addEventListener("focus"', source)
+        self.assertIn('resumeAnnouncementRuntime({ resetSource: false });', source)
+        self.assertIn('resumeAnnouncementRuntime({ resetSource: true });', source)
 
     def test_voice_controls_attempt_to_arm_live_audio_from_user_gesture(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

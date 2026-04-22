@@ -3854,6 +3854,15 @@
           }, 15000);
         }
 
+        function resumeAnnouncementRuntime({ resetSource = false } = {}) {
+          if (!localAnnouncementEnabled) return;
+          startAnnouncementHeartbeat();
+          startLiveAudioWatchdog();
+          if (!liveAudioStarted && browserSupportsLiveAudioPlayback() && liveAudioHasReadySegments()) {
+            scheduleLiveAudioRetry(150, { resetSource });
+          }
+        }
+
         function scheduleLiveAudioRetry(delayMs = 1200, { resetSource = true } = {}) {
           if (!localAnnouncementEnabled) return;
           if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
@@ -8405,8 +8414,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               await loadVoiceSettings();
               await syncNotificationState();
               if (localAnnouncementEnabled) {
-                startAnnouncementHeartbeat();
-                startLiveAudioWatchdog();
+                resumeAnnouncementRuntime({ resetSource: false });
               }
               if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
@@ -8454,13 +8462,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               });
               document.addEventListener("visibilitychange", () => {
                 if (document.visibilityState !== "visible") return;
-                runLiveAudioWatchdog();
+                resumeAnnouncementRuntime({ resetSource: false });
               });
               window.addEventListener("pageshow", () => {
-                runLiveAudioWatchdog();
+                resumeAnnouncementRuntime({ resetSource: false });
               });
               window.addEventListener("online", () => {
-                runLiveAudioWatchdog();
+                resumeAnnouncementRuntime({ resetSource: true });
+              });
+              window.addEventListener("focus", () => {
+                resumeAnnouncementRuntime({ resetSource: false });
               });
 	          }
 	        })();
