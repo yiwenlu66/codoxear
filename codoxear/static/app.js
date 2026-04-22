@@ -5,9 +5,7 @@
 	        if (!Number.isFinite(raw) || raw <= 0) return 16 * 1024 * 1024;
 	        return Math.max(1, Math.floor(raw));
 	      })();
-	      let latestUiVersion = UI_VERSION;
-	      let uiReloadPending = false;
-	      function isTextEntryElement(target) {
+      function isTextEntryElement(target) {
 	        const el = target instanceof Element ? target.closest("textarea, input, [contenteditable], [contenteditable=''], [contenteditable='true']") : null;
 	        if (!(el instanceof HTMLElement)) return false;
 	        if (el.tagName !== "INPUT") return true;
@@ -195,15 +193,6 @@
         }
         if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
         return obj;
-      }
-
-      function maybeReloadForUpdatedUi(nextVersion) {
-        const next = String(nextVersion || "").trim();
-        if (!next || uiReloadPending || next === latestUiVersion) return false;
-        latestUiVersion = next;
-        uiReloadPending = true;
-        window.location.reload();
-        return true;
       }
 
       function fmtTs(ts) {
@@ -2762,7 +2751,6 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
-          if (maybeReloadForUpdatedUi(data && data.app_version)) return latestSessions;
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
           newSessionDefaults =
             data && typeof data.new_session_defaults === "object" && data.new_session_defaults
