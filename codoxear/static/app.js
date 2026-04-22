@@ -1341,6 +1341,8 @@
           subscriptions: [],
         };
         let liveAudioStarted = false;
+        let liveAudioSourceUrl = "";
+        let liveAudioHls = null;
         let liveAudioLastProgressTs = 0;
         let liveAudioLastCurrentTime = 0;
         let liveAudioSuspectSinceTs = 0;
@@ -3740,7 +3742,7 @@
           return Boolean(String(voiceSettings.tts_base_url || "").trim() && String(voiceSettings.tts_api_key || "").trim());
         }
 
-        function browserSupportsLiveAudioPlayback() {
+        function browserSupportsNativeLiveAudioPlayback() {
           if (!liveAudio || typeof liveAudio.canPlayType !== "function") return false;
           return ["application/vnd.apple.mpegurl", "audio/mpegurl"].some((kind) => {
             const result = liveAudio.canPlayType(kind);
@@ -3748,9 +3750,110 @@
           });
         }
 
+        function browserSupportsMseLiveAudioPlayback() {
+          const HlsCtor = window.Hls;
+          return !!(HlsCtor && typeof HlsCtor.isSupported === "function" && HlsCtor.isSupported());
+        }
+
+        function shouldPreferNativeLiveAudioPlayback() {
+          if (!browserSupportsNativeLiveAudioPlayback()) return false;
+          const vendor = String(navigator.vendor || "");
+          const ua = String(navigator.userAgent || "");
+          if (/Apple/i.test(vendor)) return true;
+          return /AppleWebKit/i.test(ua) && !/(?:Chrom(?:e|ium)|CriOS|Edg|OPR|Firefox|FxiOS)/i.test(ua);
+        }
+
+        function browserSupportsLiveAudioPlayback() {
+          return browserSupportsNativeLiveAudioPlayback() || browserSupportsMseLiveAudioPlayback();
+        }
+
         function liveAudioHasReadySegments() {
           const audio = voiceSettings && voiceSettings.audio ? voiceSettings.audio : {};
           return Number(audio.segment_count || 0) > 0;
+        }
+
+        function destroyLiveAudioHls() {
+          const current = liveAudioHls;
+          liveAudioHls = null;
+          if (!current || typeof current.destroy !== "function") return;
+          try {
+            current.destroy();
+          } catch (e) {
+            console.error("destroy live hls failed", e);
+          }
+        }
+
+        async function ensureLiveAudioPlaybackSource(nextSrc, { resetSource = false } = {}) {
+          if (resetSource) {
+            resetLiveAudioState();
+          }
+          if (shouldPreferNativeLiveAudioPlayback()) {
+            destroyLiveAudioHls();
+            if (resetSource || liveAudioSourceUrl !== nextSrc || liveAudio.currentSrc !== nextSrc) {
+              liveAudio.src = nextSrc;
+              liveAudioSourceUrl = nextSrc;
+            }
+            return;
+          }
+          if (!browserSupportsMseLiveAudioPlayback()) {
+            throw new Error("this browser does not support HLS audio playback in this app");
+          }
+          const HlsCtor = window.Hls;
+          const needsReload = resetSource || !liveAudioHls || liveAudioSourceUrl !== nextSrc;
+          if (!needsReload) return;
+          destroyLiveAudioHls();
+          liveAudio.removeAttribute("src");
+          liveAudio.load();
+          liveAudioSourceUrl = nextSrc;
+          const hls = new HlsCtor();
+          liveAudioHls = hls;
+          hls.on(HlsCtor.Events.ERROR, (_event, data) => {
+            if (!data) return;
+            console.error("live hls error", data.type, data.details, data);
+            if (!data.fatal || liveAudioHls !== hls) return;
+            switch (data.type) {
+              case HlsCtor.ErrorTypes.NETWORK_ERROR:
+                hls.startLoad();
+                return;
+              case HlsCtor.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                return;
+              default:
+                destroyLiveAudioHls();
+                liveAudioStarted = false;
+                liveAudioSuspectSinceTs = 0;
+                updateVoiceUi();
+                scheduleLiveAudioRetry(1200, { resetSource: true });
+            }
+          });
+          await new Promise((resolve, reject) => {
+            let settled = false;
+            const cleanup = () => {
+              hls.off(HlsCtor.Events.MEDIA_ATTACHED, onAttached);
+              hls.off(HlsCtor.Events.MANIFEST_PARSED, onManifestParsed);
+              hls.off(HlsCtor.Events.ERROR, onInitError);
+            };
+            const settle = (fn, value) => {
+              if (settled) return;
+              settled = true;
+              cleanup();
+              fn(value);
+            };
+            const onAttached = () => {
+              hls.loadSource(nextSrc);
+            };
+            const onManifestParsed = () => {
+              settle(resolve);
+            };
+            const onInitError = (_event, data) => {
+              if (!data || !data.fatal) return;
+              settle(reject, new Error(data.details || data.type || "failed to load HLS stream"));
+            };
+            hls.on(HlsCtor.Events.MEDIA_ATTACHED, onAttached);
+            hls.on(HlsCtor.Events.MANIFEST_PARSED, onManifestParsed);
+            hls.on(HlsCtor.Events.ERROR, onInitError);
+            hls.attachMedia(liveAudio);
+          });
         }
 
         async function sendAnnouncementHeartbeat(enabled) {
@@ -3780,12 +3883,14 @@
         }
 
         function resetLiveAudioState() {
+          destroyLiveAudioHls();
           try {
             liveAudio.pause();
           } catch (_error) {}
           liveAudio.removeAttribute("src");
           liveAudio.load();
           liveAudioStarted = false;
+          liveAudioSourceUrl = "";
           liveAudioLastProgressTs = 0;
           liveAudioLastCurrentTime = 0;
           liveAudioSuspectSinceTs = 0;
@@ -4070,8 +4175,10 @@
             audio: data && typeof data.audio === "object" && data.audio ? data.audio : voiceSettings.audio,
             notifications: data && typeof data.notifications === "object" && data.notifications ? data.notifications : voiceSettings.notifications,
           };
-          if (liveAudioStarted && liveAudio.src !== currentVoiceStreamUrl()) {
-            liveAudio.src = currentVoiceStreamUrl();
+          if (liveAudioStarted && liveAudioSourceUrl !== currentVoiceStreamUrl()) {
+            void ensureLiveAudioPlaybackSource(currentVoiceStreamUrl(), { resetSource: true }).catch((e) => {
+              console.error("reload live audio source failed", e);
+            });
           }
           updateVoiceUi();
           if (localAnnouncementEnabled && !liveAudioStarted && browserSupportsLiveAudioPlayback() && liveAudioHasReadySegments()) {
@@ -4227,18 +4334,13 @@
 
         async function startLiveAudioPlayback({ resetSource = false } = {}) {
           if (!browserSupportsLiveAudioPlayback()) {
-            throw new Error("this browser does not support native HLS audio playback; use Safari or an installed iOS PWA");
+            throw new Error("this browser does not support HLS audio playback in this app");
           }
           if (!liveAudioHasReadySegments()) {
             throw new Error("no live audio segments are available yet; wait for the first announcement and try again");
           }
           const nextSrc = currentVoiceStreamUrl();
-          if (resetSource) {
-            resetLiveAudioState();
-          }
-          if (resetSource || liveAudio.currentSrc !== nextSrc) {
-            liveAudio.src = nextSrc;
-          }
+          await ensureLiveAudioPlaybackSource(nextSrc, { resetSource });
           await liveAudio.play();
           liveAudioStarted = true;
           markLiveAudioProgress();
@@ -4249,7 +4351,7 @@
           const message = error && error.message ? String(error.message) : "";
           if (/unsupported/i.test(message)) {
             if (!browserSupportsLiveAudioPlayback()) {
-              return "this browser does not support native HLS audio playback; use Safari or an installed iOS PWA";
+              return "this browser does not support HLS audio playback in this app";
             }
             if (!liveAudioHasReadySegments()) {
               return "no live audio segments are available yet; wait for the first announcement and try again";
