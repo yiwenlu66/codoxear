@@ -20,12 +20,19 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function openSession(")
         end = source.index("async function pollMessages(", start)
         block = source[start:end]
+        self.assertIn("const optimisticBusy = Boolean(s && s.busy);", block)
+        self.assertIn("setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });", block)
+        self.assertIn("setTyping(optimisticBusy);", block)
         self.assertIn("const cachedTail = s ? sessionTailCache.get(sessionId) : null;", block)
         self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
         self.assertIn("renderSessionTail(Array.isArray(data.events) ? data.events : []);", block)
+        self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
+        self.assertLess(
+            block.index("renderSessionTail(Array.isArray(data.events) ? data.events : []);"),
+            block.index("applySessionRuntimeFromTail(sessionId, data);"),
+        )
         self.assertNotIn("refreshInitPageState", block)
 
     def test_refresh_sessions_is_sidebar_only(self) -> None:

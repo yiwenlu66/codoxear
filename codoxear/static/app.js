@@ -3231,9 +3231,16 @@
           historyCursor = cache.historyCursor || null;
           setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
           renderSessionTail(cache.events);
-          const cachedBusy = Boolean(cache.busy);
+          const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
+          const cachedBusy = Boolean(cache.busy) || metaBusy;
+          const queueLen =
+            sessionMeta && Number.isFinite(Number(sessionMeta.queue_len))
+              ? Number(sessionMeta.queue_len)
+              : Number.isFinite(Number(cache.queueLen))
+                ? Number(cache.queueLen)
+                : 0;
           turnOpen = cachedBusy;
-          setStatus({ running: cachedBusy, queueLen: Number.isFinite(Number(cache.queueLen)) ? Number(cache.queueLen) : 0 });
+          setStatus({ running: cachedBusy, queueLen });
           setContext(cache.token || (sessionMeta ? sessionMeta.token : null));
           setTyping(cachedBusy);
         }
@@ -3266,6 +3273,12 @@
           titleLabel.textContent = s ? sessionTitleWithId(s) : sessionId ? String(sessionId) : "No session selected";
           clickLoadT0 = performance.now();
           clickMetricPending = true;
+          const optimisticBusy = Boolean(s && s.busy);
+          const optimisticQueueLen = s && Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+          turnOpen = optimisticBusy;
+          setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
+          setContext(s ? s.token || null : null);
+          setTyping(optimisticBusy);
 
           const cachedTail = s ? sessionTailCache.get(sessionId) : null;
           if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
@@ -3274,8 +3287,8 @@
 
           const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== myGen || selected !== sessionId) return null;
-          applySessionRuntimeFromTail(sessionId, data);
           renderSessionTail(Array.isArray(data.events) ? data.events : []);
+          applySessionRuntimeFromTail(sessionId, data);
 
           kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
