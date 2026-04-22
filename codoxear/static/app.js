@@ -1240,6 +1240,7 @@
         const CHAT_DOM_WINDOW_WITH_HISTORY_SLACK = CHAT_DOM_WINDOW + OLDER_PAGE_LIMIT;
         const OLDER_TOP_TRIGGER_PX = 1;
         const OLDER_CANCEL_PX = 48;
+        let activeTranscriptState = "pending_bind";
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
@@ -1263,6 +1264,7 @@
          let openSwipeTargetX = 0;
          let swipeRefreshDeferred = false;
 	        let sessionIndex = new Map(); // session_id -> session info
+        const sessionTranscriptSlots = new Map();
         const sessionTailCache = new Map();
         let recentCwds = [];
 	        let sending = false;
@@ -2312,6 +2314,85 @@
           return out;
         }
 
+        function normalizeTranscriptState(data) {
+          const raw = data && typeof data.transcript_state === "string" ? data.transcript_state : "";
+          if (raw === "bound" || raw === "pending_bind") return raw;
+          return data && typeof data.log_path === "string" && data.log_path ? "bound" : "pending_bind";
+        }
+
+        function transcriptKey(threadId, logPath) {
+          if (typeof threadId !== "string" || !threadId) return null;
+          if (typeof logPath !== "string" || !logPath) return null;
+          return `${threadId}\n${logPath}`;
+        }
+
+        function transcriptSnapshotFromData(data) {
+          const state = normalizeTranscriptState(data);
+          const threadId = state === "bound" && typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
+          const logPath = state === "bound" && typeof data?.log_path === "string" && data.log_path ? data.log_path : null;
+          return {
+            state,
+            threadId,
+            logPath,
+            key: state === "bound" ? transcriptKey(threadId, logPath) : null,
+          };
+        }
+
+        function getSessionTranscriptSlot(sessionId) {
+          if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0 };
+          const current = sessionTranscriptSlots.get(sessionId);
+          if (current) return current;
+          return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0 };
+        }
+
+        function syncActiveTranscriptSlot(sessionId) {
+          const slot = getSessionTranscriptSlot(sessionId);
+          activeTranscriptState = slot.state;
+          activeThreadId = slot.threadId;
+          activeLogPath = slot.logPath;
+          return slot;
+        }
+
+        function dropPendingUserRows(sessionId, predicate = null) {
+          if (!sessionId || !pendingUser.length) return;
+          const kept = [];
+          for (const item of pendingUser) {
+            const match = !!(item && item.sessionId === sessionId && (!predicate || predicate(item)));
+            if (!match) {
+              kept.push(item);
+              continue;
+            }
+            if (selected === sessionId && item.id) {
+              const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`);
+              const row = pendingEl ? pendingEl.closest(".msg-row") : null;
+              if (row) row.remove();
+            }
+          }
+          pendingUser.length = 0;
+          pendingUser.push(...kept);
+        }
+
+        function updateSessionTranscriptSlot(sessionId, data) {
+          const prev = getSessionTranscriptSlot(sessionId);
+          const snap = transcriptSnapshotFromData(data);
+          let epoch = prev.epoch;
+          let resetPending = false;
+          if (snap.state === "pending_bind") {
+            if (prev.state === "bound") {
+              epoch += 1;
+              resetPending = true;
+            }
+          } else if (prev.state === "bound" && prev.key !== snap.key) {
+            epoch += 1;
+            resetPending = true;
+          }
+          const next = { ...snap, epoch };
+          if (sessionId) sessionTranscriptSlots.set(sessionId, next);
+          if (resetPending) dropPendingUserRows(sessionId, () => true);
+          if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
+          return { previous: prev, current: next, resetPending };
+        }
+
         function tailCacheMatchesSession(cache, session) {
           if (!cache || !session) return false;
           const cacheThreadId = typeof cache.threadId === "string" ? cache.threadId : null;
@@ -2323,6 +2404,10 @@
 
         function rememberTailSnapshot(sessionId, session, data) {
           if (!sessionId || !session || !data || typeof data !== "object") return;
+          if (normalizeTranscriptState(data) !== "bound") {
+            sessionTailCache.delete(sessionId);
+            return;
+          }
           const events = [];
           for (const ev of Array.isArray(data.events) ? data.events : []) {
             const norm = normalizeTailEvent(ev);
@@ -2370,8 +2455,9 @@
 
         function restorePendingUserRowsForSession(sessionId) {
           if (!sessionId) return;
+          const slot = getSessionTranscriptSlot(sessionId);
           const items = pendingUser
-            .filter((item) => item && item.sessionId === sessionId)
+            .filter((item) => item && item.sessionId === sessionId && Number(item.epoch || 0) === Number(slot.epoch || 0))
             .sort((a, b) => Number(a.t0 || 0) - Number(b.t0 || 0));
           for (const item of items) {
             if (!item || !item.id) continue;
@@ -2669,17 +2755,19 @@
           return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
         }
 
-        function consumePendingUserIfMatches(ev, sessionId = selected) {
-          if (ev.role !== "user" || ev.pending) return false;
-          const key = pendingMatchKey(ev.text);
-          const loose = normalizeTextForPendingMatch(ev.text);
-          const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-          const candidates = [];
-          for (let i = 0; i < pendingUser.length; i++) {
-            const x = pendingUser[i];
-            if (!x || x.sessionId !== sessionId) continue;
-            if (x.key === key || x.loose === loose) candidates.push({ i, x });
-          }
+      function takePendingUserMatch(ev, sessionId = selected) {
+        if (ev.role !== "user" || ev.pending) return false;
+        const slot = getSessionTranscriptSlot(sessionId);
+        const slotEpoch = Number(slot.epoch || 0);
+        const key = pendingMatchKey(ev.text);
+        const loose = normalizeTextForPendingMatch(ev.text);
+        const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
+        const candidates = [];
+        for (let i = 0; i < pendingUser.length; i++) {
+          const x = pendingUser[i];
+          if (!x || x.sessionId !== sessionId || Number(x.epoch || 0) !== slotEpoch) continue;
+          if (x.key === key || x.loose === loose) candidates.push({ i, x });
+        }
           if (!candidates.length) return false;
           let best = candidates[0];
           if (evTs !== null) {
@@ -2690,14 +2778,21 @@
                 best = c;
                 bestD = d;
               }
-            }
           }
-          const idx = best.i;
-          if (idx < 0) return false;
-          const { id } = pendingUser[idx];
-          pendingUser.splice(idx, 1);
-          const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
-          if (!pendingEl) return false;
+        }
+        const idx = best.i;
+        if (idx < 0) return null;
+        const match = pendingUser[idx];
+        pendingUser.splice(idx, 1);
+        return match || null;
+      }
+
+      function consumePendingUserIfMatches(ev, sessionId = selected) {
+        const match = takePendingUserMatch(ev, sessionId);
+        if (!match) return false;
+        const { id } = match;
+        const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${id}"]`);
+        if (!pendingEl) return false;
 
           pendingEl.style.opacity = "1";
           pendingEl.removeAttribute("data-local-id");
@@ -2838,6 +2933,7 @@
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 if (selected === s.session_id) {
                   selected = null;
+                   activeTranscriptState = "pending_bind";
                    activeLogPath = null;
                    activeThreadId = null;
                    liveCursor = null;
@@ -2855,6 +2951,9 @@
                    if (harnessMenuOpen) hideHarnessMenu();
                    updateHarnessBtnState();
                  }
+                 sessionTranscriptSlots.delete(s.session_id);
+                 sessionTailCache.delete(s.session_id);
+                 dropPendingUserRows(s.session_id, () => true);
                  await refreshSessions();
                } catch (err) {
                  setToast(`delete error: ${err.message}`);
@@ -3104,7 +3203,7 @@
           const seen = new Set();
           for (const ev of events || []) {
             if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            if (consumePendingUserIfMatches(ev)) continue;
+            takePendingUserMatch(ev);
             const k = eventKey(ev);
             if (k && seen.has(k)) continue;
             if (k) seen.add(k);
@@ -3202,19 +3301,22 @@
         }
 
         function applySessionRuntimeFromTail(sessionId, data) {
-          activeLogPath = data && typeof data.log_path === "string" ? data.log_path : null;
-          activeThreadId = data && typeof data.thread_id === "string" ? data.thread_id : null;
-          liveCursor = typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
-          historyCursor = typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
-          setOlderState({ hasMore: Boolean(data && data.has_older), isLoading: false });
+          const slot = syncActiveTranscriptSlot(sessionId);
+          liveCursor = slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
+          historyCursor = slot.state === "bound" && typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
+          setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
           const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
           setStatus({ running: nowBusy, queueLen });
           setContext(data ? data.token : null);
           setTyping(nowBusy);
-          const s = sessionIndex.get(sessionId);
-          if (s) rememberTailSnapshot(sessionId, s, data);
+          if (slot.state === "bound") {
+            const s = sessionIndex.get(sessionId);
+            if (s) rememberTailSnapshot(sessionId, s, data);
+          } else {
+            sessionTailCache.delete(sessionId);
+          }
         }
 
         function renderSessionTail(events) {
@@ -3226,9 +3328,21 @@
           });
         }
 
+        function renderPendingTranscriptSlot(sessionId) {
+          clearTranscriptDom();
+          setOlderState({ hasMore: false, isLoading: false });
+          restorePendingUserRowsForSession(sessionId);
+          markClickFirstPaint();
+          syncJumpButton();
+        }
+
         function applyCachedTail(sessionId, cache, sessionMeta) {
-          activeLogPath = cache.logPath || null;
-          activeThreadId = cache.threadId || null;
+          updateSessionTranscriptSlot(sessionId, {
+            transcript_state: "bound",
+            thread_id: cache.threadId || (sessionMeta ? sessionMeta.thread_id : null),
+            log_path: cache.logPath || (sessionMeta ? sessionMeta.log_path : null),
+          });
+          syncActiveTranscriptSlot(sessionId);
           liveCursor = cache.liveCursor || null;
           historyCursor = cache.historyCursor || null;
           setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
@@ -3259,6 +3373,7 @@
           selected = sessionId;
           localStorage.setItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
+          activeTranscriptState = "pending_bind";
           activeLogPath = null;
           activeThreadId = null;
           liveCursor = null;
@@ -3289,7 +3404,9 @@
 
           const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== myGen || selected !== sessionId) return null;
-          renderSessionTail(Array.isArray(data.events) ? data.events : []);
+          const slotChange = updateSessionTranscriptSlot(sessionId, data);
+          if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+          else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
 
           kickPoll(900);
@@ -3303,29 +3420,31 @@
 			          if (!sid) return;
 			          try {
 	            if (!liveCursor) {
+	              if (activeTranscriptState === "pending_bind") {
+	                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
+	                if (gen !== pollGen || sid !== selected) return;
+	                const slotChange = updateSessionTranscriptSlot(sid, data);
+	                if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+	                applySessionRuntimeFromTail(sid, data);
+	                return;
+	              }
 	              await openSession(sid, { useCache: false });
 	              return;
 	            }
 	            const reqCursor = liveCursor;
 		            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);
 	            if (gen !== pollGen || sid !== selected) return;
-	            const lp = data && typeof data.log_path === "string" ? data.log_path : null;
-	            const tid = data && typeof data.thread_id === "string" ? data.thread_id : null;
+	            const slotInfo = transcriptSnapshotFromData(data);
 	            const nowBusy = Boolean(data.busy);
-	            if (!activeLogPath && lp) activeLogPath = lp;
-	            if (activeLogPath && !lp) {
-	              activeLogPath = null;
-	              activeThreadId = tid;
+	            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
+	              updateSessionTranscriptSlot(sid, data);
 	              resetChatRenderState();
+	              renderPendingTranscriptSlot(sid);
 	              setAttachCount(0);
-	              setTyping(false);
-	              turnOpen = false;
-	              setStatus({ running: nowBusy, queueLen: data.queue_len });
-	              setContext(data.token);
-	              setTyping(nowBusy);
+	              applySessionRuntimeFromTail(sid, data);
 	              return;
 	            }
-	            if (activeLogPath && lp && lp !== activeLogPath) {
+	            if (activeTranscriptState === "bound" && slotInfo.state === "bound" && slotInfo.logPath !== activeLogPath) {
 	              await openSession(sid, { useCache: false });
 	              return;
 	            }
@@ -8465,7 +8584,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const t0 = Date.now() / 1000;
           const renderHere = sessionId === selected;
           if (renderHere) {
-            pendingUser.push({ id: localId, sessionId, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
+            const slot = getSessionTranscriptSlot(sessionId);
+            pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
             appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
             turnOpen = true;
             currentRunning = true;
