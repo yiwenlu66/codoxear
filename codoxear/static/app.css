@@ -1,15 +1,15 @@
       :root {
-        --bg: #e9eef5;
+        --bg: #f5f5f5;
         --panel: #ffffff;
-        --border: rgba(15, 23, 42, 0.12);
-        --text: #111827;
-        --muted: rgba(17, 24, 39, 0.6);
-        --accent: #1d4ed8;
-        --accent-weak: rgba(29, 78, 216, 0.1);
-        --danger: #b91c1c;
-        --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08);
+        --border: rgba(0, 0, 0, 0.08);
+        --text: #1a1a1a;
+        --muted: rgba(0, 0, 0, 0.45);
+        --accent: #333333;
+        --accent-weak: rgba(0, 0, 0, 0.06);
+        --danger: #c53030;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
         --sidebar-w: 320px;
-        --bubble-user: #cfe7ff;
+        --bubble-user: #f0f0f0;
         --bubble-assistant: #ffffff;
       }
 
@@ -194,7 +194,7 @@
         background: rgba(107, 114, 128, 0.85);
       }
       .ownDot.owned {
-        background: rgba(29, 78, 216, 0.95);
+        background: rgba(0, 0, 0, 0.8);
       }
       .stateDot {
         width: 8px;
@@ -204,7 +204,7 @@
         background: rgba(107, 114, 128, 0.85);
       }
       .stateDot.busy {
-        background: rgba(29, 78, 216, 0.95);
+        background: rgba(0, 0, 0, 0.8);
       }
       .stateDot.suppressed {
         background: rgba(234, 88, 12, 0.92);
@@ -591,9 +591,9 @@
         cursor: pointer;
       }
       button.primary {
-        border-color: rgba(29, 78, 216, 0.35);
-        background: rgba(29, 78, 216, 0.08);
-        color: #1d4ed8;
+        border-color: rgba(0, 0, 0, 0.25);
+        background: rgba(0, 0, 0, 0.05);
+        color: #333333;
       }
       button:disabled {
         opacity: 0.6;
@@ -634,7 +634,7 @@
         height: 18px;
         padding: 0 5px;
         border-radius: 999px;
-        background: rgba(29, 78, 216, 0.95);
+        background: rgba(0, 0, 0, 0.8);
         color: #ffffff;
         font-size: 11px;
         line-height: 18px;
@@ -659,9 +659,9 @@
         white-space: nowrap;
       }
       .status-chip.running {
-        color: rgba(29, 78, 216, 0.9);
-        border-color: rgba(29, 78, 216, 0.25);
-        background: rgba(29, 78, 216, 0.06);
+        color: rgba(0, 0, 0, 0.7);
+        border-color: rgba(0, 0, 0, 0.15);
+        background: rgba(0, 0, 0, 0.04);
       }
 
       .chatWrap {
@@ -772,7 +772,7 @@
       }
       .msg-copy-btn.copied {
         border-color: rgba(37, 99, 235, 0.45);
-        background: rgba(29, 78, 216, 0.08);
+        background: rgba(0, 0, 0, 0.05);
         color: var(--accent);
       }
       .msg-copy-btn .icon {
@@ -942,6 +942,20 @@
       .md tbody tr:last-child td {
         border-bottom: 0;
       }
+      .interactive-prompt { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
+      .interactive-prompt-header { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
+      .interactive-prompt-options { display: flex; flex-wrap: wrap; gap: 6px; }
+      .interactive-option-btn { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+      .interactive-option-btn:hover:not(:disabled) { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.2); }
+      .interactive-option-btn.selected { background: rgba(0,0,0,0.08); border-color: var(--accent); font-weight: 500; }
+      .interactive-option-btn:disabled { opacity: 0.5; cursor: default; }
+      .interactive-option-btn.danger { color: var(--danger); border-color: rgba(197,48,48,0.2); }
+      .interactive-option-btn.danger:hover:not(:disabled) { background: rgba(197,48,48,0.06); }
+      .interactive-question-group { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+      .interactive-question-group:first-child { border-top: none; padding-top: 0; }
+      .interactive-question-group.pending { opacity: 0.4; }
+      .interactive-question-group.answered .interactive-option-btn:not(.selected) { display: none; }
+      .interactive-question-group.answered .interactive-option-btn.selected { background: rgba(0,0,0,0.06); border-color: var(--accent); cursor: default; }
       .md th {
         font-weight: 650;
         background: rgba(226, 232, 240, 0.8);
@@ -1065,13 +1079,13 @@ select {
         background: rgba(15, 23, 42, 0.05);
       }
       .composer .icon-btn.primary {
-        border: 1px solid rgba(29, 78, 216, 0.18);
-        background: rgba(29, 78, 216, 0.92);
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: rgba(0, 0, 0, 0.78);
         color: #ffffff;
         border-radius: 999px;
       }
       .composer .icon-btn.primary:hover {
-        background: rgba(29, 78, 216, 1);
+        background: rgba(0, 0, 0, 0.85);
       }
       .composer .icon-btn.primary .icon {
         filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.06));
@@ -1197,8 +1211,8 @@ select {
       }
       #announceBtn.active,
       #notificationBtn.active {
-        background: rgba(29, 78, 216, 0.12);
-        border-color: rgba(29, 78, 216, 0.28);
+        background: rgba(0, 0, 0, 0.08);
+        border-color: rgba(0, 0, 0, 0.18);
         color: var(--accent);
       }
       .modalBackdrop {
@@ -1248,7 +1262,7 @@ select {
         min-width: 38px;
       }
       #fileEditBtn.dirty {
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.12);
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
       }
       .fileCandRow.hidden {
         display: none;
@@ -1461,9 +1475,9 @@ select {
         -webkit-tap-highlight-color: transparent;
       }
       .fileTouchBtn.active {
-        background: rgba(29, 78, 216, 0.14);
+        background: rgba(0, 0, 0, 0.1);
         color: var(--accent);
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.28);
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
       }
       .filePasteDialog {
         z-index: 90;
@@ -1568,9 +1582,9 @@ select {
         padding: 0;
       }
       .agentBackendTab.active {
-        border-color: rgba(29, 78, 216, 0.48);
-        background: rgba(29, 78, 216, 0.1);
-        box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.08);
+        border-color: rgba(0, 0, 0, 0.35);
+        background: rgba(0, 0, 0, 0.06);
+        box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
       }
       .agentBackendTabLogo {
         width: 20px;
@@ -1824,8 +1838,8 @@ select {
         flex: 0 0 auto;
       }
       .choiceChip.active {
-        border-color: rgba(29, 78, 216, 0.35);
-        background: rgba(29, 78, 216, 0.08);
+        border-color: rgba(0, 0, 0, 0.25);
+        background: rgba(0, 0, 0, 0.05);
         color: var(--accent);
       }
       .subtleBtn {

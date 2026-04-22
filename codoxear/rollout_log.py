@@ -17,6 +17,13 @@ from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
+from .claude_log import claude_assistant_text
+from .claude_log import claude_assistant_thinking_count
+from .claude_log import claude_assistant_tool_use_count
+from .claude_log import claude_is_final_answer
+from .claude_log import claude_is_turn_end
+from .claude_log import claude_token_update
+from .claude_log import claude_user_text
 from .voice_push import ClassifiedAssistantMessage
 
 
@@ -72,6 +79,13 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
                 return _event_ts(obj)
         return None
 
+    if typ == "user":
+        if claude_user_text(obj): return _event_ts(obj)
+        return None
+    if typ == "assistant":
+        if claude_assistant_text(obj): return _event_ts(obj)
+        return None
+
     if typ == "message":
         if pi_user_text(obj):
             return _event_ts(obj)
@@ -112,6 +126,8 @@ def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     # Prefer the newest token_count in this batch.
     for obj in reversed(objs):
+        claude_tok = claude_token_update(obj)
+        if claude_tok is not None: return claude_tok
         pi_token = pi_token_update(obj)
         if pi_token is not None:
             return pi_token
@@ -284,6 +300,58 @@ def _extract_chat_events(
 
     for obj in objs:
         typ = obj.get("type")
+        # Claude user records
+        if typ == "user":
+            user_text = claude_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                turn_start = True
+                ets = event_ts(obj)
+                ev_u = {"role": "user", "text": user_text}
+                if ets is not None: ev_u["ts"] = ets
+                events.append(ev_u)
+            continue
+
+        # Claude assistant records
+        if typ == "assistant":
+            assistant_text = claude_assistant_text(obj)
+            tc = claude_assistant_tool_use_count(obj)
+            thc = claude_assistant_thinking_count(obj)
+            if thc > 0: total_thinking += thc
+            if tc > 0:
+                total_tools += tc
+                tool_names.add("claude_tool")
+                last_tool = "claude_tool"
+            # Extract interactive prompts (AskUserQuestion / ExitPlanMode)
+            msg = obj.get("message")
+            if isinstance(msg, dict):
+                for part in msg.get("content", []):
+                    if not isinstance(part, dict) or part.get("type") != "tool_use": continue
+                    tool_name = part.get("name")
+                    tool_id = part.get("id")
+                    tool_input = part.get("input", {})
+                    if tool_name == "AskUserQuestion" and isinstance(tool_input.get("questions"), list):
+                        ets2 = event_ts(obj)
+                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": tool_input["questions"]}
+                        if ets2 is not None: ev_q["ts"] = ets2
+                        events.append(ev_q)
+                    elif tool_name == "ExitPlanMode":
+                        ets2 = event_ts(obj)
+                        ev_p = {"role": "assistant", "interactive": "exit_plan_mode", "tool_use_id": tool_id}
+                        if ets2 is not None: ev_p["ts"] = ets2
+                        events.append(ev_p)
+            if isinstance(assistant_text, str) and assistant_text:
+                ets = event_ts(obj)
+                mc = "final_response" if claude_is_final_answer(obj) else "narration"
+                if mc == "final_response": turn_end = True
+                ev_a = {"role": "assistant", "text": assistant_text, "message_class": mc, "message_id": text_message_id(message_class=mc, text=assistant_text, ts=ets)}
+                if ets is not None: ev_a["ts"] = ets
+                events.append(ev_a)
+            continue
+
+        if typ == "system" and obj.get("subtype") == "turn_duration":
+            turn_end = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -426,7 +494,11 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         typ = obj.get("type")
         message_class: str | None = None
         text = ""
-        if typ == "message":
+        if typ == "assistant":
+            text = claude_assistant_text(obj) or ""
+            if not text.strip(): continue
+            message_class = "final_response" if claude_is_final_answer(obj) else "narration"
+        elif typ == "message":
             text = pi_assistant_text(obj) or ""
             if not text.strip():
                 continue
@@ -525,6 +597,8 @@ def _read_chat_events_from_tail(
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
+    if obj.get("type") == "assistant":
+        return bool(claude_assistant_text(obj))
     if obj.get("type") == "message":
         return bool(pi_assistant_text(obj))
     p = obj.get("payload")
@@ -556,6 +630,15 @@ def _analyze_log_chunk(
         sidebar_ts = _sidebar_conversation_ts(obj)
         if sidebar_ts is not None:
             last_chat_ts = sidebar_ts
+        if typ == "user":
+            if claude_user_text(obj): d_th = 0; d_tools = 0; d_sys = 0
+            continue
+        if typ == "assistant":
+            d_th += claude_assistant_thinking_count(obj)
+            d_tools += claude_assistant_tool_use_count(obj)
+            continue
+        if typ == "system" and obj.get("subtype") == "turn_duration":
+            continue
         if typ == "message":
             if pi_user_text(obj):
                 d_th = 0
@@ -629,6 +712,19 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         idle = True
         for obj in objs:
             typ = obj.get("type")
+            if typ == "user":
+                if claude_user_text(obj):
+                    saw_terminal_signal = True; idle = False
+                continue
+            if typ == "assistant":
+                saw_terminal_signal = True
+                if claude_is_final_answer(obj): idle = True
+                elif claude_assistant_tool_use_count(obj) > 0 or claude_assistant_thinking_count(obj) > 0: idle = False
+                elif claude_assistant_text(obj): idle = False
+                continue
+            if typ == "system" and obj.get("subtype") == "turn_duration":
+                saw_terminal_signal = True; idle = True
+                continue
             if typ == "message":
                 if pi_user_text(obj):
                     saw_terminal_signal = True
@@ -728,6 +824,13 @@ def _last_chat_role_ts_from_tail(
         last_assistant: tuple[int, float | None] | None = None
         for i, obj in enumerate(objs):
             typ = obj.get("type")
+            if typ == "user":
+                if claude_user_text(obj): last_user = (i, event_ts(obj))
+                continue
+            if typ == "assistant":
+                if claude_assistant_text(obj) or claude_assistant_tool_use_count(obj) > 0:
+                    last_assistant = (i, event_ts(obj))
+                continue
             if typ == "message":
                 if pi_user_text(obj):
                     last_user = (i, event_ts(obj))

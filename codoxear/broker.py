@@ -32,6 +32,12 @@ from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_us
 from codoxear.pi_log import pi_message_role as _pi_message_role
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
+from codoxear.claude_log import claude_assistant_text
+from codoxear.claude_log import claude_assistant_thinking_count
+from codoxear.claude_log import claude_assistant_tool_use_count
+from codoxear.claude_log import claude_is_final_answer
+from codoxear.claude_log import claude_is_turn_end
+from codoxear.claude_log import claude_user_text
 from codoxear import pty_util as _pty_util
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
@@ -91,6 +97,13 @@ def _now() -> float:
 
 
 def _resume_session_id_from_args(args: list[str]) -> str | None:
+    if normalize_agent_backend(AGENT_BACKEND) == "claude":
+        for idx, token in enumerate(args):
+            if token in ("--resume", "--session-id", "-r"):
+                if (idx + 1) >= len(args): return None
+                return str(args[idx + 1]).strip() or None
+            if token == "--continue": return None
+        return None
     if AGENT_BACKEND == "pi":
         for idx, token in enumerate(args):
             if token != "--session":
@@ -123,6 +136,8 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
 
 
 def _session_log_path_from_args(*, args: list[str], agent_backend: str, sessions_dir: Path) -> Path | None:
+    if normalize_agent_backend(agent_backend) == "claude":
+        return None
     if normalize_agent_backend(agent_backend) != "pi":
         return None
     for idx, token in enumerate(args):
@@ -326,8 +341,11 @@ def _write_all(fd: int, data: bytes) -> None:
         view = view[n:]
 
 
-def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
-    payload = _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END
+def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05, use_bracketed_paste: bool = True) -> None:
+    if use_bracketed_paste:
+        payload = _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END
+    else:
+        payload = text.encode("utf-8")
     _write_all(fd, payload)
     if not suffix:
         return
@@ -531,6 +549,33 @@ def _close_turn_state(st: "State") -> None:
 
 def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float) -> None:
     typ = obj.get("type")
+
+    # Claude: type="user"
+    if typ == "user" and normalize_agent_backend(AGENT_BACKEND) == "claude":
+        user_text = claude_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            st.pending_calls.clear()
+            st.busy = True; st.turn_open = True; st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0; st.last_turn_activity_ts = now_ts
+        return
+
+    # Claude: type="assistant"
+    if typ == "assistant" and normalize_agent_backend(AGENT_BACKEND) == "claude":
+        tool_count = claude_assistant_tool_use_count(obj)
+        if tool_count > 0:
+            _reopen_turn_on_activity(st)
+            if st.turn_open: st.turn_has_completion_candidate = False
+            st.busy = True; st.last_turn_activity_ts = now_ts
+            return
+        if claude_is_final_answer(obj):
+            _close_turn_state(st)
+            return
+        return
+
+    # Claude: turn end
+    if typ == "system" and obj.get("subtype") == "turn_duration" and normalize_agent_backend(AGENT_BACKEND) == "claude":
+        _close_turn_state(st)
+        return
 
     if typ == "event_msg":
         payload = obj.get("payload")
@@ -762,7 +807,7 @@ class Broker:
                     known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
-                    if AGENT_BACKEND == "pi" and current_log_path is not None and current_log_path.exists():
+                    if AGENT_BACKEND in ("pi", "claude") and current_log_path is not None and current_log_path.exists():
                         if (
                             current_session_id is None
                             or current_last_rollout_path is None
@@ -787,7 +832,7 @@ class Broker:
                         claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
                         discovered = _find_new_session_log(
                             sessions_dir=self.sessions_dir,
-                            agent_backend="pi",
+                            agent_backend=AGENT_BACKEND,
                             cwd=self.cwd,
                             after_ts=0.0,
                             preexisting=known_paths,
@@ -1175,7 +1220,7 @@ class Broker:
                 _send_socket_json_line(conn, resp)
                 if fd is not None:
                     try:
-                        _inject(fd, text=text, suffix=seq)
+                        _inject(fd, text=text, suffix=seq, use_bracketed_paste=(AGENT_BACKEND != "claude"))
                     except Exception:
                         traceback.print_exc()
                 return
@@ -1230,6 +1275,10 @@ class Broker:
                     traceback.print_exc()
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
+        if normalize_agent_backend(AGENT_BACKEND) == "claude":
+            stem = log_path.stem
+            if _SESSION_ID_RE.match(stem): return stem
+            return None
         # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),
         # so path components are not a stable session id. Extract the id from the filename.
         name = log_path.name

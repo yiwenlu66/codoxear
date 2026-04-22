@@ -36,6 +36,7 @@ from .agent_backend import normalize_agent_backend
 from . import rollout_log as _rollout_log
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .claude_log import read_claude_run_settings
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
@@ -163,6 +164,7 @@ PI_AUTH_PATH = PI_HOME / "agent" / "auth.json"
 DEFAULT_AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex")
 SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
 SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
+SUPPORTED_CLAUDE_REASONING_EFFORTS = ("low", "medium", "high", "max")
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -1360,6 +1362,16 @@ def _normalize_requested_pi_reasoning_effort(value: Any) -> str | None:
     return out
 
 
+def _normalize_requested_claude_reasoning_effort(value):
+    if value is None: return None
+    if not isinstance(value, str): raise ValueError("reasoning_effort must be a string")
+    out = value.strip().lower()
+    if not out: return None
+    if out not in SUPPORTED_CLAUDE_REASONING_EFFORTS:
+        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_CLAUDE_REASONING_EFFORTS)}")
+    return out
+
+
 def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
     if elapsed_s <= 0:
         return 1.0
@@ -1553,6 +1565,8 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
     backend_name = normalize_agent_backend(agent_backend)
     if backend_name == "pi":
         return _read_pi_run_settings(log_path)
+    if backend_name == "claude":
+        return read_claude_run_settings(log_path)
     meta = _read_session_meta(log_path, agent_backend="codex")
     model_provider = _clean_optional_text(meta.get("model_provider"))
     model = _clean_optional_text(meta.get("model"))
@@ -1764,6 +1778,27 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
     }
 
 
+def _read_claude_launch_defaults():
+    claude_home = get_agent_backend("claude").home()
+    settings_path = claude_home / "settings.json"
+    model = None
+    try:
+        raw = json.loads(settings_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict):
+            m = raw.get("model")
+            if isinstance(m, str) and m.strip(): model = m.strip()
+    except Exception: pass
+    return {
+        "agent_backend": "claude", "model_provider": "anthropic",
+        "preferred_auth_method": None, "provider_choice": "anthropic",
+        "provider_choices": ["anthropic"],
+        "model": model, "models": ["opus", "sonnet", "haiku"],
+        "reasoning_effort": "max",
+        "reasoning_efforts": list(SUPPORTED_CLAUDE_REASONING_EFFORTS),
+        "service_tier": None, "supports_fast": False,
+    }
+
+
 def _read_new_session_defaults() -> dict[str, Any]:
     codex = _read_codex_launch_defaults()
     codex["agent_backend"] = "codex"
@@ -1771,11 +1806,13 @@ def _read_new_session_defaults() -> dict[str, Any]:
     codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
     codex["supports_fast"] = True
     pi = _read_pi_launch_defaults()
+    claude = _read_claude_launch_defaults()
     return {
         "default_backend": DEFAULT_AGENT_BACKEND,
         "backends": {
             "codex": codex,
             "pi": pi,
+            "claude": claude,
         },
     }
 
@@ -4005,6 +4042,10 @@ class SessionManager:
                 codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
             if service_tier is not None:
                 codex_args.extend(["-c", f'service_tier="{service_tier}"'])
+        elif backend_name == "claude":
+            codex_args = ["--dangerously-skip-permissions"]
+            if model is not None: codex_args.extend(["--model", model])
+            if reasoning_effort is not None: codex_args.extend(["--effort", reasoning_effort])
         else:
             if preferred_auth_method is not None:
                 raise ValueError("preferred_auth_method is not supported for pi")
@@ -4045,9 +4086,15 @@ class SessionManager:
         if backend_name == "codex":
             env.setdefault("CODEX_HOME", str(CODEX_HOME))
             env.pop("PI_HOME", None)
+            env.pop("CLAUDE_HOME", None)
+        elif backend_name == "claude":
+            env.setdefault("CLAUDE_HOME", str(get_agent_backend("claude").home()))
+            env.pop("CODEX_HOME", None)
+            env.pop("PI_HOME", None)
         else:
             env.setdefault("PI_HOME", str(PI_HOME))
             env.pop("CODEX_HOME", None)
+            env.pop("CLAUDE_HOME", None)
         env.pop("CODEX_WEB_MODEL_PROVIDER", None)
         env.pop("CODEX_WEB_PREFERRED_AUTH_METHOD", None)
         env.pop("CODEX_WEB_MODEL", None)
@@ -4091,6 +4138,8 @@ class SessionManager:
             }
             if backend_name == "codex":
                 inline_env["CODEX_HOME"] = str(env["CODEX_HOME"])
+            elif backend_name == "claude":
+                inline_env["CLAUDE_HOME"] = str(env["CLAUDE_HOME"])
             else:
                 inline_env["PI_HOME"] = str(env["PI_HOME"])
             if resume_session_id is not None:
@@ -4188,6 +4237,22 @@ class SessionManager:
                 if "queue_len" not in resp:
                     raise ValueError("invalid broker send response")
                 s2.queue_len = int(resp.get("queue_len"))
+        return resp
+
+    def send_keys(self, session_id, seq):
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s: raise KeyError("unknown session")
+            sock = s.sock_path
+        try:
+            resp = self._sock_call(sock, {"cmd": "keys", "seq": seq}, timeout_s=3.0)
+        except Exception:
+            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                with self._lock: self._sessions.pop(session_id, None)
+                self._clear_deleted_session_state(session_id)
+                _unlink_quiet(sock); _unlink_quiet(sock.with_suffix(".json"))
+                raise KeyError("unknown session")
+            raise
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
@@ -5509,6 +5574,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             obj.get("model_provider"),
                             allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
                         )
+                    elif agent_backend == "claude":
+                        allowed_providers = set()
+                        for value in (_read_claude_launch_defaults().get("provider_choices") or []):
+                            if value and isinstance(value, str): allowed_providers.add(value.lower())
+                        model_provider = _normalize_requested_model_provider(obj.get("model_provider"), allowed=allowed_providers or None)
                     else:
                         pi_provider_choices = {
                             str(value)
@@ -5528,6 +5598,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
+                elif agent_backend == "claude":
+                    if obj.get("preferred_auth_method") not in (None, ""):
+                        _json_response(self, 400, {"error": "preferred_auth_method is not supported for claude"})
+                        return
+                    preferred_auth_method = None
                 else:
                     if obj.get("preferred_auth_method") not in (None, ""):
                         _json_response(self, 400, {"error": "preferred_auth_method is not supported for pi"})
@@ -5549,6 +5624,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
+                elif agent_backend == "claude":
+                    try:
+                        reasoning_effort = _normalize_requested_claude_reasoning_effort(obj.get("reasoning_effort"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    if obj.get("service_tier") not in (None, ""):
+                        _json_response(self, 400, {"error": "service_tier is not supported for claude"})
+                        return
+                    service_tier = None
                 else:
                     try:
                         reasoning_effort = _normalize_requested_pi_reasoning_effort(obj.get("reasoning_effort"))
@@ -5935,6 +6020,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 res = MANAGER.send(session_id, text)
                 _json_response(self, 200, res)
                 return
+
+            if path.startswith("/api/sessions/") and path.endswith("/keys"):
+                if not _require_auth(self): self._unauthorized(); return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                body = _read_body(self)
+                body_text = body.decode("utf-8")
+                if not body_text.strip(): raise ValueError("empty request body")
+                obj = json.loads(body_text)
+                if not isinstance(obj, dict): raise ValueError("invalid json body")
+                seq = obj.get("seq")
+                if not isinstance(seq, str) or not seq:
+                    _json_response(self, 400, {"error": "seq required"}); return
+                res = MANAGER.send_keys(session_id, seq)
+                _json_response(self, 200, res); return
 
             if path.startswith("/api/sessions/") and path.endswith("/enqueue"):
                 if not _require_auth(self):
