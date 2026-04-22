@@ -828,7 +828,7 @@ class Broker:
                             self._maybe_register_or_switch_rollout(log_path=lp)
                             time.sleep(0.25)
                             continue
-                    if AGENT_BACKEND == "pi" and current_log_path is None:
+                    if AGENT_BACKEND in ("pi", "claude") and current_log_path is None:
                         claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
                         discovered = _find_new_session_log(
                             sessions_dir=self.sessions_dir,
@@ -1362,6 +1362,11 @@ class Broker:
         headless = (OWNER_TAG == "web")
         local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
+        # Snapshot existing logs BEFORE forking, so the child's new log isn't included
+        _pre_fork_known: set[Path] = set()
+        if AGENT_BACKEND in ("pi", "claude"):
+            _pre_fork_known = set(_iter_session_logs(self.sessions_dir, agent_backend=AGENT_BACKEND))
+
         pid, master_fd = pty.fork()
         if pid == 0:
             try:
@@ -1417,8 +1422,8 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
-        if AGENT_BACKEND == "pi":
-            st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
+        if _pre_fork_known:
+            st.known_rollout_paths = _pre_fork_known
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         self.state = st
         declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
