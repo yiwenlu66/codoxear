@@ -20,6 +20,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("async function openSession(")
         end = source.index("async function pollMessages(", start)
         block = source[start:end]
+        self.assertIn('activeTranscriptState = "pending_bind";', block)
         self.assertIn("const optimisticBusy = Boolean(s && s.busy);", block)
         self.assertIn("setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });", block)
         self.assertIn("setTyping(optimisticBusy);", block)
@@ -27,12 +28,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn("renderSessionTail(Array.isArray(data.events) ? data.events : []);", block)
+        self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
+        self.assertIn('if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
+        self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
         self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
-        self.assertLess(
-            block.index("renderSessionTail(Array.isArray(data.events) ? data.events : []);"),
-            block.index("applySessionRuntimeFromTail(sessionId, data);"),
-        )
         self.assertNotIn("refreshInitPageState", block)
 
     def test_refresh_sessions_is_sidebar_only(self) -> None:
@@ -61,8 +60,12 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("async function pollLoop()", start)
         block = source[start:end]
         self.assertIn("if (!liveCursor) {", block)
+        self.assertIn('if (activeTranscriptState === "pending_bind") {', block)
+        self.assertIn("const slotChange = updateSessionTranscriptSlot(sid, data);", block)
+        self.assertIn('if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
         self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);", block)
+        self.assertIn("const slotInfo = transcriptSnapshotFromData(data);", block)
         self.assertIn("liveCursor = typeof data.live_cursor === \"string\" && data.live_cursor ? data.live_cursor : null;", block)
         self.assertNotIn("after_byte", block)
         self.assertNotIn("before_byte", block)
@@ -75,14 +78,32 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertNotIn("replaceCacheEvents(", source)
         self.assertNotIn("appendCacheEvents(", source)
 
-    def test_send_text_keeps_session_scoped_optimistic_echo(self) -> None:
+    def test_send_text_scopes_optimistic_echo_to_transcript_epoch(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function sendText(")
         end = source.index("form.onsubmit = async", start)
         block = source[start:end]
-        self.assertIn("pendingUser.push({ id: localId, sessionId, key: pendingMatchKey(raw)", block)
+        self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
+        self.assertIn("pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw)", block)
         self.assertIn("appendEvent({ role: \"user\", text: raw, pending: true, localId, ts: t0 });", block)
         self.assertIn("void refreshSessions().catch((e) => console.error(\"refreshSessions failed\", e));", block)
+
+    def test_restore_pending_rows_is_bound_to_current_transcript_slot(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function restorePendingUserRowsForSession(sessionId) {")
+        end = source.index("function updateQueueBadge()", start)
+        block = source[start:end]
+        self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
+        self.assertIn("Number(item.epoch || 0) === Number(slot.epoch || 0)", block)
+
+    def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
+        end = source.index("function prependOlderEvents(", start)
+        block = source[start:end]
+        self.assertIn("takePendingUserMatch(ev);", block)
+        self.assertIn("msgs.push(ev);", block)
+        self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
 
 
 if __name__ == "__main__":

@@ -2249,6 +2249,21 @@ class Session:
     resume_session_id: str | None = None
 
 
+def _message_transcript_identity(session: Session) -> dict[str, Any]:
+    log_path = session.log_path
+    if log_path is None or (not log_path.exists()):
+        return {
+            "transcript_state": "pending_bind",
+            "thread_id": None,
+            "log_path": None,
+        }
+    return {
+        "transcript_state": "bound",
+        "thread_id": session.thread_id,
+        "log_path": str(log_path),
+    }
+
+
 class SessionManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -5316,12 +5331,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 limit = max(20, min(200, limit))
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    transcript = _message_transcript_identity(s)
                     _json_response(
                         self,
                         200,
                         {
-                            "thread_id": s.thread_id,
-                            "log_path": None,
+                            **transcript,
                             "live_cursor": None,
                             "history_cursor": None,
                             "events": [],
@@ -5338,12 +5353,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 live_cursor = _encode_message_cursor(kind="live", session=s, pos=after_byte)
                 history_cursor = _encode_message_cursor(kind="history", session=s, pos=before_byte) if has_older and before_byte > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                transcript = _message_transcript_identity(s)
                 _json_response(
                     self,
                     200,
                     {
-                        "thread_id": s.thread_id,
-                        "log_path": str(s.log_path),
+                        **transcript,
                         "live_cursor": live_cursor,
                         "history_cursor": history_cursor,
                         "events": events,
@@ -5381,12 +5396,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 limit = max(20, min(200, limit))
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    transcript = _message_transcript_identity(s)
                     _json_response(
                         self,
                         200,
                         {
-                            "thread_id": s.thread_id,
-                            "log_path": None,
+                            **transcript,
                             "history_cursor": None,
                             "events": [],
                             "has_older": False,
@@ -5405,12 +5420,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 events = MANAGER._attach_notification_texts(events)
                 history_cursor = _encode_message_cursor(kind="history", session=s, pos=next_before) if has_older and next_before > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                transcript = _message_transcript_identity(s)
                 _json_response(
                     self,
                     200,
                     {
-                        "thread_id": s.thread_id,
-                        "log_path": str(s.log_path),
+                        **transcript,
                         "history_cursor": history_cursor,
                         "events": events,
                         "has_older": bool(has_older),
@@ -5441,12 +5456,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
+                    transcript = _message_transcript_identity(s)
                     _json_response(
                         self,
                         200,
                         {
-                            "thread_id": s.thread_id,
-                            "log_path": None,
+                            **transcript,
                             "live_cursor": None,
                             "events": [],
                             "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
@@ -5481,12 +5496,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
                 diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
                 diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
+                transcript = _message_transcript_identity(s)
                 _json_response(
                     self,
                     200,
                     {
-                        "thread_id": s.thread_id,
-                        "log_path": str(s.log_path),
+                        **transcript,
                         "live_cursor": live_cursor,
                         "events": events,
                         "meta_delta": meta_delta,
