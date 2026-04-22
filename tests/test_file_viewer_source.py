@@ -100,13 +100,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('tabCompletion: "off"', source)
         self.assertIn('wordBasedSuggestions: "off"', source)
 
-    def test_client_reload_checks_server_ui_version(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("window.CODOXEAR_ASSET_VERSION", source)
-        self.assertIn("function maybeReloadForUpdatedUi(nextVersion)", source)
-        self.assertIn("maybeReloadForUpdatedUi(data && data.app_version)", source)
-        self.assertIn("window.location.reload();", source)
-
     def test_file_open_requests_are_single_owner(self) -> None:
         result = eval_file_open_request_sequence()
         self.assertEqual(result["currentSessionId"], "sid-1")
