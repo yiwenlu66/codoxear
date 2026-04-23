@@ -2385,21 +2385,13 @@ def _last_pi_conversation_ts(path: Path) -> float | None:
 
 
 def _resume_candidate_updated_ts(path: Path, *, agent_backend: str) -> float | None:
-    return _resume_candidates.resume_candidate_updated_ts(
-        RUNTIME,
-        path,
-        agent_backend=agent_backend,
-    )
+    return _resume_candidates.resume_candidate_updated_ts(RUNTIME, path, agent_backend=agent_backend)
 
 
 def _resume_candidate_from_log(
     log_path: Path, *, agent_backend: str = "codex"
 ) -> dict[str, Any] | None:
-    return _resume_candidates.resume_candidate_from_log(
-        RUNTIME,
-        log_path,
-        agent_backend=agent_backend,
-    )
+    return _resume_candidates.resume_candidate_from_log(RUNTIME, log_path, agent_backend=agent_backend)
 
 
 def _pi_native_session_dir_for_cwd(cwd: str | Path) -> Path:
@@ -2420,16 +2412,7 @@ def _write_pi_session_header(
     model_id: str | None = None,
     thinking_level: str | None = None,
 ) -> None:
-    return _pi_session_files.write_pi_session_header(
-        RUNTIME,
-        session_path,
-        session_id=session_id,
-        cwd=cwd,
-        parent_session=parent_session,
-        provider=provider,
-        model_id=model_id,
-        thinking_level=thinking_level,
-    )
+    return _pi_session_files.write_pi_session_header(RUNTIME, session_path, session_id=session_id, cwd=cwd, parent_session=parent_session, provider=provider, model_id=model_id, thinking_level=thinking_level)
 
 
 def _pi_session_history_glob(session_path: Path) -> str:
@@ -2473,17 +2456,7 @@ def _write_pi_handoff_session(
     model_id: str | None = None,
     thinking_level: str | None = None,
 ) -> None:
-    return _pi_session_files.write_pi_handoff_session(
-        RUNTIME,
-        session_path,
-        session_id=session_id,
-        cwd=cwd,
-        source_session_id=source_session_id,
-        history_path=history_path,
-        provider=provider,
-        model_id=model_id,
-        thinking_level=thinking_level,
-    )
+    return _pi_session_files.write_pi_handoff_session(RUNTIME, session_path, session_id=session_id, cwd=cwd, source_session_id=source_session_id, history_path=history_path, provider=provider, model_id=model_id, thinking_level=thinking_level)
 
 
 def _pi_session_name_from_session_file(
@@ -2498,21 +2471,13 @@ def _pi_session_name_from_session_file(
 
 
 def _pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] | None:
-    return _resume_candidates.pi_resume_candidate_from_session_file(
-        RUNTIME,
-        session_path,
-    )
+    return _resume_candidates.pi_resume_candidate_from_session_file(RUNTIME, session_path)
 
 
 def _discover_pi_session_for_cwd(
     cwd: str, start_ts: float, *, exclude: set[Path] | None = None
 ) -> Path | None:
-    return _resume_candidates.discover_pi_session_for_cwd(
-        RUNTIME,
-        cwd,
-        start_ts,
-        exclude=exclude,
-    )
+    return _resume_candidates.discover_pi_session_for_cwd(RUNTIME, cwd, start_ts, exclude=exclude)
 
 
 def _resolve_pi_session_path(
@@ -2523,14 +2488,7 @@ def _resolve_pi_session_path(
     preferred: Path | None = None,
     exclude: set[Path] | None = None,
 ) -> tuple[Path | None, str | None]:
-    return _resume_candidates.resolve_pi_session_path(
-        RUNTIME,
-        thread_id=thread_id,
-        cwd=cwd,
-        start_ts=start_ts,
-        preferred=preferred,
-        exclude=exclude,
-    )
+    return _resume_candidates.resolve_pi_session_path(RUNTIME, thread_id=thread_id, cwd=cwd, start_ts=start_ts, preferred=preferred, exclude=exclude)
 
 
 def _safe_path_mtime(path: Path) -> float | None:
@@ -2548,14 +2506,7 @@ def _list_resume_candidates_for_cwd(
     backend: str | None = None,
     agent_backend: str | None = None,
 ) -> list[dict[str, Any]]:
-    return _resume_candidates.list_resume_candidates_for_cwd(
-        RUNTIME,
-        cwd,
-        limit=limit,
-        offset=offset,
-        backend=backend,
-        agent_backend=agent_backend,
-    )
+    return _resume_candidates.list_resume_candidates_for_cwd(RUNTIME, cwd, limit=limit, offset=offset, backend=backend, agent_backend=agent_backend)
 
 
 def _iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
