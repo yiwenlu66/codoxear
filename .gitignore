@@ -9,6 +9,7 @@ __pycache__/
 build/
 dist/
 node_modules/
+web/node_modules
 web/node_modules/
 web/dist/
 web/.tsbuild/

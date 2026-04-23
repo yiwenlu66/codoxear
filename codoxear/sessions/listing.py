@@ -169,6 +169,56 @@ def session_list_payload(
     return result
 
 
+def historical_session_id(
+    runtime: ServerRuntime, backend: str, resume_session_id: str
+) -> str:
+    _ = runtime
+    return f"history:{backend}:{resume_session_id}"
+
+
+def parse_historical_session_id(
+    runtime: ServerRuntime, session_id: str
+) -> tuple[str, str] | None:
+    sv = runtime
+    raw = str(session_id or "").strip()
+    if not raw.startswith("history:"):
+        return None
+    _prefix, backend, resume_session_id = (
+        raw.split(":", 2) if raw.count(":") >= 2 else ("", "", "")
+    )
+    backend_clean = sv.normalize_agent_backend(backend, default="codex")
+    resume_clean = sv._clean_optional_text(resume_session_id)
+    if not resume_clean:
+        return None
+    return backend_clean, resume_clean
+
+
+def historical_session_row(
+    runtime: ServerRuntime, session_id: str
+) -> dict[str, Any] | None:
+    sv = runtime
+    parsed = parse_historical_session_id(runtime, session_id)
+    if parsed is None:
+        return None
+    backend, resume_session_id = parsed
+    for row in sv._iter_all_resume_candidates():
+        if (
+            sv.normalize_agent_backend(
+                row.get("agent_backend", row.get("backend")), default="codex"
+            )
+            != backend
+        ):
+            continue
+        if sv._clean_optional_text(row.get("session_id")) != resume_session_id:
+            continue
+        out = dict(row)
+        out["session_id"] = historical_session_id(runtime, backend, resume_session_id)
+        out["resume_session_id"] = resume_session_id
+        out["historical"] = True
+        return out
+    return None
+
+
 def historical_sidebar_items(
     runtime: ServerRuntime,
     *,
@@ -218,7 +268,7 @@ def historical_sidebar_items(
             first_user_message = ""
         out.append(
             {
-                "session_id": sv._historical_session_id(backend, resume_session_id),
+                "session_id": historical_session_id(runtime, backend, resume_session_id),
                 "runtime_id": None,
                 "thread_id": resume_session_id,
                 "backend": backend,

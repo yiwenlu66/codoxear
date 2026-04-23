@@ -2481,44 +2481,15 @@ def _iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
 
 
 def _historical_session_id(backend: str, resume_session_id: str) -> str:
-    return f"history:{backend}:{resume_session_id}"
+    return _session_listing.historical_session_id(RUNTIME, backend, resume_session_id)
 
 
 def _parse_historical_session_id(session_id: str) -> tuple[str, str] | None:
-    raw = str(session_id or "").strip()
-    if not raw.startswith("history:"):
-        return None
-    _prefix, backend, resume_session_id = (
-        raw.split(":", 2) if raw.count(":") >= 2 else ("", "", "")
-    )
-    backend_clean = normalize_agent_backend(backend, default="codex")
-    resume_clean = _clean_optional_text(resume_session_id)
-    if not resume_clean:
-        return None
-    return backend_clean, resume_clean
+    return _session_listing.parse_historical_session_id(RUNTIME, session_id)
 
 
 def _historical_session_row(session_id: str) -> dict[str, Any] | None:
-    parsed = _parse_historical_session_id(session_id)
-    if parsed is None:
-        return None
-    backend, resume_session_id = parsed
-    for row in _iter_all_resume_candidates():
-        if (
-            normalize_agent_backend(
-                row.get("agent_backend", row.get("backend")), default="codex"
-            )
-            != backend
-        ):
-            continue
-        if _clean_optional_text(row.get("session_id")) != resume_session_id:
-            continue
-        out = dict(row)
-        out["session_id"] = _historical_session_id(backend, resume_session_id)
-        out["resume_session_id"] = resume_session_id
-        out["historical"] = True
-        return out
-    return None
+    return _session_listing.historical_session_row(RUNTIME, session_id)
 
 
 def _historical_sidebar_items(
