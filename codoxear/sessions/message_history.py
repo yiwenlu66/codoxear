@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,114 @@ from .runtime_access import manager_runtime
 
 def _runtime(manager: Any):
     return manager_runtime(manager)
+
+
+@dataclass(slots=True)
+class SessionMessageHistoryService:
+    manager: Any
+
+    def set_chat_index_snapshot(
+        self,
+        *,
+        session_id: str,
+        events: list[dict[str, Any]],
+        token_update: dict[str, Any] | None,
+        scan_bytes: int,
+        scan_complete: bool,
+        log_off: int,
+    ) -> None:
+        set_chat_index_snapshot(
+            self.manager,
+            session_id=session_id,
+            events=events,
+            token_update=token_update,
+            scan_bytes=scan_bytes,
+            scan_complete=scan_complete,
+            log_off=log_off,
+        )
+
+    def append_chat_events(
+        self,
+        session_id: str,
+        new_events: list[dict[str, Any]],
+        *,
+        new_off: int,
+        latest_token: dict[str, Any] | None,
+    ) -> None:
+        append_chat_events(
+            self.manager,
+            session_id,
+            new_events,
+            new_off=new_off,
+            latest_token=latest_token,
+        )
+
+    def attach_notification_texts(
+        self, events: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        return attach_notification_texts(self.manager, events)
+
+    def update_pi_last_chat_ts(
+        self,
+        session_id: str,
+        events: list[dict[str, Any]],
+        *,
+        session_path: Path | None,
+    ) -> None:
+        update_pi_last_chat_ts(
+            self.manager,
+            session_id,
+            events,
+            session_path=session_path,
+        )
+
+    def ensure_pi_chat_index(self, session_id: str, *, min_events: int, before: int):
+        return ensure_pi_chat_index(
+            self.manager,
+            session_id,
+            min_events=min_events,
+            before=before,
+        )
+
+    def ensure_chat_index(self, session_id: str, *, min_events: int, before: int):
+        return ensure_chat_index(
+            self.manager,
+            session_id,
+            min_events=min_events,
+            before=before,
+        )
+
+    def mark_log_delta(
+        self, session_id: str, *, objs: list[dict[str, Any]], new_off: int
+    ) -> None:
+        mark_log_delta(self.manager, session_id, objs=objs, new_off=new_off)
+
+    def idle_from_log(self, session_id: str) -> bool:
+        return idle_from_log(self.manager, session_id)
+
+    def get_messages_page(
+        self,
+        session_id: str,
+        *,
+        offset: int,
+        init: bool,
+        limit: int,
+        before: int,
+        view: str = "conversation",
+    ) -> dict[str, Any]:
+        return get_messages_page(
+            self.manager,
+            session_id,
+            offset=offset,
+            init=init,
+            limit=limit,
+            before=before,
+            view=view,
+        )
+
+
+def service(manager: Any) -> SessionMessageHistoryService:
+    return SessionMessageHistoryService(manager)
 
 
 def set_chat_index_snapshot(

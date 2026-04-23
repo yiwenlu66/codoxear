@@ -3596,8 +3596,7 @@ class SessionManager:
         scan_complete: bool,
         log_off: int,
     ) -> None:
-        _message_history.set_chat_index_snapshot(
-            self,
+        _message_history.service(self).set_chat_index_snapshot(
             session_id=session_id,
             events=events,
             token_update=token_update,
@@ -3614,8 +3613,7 @@ class SessionManager:
         new_off: int,
         latest_token: dict[str, Any] | None,
     ) -> None:
-        _message_history.append_chat_events(
-            self,
+        _message_history.service(self).append_chat_events(
             session_id,
             new_events,
             new_off=new_off,
@@ -3625,7 +3623,7 @@ class SessionManager:
     def _attach_notification_texts(
         self, events: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        return _message_history.attach_notification_texts(self, events)
+        return _message_history.service(self).attach_notification_texts(events)
 
     def _update_pi_last_chat_ts(
         self,
@@ -3634,8 +3632,7 @@ class SessionManager:
         *,
         session_path: Path | None,
     ) -> None:
-        _message_history.update_pi_last_chat_ts(
-            self,
+        _message_history.service(self).update_pi_last_chat_ts(
             session_id,
             events,
             session_path=session_path,
@@ -3644,8 +3641,7 @@ class SessionManager:
     def _ensure_pi_chat_index(
         self, session_id: str, *, min_events: int, before: int
     ) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any]]:
-        return _message_history.ensure_pi_chat_index(
-            self,
+        return _message_history.service(self).ensure_pi_chat_index(
             session_id,
             min_events=min_events,
             before=before,
@@ -3654,8 +3650,7 @@ class SessionManager:
     def _ensure_chat_index(
         self, session_id: str, *, min_events: int, before: int
     ) -> tuple[list[dict[str, Any]], int, bool, int, dict[str, Any] | None]:
-        return _message_history.ensure_chat_index(
-            self,
+        return _message_history.service(self).ensure_chat_index(
             session_id,
             min_events=min_events,
             before=before,
@@ -3664,15 +3659,14 @@ class SessionManager:
     def mark_log_delta(
         self, session_id: str, *, objs: list[dict[str, Any]], new_off: int
     ) -> None:
-        _message_history.mark_log_delta(
-            self,
+        _message_history.service(self).mark_log_delta(
             session_id,
             objs=objs,
             new_off=new_off,
         )
 
     def idle_from_log(self, session_id: str) -> bool:
-        return _message_history.idle_from_log(self, session_id)
+        return _message_history.service(self).idle_from_log(session_id)
 
     def get_messages_page(
         self,
@@ -3684,8 +3678,7 @@ class SessionManager:
         before: int,
         view: str = "conversation",
     ) -> dict[str, Any]:
-        return _message_history.get_messages_page(
-            self,
+        return _message_history.service(self).get_messages_page(
             session_id,
             offset=offset,
             init=init,
