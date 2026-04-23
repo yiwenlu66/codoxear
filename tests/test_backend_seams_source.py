@@ -123,8 +123,6 @@ class TestBackendSeamsSource(unittest.TestCase):
         self.assertIn("return _workspace_file_access.read_downloadable_file(path_obj)", source)
         self.assertIn("return _workspace_file_access.download_disposition(path_obj)", source)
         self.assertIn("return _workspace_file_search.search_session_relative_files(", source)
-        self.assertIn("return _workspace_file_search.search_git_relative_files(", source)
-        self.assertIn("return _workspace_file_search.search_walk_relative_files(", source)
         self.assertIn("return _resume_candidates.resume_candidate_from_log(", source)
         self.assertIn("return _resume_candidates.resolve_pi_session_path(", source)
         self.assertIn("return _resume_candidates.list_resume_candidates_for_cwd(", source)

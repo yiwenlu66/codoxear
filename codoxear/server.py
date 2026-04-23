@@ -189,29 +189,6 @@ def _publish_session_transport_invalidate(
 
 
 
-def _publish_notifications_invalidate(*, reason: str, coalesce_ms: int = 500) -> dict[str, Any] | None:
-    return _publish_invalidate_event(
-        "notifications.invalidate",
-        reason=reason,
-        coalesce_ms=coalesce_ms,
-    )
-
-
-
-def _publish_attention_invalidate(
-    *,
-    reason: str,
-    session_id: str | None = None,
-    coalesce_ms: int = 500,
-) -> dict[str, Any] | None:
-    return _publish_invalidate_event(
-        "attention.invalidate",
-        session_id=session_id,
-        reason=reason,
-        coalesce_ms=coalesce_ms,
-    )
-
-
 
 def _voice_push_publish_callback(event: dict[str, Any]) -> None:
     _publish_invalidate_event(
@@ -875,49 +852,6 @@ def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
     return "text", None
 
 
-def _repair_png_crc(raw: bytes) -> bytes:
-    if len(raw) < 8 or raw[:8] != b"\x89PNG\r\n\x1a\n":
-        return raw
-    out = bytearray(raw)
-    o = 8
-    while o + 12 <= len(out):
-        ln = struct.unpack(">I", out[o : o + 4])[0]
-        typ = bytes(out[o + 4 : o + 8])
-        data_start = o + 8
-        data_end = data_start + ln
-        crc_start = data_end
-        crc_end = crc_start + 4
-        if data_end > len(out) or crc_end > len(out):
-            break
-        data = bytes(out[data_start:data_end])
-        calc = zlib.crc32(typ)
-        calc = zlib.crc32(data, calc) & 0xFFFFFFFF
-        cur = struct.unpack(">I", out[crc_start:crc_end])[0]
-        if cur != calc:
-            out[crc_start:crc_end] = struct.pack(">I", calc)
-        o = crc_end
-        if typ == b"IEND":
-            break
-    return bytes(out)
-
-
-def _validate_image(raw: bytes) -> None:
-    try:
-        from PIL import Image
-    except Exception:
-        ext = _sniff_image_ext(raw)
-        if ext is None:
-            raise ValueError("unsupported image format")
-        return
-    try:
-        with Image.open(io.BytesIO(raw)) as im:
-            im.load()
-            if not im.size or im.size[0] <= 0 or im.size[1] <= 0:
-                raise ValueError("invalid image dimensions")
-    except Exception as e:
-        raise ValueError(str(e)) from e
-
-
 def _json_response(
     handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any
 ) -> None:
@@ -1085,16 +1019,6 @@ def _password_hash() -> str:
 
 def _is_same_password(pw: str) -> bool:
     return hmac.compare_digest(_sha256_hex(pw.encode("utf-8")), _password_hash())
-
-
-def _safe_read_text(path: Path, max_bytes: int = 512 * 1024) -> str:
-    try:
-        b = path.read_bytes()
-        if len(b) > max_bytes:
-            b = b[-max_bytes:]
-        return b.decode("utf-8", errors="replace")
-    except FileNotFoundError:
-        return ""
 
 
 def _read_text_file_strict(path: Path, *, max_bytes: int) -> tuple[str, int]:
@@ -1309,14 +1233,6 @@ def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | No
     return _workspace_file_access.resolve_unique_bare_filename(search_root, raw_path)
 
 
-def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
-    return _workspace_file_access.resolve_tracked_file_by_basename(
-        RUNTIME,
-        session_id,
-        raw_path,
-    )
-
-
 def _resolve_session_relative_child(base: Path, raw_path: str) -> Path:
     rel = str(raw_path or "").strip()
     if not rel:
@@ -1451,15 +1367,6 @@ def _expand_user_path(raw: str) -> Path:
     return Path(os.path.expanduser(os.path.expandvars(expanded)))
 
 
-def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{field_name} required")
-    path = _expand_user_path(raw)
-    if not path.is_dir():
-        raise ValueError(f"{field_name} is not a directory: {path}")
-    return path.resolve()
-
-
 def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
     if not isinstance(raw, str) or not raw.strip():
         raise ValueError(f"{field_name} required")
@@ -1471,15 +1378,6 @@ def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
 
 def _codex_trust_override_for_path(path: Path) -> str:
     return f'projects={{ {json.dumps(str(path.resolve()))} = {{ trust_level = "trusted" }} }}'
-
-
-def _resolve_new_path(raw: str, *, field_name: str) -> Path:
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"{field_name} required")
-    path = _expand_user_path(raw).resolve()
-    if path.exists():
-        raise ValueError(f"{field_name} already exists: {path}")
-    return path
 
 
 def _clean_worktree_branch(raw: str) -> str:
@@ -1539,26 +1437,6 @@ def _finish_file_search(
         query=query,
         scanned=scanned,
         truncated=truncated,
-    )
-
-
-def _search_walk_relative_files(
-    root: Path, *, query: str, limit: int
-) -> dict[str, Any]:
-    return _workspace_file_search.search_walk_relative_files(
-        RUNTIME,
-        root,
-        query=query,
-        limit=limit,
-    )
-
-
-def _search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
-    return _workspace_file_search.search_git_relative_files(
-        RUNTIME,
-        cwd,
-        query=query,
-        limit=limit,
     )
 
 
@@ -2074,10 +1952,6 @@ def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]
     return _workspace_file_access.inspect_openable_file(RUNTIME, path_obj)
 
 
-def _inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
-    return _workspace_file_access.inspect_path_metadata(RUNTIME, path_obj)
-
-
 def _read_client_file_view(path_obj: Path) -> ClientFileView:
     return _workspace_file_access.read_client_file_view(RUNTIME, path_obj)
 
@@ -2136,12 +2010,6 @@ def _read_jsonl_from_offset(
     path: Path, offset: int, max_bytes: int = 2 * 1024 * 1024
 ) -> tuple[list[dict[str, Any]], int]:
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
-
-
-def _discover_log_for_session_id(
-    session_id: str, *, agent_backend: str = "codex"
-) -> Path | None:
-    return _find_session_log_for_session_id(session_id, agent_backend=agent_backend)
 
 
 def _session_id_from_rollout_path(log_path: Path) -> str | None:
@@ -2343,18 +2211,6 @@ def _patch_metadata_pi_binding(sock: Path, session_path: Path) -> None:
         pass
 
 
-def _fallback_path_mtime(path: Path) -> float | None:
-    return _resume_candidates.fallback_path_mtime(path)
-
-
-def _last_pi_conversation_ts(path: Path) -> float | None:
-    return _resume_candidates.last_pi_conversation_ts(RUNTIME, path)
-
-
-def _resume_candidate_updated_ts(path: Path, *, agent_backend: str) -> float | None:
-    return _resume_candidates.resume_candidate_updated_ts(RUNTIME, path, agent_backend=agent_backend)
-
-
 def _resume_candidate_from_log(
     log_path: Path, *, agent_backend: str = "codex"
 ) -> dict[str, Any] | None:
@@ -2382,10 +2238,6 @@ def _write_pi_session_header(
     return _pi_session_files.write_pi_session_header(RUNTIME, session_path, session_id=session_id, cwd=cwd, parent_session=parent_session, provider=provider, model_id=model_id, thinking_level=thinking_level)
 
 
-def _pi_session_history_glob(session_path: Path) -> str:
-    return _pi_session_files.pi_session_history_glob(session_path)
-
-
 def _pi_session_has_handoff_history(session_path: Path) -> bool:
     return _pi_session_files.pi_session_has_handoff_history(session_path)
 
@@ -2396,20 +2248,6 @@ def _next_pi_handoff_history_path(session_path: Path) -> Path:
 
 def _copy_file_atomic(source_path: Path, target_path: Path) -> None:
     return _pi_session_files.copy_file_atomic(RUNTIME, source_path, target_path)
-
-
-def _append_pi_user_message(session_path: Path, *, text: str) -> None:
-    return _pi_session_files.append_pi_user_message(RUNTIME, session_path, text=text)
-
-
-def _pi_handoff_message_text(
-    *, source_session_id: str, history_path: Path, cwd: str
-) -> str:
-    return _pi_session_files.pi_handoff_message_text(
-        source_session_id=source_session_id,
-        history_path=history_path,
-        cwd=cwd,
-    )
 
 
 def _write_pi_handoff_session(
@@ -2942,12 +2780,6 @@ def _session_turn_timing_payload(
     return _session_payloads.session_turn_timing_payload(RUNTIME, s, events, busy=busy)
 
 
-def _session_diagnostics_payload(
-    manager: "SessionManager", session_id: str, s: Session, state: dict[str, Any]
-) -> dict[str, Any]:
-    return _session_payloads.session_diagnostics_payload(RUNTIME, manager, session_id, s, state)
-
-
 def _session_workspace_payload(
     manager: "SessionManager", session_id: str
 ) -> dict[str, Any]:
@@ -2972,18 +2804,6 @@ def _session_live_payload(
         bridge_offset=bridge_offset,
         requests_version=requests_version,
     )
-
-
-def _pi_live_messages_payload(
-    manager: "SessionManager", session: Session, *, offset: int = 0
-) -> dict[str, Any]:
-    return _session_live_payloads.pi_live_messages_payload(RUNTIME, manager, session, offset=offset)
-
-
-def _merge_pi_live_message_events(
-    durable_events: list[dict[str, Any]], streamed_events: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    return _session_live_payloads.merge_pi_live_message_events(RUNTIME, durable_events, streamed_events)
 
 
 def _supports_web_control(meta: dict[str, Any]) -> bool:
