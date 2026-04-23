@@ -5,6 +5,7 @@ import json
 import math
 import os
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from .runtime_access import manager_runtime
@@ -12,6 +13,123 @@ from .runtime_access import manager_runtime
 
 def _runtime(manager: Any):
     return manager_runtime(manager)
+
+
+@dataclass(slots=True)
+class PageStateService:
+    manager: Any
+
+    def load_harness(self) -> None:
+        load_harness(self.manager)
+
+    def save_harness(self) -> None:
+        save_harness(self.manager)
+
+    def clear_deleted_session_state(self, session_id: str) -> None:
+        clear_deleted_session_state(self.manager, session_id)
+
+    def load_files(self) -> None:
+        load_files(self.manager)
+
+    def save_files(self) -> None:
+        save_files(self.manager)
+
+    def load_queues(self) -> None:
+        load_queues(self.manager)
+
+    def save_queues(self) -> None:
+        save_queues(self.manager)
+
+    def load_recent_cwds(self) -> None:
+        load_recent_cwds(self.manager)
+
+    def save_recent_cwds(self) -> None:
+        save_recent_cwds(self.manager)
+
+    def load_cwd_groups(self) -> None:
+        load_cwd_groups(self.manager)
+
+    def save_cwd_groups(self) -> None:
+        save_cwd_groups(self.manager)
+
+    def cwd_groups_get(self) -> dict[str, dict[str, Any]]:
+        return cwd_groups_get(self.manager)
+
+    def prune_stale_workspace_dirs(self) -> None:
+        prune_stale_workspace_dirs(self.manager)
+
+    def known_cwd_group_keys(self) -> set[str]:
+        return known_cwd_group_keys(self.manager)
+
+    def cwd_group_set(
+        self, cwd: str, label: str | None = None, collapsed: bool | None = None
+    ) -> tuple[str, dict[str, Any]]:
+        return cwd_group_set(self.manager, cwd, label=label, collapsed=collapsed)
+
+    def remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
+        return remember_recent_cwd(self.manager, cwd, ts=ts)
+
+    def backfill_recent_cwds_from_logs(self) -> None:
+        backfill_recent_cwds_from_logs(self.manager)
+
+    def recent_cwds(self, *, limit: int) -> list[str]:
+        return recent_cwds(self.manager, limit=limit)
+
+    def queue_len(self, session_id: str) -> int:
+        return queue_len(self.manager, session_id)
+
+    def queue_list_local(self, session_id: str) -> list[str]:
+        return queue_list_local(self.manager, session_id)
+
+    def queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
+        return queue_enqueue_local(self.manager, session_id, text)
+
+    def queue_delete_local(self, session_id: str, index: int) -> dict[str, Any]:
+        return queue_delete_local(self.manager, session_id, index)
+
+    def queue_update_local(
+        self, session_id: str, index: int, text: str
+    ) -> dict[str, Any]:
+        return queue_update_local(self.manager, session_id, index, text)
+
+    def files_key_for_session(
+        self, session_id: str
+    ) -> tuple[str, tuple[str, str], Any]:
+        return files_key_for_session(self.manager, session_id)
+
+    def files_get(self, session_id: str) -> list[str]:
+        return files_get(self.manager, session_id)
+
+    def files_add(self, session_id: str, path: str) -> list[str]:
+        return files_add(self.manager, session_id, path)
+
+    def files_clear(self, session_id: str) -> None:
+        files_clear(self.manager, session_id)
+
+    def harness_get(self, session_id: str) -> dict[str, Any]:
+        return harness_get(self.manager, session_id)
+
+    def harness_set(
+        self,
+        session_id: str,
+        *,
+        enabled: bool | None = None,
+        request: str | None = None,
+        cooldown_minutes: int | None = None,
+        remaining_injections: int | None = None,
+    ) -> dict[str, Any]:
+        return harness_set(
+            self.manager,
+            session_id,
+            enabled=enabled,
+            request=request,
+            cooldown_minutes=cooldown_minutes,
+            remaining_injections=remaining_injections,
+        )
+
+
+def service(manager: Any) -> PageStateService:
+    return PageStateService(manager)
 
 
 def load_harness(manager: Any) -> None:

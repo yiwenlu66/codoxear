@@ -3449,10 +3449,10 @@ class SessionManager:
             bad_sidecars.pop(str(sock), None)
 
     def _load_harness(self) -> None:
-        _page_state.load_harness(self)
+        _page_state.service(self).load_harness()
 
     def _save_harness(self) -> None:
-        _page_state.save_harness(self)
+        _page_state.service(self).save_harness()
 
     def _load_aliases(self) -> None:
         self._sidebar_state_facade().load_aliases()
@@ -3586,97 +3586,90 @@ class SessionManager:
         return payload
 
     def _clear_deleted_session_state(self, session_id: str) -> None:
-        _page_state.clear_deleted_session_state(self, session_id)
+        _page_state.service(self).clear_deleted_session_state(session_id)
 
     def _load_files(self) -> None:
-        _page_state.load_files(self)
+        _page_state.service(self).load_files()
 
     def _save_files(self) -> None:
-        _page_state.save_files(self)
+        _page_state.service(self).save_files()
 
     def _load_queues(self) -> None:
-        _page_state.load_queues(self)
+        _page_state.service(self).load_queues()
 
     def _save_queues(self) -> None:
-        _page_state.save_queues(self)
+        _page_state.service(self).save_queues()
 
     def _load_recent_cwds(self) -> None:
-        _page_state.load_recent_cwds(self)
+        _page_state.service(self).load_recent_cwds()
 
     def _save_recent_cwds(self) -> None:
-        _page_state.save_recent_cwds(self)
-
-    def _load_recent_cwds(self) -> None:
-        _page_state.load_recent_cwds(self)
-
-    def _save_recent_cwds(self) -> None:
-        _page_state.save_recent_cwds(self)
+        _page_state.service(self).save_recent_cwds()
 
     def _load_cwd_groups(self) -> None:
-        _page_state.load_cwd_groups(self)
+        _page_state.service(self).load_cwd_groups()
 
     def _save_cwd_groups(self) -> None:
-        _page_state.save_cwd_groups(self)
+        _page_state.service(self).save_cwd_groups()
 
     def cwd_groups_get(self) -> dict[str, dict[str, Any]]:
-        return _page_state.cwd_groups_get(self)
+        return _page_state.service(self).cwd_groups_get()
 
     def _prune_stale_workspace_dirs(self) -> None:
-        _page_state.prune_stale_workspace_dirs(self)
+        _page_state.service(self).prune_stale_workspace_dirs()
 
     def _known_cwd_group_keys(self) -> set[str]:
-        return _page_state.known_cwd_group_keys(self)
+        return _page_state.service(self).known_cwd_group_keys()
 
     def cwd_group_set(
         self, cwd: str, label: str | None = None, collapsed: bool | None = None
     ) -> tuple[str, dict[str, Any]]:
-        return _page_state.cwd_group_set(
-            self,
+        return _page_state.service(self).cwd_group_set(
             cwd,
             label=label,
             collapsed=collapsed,
         )
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
-        return _page_state.remember_recent_cwd(self, cwd, ts=ts)
+        return _page_state.service(self).remember_recent_cwd(cwd, ts=ts)
 
     def _backfill_recent_cwds_from_logs(self) -> None:
-        _page_state.backfill_recent_cwds_from_logs(self)
+        _page_state.service(self).backfill_recent_cwds_from_logs()
 
     def recent_cwds(self, *, limit: int = RECENT_CWD_MAX) -> list[str]:
-        return _page_state.recent_cwds(self, limit=limit)
+        return _page_state.service(self).recent_cwds(limit=limit)
 
     def _queue_len(self, session_id: str) -> int:
-        return _page_state.queue_len(self, session_id)
+        return _page_state.service(self).queue_len(session_id)
 
     def _queue_list_local(self, session_id: str) -> list[str]:
-        return _page_state.queue_list_local(self, session_id)
+        return _page_state.service(self).queue_list_local(session_id)
 
     def _queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
-        return _page_state.queue_enqueue_local(self, session_id, text)
+        return _page_state.service(self).queue_enqueue_local(session_id, text)
 
     def _queue_delete_local(self, session_id: str, index: int) -> dict[str, Any]:
-        return _page_state.queue_delete_local(self, session_id, index)
+        return _page_state.service(self).queue_delete_local(session_id, index)
 
     def _queue_update_local(
         self, session_id: str, index: int, text: str
     ) -> dict[str, Any]:
-        return _page_state.queue_update_local(self, session_id, index, text)
+        return _page_state.service(self).queue_update_local(session_id, index, text)
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, SessionRef, "Session"]:
-        return _page_state.files_key_for_session(self, session_id)
+        return _page_state.service(self).files_key_for_session(session_id)
 
     def files_get(self, session_id: str) -> list[str]:
-        return _page_state.files_get(self, session_id)
+        return _page_state.service(self).files_get(session_id)
 
     def files_add(self, session_id: str, path: str) -> list[str]:
-        return _page_state.files_add(self, session_id, path)
+        return _page_state.service(self).files_add(session_id, path)
 
     def files_clear(self, session_id: str) -> None:
-        _page_state.files_clear(self, session_id)
+        _page_state.service(self).files_clear(session_id)
 
     def harness_get(self, session_id: str) -> dict[str, Any]:
-        return _page_state.harness_get(self, session_id)
+        return _page_state.service(self).harness_get(session_id)
 
     def harness_set(
         self,
@@ -3687,8 +3680,7 @@ class SessionManager:
         cooldown_minutes: int | None = None,
         remaining_injections: int | None = None,
     ) -> dict[str, Any]:
-        return _page_state.harness_set(
-            self,
+        return _page_state.service(self).harness_set(
             session_id,
             enabled=enabled,
             request=request,
