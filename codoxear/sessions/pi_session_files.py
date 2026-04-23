@@ -4,22 +4,18 @@ import json
 from pathlib import Path
 from typing import Any
 
-
-def _runtime():
-    from .. import server as _server
-
-    return _server
+from ..runtime import ServerRuntime
 
 
-def pi_native_session_dir_for_cwd(cwd: str | Path) -> Path:
-    sv = _runtime()
+def pi_native_session_dir_for_cwd(runtime: ServerRuntime, cwd: str | Path) -> Path:
+    sv = runtime
     cwd_path = sv._safe_expanduser(Path(cwd)).resolve()
     slug = str(cwd_path).strip("/").replace("/", "-")
     return sv.PI_NATIVE_SESSIONS_DIR / f"--{slug}--"
 
 
-def pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
-    sv = _runtime()
+def pi_new_session_file_for_cwd(runtime: ServerRuntime, cwd: str | Path) -> Path:
+    sv = runtime
     now = float(sv._now())
     millis = int(round((now - sv.math.floor(now)) * 1000))
     if millis >= 1000:
@@ -27,10 +23,11 @@ def pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
         millis = 0
     stamp = sv.time.strftime("%Y-%m-%dT%H-%M-%S", sv.time.gmtime(now))
     name = f"{stamp}-{millis:03d}Z_{sv.uuid.uuid4()}.jsonl"
-    return pi_native_session_dir_for_cwd(cwd) / name
+    return pi_native_session_dir_for_cwd(runtime, cwd) / name
 
 
 def write_pi_session_header(
+    runtime: ServerRuntime,
     session_path: Path,
     *,
     session_id: str,
@@ -40,7 +37,7 @@ def write_pi_session_header(
     model_id: str | None = None,
     thinking_level: str | None = None,
 ) -> None:
-    sv = _runtime()
+    sv = runtime
     session_path.parent.mkdir(parents=True, exist_ok=True)
     now = float(sv._now())
     millis = int(round((now - sv.math.floor(now)) * 1000))
@@ -91,8 +88,8 @@ def next_pi_handoff_history_path(session_path: Path) -> Path:
         i += 1
 
 
-def copy_file_atomic(source_path: Path, target_path: Path) -> None:
-    sv = _runtime()
+def copy_file_atomic(runtime: ServerRuntime, source_path: Path, target_path: Path) -> None:
+    sv = runtime
     target_path.parent.mkdir(parents=True, exist_ok=True)
     if target_path.exists():
         raise FileExistsError(f"target already exists: {target_path}")
@@ -116,8 +113,13 @@ def copy_file_atomic(source_path: Path, target_path: Path) -> None:
             pass
 
 
-def append_pi_user_message(session_path: Path, *, text: str) -> None:
-    sv = _runtime()
+def append_pi_user_message(
+    runtime: ServerRuntime,
+    session_path: Path,
+    *,
+    text: str,
+) -> None:
+    sv = runtime
     now = float(sv._now())
     millis = int(round(now * 1000))
     entry = {
@@ -148,6 +150,7 @@ def pi_handoff_message_text(
 
 
 def write_pi_handoff_session(
+    runtime: ServerRuntime,
     session_path: Path,
     *,
     session_id: str,
@@ -159,6 +162,7 @@ def write_pi_handoff_session(
     thinking_level: str | None = None,
 ) -> None:
     write_pi_session_header(
+        runtime,
         session_path,
         session_id=session_id,
         cwd=cwd,
@@ -168,6 +172,7 @@ def write_pi_handoff_session(
         thinking_level=thinking_level,
     )
     append_pi_user_message(
+        runtime,
         session_path,
         text=pi_handoff_message_text(
             source_session_id=source_session_id,
@@ -178,11 +183,13 @@ def write_pi_handoff_session(
 
 
 def pi_session_name_from_session_file(
-    session_path: Path, *, max_scan_bytes: int = 512 * 1024
+    runtime: ServerRuntime,
+    session_path: Path,
+    *,
+    max_scan_bytes: int = 512 * 1024,
 ) -> str:
-    sv = _runtime()
     try:
-        objs = sv._read_jsonl_tail(session_path, max_scan_bytes)
+        objs = runtime._read_jsonl_tail(session_path, max_scan_bytes)
     except Exception:
         return ""
     for obj in reversed(objs):

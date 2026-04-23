@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-
-def _runtime():
-    from .. import server as _server
-
-    return _server
+from ..runtime import ServerRuntime
 
 
-def parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
-    sv = _runtime()
+def parse_create_session_request(
+    runtime: ServerRuntime, obj: dict[str, Any]
+) -> dict[str, Any]:
+    sv = runtime
     cwd = obj.get("cwd")
     if not isinstance(cwd, str) or not cwd.strip():
         raise ValueError("cwd required")
@@ -48,7 +46,9 @@ def parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
     if backend == "pi":
         pi_provider_choices = {
             str(value)
-            for value in (read_pi_launch_defaults().get("provider_choices") or [])
+            for value in (
+                read_pi_launch_defaults(runtime).get("provider_choices") or []
+            )
             if isinstance(value, str) and value.strip()
         }
         model_provider = sv._normalize_requested_model_provider(
@@ -74,7 +74,9 @@ def parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
             "create_in_tmux": create_in_tmux,
         }
 
-    allowed_providers = set(read_codex_launch_defaults().get("model_providers") or ["openai"])
+    allowed_providers = set(
+        read_codex_launch_defaults(runtime).get("model_providers") or ["openai"]
+    )
     model_provider = sv._normalize_requested_model_provider(
         obj.get("model_provider"),
         allowed=set(
@@ -134,8 +136,8 @@ def configured_model_providers(data: dict[str, Any]) -> list[str]:
     return providers
 
 
-def read_codex_launch_defaults() -> dict[str, Any]:
-    sv = _runtime()
+def read_codex_launch_defaults(runtime: ServerRuntime) -> dict[str, Any]:
+    sv = runtime
     configured_model = None
     configured_effort = None
     configured_provider = "openai"
@@ -230,8 +232,10 @@ def read_codex_launch_defaults() -> dict[str, Any]:
     return defaults
 
 
-def normalize_pi_provider_models_snapshot(raw: Any) -> dict[str, Any] | None:
-    sv = _runtime()
+def normalize_pi_provider_models_snapshot(
+    runtime: ServerRuntime, raw: Any
+) -> dict[str, Any] | None:
+    sv = runtime
     if not isinstance(raw, dict):
         return None
     provider_models_raw = raw.get("provider_models")
@@ -268,8 +272,10 @@ def normalize_pi_provider_models_snapshot(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def read_pi_provider_models_snapshot_from_source() -> dict[str, Any]:
-    sv = _runtime()
+def read_pi_provider_models_snapshot_from_source(
+    runtime: ServerRuntime,
+) -> dict[str, Any]:
+    sv = runtime
     provider_choices: list[str] = []
     provider_models: dict[str, list[str]] = {}
     if sv.PI_MODELS_PATH.exists():
@@ -303,29 +309,32 @@ def read_pi_provider_models_snapshot_from_source() -> dict[str, Any]:
 
 
 def read_pi_provider_models_snapshot(
+    runtime: ServerRuntime,
     *,
     page_state_db: Any = None,
     force_refresh: bool = False,
 ) -> dict[str, Any]:
-    sv = _runtime()
+    sv = runtime
     if not force_refresh and page_state_db is not None:
         cached = normalize_pi_provider_models_snapshot(
-            page_state_db.load_app_kv(sv.PI_MODELS_CACHE_NAMESPACE).get("snapshot")
+            runtime,
+            page_state_db.load_app_kv(sv.PI_MODELS_CACHE_NAMESPACE).get("snapshot"),
         )
         if cached is not None:
             return cached
-    snapshot = read_pi_provider_models_snapshot_from_source()
+    snapshot = read_pi_provider_models_snapshot_from_source(runtime)
     if page_state_db is not None:
         page_state_db.save_app_kv(sv.PI_MODELS_CACHE_NAMESPACE, {"snapshot": snapshot})
     return snapshot
 
 
 def read_pi_launch_defaults(
+    runtime: ServerRuntime,
     *,
     page_state_db: Any = None,
     force_refresh: bool = False,
 ) -> dict[str, Any]:
-    sv = _runtime()
+    sv = runtime
     configured_provider: str | None = None
     configured_model: str | None = None
     configured_effort: str | None = "high"
@@ -338,6 +347,7 @@ def read_pi_launch_defaults(
         configured_model = sv._clean_optional_text(data.get("defaultModel"))
 
     snapshot = read_pi_provider_models_snapshot(
+        runtime,
         page_state_db=page_state_db,
         force_refresh=force_refresh,
     )
@@ -380,17 +390,19 @@ def read_pi_launch_defaults(
 
 
 def read_new_session_defaults(
+    runtime: ServerRuntime,
     *,
     page_state_db: Any = None,
     refresh_pi_models: bool = False,
 ) -> dict[str, Any]:
-    sv = _runtime()
-    codex = read_codex_launch_defaults()
+    sv = runtime
+    codex = read_codex_launch_defaults(runtime)
     codex["agent_backend"] = "codex"
     codex["provider_choices"] = list(codex.get("model_providers") or [])
     codex["reasoning_efforts"] = list(sv.SUPPORTED_REASONING_EFFORTS)
     codex["supports_fast"] = True
     pi = read_pi_launch_defaults(
+        runtime,
         page_state_db=page_state_db,
         force_refresh=refresh_pi_models,
     )

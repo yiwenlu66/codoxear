@@ -1311,7 +1311,11 @@ def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | No
 
 
 def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
-    return _workspace_file_access.resolve_tracked_file_by_basename(session_id, raw_path)
+    return _workspace_file_access.resolve_tracked_file_by_basename(
+        RUNTIME,
+        session_id,
+        raw_path,
+    )
 
 
 def _resolve_session_relative_child(base: Path, raw_path: str) -> Path:
@@ -1543,6 +1547,7 @@ def _search_walk_relative_files(
     root: Path, *, query: str, limit: int
 ) -> dict[str, Any]:
     return _workspace_file_search.search_walk_relative_files(
+        RUNTIME,
         root,
         query=query,
         limit=limit,
@@ -1551,6 +1556,7 @@ def _search_walk_relative_files(
 
 def _search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
     return _workspace_file_search.search_git_relative_files(
+        RUNTIME,
         cwd,
         query=query,
         limit=limit,
@@ -1561,6 +1567,7 @@ def _search_session_relative_files(
     base: Path, *, query: str, limit: int = FILE_SEARCH_LIMIT
 ) -> dict[str, Any]:
     return _workspace_file_search.search_session_relative_files(
+        RUNTIME,
         base,
         query=query,
         limit=limit,
@@ -1781,15 +1788,15 @@ def _clean_optional_bool(value: Any) -> bool | None:
 
 
 def _normalize_session_cwd_row(row: dict[str, Any]) -> dict[str, Any]:
-    return _session_listing.normalize_session_cwd_row(row)
+    return _session_listing.normalize_session_cwd_row(RUNTIME, row)
 
 
 def _frontend_session_list_row(row: dict[str, Any]) -> dict[str, Any]:
-    return _session_listing.frontend_session_list_row(row)
+    return _session_listing.frontend_session_list_row(RUNTIME, row)
 
 
 def _session_list_group_key(row: dict[str, Any]) -> str:
-    return _session_listing.session_list_group_key(row)
+    return _session_listing.session_list_group_key(RUNTIME, row)
 
 
 def _session_list_payload(
@@ -1802,6 +1809,7 @@ def _session_list_payload(
     group_limit: int = SESSION_LIST_RECENT_GROUP_LIMIT,
 ) -> dict[str, Any]:
     return _session_listing.session_list_payload(
+        RUNTIME,
         rows,
         group_key=group_key,
         offset=offset,
@@ -2065,25 +2073,26 @@ def _legacy_pi_ui_response_text(payload: dict[str, Any]) -> str | None:
 
 def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
     return _workspace_file_access.resolve_client_file_path(
+        RUNTIME,
         session_id=session_id,
         raw_path=raw_path,
     )
 
 
 def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
-    return _workspace_file_access.inspect_openable_file(path_obj)
+    return _workspace_file_access.inspect_openable_file(RUNTIME, path_obj)
 
 
 def _inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
-    return _workspace_file_access.inspect_path_metadata(path_obj)
+    return _workspace_file_access.inspect_path_metadata(RUNTIME, path_obj)
 
 
 def _read_client_file_view(path_obj: Path) -> ClientFileView:
-    return _workspace_file_access.read_client_file_view(path_obj)
+    return _workspace_file_access.read_client_file_view(RUNTIME, path_obj)
 
 
 def _read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
-    return _workspace_file_access.read_text_or_image(path_obj)
+    return _workspace_file_access.read_text_or_image(RUNTIME, path_obj)
 
 
 def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
@@ -2091,7 +2100,7 @@ def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
 
 
 def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
-    return _workspace_file_access.inspect_client_path(path_obj)
+    return _workspace_file_access.inspect_client_path(RUNTIME, path_obj)
 
 
 def _download_disposition(path_obj: Path) -> str:
@@ -2248,7 +2257,7 @@ def _normalize_requested_backend(raw: Any) -> str:
 
 
 def _parse_create_session_request(obj: dict[str, Any]) -> dict[str, Any]:
-    return _session_creation.parse_create_session_request(obj)
+    return _session_creation.parse_create_session_request(RUNTIME, obj)
 
 
 def _configured_model_providers(data: dict[str, Any]) -> list[str]:
@@ -2352,16 +2361,16 @@ def _patch_metadata_pi_binding(sock: Path, session_path: Path) -> None:
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
-    return _session_creation.read_codex_launch_defaults()
+    return _session_creation.read_codex_launch_defaults(RUNTIME)
 
 
 def _normalize_pi_provider_models_snapshot(raw: Any) -> dict[str, Any] | None:
-    return _session_creation.normalize_pi_provider_models_snapshot(raw)
+    return _session_creation.normalize_pi_provider_models_snapshot(RUNTIME, raw)
 
 
 
 def _read_pi_provider_models_snapshot_from_source() -> dict[str, Any]:
-    return _session_creation.read_pi_provider_models_snapshot_from_source()
+    return _session_creation.read_pi_provider_models_snapshot_from_source(RUNTIME)
 
 
 
@@ -2371,6 +2380,7 @@ def _read_pi_provider_models_snapshot(
     force_refresh: bool = False,
 ) -> dict[str, Any]:
     return _session_creation.read_pi_provider_models_snapshot(
+        RUNTIME,
         page_state_db=page_state_db,
         force_refresh=force_refresh,
     )
@@ -2383,6 +2393,7 @@ def _read_pi_launch_defaults(
     force_refresh: bool = False,
 ) -> dict[str, Any]:
     return _session_creation.read_pi_launch_defaults(
+        RUNTIME,
         page_state_db=page_state_db,
         force_refresh=force_refresh,
     )
@@ -2394,6 +2405,7 @@ def _read_new_session_defaults(
     refresh_pi_models: bool = False,
 ) -> dict[str, Any]:
     return _session_creation.read_new_session_defaults(
+        RUNTIME,
         page_state_db=page_state_db,
         refresh_pi_models=refresh_pi_models,
     )
@@ -2404,11 +2416,12 @@ def _fallback_path_mtime(path: Path) -> float | None:
 
 
 def _last_pi_conversation_ts(path: Path) -> float | None:
-    return _resume_candidates.last_pi_conversation_ts(path)
+    return _resume_candidates.last_pi_conversation_ts(RUNTIME, path)
 
 
 def _resume_candidate_updated_ts(path: Path, *, agent_backend: str) -> float | None:
     return _resume_candidates.resume_candidate_updated_ts(
+        RUNTIME,
         path,
         agent_backend=agent_backend,
     )
@@ -2418,17 +2431,18 @@ def _resume_candidate_from_log(
     log_path: Path, *, agent_backend: str = "codex"
 ) -> dict[str, Any] | None:
     return _resume_candidates.resume_candidate_from_log(
+        RUNTIME,
         log_path,
         agent_backend=agent_backend,
     )
 
 
 def _pi_native_session_dir_for_cwd(cwd: str | Path) -> Path:
-    return _pi_session_files.pi_native_session_dir_for_cwd(cwd)
+    return _pi_session_files.pi_native_session_dir_for_cwd(RUNTIME, cwd)
 
 
 def _pi_new_session_file_for_cwd(cwd: str | Path) -> Path:
-    return _pi_session_files.pi_new_session_file_for_cwd(cwd)
+    return _pi_session_files.pi_new_session_file_for_cwd(RUNTIME, cwd)
 
 
 def _write_pi_session_header(
@@ -2442,6 +2456,7 @@ def _write_pi_session_header(
     thinking_level: str | None = None,
 ) -> None:
     return _pi_session_files.write_pi_session_header(
+        RUNTIME,
         session_path,
         session_id=session_id,
         cwd=cwd,
@@ -2465,11 +2480,11 @@ def _next_pi_handoff_history_path(session_path: Path) -> Path:
 
 
 def _copy_file_atomic(source_path: Path, target_path: Path) -> None:
-    return _pi_session_files.copy_file_atomic(source_path, target_path)
+    return _pi_session_files.copy_file_atomic(RUNTIME, source_path, target_path)
 
 
 def _append_pi_user_message(session_path: Path, *, text: str) -> None:
-    return _pi_session_files.append_pi_user_message(session_path, text=text)
+    return _pi_session_files.append_pi_user_message(RUNTIME, session_path, text=text)
 
 
 def _pi_handoff_message_text(
@@ -2494,6 +2509,7 @@ def _write_pi_handoff_session(
     thinking_level: str | None = None,
 ) -> None:
     return _pi_session_files.write_pi_handoff_session(
+        RUNTIME,
         session_path,
         session_id=session_id,
         cwd=cwd,
@@ -2509,6 +2525,7 @@ def _pi_session_name_from_session_file(
     session_path: Path, *, max_scan_bytes: int = 512 * 1024
 ) -> str:
     return _pi_session_files.pi_session_name_from_session_file(
+        RUNTIME,
         session_path,
         max_scan_bytes=max_scan_bytes,
     )
@@ -2516,13 +2533,17 @@ def _pi_session_name_from_session_file(
 
 
 def _pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] | None:
-    return _resume_candidates.pi_resume_candidate_from_session_file(session_path)
+    return _resume_candidates.pi_resume_candidate_from_session_file(
+        RUNTIME,
+        session_path,
+    )
 
 
 def _discover_pi_session_for_cwd(
     cwd: str, start_ts: float, *, exclude: set[Path] | None = None
 ) -> Path | None:
     return _resume_candidates.discover_pi_session_for_cwd(
+        RUNTIME,
         cwd,
         start_ts,
         exclude=exclude,
@@ -2538,6 +2559,7 @@ def _resolve_pi_session_path(
     exclude: set[Path] | None = None,
 ) -> tuple[Path | None, str | None]:
     return _resume_candidates.resolve_pi_session_path(
+        RUNTIME,
         thread_id=thread_id,
         cwd=cwd,
         start_ts=start_ts,
@@ -2562,6 +2584,7 @@ def _list_resume_candidates_for_cwd(
     agent_backend: str | None = None,
 ) -> list[dict[str, Any]]:
     return _resume_candidates.list_resume_candidates_for_cwd(
+        RUNTIME,
         cwd,
         limit=limit,
         offset=offset,
@@ -2571,7 +2594,7 @@ def _list_resume_candidates_for_cwd(
 
 
 def _iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
-    return _resume_candidates.iter_all_resume_candidates(limit=limit)
+    return _resume_candidates.iter_all_resume_candidates(RUNTIME, limit=limit)
 
 
 def _historical_session_id(backend: str, resume_session_id: str) -> str:
@@ -2619,6 +2642,7 @@ def _historical_sidebar_items(
     *, live_resume_keys: set[tuple[str, str]], now_ts: float
 ) -> list[dict[str, Any]]:
     return _session_listing.historical_sidebar_items(
+        RUNTIME,
         live_resume_keys=live_resume_keys,
         now_ts=now_ts,
     )
@@ -2640,6 +2664,7 @@ def _first_user_message_preview_from_log(
     log_path: Path, *, max_scan_bytes: int = 256 * 1024
 ) -> str:
     return _session_listing.first_user_message_preview_from_log(
+        RUNTIME,
         log_path,
         max_scan_bytes=max_scan_bytes,
     )
@@ -2649,6 +2674,7 @@ def _first_user_message_preview_from_pi_session(
     session_path: Path, *, max_scan_bytes: int = 256 * 1024
 ) -> str:
     return _session_listing.first_user_message_preview_from_pi_session(
+        RUNTIME,
         session_path,
         max_scan_bytes=max_scan_bytes,
     )
@@ -3154,6 +3180,8 @@ class SessionManager:
             manager=self,
             event_hub=EVENT_HUB,
         )
+        globals()["MANAGER"] = self
+        globals()["RUNTIME"] = self._runtime
         self._sidebar_state = SidebarStateFacade(self)
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}

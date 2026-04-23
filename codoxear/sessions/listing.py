@@ -5,11 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-
-def _runtime():
-    from .. import server as _server
-
-    return _server
+from ..runtime import ServerRuntime
 
 
 def session_row_display_name(
@@ -27,8 +23,10 @@ def session_row_display_name(
     return fallback
 
 
-def normalize_session_cwd_row(row: dict[str, Any]) -> dict[str, Any]:
-    sv = _runtime()
+def normalize_session_cwd_row(
+    runtime: ServerRuntime, row: dict[str, Any]
+) -> dict[str, Any]:
+    sv = runtime
     if not isinstance(row, dict):
         return row
     normalized = dict(row)
@@ -40,21 +38,26 @@ def normalize_session_cwd_row(row: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def frontend_session_list_row(row: dict[str, Any]) -> dict[str, Any]:
-    sv = _runtime()
-    normalized = normalize_session_cwd_row(row)
+def frontend_session_list_row(
+    runtime: ServerRuntime, row: dict[str, Any]
+) -> dict[str, Any]:
+    sv = runtime
+    normalized = normalize_session_cwd_row(runtime, row)
     if not isinstance(normalized, dict):
         return normalized
-    return {key: normalized[key] for key in sv.SESSION_LIST_ROW_KEYS if key in normalized}
+    return {
+        key: normalized[key] for key in sv.SESSION_LIST_ROW_KEYS if key in normalized
+    }
 
 
-def session_list_group_key(row: dict[str, Any]) -> str:
-    sv = _runtime()
+def session_list_group_key(runtime: ServerRuntime, row: dict[str, Any]) -> str:
+    sv = runtime
     cwd = sv._canonical_session_cwd(row.get("cwd"))
     return cwd or sv.SESSION_LIST_FALLBACK_GROUP_KEY
 
 
 def session_list_payload(
+    runtime: ServerRuntime,
     rows: list[dict[str, Any]],
     *,
     group_key: str | None = None,
@@ -63,7 +66,7 @@ def session_list_payload(
     group_offset: int = 0,
     group_limit: int = 12,
 ) -> dict[str, Any]:
-    sv = _runtime()
+    sv = runtime
     start = max(0, int(offset))
     stop = start + max(1, int(limit))
 
@@ -72,7 +75,7 @@ def session_list_payload(
         and group_offset <= 0
         and group_limit == sv.SESSION_LIST_RECENT_GROUP_LIMIT
     ):
-        page_rows = [frontend_session_list_row(row) for row in rows[start:stop]]
+        page_rows = [frontend_session_list_row(runtime, row) for row in rows[start:stop]]
         remaining = max(0, len(rows) - stop)
         payload: dict[str, Any] = {"sessions": page_rows}
         if remaining > 0:
@@ -81,7 +84,7 @@ def session_list_payload(
 
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        key = session_list_group_key(row)
+        key = session_list_group_key(runtime, row)
         if key not in grouped:
             grouped[key] = []
         grouped[key].append(row)
@@ -122,7 +125,9 @@ def session_list_payload(
 
     if group_key is not None:
         group_rows = grouped.get(group_key, [])
-        page_rows = [frontend_session_list_row(row) for row in group_rows[start:stop]]
+        page_rows = [
+            frontend_session_list_row(runtime, row) for row in group_rows[start:stop]
+        ]
         remaining = max(0, len(group_rows) - stop)
         return {
             "sessions": page_rows,
@@ -150,7 +155,7 @@ def session_list_payload(
             continue
         group_rows = grouped[key]
         page_rows = _page_rows_for_group(group_rows, sv.SESSION_LIST_GROUP_PAGE_SIZE)
-        sessions.extend(frontend_session_list_row(row) for row in page_rows)
+        sessions.extend(frontend_session_list_row(runtime, row) for row in page_rows)
         remaining = len(group_rows) - len(page_rows)
         if remaining > 0:
             remaining_by_group[key] = remaining
@@ -165,9 +170,12 @@ def session_list_payload(
 
 
 def historical_sidebar_items(
-    *, live_resume_keys: set[tuple[str, str]], now_ts: float
+    runtime: ServerRuntime,
+    *,
+    live_resume_keys: set[tuple[str, str]],
+    now_ts: float,
 ) -> list[dict[str, Any]]:
-    sv = _runtime()
+    sv = runtime
     out: list[dict[str, Any]] = []
     for row in sv._iter_all_resume_candidates():
         resume_session_id = row.get("session_id")
@@ -196,13 +204,15 @@ def historical_sidebar_items(
                 session_path_raw = row.get("session_path")
                 if isinstance(session_path_raw, str) and session_path_raw:
                     first_user_message = first_user_message_preview_from_pi_session(
-                        Path(session_path_raw)
+                        runtime,
+                        Path(session_path_raw),
                     )
             else:
                 log_path_raw = row.get("log_path")
                 if isinstance(log_path_raw, str) and log_path_raw:
                     first_user_message = first_user_message_preview_from_log(
-                        Path(log_path_raw)
+                        runtime,
+                        Path(log_path_raw),
                     )
         except Exception:
             first_user_message = ""
@@ -258,6 +268,14 @@ def historical_sidebar_items(
                 "resume_session_id": resume_session_id,
             }
         )
+
+    out.sort(
+        key=lambda row: (
+            -float(row.get("updated_ts") or 0.0),
+            str(row.get("backend") or ""),
+            str(row.get("session_id") or ""),
+        )
+    )
     return out
 
 
@@ -299,9 +317,12 @@ def is_scaffold_user_text(text: str) -> bool:
 
 
 def first_user_message_preview_from_log(
-    log_path: Path, *, max_scan_bytes: int = 256 * 1024
+    runtime: ServerRuntime,
+    log_path: Path,
+    *,
+    max_scan_bytes: int = 256 * 1024,
 ) -> str:
-    sv = _runtime()
+    sv = runtime
     try:
         with log_path.open("rb") as f:
             total = 0
@@ -338,7 +359,10 @@ def first_user_message_preview_from_log(
 
 
 def first_user_message_preview_from_pi_session(
-    session_path: Path, *, max_scan_bytes: int = 256 * 1024
+    runtime: ServerRuntime,
+    session_path: Path,
+    *,
+    max_scan_bytes: int = 256 * 1024,
 ) -> str:
     try:
         with session_path.open("rb") as f:

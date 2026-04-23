@@ -4,11 +4,7 @@ import os
 import urllib.parse
 from pathlib import Path
 
-
-def _sv():
-    from .. import server as sv
-
-    return sv
+from ..runtime import ServerRuntime
 
 
 def resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
@@ -45,8 +41,12 @@ def resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | Non
     return match
 
 
-def resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
-    sv = _sv()
+def resolve_tracked_file_by_basename(
+    runtime: ServerRuntime,
+    session_id: str,
+    raw_path: str,
+) -> Path | None:
+    sv = runtime
     name = str(raw_path).strip()
     if not name or "/" in name or "\\" in name or "\x00" in name:
         return None
@@ -67,8 +67,13 @@ def resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | N
     return match
 
 
-def resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    sv = _sv()
+def resolve_client_file_path(
+    runtime: ServerRuntime,
+    *,
+    session_id: str,
+    raw_path: str,
+) -> Path:
+    sv = runtime
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("empty path")
     if "\n" in raw_path or len(raw_path) > 1024:
@@ -96,7 +101,7 @@ def resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
                 if direct.exists():
                     path_obj = direct
                 else:
-                    tracked = resolve_tracked_file_by_basename(session_id, raw_path)
+                    tracked = resolve_tracked_file_by_basename(runtime, session_id, raw_path)
                     if tracked is not None:
                         path_obj = tracked
                         return path_obj
@@ -121,8 +126,8 @@ def resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
     return path_obj
 
 
-def read_client_file_view(path_obj: Path):
-    sv = _sv()
+def read_client_file_view(runtime: ServerRuntime, path_obj: Path):
+    sv = runtime
     if not path_obj.exists():
         raise FileNotFoundError("file not found")
     if path_obj.is_dir():
@@ -159,26 +164,36 @@ def read_client_file_view(path_obj: Path):
     )
 
 
-def inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
-    view = read_client_file_view(path_obj)
-    sv = _sv()
+def inspect_openable_file(
+    runtime: ServerRuntime,
+    path_obj: Path,
+) -> tuple[bytes, int, str, str | None]:
+    view = read_client_file_view(runtime, path_obj)
     if view.kind == "directory":
         raise ValueError("path is not a file")
     if view.kind == "download_only":
         if view.blocked_reason == "too_large":
-            raise ValueError(f"file too large (max {sv.FILE_READ_MAX_BYTES} bytes)")
+            raise ValueError(
+                f"file too large (max {runtime.FILE_READ_MAX_BYTES} bytes)"
+            )
         raise ValueError("binary file not supported")
     raw = path_obj.read_bytes()
     return raw, view.size, view.kind, view.content_type
 
 
-def inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
-    view = read_client_file_view(path_obj)
+def inspect_path_metadata(
+    runtime: ServerRuntime,
+    path_obj: Path,
+) -> tuple[int, str, str | None]:
+    view = read_client_file_view(runtime, path_obj)
     return view.size, view.kind, view.content_type
 
 
-def read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
-    view = read_client_file_view(path_obj)
+def read_text_or_image(
+    runtime: ServerRuntime,
+    path_obj: Path,
+) -> tuple[str, int, str | None, bytes | None]:
+    view = read_client_file_view(runtime, path_obj)
     if view.kind in {"image", "pdf", "download_only", "directory"}:
         return view.kind, view.size, view.content_type, None
     raw = path_obj.read_bytes()
@@ -197,8 +212,11 @@ def read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
     return raw, len(raw)
 
 
-def inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
-    view = read_client_file_view(path_obj)
+def inspect_client_path(
+    runtime: ServerRuntime,
+    path_obj: Path,
+) -> tuple[int, str, str | None]:
+    view = read_client_file_view(runtime, path_obj)
     return view.size, view.kind, view.content_type
 
 

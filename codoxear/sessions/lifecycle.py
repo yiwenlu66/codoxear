@@ -4,16 +4,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .runtime_access import manager_runtime
+
 
 def _runtime(manager: Any):
-    sv = getattr(manager, "_runtime", None)
-    if sv is not None:
-        return sv
-    from .. import server as _server
-
-    sv = _server.build_server_runtime(_server, manager=manager, event_hub=_server.EVENT_HUB)
-    manager._runtime = sv
-    return sv
+    return manager_runtime(manager)
 
 
 def catalog_record_for_ref(manager: Any, ref: Any):

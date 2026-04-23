@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ..agent_backend import normalize_agent_backend
+from .runtime_access import manager_runtime
 
 
 def _clean_optional_text(value: Any) -> str | None:
@@ -182,15 +183,7 @@ def spawn_web_session(
     create_in_tmux: bool = False,
     backend: str | None = None,
 ) -> dict[str, Any]:
-    sv = getattr(manager, "_runtime", None)
-    if sv is None:
-        from .. import server as _server
-
-        sv = manager._runtime = _server.build_server_runtime(
-            _server,
-            manager=manager,
-            event_hub=_server.EVENT_HUB,
-        )
+    sv = manager_runtime(manager)
 
     backend_name = normalize_agent_backend(
         backend, default=normalize_agent_backend(agent_backend, default="codex")

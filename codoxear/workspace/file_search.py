@@ -6,11 +6,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-
-def _sv():
-    from .. import server as sv
-
-    return sv
+from ..runtime import ServerRuntime
 
 
 def file_search_score(candidate: str, query: str) -> int:
@@ -85,8 +81,14 @@ def _finish_file_search(
     }
 
 
-def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[str, Any]:
-    sv = _sv()
+def search_walk_relative_files(
+    runtime: ServerRuntime,
+    root: Path,
+    *,
+    query: str,
+    limit: int,
+) -> dict[str, Any]:
+    sv = runtime
     deadline = time.monotonic() + sv.FILE_SEARCH_TIMEOUT_SECONDS
     heap: list[tuple[int, str]] = []
     scanned = 0
@@ -127,8 +129,14 @@ def search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[st
     )
 
 
-def search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
-    sv = _sv()
+def search_git_relative_files(
+    runtime: ServerRuntime,
+    cwd: Path,
+    *,
+    query: str,
+    limit: int,
+) -> dict[str, Any]:
+    sv = runtime
     deadline = time.monotonic() + sv.FILE_SEARCH_TIMEOUT_SECONDS
     heap: list[tuple[int, str]] = []
     scanned = 0
@@ -177,9 +185,13 @@ def search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str,
 
 
 def search_session_relative_files(
-    base: Path, *, query: str, limit: int
+    runtime: ServerRuntime,
+    base: Path,
+    *,
+    query: str,
+    limit: int,
 ) -> dict[str, Any]:
-    sv = _sv()
+    sv = runtime
     root = sv._safe_expanduser(base)
     if not root.is_absolute():
         root = root.resolve()
@@ -193,5 +205,5 @@ def search_session_relative_files(
     clamped_limit = max(1, min(int(limit), sv.FILE_SEARCH_LIMIT))
     repo_root = sv._git_repo_root(root)
     if repo_root is not None:
-        return search_git_relative_files(root, query=raw_query, limit=clamped_limit)
-    return search_walk_relative_files(root, query=raw_query, limit=clamped_limit)
+        return search_git_relative_files(runtime, root, query=raw_query, limit=clamped_limit)
+    return search_walk_relative_files(runtime, root, query=raw_query, limit=clamped_limit)

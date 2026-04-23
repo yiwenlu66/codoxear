@@ -5,11 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-
-def _runtime():
-    from .. import server as _server
-
-    return _server
+from ..runtime import ServerRuntime
 
 
 def fallback_path_mtime(path: Path) -> float | None:
@@ -22,8 +18,8 @@ def fallback_path_mtime(path: Path) -> float | None:
     return float(stat.st_mtime)
 
 
-def last_pi_conversation_ts(path: Path) -> float | None:
-    sv = _runtime()
+def last_pi_conversation_ts(runtime: ServerRuntime, path: Path) -> float | None:
+    sv = runtime
     try:
         for entry in sv._rollout_log._iter_jsonl_objects_reverse(path):
             if entry.get("type") != "message":
@@ -46,11 +42,16 @@ def last_pi_conversation_ts(path: Path) -> float | None:
     return None
 
 
-def resume_candidate_updated_ts(path: Path, *, agent_backend: str) -> float | None:
-    sv = _runtime()
+def resume_candidate_updated_ts(
+    runtime: ServerRuntime,
+    path: Path,
+    *,
+    agent_backend: str,
+) -> float | None:
+    sv = runtime
     backend_name = sv.normalize_agent_backend(agent_backend)
     if backend_name == "pi":
-        ts = last_pi_conversation_ts(path)
+        ts = last_pi_conversation_ts(runtime, path)
     else:
         ts = sv._last_conversation_ts_from_tail(path)
     if isinstance(ts, (int, float)) and math.isfinite(float(ts)) and float(ts) > 0:
@@ -59,9 +60,12 @@ def resume_candidate_updated_ts(path: Path, *, agent_backend: str) -> float | No
 
 
 def resume_candidate_from_log(
-    log_path: Path, *, agent_backend: str = "codex"
+    runtime: ServerRuntime,
+    log_path: Path,
+    *,
+    agent_backend: str = "codex",
 ) -> dict[str, Any] | None:
-    sv = _runtime()
+    sv = runtime
     backend_name = sv.normalize_agent_backend(agent_backend)
     meta = sv._read_session_meta(log_path, agent_backend=backend_name)
     if backend_name == "codex" and sv._is_subagent_session_meta(meta):
@@ -72,7 +76,7 @@ def resume_candidate_from_log(
         return None
     if not isinstance(cwd, str) or not cwd:
         return None
-    updated_ts = resume_candidate_updated_ts(log_path, agent_backend=backend_name)
+    updated_ts = resume_candidate_updated_ts(runtime, log_path, agent_backend=backend_name)
     if updated_ts is None:
         return None
     git_branch = ""
@@ -93,8 +97,11 @@ def resume_candidate_from_log(
     }
 
 
-def pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] | None:
-    sv = _runtime()
+def pi_resume_candidate_from_session_file(
+    runtime: ServerRuntime,
+    session_path: Path,
+) -> dict[str, Any] | None:
+    sv = runtime
     if sv._pi_session_has_handoff_history(session_path):
         return None
     try:
@@ -114,7 +121,11 @@ def pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] 
                     return None
                 if not (isinstance(cwd, str) and cwd):
                     return None
-                updated_ts = resume_candidate_updated_ts(session_path, agent_backend="pi")
+                updated_ts = resume_candidate_updated_ts(
+                    runtime,
+                    session_path,
+                    agent_backend="pi",
+                )
                 if updated_ts is None:
                     return None
                 return {
@@ -134,9 +145,13 @@ def pi_resume_candidate_from_session_file(session_path: Path) -> dict[str, Any] 
 
 
 def discover_pi_session_for_cwd(
-    cwd: str, start_ts: float, *, exclude: set[Path] | None = None
+    runtime: ServerRuntime,
+    cwd: str,
+    start_ts: float,
+    *,
+    exclude: set[Path] | None = None,
 ) -> Path | None:
-    sv = _runtime()
+    sv = runtime
     session_dir = sv._pi_native_session_dir_for_cwd(cwd)
     if not session_dir.is_dir():
         return None
@@ -160,6 +175,7 @@ def discover_pi_session_for_cwd(
 
 
 def resolve_pi_session_path(
+    runtime: ServerRuntime,
     *,
     thread_id: str | None,
     cwd: str,
@@ -167,7 +183,7 @@ def resolve_pi_session_path(
     preferred: Path | None = None,
     exclude: set[Path] | None = None,
 ) -> tuple[Path | None, str | None]:
-    sv = _runtime()
+    sv = runtime
     clean_thread_id = str(thread_id or "").strip()
     if preferred is not None:
         try:
@@ -192,6 +208,7 @@ def resolve_pi_session_path(
 
 
 def list_resume_candidates_for_cwd(
+    runtime: ServerRuntime,
     cwd: str,
     *,
     limit: int = 12,
@@ -199,7 +216,7 @@ def list_resume_candidates_for_cwd(
     backend: str | None = None,
     agent_backend: str | None = None,
 ) -> list[dict[str, Any]]:
-    sv = _runtime()
+    sv = runtime
     cwd2 = str(sv._safe_expanduser(Path(cwd)).resolve())
     backend_raw = backend if backend is not None else agent_backend
     backend2 = sv.normalize_agent_backend(backend_raw, default="codex")
@@ -242,8 +259,12 @@ def list_resume_candidates_for_cwd(
     return out[offset2 : offset2 + limit2]
 
 
-def iter_all_resume_candidates(*, limit: int = 200) -> list[dict[str, Any]]:
-    sv = _runtime()
+def iter_all_resume_candidates(
+    runtime: ServerRuntime,
+    *,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    sv = runtime
     seen: set[tuple[str, str]] = set()
     ranked_rows: list[tuple[float, dict[str, Any]]] = []
 
