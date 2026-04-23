@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,132 @@ from .runtime_access import manager_runtime
 
 def _runtime(manager: Any):
     return manager_runtime(manager)
+
+
+@dataclass(slots=True)
+class SessionLifecycleService:
+    manager: Any
+
+    def catalog_record_for_ref(self, ref: Any):
+        return catalog_record_for_ref(self.manager, ref)
+
+    def refresh_durable_session_catalog(self, *, force: bool = False) -> None:
+        refresh_durable_session_catalog(self.manager, force=force)
+
+    def wait_for_live_session(
+        self,
+        durable_session_id: str,
+        *,
+        timeout_s: float = 8.0,
+    ):
+        return wait_for_live_session(
+            self.manager,
+            durable_session_id,
+            timeout_s=timeout_s,
+        )
+
+    def copy_session_ui_identity(
+        self,
+        *,
+        source_session_id: str,
+        target_session_id: str,
+    ) -> str | None:
+        return copy_session_ui_identity(
+            self.manager,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+        )
+
+    def capture_runtime_bound_restart_state(
+        self, runtime_id: str, ref: Any
+    ) -> dict[str, Any]:
+        return capture_runtime_bound_restart_state(self.manager, runtime_id, ref)
+
+    def stage_runtime_bound_restart_state(
+        self, runtime_id: str, ref: Any, state: dict[str, Any]
+    ) -> None:
+        stage_runtime_bound_restart_state(self.manager, runtime_id, ref, state)
+
+    def restore_runtime_bound_restart_state(
+        self, runtime_id: str, ref: Any, state: dict[str, Any]
+    ) -> None:
+        restore_runtime_bound_restart_state(self.manager, runtime_id, ref, state)
+
+    def finalize_pending_pi_spawn(
+        self,
+        *,
+        spawn_nonce: str,
+        durable_session_id: str,
+        cwd: str,
+        session_path: Path,
+        proc: Any | None = None,
+        delete_on_failure: bool = True,
+        restore_record_on_failure: Any | None = None,
+    ) -> None:
+        finalize_pending_pi_spawn(
+            self.manager,
+            spawn_nonce=spawn_nonce,
+            durable_session_id=durable_session_id,
+            cwd=cwd,
+            session_path=session_path,
+            proc=proc,
+            delete_on_failure=delete_on_failure,
+            restore_record_on_failure=restore_record_on_failure,
+        )
+
+    def reset_log_caches(self, session: Any, *, meta_log_off: int) -> None:
+        reset_log_caches(self.manager, session, meta_log_off=meta_log_off)
+
+    def session_source_changed(
+        self,
+        session: Any,
+        *,
+        log_path: Path | None,
+        session_path: Path | None,
+    ) -> bool:
+        return session_source_changed(
+            self.manager,
+            session,
+            log_path=log_path,
+            session_path=session_path,
+        )
+
+    def claimed_pi_session_paths(self, *, exclude_sid: str = "") -> set[Path]:
+        return claimed_pi_session_paths(self.manager, exclude_sid=exclude_sid)
+
+    def apply_session_source(
+        self,
+        session: Any,
+        *,
+        log_path: Path | None,
+        session_path: Path | None,
+    ) -> None:
+        apply_session_source(
+            self.manager,
+            session,
+            log_path=log_path,
+            session_path=session_path,
+        )
+
+    def session_run_settings(
+        self,
+        *,
+        meta: dict[str, Any],
+        log_path: Path | None,
+        backend: str | None = None,
+        agent_backend: str | None = None,
+    ) -> tuple[str | None, str | None, str | None, str | None]:
+        return session_run_settings(
+            self.manager,
+            meta=meta,
+            log_path=log_path,
+            backend=backend,
+            agent_backend=agent_backend,
+        )
+
+
+def service(manager: Any) -> SessionLifecycleService:
+    return SessionLifecycleService(manager)
 
 
 def catalog_record_for_ref(manager: Any, ref: Any):

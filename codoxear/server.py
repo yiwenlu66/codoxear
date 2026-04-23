@@ -1811,7 +1811,7 @@ def _session_list_payload(
 
 
 def _listed_session_row(manager: "SessionManager", session_id: str) -> dict[str, Any] | None:
-    return _session_catalog.listed_session_row(manager, session_id)
+    return _session_catalog.service(manager).listed_session_row(session_id)
 
 
 def _session_details_payload(
@@ -3088,10 +3088,10 @@ class SessionManager:
         return str(session.session_id)
 
     def _runtime_session_id_for_identifier(self, session_id: str) -> str | None:
-        return _session_catalog.runtime_session_id_for_identifier(self, session_id)
+        return _session_catalog.service(self).runtime_session_id_for_identifier(session_id)
 
     def _durable_session_id_for_identifier(self, session_id: str) -> str | None:
-        return _session_catalog.durable_session_id_for_identifier(self, session_id)
+        return _session_catalog.service(self).durable_session_id_for_identifier(session_id)
 
     def _append_bridge_event(self, durable_session_id: str, event: dict[str, Any]) -> dict[str, Any]:
         key = _clean_optional_text(durable_session_id)
@@ -3179,13 +3179,13 @@ class SessionManager:
         return _session_background.maybe_drain_outbound_request(self, runtime_id)
 
     def _catalog_record_for_ref(self, ref: SessionRef) -> DurableSessionRecord | None:
-        return _session_lifecycle.catalog_record_for_ref(self, ref)
+        return _session_lifecycle.service(self).catalog_record_for_ref(ref)
 
     def _refresh_durable_session_catalog(self, *, force: bool = False) -> None:
-        _session_lifecycle.refresh_durable_session_catalog(self, force=force)
+        _session_lifecycle.service(self).refresh_durable_session_catalog(force=force)
 
     def _page_state_ref_for_session_id(self, session_id: str) -> SessionRef | None:
-        return _session_catalog.page_state_ref_for_session_id(self, session_id)
+        return _session_catalog.service(self).page_state_ref_for_session_id(session_id)
 
     def _persist_durable_session_record(self, row: DurableSessionRecord) -> None:
         db = getattr(self, "_page_state_db", None)
@@ -3203,8 +3203,7 @@ class SessionManager:
         *,
         timeout_s: float = 8.0,
     ) -> Session:
-        return _session_lifecycle.wait_for_live_session(
-            self,
+        return _session_lifecycle.service(self).wait_for_live_session(
             durable_session_id,
             timeout_s=timeout_s,
         )
@@ -3215,8 +3214,7 @@ class SessionManager:
         source_session_id: str,
         target_session_id: str,
     ) -> str | None:
-        return _session_lifecycle.copy_session_ui_identity(
-            self,
+        return _session_lifecycle.service(self).copy_session_ui_identity(
             source_session_id=source_session_id,
             target_session_id=target_session_id,
         )
@@ -3224,8 +3222,7 @@ class SessionManager:
     def _capture_runtime_bound_restart_state(
         self, runtime_id: str, ref: SessionRef
     ) -> dict[str, Any]:
-        return _session_lifecycle.capture_runtime_bound_restart_state(
-            self,
+        return _session_lifecycle.service(self).capture_runtime_bound_restart_state(
             runtime_id,
             ref,
         )
@@ -3233,8 +3230,7 @@ class SessionManager:
     def _stage_runtime_bound_restart_state(
         self, runtime_id: str, ref: SessionRef, state: dict[str, Any]
     ) -> None:
-        _session_lifecycle.stage_runtime_bound_restart_state(
-            self,
+        _session_lifecycle.service(self).stage_runtime_bound_restart_state(
             runtime_id,
             ref,
             state,
@@ -3243,8 +3239,7 @@ class SessionManager:
     def _restore_runtime_bound_restart_state(
         self, runtime_id: str, ref: SessionRef, state: dict[str, Any]
     ) -> None:
-        _session_lifecycle.restore_runtime_bound_restart_state(
-            self,
+        _session_lifecycle.service(self).restore_runtime_bound_restart_state(
             runtime_id,
             ref,
             state,
@@ -3268,10 +3263,10 @@ class SessionManager:
         self._restore_runtime_bound_restart_state(session.session_id, ref, state)
 
     def restart_session(self, session_id: str) -> dict[str, Any]:
-        return _session_control.restart_session(self, session_id)
+        return _session_control.service(self).restart_session(session_id)
 
     def handoff_session(self, session_id: str) -> dict[str, Any]:
-        return _session_control.handoff_session(self, session_id)
+        return _session_control.service(self).handoff_session(session_id)
 
     def _finalize_pending_pi_spawn(
         self,
@@ -3284,8 +3279,7 @@ class SessionManager:
         delete_on_failure: bool = True,
         restore_record_on_failure: DurableSessionRecord | None = None,
     ) -> None:
-        _session_lifecycle.finalize_pending_pi_spawn(
-            self,
+        _session_lifecycle.service(self).finalize_pending_pi_spawn(
             spawn_nonce=spawn_nonce,
             durable_session_id=durable_session_id,
             cwd=cwd,
@@ -3343,29 +3337,26 @@ class SessionManager:
         db.save_cwd_groups(cwd_groups)
 
     def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
-        _session_lifecycle.reset_log_caches(self, s, meta_log_off=meta_log_off)
+        _session_lifecycle.service(self).reset_log_caches(s, meta_log_off=meta_log_off)
 
     def _session_source_changed(
         self, s: Session, *, log_path: Path | None, session_path: Path | None
     ) -> bool:
-        return _session_lifecycle.session_source_changed(
-            self,
+        return _session_lifecycle.service(self).session_source_changed(
             s,
             log_path=log_path,
             session_path=session_path,
         )
 
     def _claimed_pi_session_paths(self, *, exclude_sid: str = "") -> set[Path]:
-        return _session_lifecycle.claimed_pi_session_paths(
-            self,
+        return _session_lifecycle.service(self).claimed_pi_session_paths(
             exclude_sid=exclude_sid,
         )
 
     def _apply_session_source(
         self, s: Session, *, log_path: Path | None, session_path: Path | None
     ) -> None:
-        _session_lifecycle.apply_session_source(
-            self,
+        _session_lifecycle.service(self).apply_session_source(
             s,
             log_path=log_path,
             session_path=session_path,
@@ -3379,8 +3370,7 @@ class SessionManager:
         backend: str | None = None,
         agent_backend: str | None = None,
     ) -> tuple[str | None, str | None, str | None, str | None]:
-        return _session_lifecycle.session_run_settings(
-            self,
+        return _session_lifecycle.service(self).session_run_settings(
             meta=meta,
             log_path=log_path,
             backend=backend,
@@ -3751,8 +3741,9 @@ class SessionManager:
     ) -> None:
         if getattr(self, "_runtime", None) is None:
             self._runtime = RUNTIME
-        _session_catalog.discover_existing(
-            self, force=force, skip_invalid_sidecars=skip_invalid_sidecars
+        _session_catalog.service(self).discover_existing(
+            force=force,
+            skip_invalid_sidecars=skip_invalid_sidecars,
         )
 
     def _refresh_session_state(
@@ -3760,14 +3751,16 @@ class SessionManager:
     ) -> tuple[bool, BaseException | None]:
         if getattr(self, "_runtime", None) is None:
             self._runtime = RUNTIME
-        return _session_catalog.refresh_session_state(
-            self, session_id, sock_path, timeout_s=timeout_s
+        return _session_catalog.service(self).refresh_session_state(
+            session_id,
+            sock_path,
+            timeout_s=timeout_s,
         )
 
     def _prune_dead_sessions(self) -> None:
         if getattr(self, "_runtime", None) is None:
             self._runtime = RUNTIME
-        _session_catalog.prune_dead_sessions(self)
+        _session_catalog.service(self).prune_dead_sessions()
 
     def _update_meta_counters(self) -> None:
         _session_background.update_meta_counters(self)
@@ -3775,15 +3768,15 @@ class SessionManager:
     def list_sessions(self) -> list[dict[str, Any]]:
         if getattr(self, "_runtime", None) is None:
             self._runtime = RUNTIME
-        return _session_catalog.list_sessions(self)
+        return _session_catalog.service(self).list_sessions()
 
     def get_session(self, session_id: str) -> Session | None:
-        return _session_catalog.get_session(self, session_id)
+        return _session_catalog.service(self).get_session(session_id)
 
     def refresh_session_meta(self, session_id: str, *, strict: bool = True) -> None:
         if getattr(self, "_runtime", None) is None:
             self._runtime = RUNTIME
-        _session_catalog.refresh_session_meta(self, session_id, strict=strict)
+        _session_catalog.service(self).refresh_session_meta(session_id, strict=strict)
 
     def _set_chat_index_snapshot(
         self,
@@ -3920,8 +3913,7 @@ class SessionManager:
         create_in_tmux: bool = False,
         backend: str | None = None,
     ) -> dict[str, Any]:
-        return _session_control.spawn_web_session(
-            self,
+        return _session_control.service(self).spawn_web_session(
             cwd=cwd,
             args=args,
             agent_backend=agent_backend,
@@ -3968,19 +3960,19 @@ class SessionManager:
         return ok
 
     def send(self, session_id: str, text: str) -> dict[str, Any]:
-        return _session_control.send(self, session_id, text)
+        return _session_control.service(self).send(session_id, text)
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
-        return _session_control.enqueue(self, session_id, text)
+        return _session_control.service(self).enqueue(session_id, text)
 
     def queue_list(self, session_id: str) -> list[str]:
-        return _session_control.queue_list(self, session_id)
+        return _session_control.service(self).queue_list(session_id)
 
     def queue_delete(self, session_id: str, index: int) -> dict[str, Any]:
-        return _session_control.queue_delete(self, session_id, int(index))
+        return _session_control.service(self).queue_delete(session_id, int(index))
 
     def queue_update(self, session_id: str, index: int, text: str) -> dict[str, Any]:
-        return _session_control.queue_update(self, session_id, int(index), text)
+        return _session_control.service(self).queue_update(session_id, int(index), text)
 
     def get_state(self, session_id: str) -> dict[str, Any]:
         return _session_transport.get_state(self, session_id)
