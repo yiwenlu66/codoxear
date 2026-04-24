@@ -177,6 +177,7 @@ Set these in `.env` (or in the process environment):
 - `PI_BIN` (default `pi`)
 - `CODEX_WEB_COOKIE_TTL_SECONDS` (default `2592000`, 30 days)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
+- `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to allow cacheable static UI assets, keep `0` for debug-friendly `no-store`)
 - `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
