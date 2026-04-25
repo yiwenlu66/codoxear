@@ -52,6 +52,64 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertTrue(flags["turn_end"])
         self.assertFalse(flags["turn_aborted"])
 
+    def test_codex_error_event_is_visible_and_ends_turn(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}},
+                {
+                    "timestamp": "2026-04-26T01:02:03.000Z",
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "error",
+                        "message": "unexpected status 400 Bad Request: invalid model",
+                        "codex_error_info": "bad_request",
+                    },
+                },
+            ]
+        )
+        self.assertTrue(flags["turn_end"])
+        self.assertEqual(events[-1]["role"], "assistant")
+        self.assertEqual(events[-1]["message_class"], "error")
+        self.assertEqual(events[-1]["text"], "unexpected status 400 Bad Request: invalid model")
+        self.assertIsInstance(events[-1]["message_id"], str)
+        self.assertEqual(events[-1]["ts"], 1777165323.0)
+
+    def test_codex_thread_rollback_error_is_visible_but_not_turn_end(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "error",
+                        "message": "rollback failed",
+                        "codex_error_info": "thread_rollback_failed",
+                    },
+                }
+            ]
+        )
+        self.assertFalse(flags["turn_end"])
+        self.assertEqual(events[0]["message_class"], "error")
+        self.assertEqual(events[0]["text"], "rollback failed")
+
+    def test_codex_stream_error_and_warning_are_visible_without_turn_end(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "stream_error",
+                        "message": "stream disconnected",
+                        "additional_details": "retrying request",
+                    },
+                },
+                {"type": "event_msg", "payload": {"type": "warning", "message": "context warning"}},
+            ]
+        )
+        self.assertFalse(flags["turn_end"])
+        self.assertEqual([ev["message_class"] for ev in events], ["error", "warning"])
+        self.assertEqual(events[0]["text"], "stream disconnected\n\nretrying request")
+        self.assertEqual(events[1]["text"], "context warning")
+
     def test_local_shell_and_web_search_increment_tool_count(self) -> None:
         _events, meta, _flags, _diag = _extract_chat_events(
             [

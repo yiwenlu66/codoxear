@@ -116,6 +116,14 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("msgs.push(ev);", block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
 
+    def test_error_and_warning_message_classes_are_rendered(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function makeRow(ev, { ts, pending }) {")
+        end = source.index("function safeMakeRow(ev, opts) {", start)
+        block = source[start:end]
+        self.assertIn('messageClass === "error" || messageClass === "warning"', block)
+        self.assertIn("bubble.classList.add(messageClass);", block)
+
 
 if __name__ == "__main__":
     unittest.main()

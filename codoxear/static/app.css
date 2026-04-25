@@ -763,6 +763,14 @@
       .msg.assistant {
         background: var(--bubble-assistant);
       }
+      .msg.assistant.error {
+        border-color: rgba(185, 28, 28, 0.34);
+        background: rgba(254, 242, 242, 0.96);
+      }
+      .msg.assistant.warning {
+        border-color: rgba(180, 83, 9, 0.28);
+        background: rgba(255, 251, 235, 0.96);
+      }
       .msg-shell .msg {
         max-width: 100%;
       }
