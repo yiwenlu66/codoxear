@@ -193,6 +193,28 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "final_response")
         self.assertEqual(meta["thinking"], 1)
 
+    def test_pi_error_message_is_visible_and_ends_turn(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "test"}]}},
+                {
+                    "type": "message",
+                    "timestamp": "2026-04-26T01:02:03.000Z",
+                    "message": {
+                        "role": "assistant",
+                        "content": [],
+                        "stopReason": "error",
+                        "errorMessage": "401 Invalid API key",
+                    },
+                },
+            ]
+        )
+        self.assertTrue(flags["turn_end"])
+        self.assertEqual(events[-1]["role"], "assistant")
+        self.assertEqual(events[-1]["message_class"], "error")
+        self.assertEqual(events[-1]["text"], "401 Invalid API key")
+        self.assertEqual(events[-1]["ts"], 1777165323.0)
+
     def test_compute_idle_from_log_pi_final_message_with_thinking_is_idle(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "pi.jsonl"

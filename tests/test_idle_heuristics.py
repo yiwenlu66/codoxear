@@ -216,6 +216,27 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
 
+    def test_pi_error_message_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "pi.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session", "id": "s", "cwd": "/tmp"},
+                    {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}},
+                    {
+                        "type": "message",
+                        "message": {
+                            "role": "assistant",
+                            "content": [],
+                            "stopReason": "error",
+                            "errorMessage": "401 Invalid API key",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
 
 if __name__ == "__main__":
     unittest.main()

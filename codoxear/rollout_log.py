@@ -13,6 +13,7 @@ from typing import Iterator
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
+from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
@@ -107,7 +108,7 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
     if typ == "message":
         if pi_user_text(obj):
             return _event_ts(obj)
-        if pi_assistant_text(obj):
+        if pi_assistant_text(obj) or pi_assistant_error_text(obj):
             return _event_ts(obj)
         return None
 
@@ -171,6 +172,16 @@ def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
             if ets is not None:
                 eva["ts"] = ets
             return eva
+        error_text = pi_assistant_error_text(obj)
+        if isinstance(error_text, str) and error_text:
+            ets = _event_ts(obj)
+            return {
+                "role": "assistant",
+                "text": error_text,
+                "message_class": "error",
+                "message_id": _text_message_id(message_class="error", text=error_text, ts=ets),
+                **({"ts": ets} if ets is not None else {}),
+            }
         return None
 
     if typ == "event_msg":
@@ -582,6 +593,20 @@ def _extract_chat_events(
                 if ets is not None:
                     eva["ts"] = ets
                 events.append(eva)
+            else:
+                error_text = pi_assistant_error_text(obj)
+                if isinstance(error_text, str) and error_text:
+                    ets = event_ts(obj)
+                    events.append(
+                        {
+                            "role": "assistant",
+                            "text": error_text,
+                            "message_class": "error",
+                            "message_id": text_message_id(message_class="error", text=error_text, ts=ets),
+                            **({"ts": ets} if ets is not None else {}),
+                        }
+                    )
+                    turn_end = True
             continue
 
         if typ == "event_msg":
@@ -919,6 +944,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     saw_terminal_signal = True
                     idle = pi_assistant_is_final_turn_end(obj)
                     continue
+                if pi_assistant_error_text(obj):
+                    saw_terminal_signal = True
+                    idle = True
+                    continue
                 if _pi_message_keeps_turn_busy(obj):
                     saw_terminal_signal = True
                     idle = False
@@ -1017,7 +1046,7 @@ def _last_chat_role_ts_from_tail(
                 if pi_user_text(obj):
                     last_user = (i, event_ts(obj))
                     continue
-                if pi_assistant_text(obj) or _pi_message_keeps_turn_busy(obj):
+                if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
                     last_assistant = (i, event_ts(obj))
                     continue
             if typ == "event_msg":
