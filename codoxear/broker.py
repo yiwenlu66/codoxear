@@ -26,6 +26,7 @@ from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
+from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
 from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_use_count
@@ -652,9 +653,14 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
 
         role = _pi_message_role(obj)
         has_text = bool(_pi_assistant_text(obj))
+        has_error = bool(_pi_assistant_error_text(obj))
         thinking_count = _pi_assistant_thinking_count(obj)
         tool_count = _pi_assistant_tool_use_count(obj)
         is_tool_result = role == "toolResult"
+
+        if has_error and role == "assistant":
+            _close_turn_state(st)
+            return
 
         if has_text and role == "assistant" and _pi_assistant_is_final_turn_end(obj):
             _close_turn_state(st)

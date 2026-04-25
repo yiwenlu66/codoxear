@@ -165,6 +165,20 @@ def pi_assistant_text(obj: dict[str, Any]) -> str | None:
     return "".join(out)
 
 
+def pi_assistant_error_text(obj: dict[str, Any]) -> str | None:
+    if obj.get("type") != "message":
+        return None
+    message = obj.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return None
+    if message.get("stopReason") != "error":
+        return None
+    error_message = message.get("errorMessage")
+    if isinstance(error_message, str) and error_message.strip():
+        return error_message.strip()
+    return "Pi turn failed without errorMessage in log"
+
+
 def pi_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     if obj.get("type") != "message":
         return False
