@@ -2663,8 +2663,12 @@
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+          const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
+          if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
+            bubble.classList.add(messageClass);
+          }
           const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
           bubble.appendChild(md);
           void upgradeCandidateFileRefs(md);
@@ -2716,7 +2720,11 @@
             const row = el("div", { class: `msg-row ${role}` });
             row.dataset.role = role;
             if (ts !== null) row.dataset.ts = String(ts);
+            const messageClass = typeof ev?.message_class === "string" ? ev.message_class : "";
             const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
+            if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
+              bubble.classList.add(messageClass);
+            }
             const md = el("div", { class: "md" });
             md.textContent = typeof ev?.text === "string" ? ev.text : String(ev?.text ?? "");
             bubble.appendChild(md);

@@ -145,6 +145,13 @@ def _broker_launch_record(
     }
 
 
+def _codex_error_affects_turn_status(payload: dict[str, Any]) -> bool:
+    info = payload.get("codex_error_info")
+    if info == "thread_rollback_failed":
+        return False
+    return not (isinstance(info, dict) and "thread_rollback_failed" in info)
+
+
 def _resume_session_id_from_args(args: list[str]) -> str | None:
     if AGENT_BACKEND == "pi":
         for idx, token in enumerate(args):
@@ -606,8 +613,12 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if ev_type in ("turn_aborted", "thread_rolled_back"):
             _close_turn_state(st)
             return
-        if ev_type == "task_complete":
+        if ev_type in ("task_complete", "turn_complete"):
             _close_turn_state(st)
+            return
+        if ev_type == "error":
+            if _codex_error_affects_turn_status(payload):
+                _close_turn_state(st)
             return
         if ev_type == "agent_message":
             msg = payload.get("message")

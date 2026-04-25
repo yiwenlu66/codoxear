@@ -141,6 +141,46 @@ class TestIdleHeuristics(unittest.TestCase):
             )
             self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
 
+    def test_codex_error_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "error",
+                            "message": "unexpected status 400 Bad Request",
+                            "codex_error_info": "bad_request",
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), True)
+
+    def test_codex_thread_rollback_error_does_not_close_turn(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            _write_jsonl(
+                p,
+                [
+                    {"type": "session_meta", "payload": {"id": "s"}},
+                    {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}},
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "error",
+                            "message": "rollback failed",
+                            "codex_error_info": {"thread_rollback_failed": {}},
+                        },
+                    },
+                ],
+            )
+            self.assertIs(_compute_idle_from_log(p, max_scan_bytes=64 * 1024), False)
+
     def test_assistant_commentary_after_task_complete_is_busy(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

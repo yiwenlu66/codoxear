@@ -67,6 +67,23 @@ def _strip_oai_mem_citation_tail(text: str) -> str:
     return _OAI_MEM_CITATION_TAIL_RE.sub("", text)
 
 
+def _codex_error_affects_turn_status(payload: dict[str, Any]) -> bool:
+    info = payload.get("codex_error_info")
+    if info == "thread_rollback_failed":
+        return False
+    return not (isinstance(info, dict) and "thread_rollback_failed" in info)
+
+
+def _codex_event_text(payload: dict[str, Any]) -> str | None:
+    msg = payload.get("message")
+    if not isinstance(msg, str) or not msg.strip():
+        return None
+    details = payload.get("additional_details")
+    if isinstance(details, str) and details.strip() and details.strip() != msg.strip():
+        return f"{msg.strip()}\n\n{details.strip()}"
+    return msg.strip()
+
+
 def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
     typ = obj.get("type")
     if typ == "event_msg":
@@ -588,6 +605,23 @@ def _extract_chat_events(
             if pt == "turn_aborted":
                 turn_aborted = True
                 continue
+            if pt in ("error", "stream_error", "warning"):
+                text = _codex_event_text(p)
+                if text is not None:
+                    ets = event_ts(obj)
+                    message_class = "warning" if pt == "warning" else "error"
+                    ev_err: dict[str, Any] = {
+                        "role": "assistant",
+                        "text": text,
+                        "message_class": message_class,
+                        "message_id": text_message_id(message_class=message_class, text=text, ts=ets),
+                    }
+                    if ets is not None:
+                        ev_err["ts"] = ets
+                    events.append(ev_err)
+                if pt == "error" and _codex_error_affects_turn_status(p):
+                    turn_end = True
+                continue
             if pt in ("task_complete", "turn_complete"):
                 turn_end = True
                 continue
@@ -911,6 +945,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if pt in ("turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"):
                     saw_terminal_signal = True
                     idle = True
+                    continue
+                if pt == "error":
+                    saw_terminal_signal = True
+                    idle = _codex_error_affects_turn_status(p)
                     continue
             if typ == "response_item":
                 p = obj.get("payload")
