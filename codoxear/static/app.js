@@ -6296,6 +6296,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               overviewRulerBorder: false,
               stickyScroll: { enabled: false },
               automaticLayout: true,
+              accessibilitySupport: "off",
               quickSuggestions: false,
               suggestOnTriggerCharacters: false,
               acceptSuggestionOnEnter: "off",
