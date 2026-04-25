@@ -8,6 +8,8 @@ import socket
 import sys
 import time
 import traceback
+import uuid
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,7 @@ from .pi_log import read_pi_session_id
 
 
 _LEGACY_WARNED = False
+LAUNCH_ATTEMPTS_FILENAME = "session_launches.jsonl"
 
 
 def _log_error(msg: str) -> None:
@@ -64,6 +67,78 @@ def default_app_dir() -> Path:
                 f"migrate runtime state to {new}."
             )
     return new
+
+
+def launch_attempts_path(app_dir: Path | None = None) -> Path:
+    return (app_dir or default_app_dir()) / LAUNCH_ATTEMPTS_FILENAME
+
+
+def _jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def append_launch_attempt(record: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        raise TypeError("launch attempt record must be a dict")
+    ts = now()
+    out = _jsonable(record)
+    if not isinstance(out, dict):
+        raise TypeError("launch attempt record must remain a dict after normalization")
+    out.setdefault("type", "launch_attempt")
+    out.setdefault("launch_id", f"launch-{int(ts * 1000)}-{uuid.uuid4().hex[:8]}")
+    out.setdefault("state", "starting")
+    out.setdefault("updated_ts", ts)
+    out.setdefault("created_ts", out.get("updated_ts", ts))
+    target = path or launch_attempts_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(out, sort_keys=True) + "\n")
+    return out
+
+
+def read_launch_attempts(
+    *,
+    path: Path | None = None,
+    max_records: int = 200,
+    max_age_s: float = 24 * 3600,
+    now_ts: float | None = None,
+) -> list[dict[str, Any]]:
+    target = path or launch_attempts_path()
+    try:
+        with target.open("r", encoding="utf-8") as f:
+            lines = deque(f, maxlen=max(max_records * 4, max_records))
+    except FileNotFoundError:
+        return []
+    cutoff = (now() if now_ts is None else float(now_ts)) - max(float(max_age_s), 0.0)
+    latest: dict[str, dict[str, Any]] = {}
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "launch_attempt":
+            continue
+        launch_id = obj.get("launch_id")
+        if not isinstance(launch_id, str) or not launch_id:
+            continue
+        ts = obj.get("updated_ts", obj.get("created_ts"))
+        if isinstance(ts, (int, float)) and float(ts) < cutoff:
+            continue
+        latest[launch_id] = obj
+    out = list(latest.values())
+    out.sort(key=lambda item: float(item.get("updated_ts", item.get("created_ts", 0.0)) or 0.0))
+    return out[-max_records:]
 
 
 def now() -> float:

@@ -87,6 +87,17 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw)", block)
         self.assertIn("appendEvent({ role: \"user\", text: raw, pending: true, localId, ts: t0 });", block)
         self.assertIn("void refreshSessions().catch((e) => console.error(\"refreshSessions failed\", e));", block)
+        self.assertIn("return true;", block)
+        self.assertIn("return false;", block)
+
+    def test_submit_clears_composer_only_after_send_success(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("form.onsubmit = async")
+        end = source.index("(async () =>", start)
+        block = source[start:end]
+        self.assertNotIn("clearComposer();\n          await sendText(raw);", block)
+        self.assertIn("const ok = await sendText(raw);", block)
+        self.assertIn('if (ok && $("#msg").value === raw) clearComposer();', block)
 
     def test_restore_pending_rows_is_bound_to_current_transcript_slot(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

@@ -209,6 +209,12 @@
       .stateDot.suppressed {
         background: rgba(234, 88, 12, 0.92);
       }
+      .stateDot.failed {
+        background: rgba(185, 28, 28, 0.95);
+      }
+      .stateDot.pending {
+        background: rgba(245, 158, 11, 0.95);
+      }
       .session.active {
         border-color: rgba(37, 99, 235, 0.6);
         background: #dbeafe;
@@ -499,6 +505,16 @@
 	        color: #f59e0b;
 	        border-color: rgba(245, 158, 11, 0.5);
 	      }
+      .badge.launchFailed {
+        color: #991b1b;
+        border-color: rgba(185, 28, 28, 0.5);
+        background: rgba(185, 28, 28, 0.08);
+      }
+      .badge.launchPending {
+        color: #92400e;
+        border-color: rgba(245, 158, 11, 0.5);
+        background: rgba(245, 158, 11, 0.08);
+      }
 
       .main {
         display: flex;
