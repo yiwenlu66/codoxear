@@ -36,13 +36,16 @@ from .agent_backend import normalize_agent_backend
 from . import rollout_log as _rollout_log
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .util import append_launch_attempt as _append_launch_attempt
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
 from .util import find_session_log_for_session_id as _find_session_log_for_session_id_impl
 from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
+from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
+from .util import read_launch_attempts as _read_launch_attempts
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -122,6 +125,7 @@ STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
+LAUNCH_ATTEMPTS_PATH = _launch_attempts_path(APP_DIR)
 UPLOAD_DIR = APP_DIR / "uploads"
 HARNESS_PATH = APP_DIR / "harness.json"
 ALIAS_PATH = APP_DIR / "session_aliases.json"
@@ -402,6 +406,132 @@ def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_M
     raise RuntimeError(f"tmux launch did not publish broker metadata within {timeout_s:.1f}s")
 
 
+def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: str | None = None) -> dict[str, Any]:
+    target = _clean_optional_text(pane_id)
+    if target is None and _clean_optional_text(window) is not None:
+        target = f"{TMUX_SESSION_NAME}:{window}"
+    if target is None:
+        return {}
+    fmt = "#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{window_name}"
+    proc = subprocess.run(
+        [tmux_bin, "display-message", "-p", "-t", target, fmt],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    out: dict[str, Any] = {"tmux_target": target}
+    if proc.returncode != 0:
+        out["tmux_inspect_error"] = (proc.stderr or proc.stdout or f"exit status {proc.returncode}").strip()
+        return out
+    parts = (proc.stdout or "").strip().split("\t")
+    keys = ("tmux_pane_id", "tmux_pane_pid", "tmux_pane_dead", "tmux_pane_dead_status", "tmux_pane_command", "tmux_window")
+    for key, value in zip(keys, parts):
+        out[key] = value
+    cap = subprocess.run(
+        [tmux_bin, "capture-pane", "-p", "-t", target, "-S", "-80"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if cap.returncode == 0:
+        out["tmux_pane_tail"] = (cap.stdout or "")[-4000:]
+    else:
+        out["tmux_capture_error"] = (cap.stderr or cap.stdout or f"exit status {cap.returncode}").strip()
+    return out
+
+
+def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
+    rec = _append_launch_attempt(record, path=LAUNCH_ATTEMPTS_PATH)
+    if rec.get("state") == "failed":
+        sys.stderr.write(
+            "error: session launch failed: "
+            f"{rec.get('launch_id')}: {rec.get('stage')}: {rec.get('error')}\n"
+        )
+        sys.stderr.flush()
+    return rec
+
+
+def _launch_attempt_id(record: dict[str, Any]) -> str:
+    raw = _clean_optional_text(record.get("launch_id"))
+    if raw is None:
+        updated_ts = record.get("updated_ts", record.get("created_ts", 0))
+        try:
+            millis = int(float(updated_ts) * 1000)
+        except (TypeError, ValueError):
+            millis = 0
+        raw = f"launch-{millis}"
+    return raw
+
+
+def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
+    launch_id = _launch_attempt_id(record)
+    state = _clean_optional_text(record.get("state")) or "starting"
+    if state in {"live", "log_bound"}:
+        return None
+    cwd = _clean_optional_text(record.get("cwd")) or "?"
+    start_ts_raw = record.get("created_ts", record.get("start_ts", record.get("updated_ts", time.time())))
+    updated_ts_raw = record.get("updated_ts", start_ts_raw)
+    try:
+        start_ts = float(start_ts_raw)
+    except (TypeError, ValueError):
+        start_ts = time.time()
+    try:
+        updated_ts = float(updated_ts_raw)
+    except (TypeError, ValueError):
+        updated_ts = start_ts
+    backend = normalize_agent_backend(record.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
+    provider = _clean_optional_text(record.get("model_provider"))
+    preferred_auth = _clean_optional_text(record.get("preferred_auth_method"))
+    failed = state == "failed"
+    return {
+        "session_id": launch_id,
+        "thread_id": launch_id,
+        "pid": None,
+        "broker_pid": record.get("broker_pid") if isinstance(record.get("broker_pid"), int) else None,
+        "agent_backend": backend,
+        "owned": True,
+        "transport": _clean_optional_text(record.get("transport")),
+        "cwd": cwd,
+        "start_ts": start_ts,
+        "updated_ts": updated_ts,
+        "log_path": None,
+        "state_busy": False,
+        "queue_len": 0,
+        "token": None,
+        "thinking": 0,
+        "tools": 0,
+        "system": 0,
+        "harness_enabled": False,
+        "harness_cooldown_minutes": HARNESS_DEFAULT_IDLE_MINUTES,
+        "harness_remaining_injections": HARNESS_DEFAULT_MAX_INJECTIONS,
+        "alias": "",
+        "files": [],
+        "git_branch": "",
+        "model_provider": provider,
+        "preferred_auth_method": preferred_auth,
+        "provider_choice": _provider_choice_for_settings(model_provider=provider, preferred_auth_method=preferred_auth),
+        "model": _clean_optional_text(record.get("model")),
+        "reasoning_effort": _clean_optional_text(record.get("reasoning_effort")),
+        "service_tier": _clean_optional_text(record.get("service_tier")),
+        "tmux_session": _clean_optional_text(record.get("tmux_session")),
+        "tmux_window": _clean_optional_text(record.get("tmux_window")),
+        "priority_offset": 0.0,
+        "snooze_until": None,
+        "dependency_session_id": None,
+        "time_priority": 1.0,
+        "base_priority": 1.0,
+        "final_priority": 1.0,
+        "blocked": False,
+        "snoozed": False,
+        "busy": False,
+        "spawn_nonce": _clean_optional_text(record.get("spawn_nonce")),
+        "launch_id": launch_id,
+        "launch_state": state,
+        "launch_error": _clean_optional_text(record.get("error")) or ("session launch failed" if failed else ""),
+        "launch_stage": _clean_optional_text(record.get("stage")),
+    }
+
+
 def _pid_alive(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -669,6 +799,13 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
 
 class MessageCursorError(ValueError):
     pass
+
+
+class SessionLaunchError(RuntimeError):
+    def __init__(self, record: dict[str, Any]):
+        msg = str(record.get("error") or record.get("message") or "session launch failed")
+        super().__init__(msg)
+        self.record = record
 
 
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
@@ -2246,6 +2383,8 @@ class Session:
     transport: str | None = None
     tmux_session: str | None = None
     tmux_window: str | None = None
+    launch_id: str | None = None
+    spawn_nonce: str | None = None
     resume_session_id: str | None = None
 
 
@@ -2277,6 +2416,7 @@ class SessionManager:
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[dict[str, Any]]] = {}
         self._recent_cwds: dict[str, float] = {}
+        self._include_launch_attempts = True
         self._harness_last_injected: dict[str, float] = {}
         self._harness_last_injected_scope: dict[str, float] = {}
         self._load_harness()
@@ -3392,6 +3532,8 @@ class SessionManager:
             agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+            launch_id = _clean_optional_text(meta.get("launch_id"))
+            spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
 
             log_path: Path | None = None
             if "log_path" not in meta:
@@ -3410,6 +3552,33 @@ class SessionManager:
                 log_path = None
 
             if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
+                if owned:
+                    try:
+                        _record_launch_attempt(
+                            {
+                                "launch_id": launch_id,
+                                "state": "failed",
+                                "stage": "broker_exit_before_log_bind",
+                                "error": "broker exited before publishing a session log",
+                                "agent_backend": agent_backend,
+                                "cwd": meta.get("cwd"),
+                                "created_ts": meta.get("start_ts"),
+                                "broker_pid": broker_pid,
+                                "agent_pid": codex_pid,
+                                "transport": transport,
+                                "tmux_session": tmux_session,
+                                "tmux_window": tmux_window,
+                                "spawn_nonce": spawn_nonce,
+                                "model_provider": meta.get("model_provider"),
+                                "preferred_auth_method": meta.get("preferred_auth_method"),
+                                "model": meta.get("model"),
+                                "reasoning_effort": meta.get("reasoning_effort"),
+                                "service_tier": meta.get("service_tier"),
+                            }
+                        )
+                    except Exception as e:
+                        sys.stderr.write(f"error: failed to record launch failure for {sock}: {type(e).__name__}: {e}\n")
+                        sys.stderr.flush()
                 self._unhide_session(session_id)
                 _unlink_quiet(sock)
                 _unlink_quiet(meta_path)
@@ -3487,6 +3656,8 @@ class SessionManager:
                 service_tier=service_tier,
                 tmux_session=tmux_session,
                 tmux_window=tmux_window,
+                launch_id=launch_id,
+                spawn_nonce=spawn_nonce,
                 resume_session_id=resume_session_id,
             )
             with self._lock:
@@ -3522,6 +3693,8 @@ class SessionManager:
                     prev.service_tier = service_tier
                     prev.tmux_session = tmux_session
                     prev.tmux_window = tmux_window
+                    prev.launch_id = launch_id
+                    prev.spawn_nonce = spawn_nonce
                     prev.resume_session_id = resume_session_id
         if recent_cwd_dirty:
             self._save_recent_cwds()
@@ -3549,26 +3722,53 @@ class SessionManager:
     def _prune_dead_sessions(self) -> None:
         with self._lock:
             items = list(self._sessions.items())
-        dead: list[tuple[str, Path]] = []
+        dead: list[tuple[str, Path, Session]] = []
         for sid, s in items:
             if not s.sock_path.exists():
-                dead.append((sid, s.sock_path))
+                dead.append((sid, s.sock_path, s))
                 continue
             ok, err = self._refresh_session_state(sid, s.sock_path, timeout_s=0.4)
             if ok:
                 continue
             if err is not None and _sock_error_definitely_stale(err):
-                dead.append((sid, s.sock_path))
+                dead.append((sid, s.sock_path, s))
                 continue
             if _pid_alive(s.broker_pid) or _pid_alive(s.codex_pid):
                 continue
-            dead.append((sid, s.sock_path))
+            dead.append((sid, s.sock_path, s))
         if not dead:
             return
         with self._lock:
-            for sid, _sock in dead:
+            for sid, _sock, _s in dead:
                 self._sessions.pop(sid, None)
-        for sid, sock in dead:
+        for sid, sock, s in dead:
+            if s.owned and s.log_path is None:
+                try:
+                    _record_launch_attempt(
+                        {
+                            "launch_id": s.launch_id,
+                            "state": "failed",
+                            "stage": "session_pruned_before_log_bind",
+                            "error": "web-owned session process disappeared before a session log was bound",
+                            "agent_backend": s.agent_backend,
+                            "cwd": s.cwd,
+                            "created_ts": s.start_ts,
+                            "broker_pid": s.broker_pid,
+                            "agent_pid": s.codex_pid,
+                            "transport": s.transport,
+                            "tmux_session": s.tmux_session,
+                            "tmux_window": s.tmux_window,
+                            "spawn_nonce": s.spawn_nonce,
+                            "model_provider": s.model_provider,
+                            "preferred_auth_method": s.preferred_auth_method,
+                            "model": s.model,
+                            "reasoning_effort": s.reasoning_effort,
+                            "service_tier": s.service_tier,
+                        }
+                    )
+                except Exception as e:
+                    sys.stderr.write(f"error: failed to record pruned launch failure for {sid}: {type(e).__name__}: {e}\n")
+                    sys.stderr.flush()
             self._clear_deleted_session_state(sid)
             _unlink_quiet(sock)
             _unlink_quiet(sock.with_suffix(".json"))
@@ -3773,6 +3973,8 @@ class SessionManager:
                         "service_tier": s.service_tier,
                         "tmux_session": s.tmux_session,
                         "tmux_window": s.tmux_window,
+                        "launch_id": s.launch_id,
+                        "spawn_nonce": s.spawn_nonce,
                         "priority_offset": priority_offset,
                         "snooze_until": snooze_until,
                         "dependency_session_id": dependency_session_id,
@@ -3805,6 +4007,32 @@ class SessionManager:
             it2.pop("state_busy", None)
             it2["busy"] = bool(busy_out)
             out.append(it2)
+        if bool(getattr(self, "_include_launch_attempts", False)):
+            with self._lock:
+                hidden_failure_ids = set(getattr(self, "_hidden_sessions", set()))
+                active_launch_ids = {
+                    s.launch_id
+                    for s in self._sessions.values()
+                    if isinstance(s.launch_id, str) and s.launch_id
+                }
+                active_spawn_nonces = {
+                    s.spawn_nonce
+                    for s in self._sessions.values()
+                    if isinstance(s.spawn_nonce, str) and s.spawn_nonce
+                }
+            for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
+                row = _launch_attempt_row(rec)
+                if row is None:
+                    continue
+                if row["session_id"] in hidden_failure_ids:
+                    continue
+                launch_id = row.get("launch_id")
+                if isinstance(launch_id, str) and launch_id and launch_id in active_launch_ids:
+                    continue
+                nonce = row.get("spawn_nonce")
+                if isinstance(nonce, str) and nonce and nonce in active_spawn_nonces:
+                    continue
+                out.append(row)
         for item in out:
             if item.get("busy") or int(item.get("queue_len", 0)) <= 0:
                 continue
@@ -4122,6 +4350,7 @@ class SessionManager:
         env.pop("CODEX_WEB_TRANSPORT", None)
         env.pop("CODEX_WEB_TMUX_SESSION", None)
         env.pop("CODEX_WEB_TMUX_WINDOW", None)
+        env.pop("CODEX_WEB_LAUNCH_ID", None)
         env.pop("CODEX_WEB_SPAWN_NONCE", None)
         env.pop("CODEX_WEB_RESUME_SESSION_ID", None)
         env.pop("CODEX_WEB_RESUME_LOG_PATH", None)
@@ -4137,22 +4366,74 @@ class SessionManager:
             env["CODEX_WEB_SERVICE_TIER"] = service_tier
         if resume_session_id is not None:
             env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+
+        launch_started_ts = time.time()
+        launch_id = f"launch-{int(launch_started_ts * 1000)}-{secrets.token_hex(4)}"
+        spawn_nonce = secrets.token_hex(8)
+        env["CODEX_WEB_LAUNCH_ID"] = launch_id
+        env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
+
+        base_launch_record: dict[str, Any] = {
+            "launch_id": launch_id,
+            "state": "starting",
+            "agent_backend": backend_name,
+            "cwd": str(spawn_cwd),
+            "requested_cwd": cwd3,
+            "created_ts": launch_started_ts,
+            "updated_ts": launch_started_ts,
+            "spawn_nonce": spawn_nonce,
+            "model_provider": model_provider,
+            "preferred_auth_method": preferred_auth_method,
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "service_tier": service_tier,
+            "resume_session_id": resume_session_id,
+            "worktree_branch": worktree_branch,
+        }
+
+        def record_launch(state: str, **extra: Any) -> dict[str, Any]:
+            rec = dict(base_launch_record)
+            rec["state"] = state
+            rec["updated_ts"] = time.time()
+            rec.update(extra)
+            return _record_launch_attempt(rec)
+
+        record_launch("starting", transport="tmux" if create_in_tmux else "direct")
+
+        def fail_launch(stage: str, error: BaseException | str, **extra: Any) -> None:
+            msg = str(error)
+            rec: dict[str, Any] = dict(base_launch_record)
+            rec.update(
+                {
+                    "state": "failed",
+                    "stage": stage,
+                    "error": msg,
+                    "updated_ts": time.time(),
+                }
+            )
+            rec.update(extra)
+            try:
+                rec = _record_launch_attempt(rec)
+            except Exception as log_exc:
+                sys.stderr.write(f"error: failed to write launch attempt record: {type(log_exc).__name__}: {log_exc}\n")
+                sys.stderr.flush()
+            raise SessionLaunchError(rec)
+
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
                 raise ValueError("tmux is unavailable on this host")
-            spawn_nonce = secrets.token_hex(8)
             tmux_window = _safe_filename(f"{Path(spawn_cwd).name or 'session'}-{spawn_nonce[:6]}", default="session")
             env["CODEX_WEB_TRANSPORT"] = "tmux"
             env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
             env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
-            env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
             inline_env = {
                 "CODEX_WEB_OWNER": "web",
                 "CODEX_WEB_AGENT_BACKEND": backend_name,
                 "CODEX_WEB_TRANSPORT": "tmux",
                 "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
                 "CODEX_WEB_TMUX_WINDOW": tmux_window,
+                "CODEX_WEB_LAUNCH_ID": launch_id,
                 "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
             }
             if backend_name == "codex":
@@ -4177,25 +4458,99 @@ class SessionManager:
             repo_root = Path(__file__).resolve().parent.parent
             inline_argv = ["env", *[f"{key}={value}" for key, value in inline_env.items()], *argv]
             shell_cmd = f"cd {shlex.quote(str(repo_root))} && exec {shlex.join(inline_argv)}"
-            has_session = subprocess.run(
-                [tmux_bin, "has-session", "-t", TMUX_SESSION_NAME],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                check=False,
-            )
-            if has_session.returncode == 0:
-                tmux_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
-            else:
-                tmux_argv = [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TMUX_SESSION_NAME, "-n", tmux_window, shell_cmd]
-            tmux_proc = subprocess.run(tmux_argv, capture_output=True, text=True, env=env, check=False)
+            new_window_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
+            new_session_argv = [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TMUX_SESSION_NAME, "-n", tmux_window, shell_cmd]
+
+            def tmux_run(argv2: list[str]) -> subprocess.CompletedProcess[str]:
+                return subprocess.run(argv2, capture_output=True, text=True, env=env, check=False)
+
+            def tmux_detail(proc2: subprocess.CompletedProcess[str]) -> str:
+                return (proc2.stderr or proc2.stdout or f"exit status {proc2.returncode}").strip()
+
+            def tmux_missing_session(detail2: str) -> bool:
+                low = detail2.lower()
+                return "can't find session" in low or "no server running" in low
+
+            def tmux_duplicate_session(detail2: str) -> bool:
+                return "duplicate session" in detail2.lower()
+
+            attempts: list[dict[str, Any]] = []
+            tmux_proc = tmux_run(new_window_argv)
+            attempts.append({"cmd": "new-window", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
+            if tmux_proc.returncode != 0 and tmux_missing_session(tmux_detail(tmux_proc)):
+                tmux_proc = tmux_run(new_session_argv)
+                attempts.append({"cmd": "new-session", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
+                if tmux_proc.returncode != 0 and tmux_duplicate_session(tmux_detail(tmux_proc)):
+                    tmux_proc = tmux_run(new_window_argv)
+                    attempts.append({"cmd": "new-window-after-duplicate", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
+            tmux_pane_id = _clean_optional_text(tmux_proc.stdout)
             if tmux_proc.returncode != 0:
-                detail = (tmux_proc.stderr or tmux_proc.stdout or f"exit status {tmux_proc.returncode}").strip()
-                raise RuntimeError(f"tmux launch failed: {detail}")
-            meta = _wait_for_spawned_broker_meta(spawn_nonce)
+                detail = tmux_detail(tmux_proc)
+                fail_launch(
+                    "tmux_launch",
+                    f"tmux launch failed: {detail}",
+                    transport="tmux",
+                    tmux_session=TMUX_SESSION_NAME,
+                    tmux_window=tmux_window,
+                    spawn_nonce=spawn_nonce,
+                    tmux_exit_status=tmux_proc.returncode,
+                    tmux_stdout=(tmux_proc.stdout or "").strip(),
+                    tmux_stderr=(tmux_proc.stderr or "").strip(),
+                    tmux_attempts=attempts,
+                )
+            snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window)
+            record_launch(
+                "tmux_pane_created",
+                transport="tmux",
+                tmux_session=TMUX_SESSION_NAME,
+                tmux_window=tmux_window,
+                tmux_attempts=attempts,
+                **snapshot,
+            )
+            try:
+                meta = _wait_for_spawned_broker_meta(spawn_nonce)
+            except Exception as e:
+                if tmux_pane_id is not None and not snapshot.get("tmux_inspect_error") and str(snapshot.get("tmux_pane_dead") or "0") != "1":
+                    record_launch(
+                        "tmux_pane_created",
+                        stage="broker_metadata_pending",
+                        error=str(e),
+                        transport="tmux",
+                        tmux_session=TMUX_SESSION_NAME,
+                        tmux_window=tmux_window,
+                        **snapshot,
+                    )
+                    return {"launch_id": launch_id, "pending": True, "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
+                fail_launch(
+                    "broker_metadata",
+                    e,
+                    transport="tmux",
+                    tmux_session=TMUX_SESSION_NAME,
+                    tmux_window=tmux_window,
+                    tmux_pane_id=tmux_pane_id,
+                    spawn_nonce=spawn_nonce,
+                    **_tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window),
+                )
             broker_pid = meta.get("broker_pid")
             if not isinstance(broker_pid, int):
-                raise RuntimeError("tmux launch metadata is missing broker_pid")
+                fail_launch(
+                    "broker_metadata",
+                    "tmux launch metadata is missing broker_pid",
+                    transport="tmux",
+                    tmux_session=TMUX_SESSION_NAME,
+                    tmux_window=tmux_window,
+                    tmux_pane_id=tmux_pane_id,
+                    spawn_nonce=spawn_nonce,
+                    metadata=meta,
+                )
+            record_launch(
+                "broker_meta_bound",
+                transport="tmux",
+                tmux_session=TMUX_SESSION_NAME,
+                tmux_window=tmux_window,
+                tmux_pane_id=tmux_pane_id,
+                broker_pid=int(broker_pid),
+            )
             return {"broker_pid": int(broker_pid), "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
 
         try:
@@ -4208,9 +4563,13 @@ class SessionManager:
                 start_new_session=True,
             )
         except Exception as e:
-            raise RuntimeError(f"spawn failed: {e}") from e
+            fail_launch("broker_spawn", f"spawn failed: {e}", transport="direct")
 
-        _wait_or_raise(proc, label="broker", timeout_s=1.5)
+        try:
+            _wait_or_raise(proc, label="broker", timeout_s=1.5)
+        except Exception as e:
+            fail_launch("broker_early_exit", e, transport="direct", broker_pid=int(proc.pid))
+        record_launch("broker_spawned", transport="direct", broker_pid=int(proc.pid))
         if proc.stderr is not None:
             threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
 
@@ -4222,6 +4581,11 @@ class SessionManager:
         with self._lock:
             s = self._sessions.get(session_id)
         if not s:
+            for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
+                row = _launch_attempt_row(rec)
+                if row is not None and row.get("session_id") == session_id:
+                    self._hide_session(session_id)
+                    return True
             return False
         ok = self.kill_session(session_id)
         if ok:
@@ -5829,6 +6193,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if str(e).startswith("cwd "):
                         payload["field"] = "cwd"
                     _json_response(self, 400, payload)
+                    return
+                except SessionLaunchError as e:
+                    payload = {
+                        "error": str(e),
+                        "launch_attempt": e.record,
+                        "launch_id": e.record.get("launch_id"),
+                    }
+                    _json_response(self, 500, payload)
                     return
                 _json_response(self, 200, {"ok": True, **res})
                 return

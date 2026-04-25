@@ -320,9 +320,11 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         with TemporaryDirectory() as td, patch("codoxear.server.shutil.which", return_value="/usr/bin/tmux"), patch(
             "codoxear.server._wait_for_spawned_broker_meta", return_value={"broker_pid": 7777}
         ) as wait_mock, patch(
+            "codoxear.server._tmux_pane_snapshot", return_value={"tmux_pane_id": "%8", "tmux_pane_dead": "0"}
+        ), patch(
             "codoxear.server.subprocess.run",
             side_effect=[
-                subprocess.CompletedProcess(["/usr/bin/tmux", "has-session", "-t", "codoxear"], 1, stdout="", stderr=""),
+                subprocess.CompletedProcess(["/usr/bin/tmux", "new-window"], 1, stdout="", stderr="can't find session: codoxear"),
                 subprocess.CompletedProcess(["/usr/bin/tmux", "new-session"], 0, stdout="%8\n", stderr=""),
             ],
         ) as run_mock:
@@ -335,6 +337,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_TRANSPORT=tmux", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
+        self.assertIn("CODEX_WEB_LAUNCH_ID=", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL_PROVIDER=crs", shell_cmd)
         self.assertIn("CODEX_WEB_PREFERRED_AUTH_METHOD=apikey", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)

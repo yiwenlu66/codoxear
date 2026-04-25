@@ -255,13 +255,14 @@
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
         if (alias) return alias;
         const cwdName = baseName(s.cwd);
-        if (cwdName) return cwdName;
+        if (cwdName) return sessionLaunchFailed(s) ? `${cwdName} launch failed` : cwdName;
         const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
           ? s.updated_ts
           : typeof s.start_ts === "number" && Number.isFinite(s.start_ts)
             ? s.start_ts
             : 0;
-        return ts ? `Session ${fmtTs(ts)}` : "Session";
+        const name = ts ? `Session ${fmtTs(ts)}` : "Session";
+        return sessionLaunchFailed(s) ? `${name} launch failed` : name;
       }
 
       function sessionIdFromHash() {
@@ -281,6 +282,7 @@
       }
 
       function sessionLaunchKind(s) {
+        if (sessionLaunchFailed(s)) return "failed";
         if (s && s.transport === "tmux") return "web_tmux";
         if (s && s.owned) return "web";
         return "terminal";
@@ -288,8 +290,22 @@
 
       function sessionLaunchIcon(s) {
         const kind = sessionLaunchKind(s);
+        if (kind === "failed") return "info";
         if (kind === "web_tmux") return "tmux";
         return kind === "web" ? "web" : "terminal";
+      }
+
+      function sessionLaunchFailed(s) {
+        return !!(s && String(s.launch_state || "").trim().toLowerCase() === "failed");
+      }
+
+      function sessionLaunchPending(s) {
+        const state = s && String(s.launch_state || "").trim().toLowerCase();
+        return !!(state && state !== "failed");
+      }
+
+      function sessionSelectable(s) {
+        return !!(s && !sessionLaunchFailed(s) && !sessionLaunchPending(s));
       }
 
       function normalizeAgentBackendName(value) {
@@ -395,6 +411,7 @@
 
       function sessionLaunchLabel(s) {
         const kind = sessionLaunchKind(s);
+        if (kind === "failed") return s && s.launch_error ? String(s.launch_error) : "session launch failed";
         if (kind === "web_tmux") return "web-owned tmux session";
         return kind === "web" ? "web-owned session" : "terminal-owned session";
       }
@@ -2898,6 +2915,10 @@
 
              const title = sessionDisplayName(s);
              const badges = [];
+             const launchFailed = sessionLaunchFailed(s);
+             const launchPending = sessionLaunchPending(s);
+             if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
+             if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
 
@@ -2905,7 +2926,7 @@
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
 	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
 	             const effortMark = effortTxt === "xhigh" ? "X" : effortTxt === "high" ? "H" : effortTxt === "medium" ? "M" : effortTxt === "low" ? "L" : "";
-	             const stateTxt = fmtRelativeAge(ageS);
+	             const stateTxt = launchFailed ? "launch failed" : launchPending ? "starting" : fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
 	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
 
@@ -3015,7 +3036,7 @@
              const stateDot = el("span", {
                class:
                  "stateDot" +
-                 (s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
+                 (launchFailed ? " failed" : launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
              });
              const titleRow = el("div", { class: "sessionTitleRow" }, [
                stateDot,
@@ -3052,6 +3073,8 @@
 	             }
 	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
+             if (launchFailed) meta.title = s.launch_error || "Session launch failed";
+             if (launchPending) meta.title = "Session is still starting";
 
              if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
@@ -3149,6 +3172,14 @@
                    return;
                  }
                  setSidebarOpen(false);
+                 if (launchFailed) {
+                   setToast(`launch failed: ${s.launch_error || "see server log"}`);
+                   return;
+                 }
+                 if (launchPending) {
+                   setToast("session still starting");
+                   return;
+                 }
                  selectSession(s.session_id);
                };
 	             } else {
@@ -3158,7 +3189,17 @@
 	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
 	               card.appendChild(inner);
-	               card.onclick = () => selectSession(s.session_id);
+	               card.onclick = () => {
+	                 if (launchFailed) {
+	                   setToast(`launch failed: ${s.launch_error || "see server log"}`);
+	                   return;
+	                 }
+	                 if (launchPending) {
+	                   setToast("session still starting");
+	                   return;
+	                 }
+	                 selectSession(s.session_id);
+	               };
 	             }
 
 	             sessionsWrap.appendChild(card);
@@ -5580,15 +5621,19 @@
           }
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
           let cwdStartError = false;
+          let startErrorText = "";
           const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
             if (e && e.obj && e.obj.field === "cwd") {
               cwdStartError = true;
               newSessionStatus.textContent = "";
               setNewSessionCwdError(e.message);
+              return;
             }
+            const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
+            startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
           }, agentBackend);
           if (brokerPid) hideNewSessionDialog();
-          else if (!cwdStartError) newSessionStatus.textContent = "Start failed.";
+          else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
         };
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
         let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
@@ -7736,8 +7781,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
             if (!raw || !sid) return;
-            clearComposer();
-            await sendText(raw, { sid });
+            const ok = await sendText(raw, { sid });
+            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
           };
         if (sendChoiceLaterBtn)
           sendChoiceLaterBtn.onclick = async () => {
@@ -7745,8 +7790,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const sid = sendChoicePending && sendChoicePending.sid;
             hideSendChoice();
             if (!raw || !sid) return;
-            clearComposer();
-            await enqueueComposerText(raw, { sid });
+            const ok = await enqueueComposerText(raw, { sid });
+            if (ok && sid === selected && $("#msg").value === raw) clearComposer();
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
@@ -7789,8 +7834,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function enqueueComposerText(raw, { sid = null } = {}) {
           const sessionId = sid || selected;
           const text = String(raw || "");
-          if (!sessionId || !text.trim()) return;
-          if (queueSubmitBusy) return;
+          if (!sessionId || !text.trim()) return false;
+          if (queueSubmitBusy) return false;
           queueSubmitBusy = true;
           syncQueueSubmitState();
           try {
@@ -7805,8 +7850,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
               await refreshQueueViewer();
             }
+            return true;
           } catch (e) {
             setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
+            return false;
           } finally {
             queueSubmitBusy = false;
             syncQueueSubmitState();
@@ -8110,8 +8157,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (raw && raw.trim()) {
               if (!selected) return;
               const sid = selected;
-              clearComposer();
-              void enqueueComposerText(raw, { sid });
+              void enqueueComposerText(raw, { sid }).then((ok) => {
+                if (ok && selected === sid && $("#msg").value === raw) clearComposer();
+              });
               return;
             }
             showQueueViewer();
@@ -8177,6 +8225,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (backendSupportsFast(backend) && fast) body.service_tier = "fast";
             if (createInTmux) body.create_in_tmux = true;
             const res = await api("/api/sessions", { method: "POST", body });
+            if (res && res.pending && res.launch_id) {
+              setToast(createInTmux ? "tmux session still starting" : "session still starting");
+              await refreshSessions();
+              return String(res.launch_id);
+            }
             const brokerPid = res && res.broker_pid ? Number(res.broker_pid) : null;
             if (!brokerPid) {
               setToast("start failed");
@@ -8204,6 +8257,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const errLabel = resumeSessionId ? "resume" : worktreeBranch ? "worktree start" : "start";
             if (typeof errorHandler === "function") errorHandler(e);
             setToast(`${errLabel} error: ${e.message}`);
+            void refreshSessions().catch((err) => console.error("refreshSessions failed after launch error", err));
             return null;
           }
         }
@@ -8573,9 +8627,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function sendText(raw, { sid = null } = {}) {
           const sessionId = sid || selected;
-          if (!sessionId) return;
-          if (!raw || !raw.trim()) return;
-          if (sending) return;
+          if (!sessionId) return false;
+          if (!raw || !raw.trim()) return false;
+          if (sending) return false;
           sending = true;
           $("#sendBtn").disabled = true;
           setToast("sending...");
@@ -8598,6 +8652,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
             void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+            return true;
           } catch (e2) {
             setToast(`send error: ${e2.message}`);
             if (renderHere) {
@@ -8608,6 +8663,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
               }
             }
+            return false;
           } finally {
             sending = false;
             $("#sendBtn").disabled = false;
@@ -8624,8 +8680,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             showSendChoice(raw);
             return;
           }
-          clearComposer();
-          await sendText(raw);
+          const ok = await sendText(raw);
+          if (ok && $("#msg").value === raw) clearComposer();
         };
 
 	        (async () => {
@@ -8642,8 +8698,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            const sessions = await refreshSessions();
               const hashed = sessionIdFromHash();
 	            const remembered = localStorage.getItem("codexweb.selected");
-	            const first = sessions && sessions.length ? sessions[0].session_id : null;
-	            const pick = hashed && sessionIndex.has(hashed) ? hashed : remembered && sessionIndex.has(remembered) ? remembered : first;
+	            const first = sessions && sessions.length ? (sessions.find(sessionSelectable) || {}).session_id || null : null;
+	            const pick =
+	              hashed && sessionSelectable(sessionIndex.get(hashed))
+	                ? hashed
+	                : remembered && sessionSelectable(sessionIndex.get(remembered))
+	                  ? remembered
+	                  : first;
 	            if (pick) await selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {

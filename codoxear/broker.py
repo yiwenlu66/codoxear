@@ -33,11 +33,13 @@ from codoxear.pi_log import pi_message_role as _pi_message_role
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
 from codoxear import pty_util as _pty_util
+from codoxear.util import append_launch_attempt as _append_launch_attempt
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
 from codoxear.util import find_session_log_for_session_id as _find_session_log_for_session_id
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
+from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
@@ -47,6 +49,7 @@ from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_i
 
 APP_DIR = _default_app_dir()
 SOCK_DIR = APP_DIR / "socks"
+LAUNCH_ATTEMPTS_PATH = _launch_attempts_path(APP_DIR)
 PROC_ROOT = Path("/proc")
 
 AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_AGENT_BACKEND"), default="codex")
@@ -88,6 +91,58 @@ def _dprint(msg: str) -> None:
 
 def _now() -> float:
     return time.time()
+
+
+def _record_launch_attempt(record: dict[str, Any]) -> None:
+    if OWNER_TAG != "web":
+        return
+    try:
+        rec = _append_launch_attempt(record, path=LAUNCH_ATTEMPTS_PATH)
+        if rec.get("state") == "failed":
+            sys.stderr.write(
+                "error: session launch failed: "
+                f"{rec.get('launch_id')}: {rec.get('stage')}: {rec.get('error')}\n"
+            )
+            sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"error: failed to write launch attempt record: {type(e).__name__}: {e}\n")
+        sys.stderr.flush()
+
+
+def _broker_launch_record(
+    *,
+    stage: str,
+    error: str,
+    cwd: str,
+    start_ts: float,
+    agent_pid: int | None = None,
+    log_path: Path | None = None,
+    exit_code: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "launch_id": (os.environ.get("CODEX_WEB_LAUNCH_ID") or "").strip() or None,
+        "state": "failed",
+        "stage": stage,
+        "error": error,
+        "agent_backend": AGENT_BACKEND,
+        "cwd": cwd,
+        "created_ts": start_ts,
+        "updated_ts": time.time(),
+        "broker_pid": os.getpid(),
+        "agent_pid": agent_pid,
+        "exit_code": exit_code,
+        "log_path": str(log_path) if log_path else None,
+        "transport": (os.environ.get("CODEX_WEB_TRANSPORT") or "").strip() or None,
+        "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
+        "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
+        "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
+        "model_provider": MODEL_PROVIDER_OVERRIDE or None,
+        "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
+        "model": MODEL_OVERRIDE or None,
+        "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
+        "service_tier": SERVICE_TIER_OVERRIDE or None,
+        "resume_session_id": (os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip() or None,
+    }
 
 
 def _resume_session_id_from_args(args: list[str]) -> str | None:
@@ -1068,6 +1123,7 @@ class Broker:
             "log_path": str(st.log_path) if st.log_path else None,
             "sock_path": str(st.sock_path),
             "agent_backend": AGENT_BACKEND,
+            "launch_id": (os.environ.get("CODEX_WEB_LAUNCH_ID") or "").strip() or None,
             "resume_session_id": st.resume_session_id,
             "model_provider": MODEL_PROVIDER_OVERRIDE or None,
             "preferred_auth_method": PREFERRED_AUTH_METHOD_OVERRIDE or None,
@@ -1304,7 +1360,18 @@ class Broker:
         headless = (OWNER_TAG == "web")
         local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
-        pid, master_fd = pty.fork()
+        try:
+            pid, master_fd = pty.fork()
+        except Exception as e:
+            _record_launch_attempt(
+                _broker_launch_record(
+                    stage="pty_fork",
+                    error=f"pty fork failed before agent start: {type(e).__name__}: {e}",
+                    cwd=self.cwd,
+                    start_ts=start_ts,
+                )
+            )
+            raise
         if pid == 0:
             try:
                 _set_pdeathsig(signal.SIGHUP)
@@ -1415,6 +1482,18 @@ class Broker:
             traceback.print_exc()
         with self._lock:
             st2 = self.state
+        if st2 and OWNER_TAG == "web" and exit_code != 0 and st2.log_path is None:
+            _record_launch_attempt(
+                _broker_launch_record(
+                    stage="agent_exit_before_log_bind",
+                    error=f"{AGENT_BIN} exited with status {exit_code} before a session log was bound",
+                    cwd=st2.cwd,
+                    start_ts=st2.start_ts,
+                    agent_pid=st2.codex_pid,
+                    log_path=st2.log_path,
+                    exit_code=exit_code,
+                )
+            )
         if st2 and st2.sock_path:
             try:
                 st2.sock_path.unlink()
