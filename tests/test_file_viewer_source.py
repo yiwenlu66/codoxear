@@ -94,6 +94,7 @@ def eval_file_open_request_sequence() -> dict:
 class TestFileViewerSource(unittest.TestCase):
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('accessibilitySupport: "off"', source)
         self.assertIn("quickSuggestions: false", source)
         self.assertIn("suggestOnTriggerCharacters: false", source)
         self.assertIn('acceptSuggestionOnEnter: "off"', source)
