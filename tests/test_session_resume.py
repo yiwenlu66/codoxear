@@ -129,6 +129,16 @@ class TestSessionResumeCandidates(unittest.TestCase):
 
 
 class TestSpawnWebSessionResume(unittest.TestCase):
+    def setUp(self) -> None:
+        self._launch_attempts_dir = TemporaryDirectory()
+        self.addCleanup(self._launch_attempts_dir.cleanup)
+        self._launch_attempts_patch = patch(
+            "codoxear.server.LAUNCH_ATTEMPTS_PATH",
+            Path(self._launch_attempts_dir.name) / "launches.jsonl",
+        )
+        self._launch_attempts_patch.start()
+        self.addCleanup(self._launch_attempts_patch.stop)
+
     def test_spawn_web_session_creates_missing_cwd(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         thread_calls: list[str] = []
