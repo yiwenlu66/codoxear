@@ -9,10 +9,10 @@ SERVICE_WORKER = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "
 class TestVoicePushSource(unittest.TestCase):
     def test_summary_prompts_cover_final_and_narration_targets(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
-        self.assertIn("about 30 words", source)
-        self.assertIn("roughly 24 to 36 words", source)
-        self.assertIn("about 15 words", source)
-        self.assertIn("roughly 12 to 18 words", source)
+        self.assertIn("compress assistant final responses", source)
+        self.assertIn("Use at most 30 words", source)
+        self.assertIn("compress assistant progress narration", source)
+        self.assertIn("Use at most 15 words", source)
 
     def test_keepalive_silence_is_enabled(self) -> None:
         source = VOICE_PUSH.read_text(encoding="utf-8")
