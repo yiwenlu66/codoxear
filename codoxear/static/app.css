@@ -944,9 +944,13 @@
       }
       .interactive-prompt { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
       .interactive-prompt-header { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
+      .interactive-prompt-context { font-size: 12px; line-height: 1.45; color: var(--muted); white-space: pre-wrap; }
+      .interactive-prompt-note { font-size: 12px; line-height: 1.45; color: var(--muted); padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(15, 23, 42, 0.035); }
       .interactive-prompt-options { display: flex; flex-wrap: wrap; gap: 6px; }
-      .interactive-option-btn { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+      .interactive-option-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.12s; }
       .interactive-option-btn:hover:not(:disabled) { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.2); }
+      .interactive-option-btn:active:not(:disabled) { transform: translateY(1px); }
+      .interactive-option-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .interactive-option-btn.selected { background: rgba(0,0,0,0.08); border-color: var(--accent); font-weight: 500; }
       .interactive-option-btn:disabled { opacity: 0.5; cursor: default; }
       .interactive-option-btn.danger { color: var(--danger); border-color: rgba(197,48,48,0.2); }
@@ -956,6 +960,9 @@
       .interactive-question-group.pending { opacity: 0.4; }
       .interactive-question-group.answered .interactive-option-btn:not(.selected) { display: none; }
       .interactive-question-group.answered .interactive-option-btn.selected { background: rgba(0,0,0,0.06); border-color: var(--accent); cursor: default; }
+      @media (pointer: coarse), (max-width: 700px) {
+        .interactive-option-btn { min-height: 44px; padding: 8px 16px; border-radius: 22px; }
+      }
       .md th {
         font-weight: 650;
         background: rgba(226, 232, 240, 0.8);

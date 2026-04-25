@@ -11,6 +11,7 @@ from typing import Any
 from typing import Iterator
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .pi_log import pi_assistant_content_parts
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_text
@@ -619,6 +620,12 @@ def _extract_chat_events(
                 total_tools += tool_count
                 tool_names.add("pi_tool")
                 last_tool = "pi_tool"
+            if tool_count > 0:
+                ets_tool = event_ts(obj)
+                for part in pi_assistant_content_parts(obj):
+                    ev_q = _pi_ask_user_event_from_tool_call(part, ets_tool)
+                    if ev_q is not None:
+                        events.append(ev_q)
             if isinstance(assistant_text, str) and assistant_text:
                 ets = event_ts(obj)
                 message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
@@ -1044,6 +1051,82 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         return True if sz <= 128 * 1024 else False
 
     return idle
+
+
+
+def _coerce_tool_arguments(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            decoded = json.loads(value)
+        except Exception:
+            return None
+        return decoded if isinstance(decoded, dict) else None
+    return None
+
+
+def _clean_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if text else None
+
+
+def _clean_bool(value: Any, default: bool) -> bool:
+    return bool(value) if isinstance(value, bool) else default
+
+
+def _normalize_ask_user_options(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, str]] = []
+    for opt in value:
+        label: str | None = None
+        description: str | None = None
+        if isinstance(opt, str):
+            label = _clean_text(opt)
+        elif isinstance(opt, dict):
+            label = _clean_text(opt.get("label")) or _clean_text(opt.get("title"))
+            description = _clean_text(opt.get("description"))
+        if not label:
+            continue
+        item = {"label": label}
+        if description:
+            item["description"] = description
+        out.append(item)
+    return out
+
+
+def _pi_ask_user_event_from_tool_call(part: dict[str, Any], ts: float | None) -> dict[str, Any] | None:
+    if part.get("type") != "toolCall" or part.get("name") != "ask_user":
+        return None
+    args = _coerce_tool_arguments(part.get("arguments")) or _coerce_tool_arguments(part.get("input"))
+    if not isinstance(args, dict):
+        return None
+    question = _clean_text(args.get("question"))
+    if not question:
+        return None
+
+    q: dict[str, Any] = {
+        "question": question,
+        "options": _normalize_ask_user_options(args.get("options")),
+        "backend": "pi",
+        "allowMultiple": _clean_bool(args.get("allowMultiple"), False),
+        "allowFreeform": _clean_bool(args.get("allowFreeform"), True),
+        "allowComment": _clean_bool(args.get("allowComment"), False),
+    }
+    context = _clean_text(args.get("context"))
+    if context:
+        q["context"] = context
+
+    ev: dict[str, Any] = {"role": "assistant", "interactive": "ask_user_question", "questions": [q]}
+    tool_id = _clean_text(part.get("id")) or _clean_text(part.get("toolCallId"))
+    if tool_id:
+        ev["tool_use_id"] = tool_id
+    if ts is not None:
+        ev["ts"] = ts
+    return ev
 
 
 def _last_chat_role_ts_from_tail(
