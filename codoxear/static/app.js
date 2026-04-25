@@ -295,12 +295,15 @@
       function normalizeAgentBackendName(value) {
         const raw = String(value || "").trim().toLowerCase();
         if (raw === "pi") return "pi";
+        if (raw === "claude") return "claude";
         return "codex";
       }
 
       function agentBackendDisplayName(value) {
         const backend = normalizeAgentBackendName(value);
-        return backend === "pi" ? "Pi" : "Codex";
+        if (backend === "pi") return "Pi";
+        if (backend === "claude") return "Claude";
+        return "Codex";
       }
 
       function agentBackendLogoPath(value) {
@@ -353,16 +356,37 @@
         };
       }
 
+      function claudeLaunchDefaults(seed = {}) {
+        const raw = seed && typeof seed === "object" ? seed : {};
+        return {
+          agent_backend: "claude",
+          model_provider: "anthropic",
+          preferred_auth_method: null,
+          provider_choice: "anthropic",
+          provider_choices: ["anthropic"],
+          model: typeof raw.model === "string" ? raw.model : null,
+          models: Array.isArray(raw.models) ? raw.models.slice() : ["opus", "sonnet", "haiku"],
+          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "max",
+          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["low", "medium", "high", "max"],
+          service_tier: null,
+          supports_fast: false,
+        };
+      }
+
       function defaultsForAgentBackend(backend) {
         const normalized = normalizeAgentBackendName(backend);
         const raw = newSessionDefaults && typeof newSessionDefaults === "object" ? newSessionDefaults : {};
         if (raw.backends && typeof raw.backends === "object") {
           const item = raw.backends[normalized];
           if (item && typeof item === "object") {
-            return normalized === "pi" ? emptyPiLaunchDefaults(item) : legacyCodexLaunchDefaults(item);
+            if (normalized === "pi") return emptyPiLaunchDefaults(item);
+            if (normalized === "claude") return claudeLaunchDefaults(item);
+            return legacyCodexLaunchDefaults(item);
           }
         }
-        return normalized === "pi" ? emptyPiLaunchDefaults() : legacyCodexLaunchDefaults(raw);
+        if (normalized === "pi") return emptyPiLaunchDefaults();
+        if (normalized === "claude") return claudeLaunchDefaults();
+        return legacyCodexLaunchDefaults(raw);
       }
 
       function providerChoicesForBackend(backend) {
@@ -407,6 +431,7 @@
         const backend = normalizeAgentBackendName(agentBackend);
         const value = String(choice || "").trim() || "chatgpt";
         if (backend === "pi") return { model_provider: value || null, preferred_auth_method: null };
+        if (backend === "claude") return { model_provider: "anthropic", preferred_auth_method: null };
         if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
         if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
         return { model_provider: value, preferred_auth_method: "apikey" };
@@ -2562,9 +2587,94 @@
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
-          const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
-          bubble.appendChild(md);
-          void upgradeCandidateFileRefs(md);
+          // Interactive prompts (AskUserQuestion / ExitPlanMode)
+          if (ev.interactive === "ask_user_question" && Array.isArray(ev.questions)) {
+            const card = el("div", { class: "interactive-prompt" });
+            const questions = ev.questions.filter((q) => q && q.question);
+            let answeredCount = 0;
+            const questionGroups = [];
+            questions.forEach((q, qIdx) => {
+              const group = el("div", { class: "interactive-question-group" + (qIdx > 0 ? " pending" : "") });
+              const qHeader = el("div", { class: "interactive-prompt-header", text: q.question });
+              group.appendChild(qHeader);
+              const qContext = typeof q.context === "string" ? q.context.trim() : "";
+              if (qContext) group.appendChild(el("div", { class: "interactive-prompt-context", text: qContext }));
+              const optionsWrap = el("div", { class: "interactive-prompt-options" });
+              const options = Array.isArray(q.options) ? q.options : [];
+              const isPiAsk = String(q.backend || ev.backend || "").toLowerCase() === "pi";
+              const allowMultiple = q.allowMultiple === true;
+              const allowFreeform = q.allowFreeform === true;
+              const allowComment = q.allowComment === true;
+              const canAnswerOptions = options.length > 0 && !(isPiAsk && allowMultiple);
+              group.dataset.canAnswerOptions = canAnswerOptions ? "1" : "0";
+              const noteParts = [];
+              if (isPiAsk && allowMultiple) noteParts.push("Multi-select Pi prompts are not supported in the browser yet. Answer this one in the terminal.");
+              if (isPiAsk && !options.length) noteParts.push("Freeform Pi prompts are not supported in the browser yet. Answer this one in the terminal.");
+              if (isPiAsk && options.length && allowFreeform) noteParts.push("Custom freeform answers are not supported here; choose a listed option or answer in the terminal.");
+              if (isPiAsk && options.length && allowComment && !allowMultiple) noteParts.push("Optional comments are not supported here; choosing an option submits it without a comment.");
+              if (noteParts.length) group.appendChild(el("div", { class: "interactive-prompt-note", text: noteParts.join(" ") }));
+              options.forEach((opt, optIdx) => {
+                const label = opt && (opt.label || opt.title) ? String(opt.label || opt.title) : "Option " + (optIdx + 1);
+                const description = opt && typeof opt.description === "string" ? opt.description : "";
+                const btn = el("button", { class: "interactive-option-btn", type: "button", title: description, "aria-label": label });
+                btn.textContent = label;
+                if (qIdx > 0 || !canAnswerOptions) btn.disabled = true;
+                btn.onclick = async () => {
+                  if (btn.disabled) return;
+                  const buttons = Array.from(optionsWrap.querySelectorAll(".interactive-option-btn"));
+                  for (const b of buttons) { b.disabled = true; b.classList.remove("selected"); }
+                  btn.classList.add("selected");
+                  group.classList.add("answered");
+                  group.classList.remove("pending");
+                  const seq = "\x1b[B".repeat(optIdx) + "\r";
+                  try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq } }); }
+                  catch (err) {
+                    for (const b of buttons) b.disabled = qIdx > 0 || !canAnswerOptions;
+                    btn.classList.remove("selected");
+                    group.classList.remove("answered");
+                    if (qIdx > 0) group.classList.add("pending");
+                    setToast("send error: " + err.message);
+                    return;
+                  }
+                  answeredCount++;
+                  if (answeredCount < questions.length) {
+                    const nextGroup = questionGroups[answeredCount];
+                    if (nextGroup) {
+                      nextGroup.classList.remove("pending");
+                      const nextCanAnswer = nextGroup.dataset.canAnswerOptions === "1";
+                      for (const b of nextGroup.querySelectorAll(".interactive-option-btn")) b.disabled = !nextCanAnswer;
+                    }
+                  } else if (!isPiAsk) {
+                    setTimeout(async () => {
+                      try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } }); }
+                      catch (err) { setToast("submit error: " + err.message); }
+                    }, 300);
+                  }
+                };
+                optionsWrap.appendChild(btn);
+              });
+              if (options.length) group.appendChild(optionsWrap);
+              card.appendChild(group);
+              questionGroups.push(group);
+            });
+            bubble.appendChild(card);
+          } else if (ev.interactive === "exit_plan_mode") {
+            const card = el("div", { class: "interactive-prompt" });
+            card.appendChild(el("div", { class: "interactive-prompt-header", text: "Plan ready for review" }));
+            const optionsWrap = el("div", { class: "interactive-prompt-options" });
+            const approveBtn = el("button", { class: "interactive-option-btn", type: "button", text: "Approve" });
+            const rejectBtn = el("button", { class: "interactive-option-btn danger", type: "button", text: "Reject" });
+            approveBtn.onclick = async () => { approveBtn.disabled = true; rejectBtn.disabled = true; approveBtn.classList.add("selected"); try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } }); } catch (err) { setToast("send error: " + err.message); } };
+            rejectBtn.onclick = async () => { approveBtn.disabled = true; rejectBtn.disabled = true; rejectBtn.classList.add("selected"); try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\x1b[B\r" } }); } catch (err) { setToast("send error: " + err.message); } };
+            optionsWrap.appendChild(approveBtn);
+            optionsWrap.appendChild(rejectBtn);
+            card.appendChild(optionsWrap);
+            bubble.appendChild(card);
+          } else {
+            const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
+            bubble.appendChild(md);
+            void upgradeCandidateFileRefs(md);
+          }
           if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
 
           if (pending) {
@@ -2641,7 +2751,9 @@
         if (ts === null) return "";
         const tsMs = Math.round(ts * 1000);
         const text = typeof ev.text === "string" ? pendingMatchKey(ev.text) : "";
-        return `${ev.role}|${tsMs}|${text}`;
+        const interactive = typeof ev.interactive === "string" ? ev.interactive : "";
+        const toolUseId = typeof ev.tool_use_id === "string" ? ev.tool_use_id : "";
+        return `${ev.role}|${tsMs}|${interactive}|${toolUseId}|${text}`;
       }
 
         function markEventSeen(ev) {
@@ -4686,7 +4798,7 @@
 
         function renderNewSessionBackendTabs() {
           newSessionBackendTabs.innerHTML = "";
-          for (const backend of ["codex", "pi"]) {
+          for (const backend of ["codex", "pi", "claude"]) {
             const active = newSessionBackend === backend;
             const btn = el("button", {
               class: `agentBackendTab${active ? " active" : ""}`,

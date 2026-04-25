@@ -77,6 +77,8 @@ class TestBrokerFailClosed(unittest.TestCase):
             new.write_text('{"type":"session","id":"new","cwd":"/tmp"}\n', encoding="utf-8")
             broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
             broker.state.log_path = current
+            broker.state.session_id = "current"
+            broker.state.last_rollout_path = current
             broker.state.known_rollout_paths = {current}
             broker.state.sock_path = Path(td) / "broker.sock"
             seen: list[Path] = []
@@ -91,6 +93,51 @@ class TestBrokerFailClosed(unittest.TestCase):
                 broker._discover_log_watcher()
 
         self.assertEqual(seen, [new])
+
+    def test_pi_discover_log_watcher_uses_reserved_log_path_before_cwd_scan(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            reserved = Path(td) / "reserved.jsonl"
+            reserved.write_text('{"type":"session","id":"reserved","cwd":"/tmp"}\n', encoding="utf-8")
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
+            broker.state.log_path = reserved
+            broker.state.sock_path = Path(td) / "broker.sock"
+            seen: list[Path] = []
+
+            def _capture_switch(*, log_path: Path) -> None:
+                seen.append(log_path)
+                broker._stop.set()
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=None), patch(
+                "codoxear.broker._find_new_session_log"
+            ) as find_new_log, patch.object(broker, "_maybe_register_or_switch_rollout", side_effect=_capture_switch), patch(
+                "codoxear.broker.time.sleep", side_effect=lambda _seconds: None
+            ):
+                broker._discover_log_watcher()
+
+        self.assertEqual(seen, [reserved])
+        find_new_log.assert_not_called()
+
+    def test_pi_discover_log_watcher_skips_cwd_scan_while_reserved_log_is_pending(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            reserved = Path(td) / "reserved.jsonl"
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
+            broker.state.log_path = reserved
+            broker.state.sock_path = Path(td) / "broker.sock"
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=None), patch(
+                "codoxear.broker._find_new_session_log"
+            ) as find_new_log, patch("codoxear.broker.os.waitpid", return_value=(1234, 0)):
+                broker._discover_log_watcher()
+
+        find_new_log.assert_not_called()
 
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
@@ -207,6 +254,40 @@ class TestBrokerFailClosed(unittest.TestCase):
             broker._write_meta()
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self.assertIsNone(meta["resume_session_id"])
+
+    def test_pi_new_run_reserves_log_path_before_first_write(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        captured: dict[str, object] = {}
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=["--model", "gpt-5.4"])
+            reserved_log_path = Path(broker.codex_args[-1])
+
+            def _capture_write_meta() -> None:
+                st = broker.state
+                captured["session_id"] = st.session_id if st else None
+                captured["log_path"] = str(st.log_path) if st and st.log_path else None
+                captured["log_off"] = st.log_off if st else None
+
+            with patch("codoxear.broker._require_proc"), patch("codoxear.broker._term_size", return_value=(24, 80)), patch(
+                "codoxear.broker.pty.fork", return_value=(1234, 55)
+            ), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch(
+                "codoxear.broker.os.waitpid", return_value=(1234, 0)
+            ), patch(
+                "codoxear.broker.os.close"
+            ), patch.object(
+                broker, "_write_meta", side_effect=_capture_write_meta
+            ), patch(
+                "codoxear.broker.threading.Thread", _FakeThread
+            ):
+                broker.run()
+
+        self.assertIsNone(captured["session_id"])
+        self.assertEqual(captured["log_path"], str(reserved_log_path))
+        self.assertEqual(captured["log_off"], 0)
 
     def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)

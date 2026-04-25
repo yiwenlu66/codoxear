@@ -458,6 +458,9 @@ class Sessiond:
                     if self.cwd:
                         forced += ["--add-dir", self.cwd]
                     argv = [AGENT_BIN] + forced + self.codex_args
+                elif AGENT_BACKEND == "claude":
+                    os.chdir(self.cwd or str(ROOT_REPO_DIR))
+                    argv = [AGENT_BIN, "--dangerously-skip-permissions", *self.codex_args]
                 else:
                     os.chdir(self.cwd or str(ROOT_REPO_DIR))
                     argv = [AGENT_BIN, *self.codex_args]

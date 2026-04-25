@@ -11,6 +11,7 @@ from typing import Any
 from typing import Iterator
 
 from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+from .pi_log import pi_assistant_content_parts
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_text
@@ -18,6 +19,13 @@ from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
+from .claude_log import claude_assistant_text
+from .claude_log import claude_assistant_thinking_count
+from .claude_log import claude_assistant_tool_use_count
+from .claude_log import claude_is_final_answer
+from .claude_log import claude_is_turn_end
+from .claude_log import claude_token_update
+from .claude_log import claude_user_text
 from .voice_push import ClassifiedAssistantMessage
 
 
@@ -85,6 +93,13 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
             phase = p.get("phase")
             if isinstance(msg, str) and msg.strip() and phase == "final_answer":
                 return _event_ts(obj)
+        return None
+
+    if typ == "user":
+        if claude_user_text(obj): return _event_ts(obj)
+        return None
+    if typ == "assistant":
+        if claude_assistant_text(obj): return _event_ts(obj)
         return None
 
     if typ == "message":
@@ -207,6 +222,8 @@ def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     # Prefer the newest token_count in this batch.
     for obj in reversed(objs):
+        claude_tok = claude_token_update(obj)
+        if claude_tok is not None: return claude_tok
         pi_token = pi_token_update(obj)
         if pi_token is not None:
             return pi_token
@@ -405,6 +422,11 @@ def _iter_jsonl_records_reverse(path: Path, *, before: int | None = None, block_
                 yield record
 
 
+def _chat_events_for_record(obj: dict[str, Any]) -> list[dict[str, Any]]:
+    events, _meta, _flags, _diag = _extract_chat_events([obj])
+    return events
+
+
 def _read_chat_page_reverse(
     log_path: Path,
     *,
@@ -423,14 +445,19 @@ def _read_chat_page_reverse(
     skipped = 0
     has_older = False
     for record in _iter_jsonl_records_reverse(log_path, before=end):
-        event = _single_chat_event(record.obj)
-        if event is None:
+        record_events = _chat_events_for_record(record.obj)
+        if not record_events:
             continue
         if skipped < skip:
-            skipped += 1
-            continue
+            remaining_skip = skip - skipped
+            if remaining_skip >= len(record_events):
+                skipped += len(record_events)
+                continue
+            # Do not split one log record across byte-cursor pages.
+            skipped = skip
         if len(newest_first) < page_limit:
-            newest_first.append(PositionedChatEvent(event=event, start=record.start, end=record.end))
+            for event in reversed(record_events):
+                newest_first.append(PositionedChatEvent(event=event, start=record.start, end=record.end))
             continue
         has_older = True
         break
@@ -531,6 +558,58 @@ def _extract_chat_events(
 
     for obj in objs:
         typ = obj.get("type")
+        # Claude user records
+        if typ == "user":
+            user_text = claude_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                turn_start = True
+                ets = event_ts(obj)
+                ev_u = {"role": "user", "text": user_text}
+                if ets is not None: ev_u["ts"] = ets
+                events.append(ev_u)
+            continue
+
+        # Claude assistant records
+        if typ == "assistant":
+            assistant_text = claude_assistant_text(obj)
+            tc = claude_assistant_tool_use_count(obj)
+            thc = claude_assistant_thinking_count(obj)
+            if thc > 0: total_thinking += thc
+            if tc > 0:
+                total_tools += tc
+                tool_names.add("claude_tool")
+                last_tool = "claude_tool"
+            # Extract interactive prompts (AskUserQuestion / ExitPlanMode)
+            msg = obj.get("message")
+            if isinstance(msg, dict):
+                for part in msg.get("content", []):
+                    if not isinstance(part, dict) or part.get("type") != "tool_use": continue
+                    tool_name = part.get("name")
+                    tool_id = part.get("id")
+                    tool_input = part.get("input", {})
+                    if tool_name == "AskUserQuestion" and isinstance(tool_input.get("questions"), list):
+                        ets2 = event_ts(obj)
+                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": tool_input["questions"]}
+                        if ets2 is not None: ev_q["ts"] = ets2
+                        events.append(ev_q)
+                    elif tool_name == "ExitPlanMode":
+                        ets2 = event_ts(obj)
+                        ev_p = {"role": "assistant", "interactive": "exit_plan_mode", "tool_use_id": tool_id}
+                        if ets2 is not None: ev_p["ts"] = ets2
+                        events.append(ev_p)
+            if isinstance(assistant_text, str) and assistant_text:
+                ets = event_ts(obj)
+                mc = "final_response" if claude_is_final_answer(obj) else "narration"
+                if mc == "final_response": turn_end = True
+                ev_a = {"role": "assistant", "text": assistant_text, "message_class": mc, "message_id": text_message_id(message_class=mc, text=assistant_text, ts=ets)}
+                if ets is not None: ev_a["ts"] = ets
+                events.append(ev_a)
+            continue
+
+        if typ == "system" and obj.get("subtype") == "turn_duration":
+            turn_end = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -551,6 +630,12 @@ def _extract_chat_events(
                 total_tools += tool_count
                 tool_names.add("pi_tool")
                 last_tool = "pi_tool"
+            if tool_count > 0:
+                ets_tool = event_ts(obj)
+                for part in pi_assistant_content_parts(obj):
+                    ev_q = _pi_ask_user_event_from_tool_call(part, ets_tool)
+                    if ev_q is not None:
+                        events.append(ev_q)
             if isinstance(assistant_text, str) and assistant_text:
                 ets = event_ts(obj)
                 message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
@@ -673,7 +758,11 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         typ = obj.get("type")
         message_class: str | None = None
         text = ""
-        if typ == "message":
+        if typ == "assistant":
+            text = claude_assistant_text(obj) or ""
+            if not text.strip(): continue
+            message_class = "final_response" if claude_is_final_answer(obj) else "narration"
+        elif typ == "message":
             text = pi_assistant_text(obj) or ""
             if not text.strip():
                 continue
@@ -772,6 +861,8 @@ def _read_chat_events_from_tail(
 
 
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
+    if obj.get("type") == "assistant":
+        return bool(claude_assistant_text(obj))
     if obj.get("type") == "message":
         return bool(pi_assistant_text(obj))
     p = obj.get("payload")
@@ -803,6 +894,15 @@ def _analyze_log_chunk(
         sidebar_ts = _sidebar_conversation_ts(obj)
         if sidebar_ts is not None:
             last_chat_ts = sidebar_ts
+        if typ == "user":
+            if claude_user_text(obj): d_th = 0; d_tools = 0; d_sys = 0
+            continue
+        if typ == "assistant":
+            d_th += claude_assistant_thinking_count(obj)
+            d_tools += claude_assistant_tool_use_count(obj)
+            continue
+        if typ == "system" and obj.get("subtype") == "turn_duration":
+            continue
         if typ == "message":
             if pi_user_text(obj):
                 d_th = 0
@@ -876,6 +976,19 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         idle = True
         for obj in objs:
             typ = obj.get("type")
+            if typ == "user":
+                if claude_user_text(obj):
+                    saw_terminal_signal = True; idle = False
+                continue
+            if typ == "assistant":
+                saw_terminal_signal = True
+                if claude_is_final_answer(obj): idle = True
+                elif claude_assistant_tool_use_count(obj) > 0 or claude_assistant_thinking_count(obj) > 0: idle = False
+                elif claude_assistant_text(obj): idle = False
+                continue
+            if typ == "system" and obj.get("subtype") == "turn_duration":
+                saw_terminal_signal = True; idle = True
+                continue
             if typ == "message":
                 if pi_user_text(obj):
                     saw_terminal_signal = True
@@ -950,6 +1063,82 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
     return idle
 
 
+
+def _coerce_tool_arguments(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            decoded = json.loads(value)
+        except Exception:
+            return None
+        return decoded if isinstance(decoded, dict) else None
+    return None
+
+
+def _clean_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if text else None
+
+
+def _clean_bool(value: Any, default: bool) -> bool:
+    return bool(value) if isinstance(value, bool) else default
+
+
+def _normalize_ask_user_options(value: Any) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, str]] = []
+    for opt in value:
+        label: str | None = None
+        description: str | None = None
+        if isinstance(opt, str):
+            label = _clean_text(opt)
+        elif isinstance(opt, dict):
+            label = _clean_text(opt.get("label")) or _clean_text(opt.get("title"))
+            description = _clean_text(opt.get("description"))
+        if not label:
+            continue
+        item = {"label": label}
+        if description:
+            item["description"] = description
+        out.append(item)
+    return out
+
+
+def _pi_ask_user_event_from_tool_call(part: dict[str, Any], ts: float | None) -> dict[str, Any] | None:
+    if part.get("type") != "toolCall" or part.get("name") != "ask_user":
+        return None
+    args = _coerce_tool_arguments(part.get("arguments")) or _coerce_tool_arguments(part.get("input"))
+    if not isinstance(args, dict):
+        return None
+    question = _clean_text(args.get("question"))
+    if not question:
+        return None
+
+    q: dict[str, Any] = {
+        "question": question,
+        "options": _normalize_ask_user_options(args.get("options")),
+        "backend": "pi",
+        "allowMultiple": _clean_bool(args.get("allowMultiple"), False),
+        "allowFreeform": _clean_bool(args.get("allowFreeform"), True),
+        "allowComment": _clean_bool(args.get("allowComment"), False),
+    }
+    context = _clean_text(args.get("context"))
+    if context:
+        q["context"] = context
+
+    ev: dict[str, Any] = {"role": "assistant", "interactive": "ask_user_question", "questions": [q]}
+    tool_id = _clean_text(part.get("id")) or _clean_text(part.get("toolCallId"))
+    if tool_id:
+        ev["tool_use_id"] = tool_id
+    if ts is not None:
+        ev["ts"] = ts
+    return ev
+
+
 def _last_chat_role_ts_from_tail(
     path: Path,
     *,
@@ -975,6 +1164,13 @@ def _last_chat_role_ts_from_tail(
         last_assistant: tuple[int, float | None] | None = None
         for i, obj in enumerate(objs):
             typ = obj.get("type")
+            if typ == "user":
+                if claude_user_text(obj): last_user = (i, event_ts(obj))
+                continue
+            if typ == "assistant":
+                if claude_assistant_text(obj) or claude_assistant_tool_use_count(obj) > 0:
+                    last_assistant = (i, event_ts(obj))
+                continue
             if typ == "message":
                 if pi_user_text(obj):
                     last_user = (i, event_ts(obj))

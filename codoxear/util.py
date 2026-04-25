@@ -14,6 +14,8 @@ from typing import Any
 from .agent_backend import get_agent_backend
 from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
+from .claude_log import read_claude_log_cwd
+from .claude_log import read_claude_session_id
 from .pi_log import read_pi_log_cwd
 from .pi_log import read_pi_session_header
 from .pi_log import read_pi_session_id
@@ -86,6 +88,20 @@ def _is_pi_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> 
     return True
 
 
+def _is_claude_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
+    if path.suffix != ".jsonl":
+        return False
+    if "/subagents/" in str(path).replace("\\", "/"):
+        return False
+    if sessions_dir is None:
+        return "/.claude/projects/" in str(path).replace("\\", "/")
+    try:
+        path.resolve().relative_to(sessions_dir.resolve())
+    except Exception:
+        return False
+    return True
+
+
 def _paths_match(a: Path, b: Path) -> bool:
     try:
         return a.resolve() == b.resolve()
@@ -145,6 +161,12 @@ def read_session_meta_payload(
     )
     if backend_name == "pi":
         return read_pi_session_header(log_path)
+    if backend_name == "claude":
+        sid = read_claude_session_id(log_path)
+        cwd = read_claude_log_cwd(log_path)
+        if sid or cwd:
+            return {"id": sid, "cwd": cwd}
+        return None
     deadline = now() + float(timeout_s)
     while True:
         payload = _read_session_meta_payload_once(log_path, max_bytes=max_bytes)
@@ -194,6 +216,8 @@ def iter_session_logs(sessions_dir: Path, *, agent_backend: str = "codex") -> li
             continue
         if backend_name == "pi" and not _is_pi_session_log_path(p, sessions_dir=sessions_dir):
             continue
+        if backend_name == "claude" and not _is_claude_session_log_path(p, sessions_dir=sessions_dir):
+            continue
         try:
             mt = float(p.stat().st_mtime)
         except FileNotFoundError:
@@ -215,8 +239,14 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str, *, agen
             if session_id in p.name:
                 return p
             continue
-        if read_pi_session_id(p) == session_id:
-            return p
+        if backend_name == "pi":
+            if read_pi_session_id(p) == session_id:
+                return p
+            continue
+        if backend_name == "claude":
+            if p.stem == session_id:
+                return p
+            continue
     return None
 
 
@@ -258,6 +288,8 @@ def find_new_session_log(
                     continue
             if backend_name == "pi":
                 sid = read_pi_session_id(p)
+            elif backend_name == "claude":
+                sid = read_claude_session_id(p)
             else:
                 sid = payload.get("id")
             if isinstance(sid, str) and sid:
@@ -427,8 +459,13 @@ def proc_open_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_
                     continue
                 out.add(path)
                 continue
-            if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
-                out.add(path)
+            if backend_name == "pi":
+                if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+                    out.add(path)
+                continue
+            if backend_name == "claude":
+                if _is_claude_session_log_path(path, sessions_dir=sessions_dir):
+                    out.add(path)
     return out
 
 
@@ -472,8 +509,13 @@ def proc_open_writable_rollout_logs_for_backend(proc_root: Path, root_pid: int, 
                     continue
                 out.add(path)
                 continue
-            if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
-                out.add(path)
+            if backend_name == "pi":
+                if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+                    out.add(path)
+                continue
+            if backend_name == "claude":
+                if _is_claude_session_log_path(path, sessions_dir=sessions_dir):
+                    out.add(path)
     return out
 
 
