@@ -4247,6 +4247,37 @@ class SessionManager:
             return True
         return self._kill_session_via_pids(s)
 
+    def _live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
+        sessions = getattr(self, "_sessions", None)
+        if not isinstance(sessions, dict):
+            return None
+        target_log_raw = _clean_optional_text(resume_row.get("log_path") if isinstance(resume_row, dict) else None)
+        try:
+            target_log = str(Path(target_log_raw).expanduser().resolve(strict=False)) if target_log_raw is not None else None
+        except OSError:
+            target_log = target_log_raw
+
+        lock = getattr(self, "_lock", None)
+        if lock is not None and hasattr(lock, "acquire") and hasattr(lock, "release"):
+            with lock:
+                values = list(sessions.values())
+        else:
+            values = list(sessions.values())
+        for session in values:
+            if not isinstance(session, Session):
+                continue
+            same_thread = session.session_id == resume_id or session.thread_id == resume_id
+            same_log = False
+            if target_log is not None and session.log_path is not None:
+                try:
+                    session_log = str(session.log_path.expanduser().resolve(strict=False))
+                except OSError:
+                    session_log = str(session.log_path)
+                same_log = session_log == target_log
+            if (same_thread or same_log) and (_pid_alive(session.broker_pid) or _pid_alive(session.codex_pid)):
+                return session
+        return None
+
     def spawn_web_session(
         self,
         *,
@@ -4322,6 +4353,12 @@ class SessionManager:
                     break
             if not found:
                 raise ValueError(f"resume session not found for cwd: {resume_id}")
+            live_target = self._live_session_for_resume_target(resume_id, resume_row)
+            if live_target is not None:
+                raise ValueError(
+                    "resume target is already live as "
+                    f"{live_target.session_id}; select that session instead of creating another session bound to the same transcript"
+                )
             if backend_name == "codex":
                 codex_args.extend(["resume", resume_id])
             else:

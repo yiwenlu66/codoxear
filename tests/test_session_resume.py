@@ -255,6 +255,35 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertEqual(result, {"broker_pid": 4321})
         self.assertEqual(thread_calls, ["start"])
 
+    def test_spawn_web_session_rejects_resume_target_that_is_already_live(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        manager._lock = threading.Lock()
+        manager._sessions = {}
+
+        with TemporaryDirectory() as td, patch("codoxear.server._pid_alive", return_value=True), patch("codoxear.server.subprocess.Popen") as popen_mock:
+            log_path = Path(td) / "rollout-2026-04-26T01-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            session = Session(
+                session_id="live-row",
+                thread_id="resume-a",
+                broker_pid=111,
+                codex_pid=222,
+                agent_backend="codex",
+                owned=True,
+                start_ts=1.0,
+                cwd=td,
+                log_path=log_path,
+                sock_path=Path(td) / "live.sock",
+            )
+            manager._sessions[session.session_id] = session
+            with patch(
+                "codoxear.server._list_resume_candidates_for_cwd",
+                return_value=[{"session_id": "resume-a", "log_path": str(log_path)}],
+            ):
+                with self.assertRaisesRegex(ValueError, "resume target is already live as live-row"):
+                    SessionManager.spawn_web_session(manager, cwd=td, resume_session_id="resume-a")
+
+        popen_mock.assert_not_called()
+
     def test_spawn_web_session_passes_model_and_reasoning_to_broker(self) -> None:
         manager = SessionManager.__new__(SessionManager)
         thread_calls: list[str] = []
