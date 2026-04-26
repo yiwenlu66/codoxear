@@ -2779,22 +2779,28 @@
           return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
         }
 
-      function takePendingUserMatch(ev, sessionId = selected) {
+      function takePendingUserMatch(ev, sessionId = selected, { allowUntimedCommit = true } = {}) {
         if (ev.role !== "user" || ev.pending) return false;
         const slot = getSessionTranscriptSlot(sessionId);
         const slotEpoch = Number(slot.epoch || 0);
         const key = pendingMatchKey(ev.text);
         const loose = normalizeTextForPendingMatch(ev.text);
         const evTs = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
-        const candidates = [];
+        const sameSlot = [];
+        const exactCandidates = [];
         for (let i = 0; i < pendingUser.length; i++) {
           const x = pendingUser[i];
           if (!x || x.sessionId !== sessionId || Number(x.epoch || 0) !== slotEpoch) continue;
-          if (x.key === key || x.loose === loose) candidates.push({ i, x });
+          const candidate = { i, x };
+          sameSlot.push(candidate);
+          if (x.key === key || x.loose === loose) exactCandidates.push(candidate);
         }
+        const candidates = exactCandidates.length
+          ? exactCandidates
+          : sameSlot.filter(({ x }) => evTs !== null ? evTs >= Number(x.t0 || 0) - 5 : allowUntimedCommit);
           if (!candidates.length) return false;
           let best = candidates[0];
-          if (evTs !== null) {
+          if (exactCandidates.length && evTs !== null) {
             let bestD = Math.abs(evTs - (best.x.t0 || evTs));
             for (const c of candidates.slice(1)) {
               const d = Math.abs(evTs - (c.x.t0 || evTs));
@@ -3251,7 +3257,7 @@
           const seen = new Set();
           for (const ev of events || []) {
             if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            takePendingUserMatch(ev);
+            takePendingUserMatch(ev, selected, { allowUntimedCommit: false });
             const k = eventKey(ev);
             if (k && seen.has(k)) continue;
             if (k) seen.add(k);
