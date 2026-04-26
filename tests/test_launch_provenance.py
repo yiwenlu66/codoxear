@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear import server
+from codoxear.server import Session
 from codoxear.server import SessionManager
 from codoxear.util import append_launch_attempt
 from codoxear.util import read_launch_attempts
@@ -27,6 +28,11 @@ def _make_manager() -> SessionManager:
     mgr._prune_dead_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._update_meta_counters = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_hidden_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_aliases = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_sidebar_meta = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_harness = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     return mgr
 
 
@@ -125,6 +131,51 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(rows[0]["session_id"], "launch-pending")
         self.assertEqual(rows[0]["launch_state"], "tmux_pane_created")
         self.assertEqual(rows[0]["busy"], False)
+
+    def test_delete_real_session_hides_stale_pending_launch_row(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-live",
+                    "state": "starting",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "transport": "tmux",
+                    "spawn_nonce": "nonce-live",
+                    "created_ts": now,
+                    "updated_ts": now,
+                },
+                path=server.LAUNCH_ATTEMPTS_PATH,
+            )
+            mgr._sessions = {
+                "broker-live": Session(
+                    session_id="broker-live",
+                    thread_id="broker-live",
+                    broker_pid=1234,
+                    codex_pid=1235,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=now,
+                    cwd="/tmp/work",
+                    log_path=None,
+                    sock_path=Path(td) / "broker-live.sock",
+                    transport="tmux",
+                    launch_id="launch-live",
+                    spawn_nonce="nonce-live",
+                )
+            }
+            mgr._sock_call = lambda *args, **kwargs: {"ok": True}  # type: ignore[method-assign]
+
+            before = mgr.list_sessions()
+            self.assertEqual([row["session_id"] for row in before], ["broker-live"])
+
+            self.assertTrue(mgr.delete_session("broker-live"))
+            after = mgr.list_sessions()
+
+        self.assertEqual(after, [])
+        self.assertIn("launch-live", mgr._hidden_sessions)
 
     def test_list_sessions_omits_successful_launch_attempt_without_active_session(self) -> None:
         mgr = _make_manager()
