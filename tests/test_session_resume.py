@@ -363,7 +363,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         ), patch(
             "codoxear.server.subprocess.run",
             side_effect=[
-                subprocess.CompletedProcess(["/usr/bin/tmux", "new-window"], 1, stdout="", stderr="can't find session: codoxear"),
+                subprocess.CompletedProcess(["/usr/bin/tmux", "new-window"], 1, stdout="", stderr="error connecting to /tmp/tmux-0/default (No such file or directory)"),
                 subprocess.CompletedProcess(["/usr/bin/tmux", "new-session"], 0, stdout="%8\n", stderr=""),
             ],
         ) as run_mock:
