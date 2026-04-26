@@ -112,9 +112,21 @@ class TestChatScrollbackSource(unittest.TestCase):
         start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
         end = source.index("function prependOlderEvents(", start)
         block = source[start:end]
-        self.assertIn("takePendingUserMatch(ev);", block)
+        self.assertIn("takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", block)
         self.assertIn("msgs.push(ev);", block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
+
+    def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function takePendingUserMatch(")
+        end = source.index("function consumePendingUserIfMatches(", start)
+        block = source[start:end]
+        self.assertIn("const sameSlot = [];", block)
+        self.assertIn("const exactCandidates = [];", block)
+        self.assertIn("sameSlot.push(candidate);", block)
+        self.assertIn("exactCandidates.length", block)
+        self.assertIn("evTs >= Number(x.t0 || 0) - 5", block)
+        self.assertIn("allowUntimedCommit", block)
 
     def test_error_and_warning_message_classes_are_rendered(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
