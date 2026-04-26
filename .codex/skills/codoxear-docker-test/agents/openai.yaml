@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codoxear Docker Test"
+  short_description: "Isolated Docker verification for codoxear"
+  default_prompt: "Use $codoxear-docker-test to verify codoxear session behavior in an isolated Docker container."
