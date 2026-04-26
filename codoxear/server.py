@@ -4531,7 +4531,7 @@ class SessionManager:
 
             def tmux_missing_session(detail2: str) -> bool:
                 low = detail2.lower()
-                return "can't find session" in low or "no server running" in low
+                return "can't find session" in low or "no server running" in low or "error connecting to" in low
 
             def tmux_duplicate_session(detail2: str) -> bool:
                 return "duplicate session" in detail2.lower()
