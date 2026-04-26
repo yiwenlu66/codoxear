@@ -4456,6 +4456,11 @@ class SessionManager:
                 sys.stderr.flush()
             raise SessionLaunchError(rec)
 
+        def tmux_launch_fields(snapshot: dict[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
+            out = dict(snapshot or {})
+            out.update(fields)
+            return out
+
         if create_in_tmux:
             tmux_bin = shutil.which("tmux")
             if tmux_bin is None:
@@ -4493,8 +4498,28 @@ class SessionManager:
             if codex_bin is not None:
                 inline_env["CODEX_BIN"] = codex_bin
             repo_root = Path(__file__).resolve().parent.parent
+            tmux_unset_vars = [
+                "CODEX_HOME",
+                "PI_HOME",
+                "CODEX_BIN",
+                "PI_BIN",
+                "CODEX_WEB_OWNER",
+                "CODEX_WEB_AGENT_BACKEND",
+                "CODEX_WEB_MODEL_PROVIDER",
+                "CODEX_WEB_PREFERRED_AUTH_METHOD",
+                "CODEX_WEB_MODEL",
+                "CODEX_WEB_REASONING_EFFORT",
+                "CODEX_WEB_SERVICE_TIER",
+                "CODEX_WEB_TRANSPORT",
+                "CODEX_WEB_TMUX_SESSION",
+                "CODEX_WEB_TMUX_WINDOW",
+                "CODEX_WEB_LAUNCH_ID",
+                "CODEX_WEB_SPAWN_NONCE",
+                "CODEX_WEB_RESUME_SESSION_ID",
+                "CODEX_WEB_RESUME_LOG_PATH",
+            ]
             inline_argv = ["env", *[f"{key}={value}" for key, value in inline_env.items()], *argv]
-            shell_cmd = f"cd {shlex.quote(str(repo_root))} && exec {shlex.join(inline_argv)}"
+            shell_cmd = f"cd {shlex.quote(str(repo_root))} && unset {shlex.join(tmux_unset_vars)} && exec {shlex.join(inline_argv)}"
             new_window_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
             new_session_argv = [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TMUX_SESSION_NAME, "-n", tmux_window, shell_cmd]
 
@@ -4538,11 +4563,13 @@ class SessionManager:
             snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window)
             record_launch(
                 "tmux_pane_created",
-                transport="tmux",
-                tmux_session=TMUX_SESSION_NAME,
-                tmux_window=tmux_window,
-                tmux_attempts=attempts,
-                **snapshot,
+                **tmux_launch_fields(
+                    snapshot,
+                    transport="tmux",
+                    tmux_session=TMUX_SESSION_NAME,
+                    tmux_window=tmux_window,
+                    tmux_attempts=attempts,
+                ),
             )
             try:
                 meta = _wait_for_spawned_broker_meta(spawn_nonce)
@@ -4550,23 +4577,27 @@ class SessionManager:
                 if tmux_pane_id is not None and not snapshot.get("tmux_inspect_error") and str(snapshot.get("tmux_pane_dead") or "0") != "1":
                     record_launch(
                         "tmux_pane_created",
-                        stage="broker_metadata_pending",
-                        error=str(e),
-                        transport="tmux",
-                        tmux_session=TMUX_SESSION_NAME,
-                        tmux_window=tmux_window,
-                        **snapshot,
+                        **tmux_launch_fields(
+                            snapshot,
+                            stage="broker_metadata_pending",
+                            error=str(e),
+                            transport="tmux",
+                            tmux_session=TMUX_SESSION_NAME,
+                            tmux_window=tmux_window,
+                        ),
                     )
                     return {"launch_id": launch_id, "pending": True, "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
                 fail_launch(
                     "broker_metadata",
                     e,
-                    transport="tmux",
-                    tmux_session=TMUX_SESSION_NAME,
-                    tmux_window=tmux_window,
-                    tmux_pane_id=tmux_pane_id,
-                    spawn_nonce=spawn_nonce,
-                    **_tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window),
+                    **tmux_launch_fields(
+                        _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window),
+                        transport="tmux",
+                        tmux_session=TMUX_SESSION_NAME,
+                        tmux_window=tmux_window,
+                        tmux_pane_id=tmux_pane_id,
+                        spawn_nonce=spawn_nonce,
+                    ),
                 )
             broker_pid = meta.get("broker_pid")
             if not isinstance(broker_pid, int):

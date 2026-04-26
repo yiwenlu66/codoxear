@@ -255,14 +255,13 @@
         const alias = typeof s.alias === "string" ? s.alias.trim() : "";
         if (alias) return alias;
         const cwdName = baseName(s.cwd);
-        if (cwdName) return sessionLaunchFailed(s) ? `${cwdName} launch failed` : cwdName;
+        if (cwdName) return cwdName;
         const ts = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts)
           ? s.updated_ts
           : typeof s.start_ts === "number" && Number.isFinite(s.start_ts)
             ? s.start_ts
             : 0;
-        const name = ts ? `Session ${fmtTs(ts)}` : "Session";
-        return sessionLaunchFailed(s) ? `${name} launch failed` : name;
+        return ts ? `Session ${fmtTs(ts)}` : "Session";
       }
 
       function sessionIdFromHash() {
@@ -2925,6 +2924,7 @@
              const badges = [];
              const launchFailed = sessionLaunchFailed(s);
              const launchPending = sessionLaunchPending(s);
+             const launchRow = launchFailed || launchPending;
              if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
@@ -2934,7 +2934,7 @@
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
 	             const effortTxt = String(s.reasoning_effort || "").trim().toLowerCase();
 	             const effortMark = effortTxt === "xhigh" ? "X" : effortTxt === "high" ? "H" : effortTxt === "medium" ? "M" : effortTxt === "low" ? "L" : "";
-	             const stateTxt = launchFailed ? "launch failed" : launchPending ? "starting" : fmtRelativeAge(ageS);
+	             const stateTxt = launchPending ? "starting" : fmtRelativeAge(ageS);
 	             const cwdBase = baseName(s.cwd);
 	             const branchTxt = typeof s.git_branch === "string" ? s.git_branch.trim() : "";
 
@@ -2957,7 +2957,7 @@
                  e.stopPropagation();
                }
               closeOpenSwipe();
-              if (!confirm("Delete this session?")) return;
+              if (!confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")) return;
               try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 if (selected === s.session_id) {
@@ -2983,6 +2983,7 @@
                  sessionTranscriptSlots.delete(s.session_id);
                  sessionTailCache.delete(s.session_id);
                  dropPendingUserRows(s.session_id, () => true);
+                 if (launchRow && card && card.parentNode) card.remove();
                  await refreshSessions();
                } catch (err) {
                  setToast(`delete error: ${err.message}`);
@@ -3034,8 +3035,8 @@
              };
              const delBtn = el("button", {
                class: "icon-btn danger sessionDel",
-               title: "Delete session",
-               "aria-label": "Delete session",
+               title: launchRow ? "Dismiss launch record" : "Delete session",
+               "aria-label": launchRow ? "Dismiss launch record" : "Delete session",
                type: "button",
                html: iconSvg("trash"),
              });
@@ -3044,7 +3045,7 @@
              const stateDot = el("span", {
                class:
                  "stateDot" +
-                 (launchFailed ? " failed" : launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
+                 (launchPending ? " pending" : s.snoozed || s.blocked ? " suppressed" : s.busy ? " busy" : " idle"),
              });
              const titleRow = el("div", { class: "sessionTitleRow" }, [
                stateDot,
@@ -3181,7 +3182,6 @@
                  }
                  setSidebarOpen(false);
                  if (launchFailed) {
-                   setToast(`launch failed: ${s.launch_error || "see server log"}`);
                    return;
                  }
                  if (launchPending) {
@@ -3199,7 +3199,6 @@
 	               card.appendChild(inner);
 	               card.onclick = () => {
 	                 if (launchFailed) {
-	                   setToast(`launch failed: ${s.launch_error || "see server log"}`);
 	                   return;
 	                 }
 	                 if (launchPending) {
