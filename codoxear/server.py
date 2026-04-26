@@ -466,7 +466,7 @@ def _launch_attempt_id(record: dict[str, Any]) -> str:
 def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
     launch_id = _launch_attempt_id(record)
     state = _clean_optional_text(record.get("state")) or "starting"
-    if state in {"live", "log_bound"}:
+    if state in {"live", "log_bound", "broker_spawned", "broker_meta_bound"}:
         return None
     cwd = _clean_optional_text(record.get("cwd")) or "?"
     start_ts_raw = record.get("created_ts", record.get("start_ts", record.get("updated_ts", time.time())))

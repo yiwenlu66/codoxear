@@ -126,6 +126,40 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(rows[0]["launch_state"], "tmux_pane_created")
         self.assertEqual(rows[0]["busy"], False)
 
+    def test_list_sessions_omits_successful_launch_attempt_without_active_session(self) -> None:
+        mgr = _make_manager()
+        with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-bound",
+                    "state": "broker_meta_bound",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "transport": "tmux",
+                    "tmux_session": "codoxear",
+                    "tmux_window": "work-123abc",
+                    "broker_pid": 1234,
+                    "created_ts": time.time(),
+                },
+                path=server.LAUNCH_ATTEMPTS_PATH,
+            )
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-spawned",
+                    "state": "broker_spawned",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/direct",
+                    "transport": "direct",
+                    "broker_pid": 1235,
+                    "created_ts": time.time(),
+                },
+                path=server.LAUNCH_ATTEMPTS_PATH,
+            )
+
+            rows = mgr.list_sessions()
+
+        self.assertEqual(rows, [])
+
     def test_delete_session_dismisses_launch_attempt_row(self) -> None:
         mgr = _make_manager()
         with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):
