@@ -4657,9 +4657,12 @@ class SessionManager:
             return False
         ok = self.kill_session(session_id)
         if ok:
+            launch_id = s.launch_id
             self.files_clear(session_id)
             with self._lock:
                 self._sessions.pop(session_id, None)
+            if launch_id:
+                self._hide_session(launch_id)
             self._clear_deleted_session_state(session_id)
         return ok
 
