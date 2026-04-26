@@ -359,7 +359,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         with TemporaryDirectory() as td, patch("codoxear.server.shutil.which", return_value="/usr/bin/tmux"), patch(
             "codoxear.server._wait_for_spawned_broker_meta", return_value={"broker_pid": 7777}
         ) as wait_mock, patch(
-            "codoxear.server._tmux_pane_snapshot", return_value={"tmux_pane_id": "%8", "tmux_pane_dead": "0"}
+            "codoxear.server._tmux_pane_snapshot", return_value={"tmux_pane_id": "%8", "tmux_pane_dead": "0", "tmux_window": "work-abc123"}
         ), patch(
             "codoxear.server.subprocess.run",
             side_effect=[
@@ -377,12 +377,33 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
         self.assertIn("CODEX_WEB_LAUNCH_ID=", shell_cmd)
+        self.assertIn("unset CODEX_HOME PI_HOME CODEX_BIN PI_BIN CODEX_WEB_OWNER", shell_cmd)
+        self.assertIn("CODEX_WEB_RESUME_SESSION_ID", shell_cmd)
+        self.assertNotIn("CODEX_WEB_RESUME_SESSION_ID=", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL_PROVIDER=crs", shell_cmd)
         self.assertIn("CODEX_WEB_PREFERRED_AUTH_METHOD=apikey", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)
         self.assertIn("CODEX_WEB_SERVICE_TIER=fast", shell_cmd)
         self.assertIn("codoxear.broker", shell_cmd)
         wait_mock.assert_called_once()
+
+    def test_tmux_metadata_delay_returns_pending_with_real_snapshot_shape(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+
+        with TemporaryDirectory() as td, patch("codoxear.server.shutil.which", return_value="/usr/bin/tmux"), patch(
+            "codoxear.server._wait_for_spawned_broker_meta", side_effect=TimeoutError("metadata not ready")
+        ), patch(
+            "codoxear.server._tmux_pane_snapshot",
+            return_value={"tmux_pane_id": "%8", "tmux_pane_dead": "0", "tmux_window": "work-abc123"},
+        ), patch(
+            "codoxear.server.subprocess.run",
+            return_value=subprocess.CompletedProcess(["/usr/bin/tmux", "new-window"], 0, stdout="%8\n", stderr=""),
+        ):
+            result = SessionManager.spawn_web_session(manager, cwd=td, create_in_tmux=True)
+
+        self.assertEqual(result["pending"], True)
+        self.assertEqual(result["tmux_session"], "codoxear")
+        self.assertIsInstance(result["launch_id"], str)
 
     def test_spawn_web_session_rejects_tmux_when_unavailable(self) -> None:
         manager = SessionManager.__new__(SessionManager)
