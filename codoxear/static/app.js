@@ -861,7 +861,7 @@
             return { type: "ul", indent, text: t.slice(2).trimStart() };
           }
           const mOl = t.match(/^(\d+)\.\s+(.*)$/);
-          if (mOl) return { type: "ol", indent, text: (mOl[2] || "").trimStart() };
+          if (mOl) return { type: "ol", indent, marker: `${mOl[1]}.`, text: (mOl[2] || "").trimStart() };
           return null;
         };
 
@@ -885,7 +885,7 @@
               continue;
             }
             if (info.type !== listType) break;
-            items.push({ text: info.text, child: null });
+            items.push({ text: info.text, marker: info.marker || "", child: null });
             i += 1;
           }
           return { node: { type: listType, items }, next: i };
@@ -893,10 +893,17 @@
 
         const renderList = (node) => {
           const out = [];
-          out.push(node.type === "ol" ? "<ol>" : "<ul>");
+          out.push(node.type === "ol" ? '<ol class="md-literal-ol">' : "<ul>");
           for (const it of node.items) {
             out.push("<li>");
-            out.push(renderInlineMd(it.text || "", options));
+            if (node.type === "ol") {
+              out.push('<span class="md-list-line">');
+              out.push(`<span class="md-list-marker">${escapeHtml(it.marker || "")}</span>`);
+              out.push(`<span class="md-list-body">${renderInlineMd(it.text || "", options)}</span>`);
+              out.push("</span>");
+            } else {
+              out.push(renderInlineMd(it.text || "", options));
+            }
             if (it.child) out.push(renderList(it.child));
             out.push("</li>");
           }

@@ -926,6 +926,20 @@
         margin: 0 0 10px 20px;
         padding: 0;
       }
+      .md ol.md-literal-ol {
+        list-style: none;
+        margin-left: 0;
+      }
+      .md-list-line {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: 8px;
+        align-items: baseline;
+      }
+      .md-list-marker {
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
       .md hr {
         margin: 14px 0 12px 0;
         height: 0;
