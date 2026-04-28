@@ -7,7 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from codoxear.broker import Broker
+from codoxear.broker import SHELL_PRE_EXEC_MARKER
 from codoxear.broker import State
+from codoxear.broker import _agent_shell_command
+from codoxear.broker import _exec_agent_via_login_shell
+from codoxear.broker import _observe_shell_pre_exec_marker
 from codoxear.agent_backend import get_agent_backend
 
 
@@ -52,6 +56,85 @@ class _FakeThread:
 
 
 class TestBrokerFailClosed(unittest.TestCase):
+    def test_login_shell_command_restores_tty_after_startup_before_exec(self) -> None:
+        cmd = _agent_shell_command(["codex", "--model", "gpt-5.4"], shell_base="zsh")
+
+        self.assertIn("exec </dev/tty || exit 125", cmd)
+        self.assertIn("printf %s", cmd)
+        self.assertIn(SHELL_PRE_EXEC_MARKER, cmd)
+        self.assertIn("exec codex --model gpt-5.4", cmd)
+        self.assertLess(cmd.index("exec </dev/tty"), cmd.index("printf %s"))
+        self.assertLess(cmd.index("printf %s"), cmd.index("exec codex"))
+
+    def test_fish_login_shell_command_keeps_tty_for_agent_exec(self) -> None:
+        cmd = _agent_shell_command(["pi", "--model", "gpt-5.4"], shell_base="fish")
+
+        self.assertIn("test -r /dev/tty; or exit 125", cmd)
+        self.assertIn("printf %s", cmd)
+        self.assertIn("exec pi --model gpt-5.4 </dev/tty", cmd)
+
+    def test_web_login_shell_exec_starves_startup_stdin(self) -> None:
+        calls: dict[str, object] = {}
+
+        def capture_exec(file: str, argv: list[str], env: dict[str, str]) -> None:
+            calls["file"] = file
+            calls["argv"] = argv
+            raise RuntimeError("stop")
+
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.AGENT_BIN", "codex"), patch(
+            "codoxear.broker._user_shell", return_value="/bin/zsh"
+        ), patch("codoxear.broker._replace_stdin_with_devnull") as replace_stdin, patch(
+            "codoxear.broker.os.execvpe", side_effect=capture_exec
+        ):
+            with self.assertRaisesRegex(RuntimeError, "stop"):
+                _exec_agent_via_login_shell(cwd=td, agent_args=["--model", "gpt-5.4"])
+
+        replace_stdin.assert_called_once_with()
+        self.assertEqual(calls["file"], "/bin/zsh")
+        argv = calls["argv"]
+        self.assertIsInstance(argv, list)
+        self.assertEqual(argv[:3], ["/bin/zsh", "-l", "-i"])
+        self.assertIn(SHELL_PRE_EXEC_MARKER, argv[-1])
+
+    def test_shell_pre_exec_marker_detection_handles_split_chunks(self) -> None:
+        st = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+        marker = SHELL_PRE_EXEC_MARKER.encode("utf-8")
+
+        _observe_shell_pre_exec_marker(st, b"prefix" + marker[:5], now_ts=1.0)
+        self.assertFalse(st.shell_pre_exec_marker_seen)
+        _observe_shell_pre_exec_marker(st, marker[5:] + b"suffix", now_ts=2.0)
+
+        self.assertTrue(st.shell_pre_exec_marker_seen)
+        self.assertEqual(st.shell_pre_exec_marker_ts, 2.0)
+
+    def test_shell_startup_watchdog_records_blocked_pre_exec_failure(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+        broker.state.output_tail = "Update [Y/n] "
+        records: list[dict[str, object]] = []
+
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5), patch(
+            "codoxear.broker._now", side_effect=[0.0, 1.0]
+        ), patch("codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)), patch.object(
+            broker, "_teardown_managed_process_group"
+        ) as teardown:
+            broker._shell_startup_watchdog()
+
+        self.assertEqual(records[0]["stage"], "shell_startup")
+        self.assertIn("did not reach agent exec", str(records[0]["error"]))
+        self.assertEqual(records[0]["pty_tail"], "Update [Y/n] ")
+        teardown.assert_called_once_with()
+
+    def test_shell_startup_watchdog_ignores_seen_marker(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+        broker.state.shell_pre_exec_marker_seen = True
+
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker._record_launch_attempt") as record:
+            broker._shell_startup_watchdog()
+
+        record.assert_not_called()
+
     def test_pi_broker_injects_explicit_session_path_for_new_sessions(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
         with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(

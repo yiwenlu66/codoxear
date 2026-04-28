@@ -177,6 +177,47 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(after, [])
         self.assertIn("launch-live", mgr._hidden_sessions)
 
+    def test_prune_preserves_specific_existing_launch_failure(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-shell",
+                    "state": "failed",
+                    "stage": "shell_startup",
+                    "error": "shell startup blocked before agent exec",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "transport": "tmux",
+                    "created_ts": now,
+                    "updated_ts": now,
+                },
+                path=server.LAUNCH_ATTEMPTS_PATH,
+            )
+            mgr._sessions = {
+                "broker-dead": Session(
+                    session_id="broker-dead",
+                    thread_id="broker-dead",
+                    broker_pid=1234,
+                    codex_pid=1235,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=now,
+                    cwd="/tmp/work",
+                    log_path=None,
+                    sock_path=Path(td) / "missing.sock",
+                    transport="tmux",
+                    launch_id="launch-shell",
+                )
+            }
+
+            SessionManager._prune_dead_sessions(mgr)
+            rows = read_launch_attempts(path=server.LAUNCH_ATTEMPTS_PATH, max_records=10, max_age_s=3600)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["stage"], "shell_startup")
+
     def test_list_sessions_omits_successful_launch_attempt_without_active_session(self) -> None:
         mgr = _make_manager()
         with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):

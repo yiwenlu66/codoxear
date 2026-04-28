@@ -74,6 +74,13 @@ if _BUSY_INTERRUPT_GRACE_RAW is None or (not _BUSY_INTERRUPT_GRACE_RAW.strip()):
     _BUSY_INTERRUPT_GRACE_RAW = "3.0"
 BUSY_INTERRUPT_GRACE_SECONDS = max(float(_BUSY_INTERRUPT_GRACE_RAW), 0.0)
 
+_SHELL_STARTUP_TIMEOUT_RAW = os.environ.get("CODEX_WEB_SHELL_STARTUP_TIMEOUT_SECONDS")
+if _SHELL_STARTUP_TIMEOUT_RAW is None or (not _SHELL_STARTUP_TIMEOUT_RAW.strip()):
+    _SHELL_STARTUP_TIMEOUT_RAW = "15.0"
+SHELL_STARTUP_TIMEOUT_SECONDS = max(float(_SHELL_STARTUP_TIMEOUT_RAW), 0.0)
+SHELL_PRE_EXEC_MARKER = "\x1b]777;codoxear=agent-exec-start\x07"
+SHELL_PRE_EXEC_MARKER_BYTES = SHELL_PRE_EXEC_MARKER.encode("utf-8")
+
 INTERRUPT_HINT_TAIL_MAX = 4096
 _BRACKETED_PASTE_START = b"\x1b[200~"
 _BRACKETED_PASTE_END = b"\x1b[201~"
@@ -342,17 +349,37 @@ def _shell_argv_for_command(cmd: str) -> list[str]:
     return [shell, "-l", "-i", "-c", cmd]
 
 
+def _agent_shell_command(argv: list[str], *, shell_base: str) -> str:
+    q = shlex.quote
+    quoted_marker = q(SHELL_PRE_EXEC_MARKER)
+    quoted_argv = " ".join(q(x) for x in argv)
+    if shell_base == "fish":
+        return f"test -r /dev/tty; or exit 125; printf %s {quoted_marker}; exec {quoted_argv} </dev/tty"
+    return f"exec </dev/tty || exit 125; printf %s {quoted_marker}; exec {quoted_argv}"
+
+
+def _replace_stdin_with_devnull() -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    try:
+        os.dup2(fd, 0)
+    finally:
+        if fd > 2:
+            os.close(fd)
+
+
 def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
     argv = [AGENT_BIN, *agent_args]
     os.chdir(cwd)
     os.execvpe(argv[0], argv, os.environ)
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
-    q = shlex.quote
     argv = [AGENT_BIN, *agent_args]
-    cmd = "exec " + " ".join(q(x) for x in argv)
+    shell = _user_shell()
+    base = Path(shell).name
+    cmd = _agent_shell_command(argv, shell_base=base)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
+    _replace_stdin_with_devnull()
     os.execvpe(shell_argv[0], shell_argv, os.environ)
 
 
@@ -753,6 +780,9 @@ class State:
     key_queue: list[bytes] = field(default_factory=list)
     output_tail: str = ""
     output_tail_max: int = 256 * 1024
+    shell_pre_exec_marker_seen: bool = False
+    shell_pre_exec_marker_ts: float = 0.0
+    shell_pre_exec_marker_tail: bytes = b""
     log_off: int = 0
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
@@ -770,6 +800,19 @@ class State:
     ignored_rollout_paths: set[Path] = field(default_factory=set)
     known_rollout_paths: set[Path] = field(default_factory=set)
     resume_session_id: str | None = None
+
+
+def _observe_shell_pre_exec_marker(st: State, chunk: bytes, *, now_ts: float) -> None:
+    if st.shell_pre_exec_marker_seen:
+        return
+    combined = st.shell_pre_exec_marker_tail + chunk
+    if SHELL_PRE_EXEC_MARKER_BYTES in combined:
+        st.shell_pre_exec_marker_seen = True
+        st.shell_pre_exec_marker_ts = now_ts
+        st.shell_pre_exec_marker_tail = b""
+        return
+    keep = max(len(SHELL_PRE_EXEC_MARKER_BYTES) - 1, 0)
+    st.shell_pre_exec_marker_tail = combined[-keep:] if keep else b""
 
 
 class Broker:
@@ -978,15 +1021,53 @@ class Broker:
                     with self._lock:
                         st2 = self.state
                         if st2:
-                            st2.output_tail = (st2.output_tail + s)[-st2.output_tail_max :]
-                            _update_busy_from_pty_text(st2, s, now_ts=_now())
-                            cleaned = _strip_ansi(s)
+                            now_ts = _now()
+                            _observe_shell_pre_exec_marker(st2, b, now_ts=now_ts)
+                            visible = s.replace(SHELL_PRE_EXEC_MARKER, "")
+                            st2.output_tail = (st2.output_tail + visible)[-st2.output_tail_max :]
+                            _update_busy_from_pty_text(st2, visible, now_ts=now_ts)
+                            cleaned = _strip_ansi(visible)
                             tail = st2.detach_trigger_tail
                             st2.detach_trigger_tail = (tail + cleaned)[-st2.detach_trigger_tail_max :]
                             if _maybe_detach_on_session_switch_trigger(st=st2, tail=tail, cleaned=cleaned, agent_backend=AGENT_BACKEND):
                                 self._write_meta()
             except OSError:
                 break
+
+    def _shell_startup_watchdog(self) -> None:
+        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
+            return
+        deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
+        while not self._stop.is_set():
+            now_ts = _now()
+            with self._lock:
+                st = self.state
+                if not st:
+                    return
+                if st.shell_pre_exec_marker_seen or st.log_path is not None:
+                    return
+                root_pid = int(st.codex_pid)
+                start_ts = st.start_ts
+                cwd = st.cwd
+                output_tail = st.output_tail[-4000:]
+            if now_ts >= deadline:
+                _record_launch_attempt(
+                    {
+                        **_broker_launch_record(
+                            stage="shell_startup",
+                            error=f"{AGENT_BIN} shell startup did not reach agent exec within {SHELL_STARTUP_TIMEOUT_SECONDS:.1f}s",
+                            cwd=cwd,
+                            start_ts=start_ts,
+                            agent_pid=root_pid,
+                        ),
+                        "pty_tail": output_tail,
+                    }
+                )
+                self._teardown_managed_process_group()
+                return
+            if not _process_group_alive(root_pid):
+                return
+            time.sleep(min(0.1, max(deadline - now_ts, 0.0)))
 
     def _stdin_to_pty(self) -> None:
         st = self.state
@@ -1463,6 +1544,7 @@ class Broker:
         self._write_meta()
         threading.Thread(target=self._sock_server, daemon=True).start()
         threading.Thread(target=self._pty_to_stdout, daemon=True).start()
+        threading.Thread(target=self._shell_startup_watchdog, daemon=True).start()
         # Web-owned sessions launched inside tmux still have a real terminal and must
         # forward local pane input like a normal broker session.
         if local_terminal:

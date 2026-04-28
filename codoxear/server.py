@@ -3742,7 +3742,13 @@ class SessionManager:
             for sid, _sock, _s in dead:
                 self._sessions.pop(sid, None)
         for sid, sock, s in dead:
-            if s.owned and s.log_path is None:
+            existing_launch_failed = False
+            if s.launch_id:
+                for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
+                    if _launch_attempt_id(rec) == s.launch_id and rec.get("state") == "failed":
+                        existing_launch_failed = True
+                        break
+            if s.owned and s.log_path is None and not existing_launch_failed:
                 try:
                     _record_launch_attempt(
                         {
