@@ -1509,7 +1509,7 @@
 
         sidebar.appendChild(
           el("header", {}, [
-            el("div", { class: "title", html: `<img class="sidebarLogo" src="/static/codoxear-icon.png" alt="" />Codoxear` }),
+            el("div", { class: "title", html: `<img class="sidebarLogo" src="static/codoxear-icon.png" alt="" />Codoxear` }),
             el("div", { class: "actions" }, [
               el("button", { id: "newBtn", class: "icon-btn", title: "New session", "aria-label": "New session", html: iconSvg("plus") }),
               notificationBtn,
@@ -2895,7 +2895,6 @@
             : [];
           if (newSessionViewer.style.display === "flex") {
             syncNewSessionTmuxUi();
-            renderNewSessionBackendTabs();
             renderNewSessionProviderMenu();
             renderNewSessionReasoningMenu();
             syncNewSessionRunConfigUi();
