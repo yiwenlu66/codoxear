@@ -1672,7 +1672,6 @@
         ]);
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
-        const filePdf = el("iframe", { id: "filePdf", class: "filePdf", title: "PDF preview" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
@@ -1682,7 +1681,6 @@
           fileStatus,
           fileDiff,
           fileImage,
-          filePdf,
           fileTouchToolbar,
         ]);
         root.appendChild(fileBackdrop);
@@ -5682,6 +5680,8 @@
         let monacoReadyPromise = null;
         let monacoNs = null;
         let monacoThemeReady = false;
+        let pdfjsReadyPromise = null;
+        let activePdfRender = null;
         let fileEditor = null;
         let fileEditorKind = "";
         let fileEditorModels = [];
@@ -5705,6 +5705,7 @@
 
         function cancelPendingFileOpen() {
           fileOpenRequestId += 1;
+          disposePdfRender();
           if (!fileOpenAbortController) return;
           try {
             fileOpenAbortController.abort();
@@ -5787,8 +5788,6 @@
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
-          filePdf.removeAttribute("src");
-          filePdf.style.display = "none";
           fileDiff.style.display = "block";
         }
 
@@ -5882,6 +5881,27 @@
           fileTouchSelectAnchor = null;
           fileTouchSelectHead = null;
           fileTouchSelectGoalColumn = null;
+        }
+
+        function disposePdfRender() {
+          const state = activePdfRender;
+          activePdfRender = null;
+          if (!state) return;
+          if (state.observer) {
+            try {
+              state.observer.disconnect();
+            } catch (_) {}
+          }
+          for (const task of state.renderTasks || []) {
+            try {
+              task.cancel();
+            } catch (_) {}
+          }
+          if (state.loadingTask) {
+            try {
+              state.loadingTask.destroy();
+            } catch (_) {}
+          }
         }
 
         function isFileViewerOpen() {
@@ -6322,6 +6342,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return monacoReadyPromise;
         }
 
+        async function ensurePdfJs() {
+          if (pdfjsReadyPromise) return pdfjsReadyPromise;
+          pdfjsReadyPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.mjs").then((pdfjs) => {
+            pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.mjs";
+            return pdfjs;
+          });
+          return pdfjsReadyPromise;
+        }
+
         function applyEditorLineFocus(lineNumber) {
           const line = normalizeLineNumber(lineNumber);
           if (!fileEditor || !line) return;
@@ -6501,6 +6530,101 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           ]);
           fileDiff.appendChild(body);
           updateFileTouchToolbar();
+        }
+
+        async function renderPdfFile(rel, url, request) {
+          disposeFileEditor();
+          disposePdfRender();
+          fileDiff.innerHTML = "";
+          fileDiff.style.display = "block";
+          fileDiff.scrollTop = 0;
+          const container = el("div", { class: "filePdfPages", role: "document", "aria-label": `${rel} PDF preview` });
+          fileDiff.appendChild(container);
+          if (typeof IntersectionObserver !== "function") throw new Error("PDF lazy renderer unavailable");
+          const pdfjs = await ensurePdfJs();
+          if (!isCurrentFileOpenRequest(request)) return false;
+          const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
+          const state = {
+            request,
+            loadingTask,
+            observer: null,
+            renderTasks: new Set(),
+            rendered: new Set(),
+            rendering: new Set(),
+            pdf: null,
+          };
+          activePdfRender = state;
+          const pdf = await loadingTask.promise;
+          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
+          state.pdf = pdf;
+          const firstPage = await pdf.getPage(1);
+          if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return false;
+          const unitViewport = firstPage.getViewport({ scale: 1 });
+          const maxWidth = Math.max(240, container.clientWidth - 24);
+          const scale = maxWidth / Math.max(1, unitViewport.width);
+          const pageWidth = Math.floor(unitViewport.width * scale);
+          const pageHeight = Math.floor(unitViewport.height * scale);
+          const renderPage = async (slot) => {
+            const pageNumber = Number(slot.dataset.pageNumber || "0");
+            if (!pageNumber || state.rendered.has(pageNumber) || state.rendering.has(pageNumber)) return;
+            state.rendering.add(pageNumber);
+            slot.classList.add("rendering");
+            try {
+              const page = pageNumber === 1 ? firstPage : await pdf.getPage(pageNumber);
+              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              const viewport = page.getViewport({ scale });
+              const outputScale = window.devicePixelRatio || 1;
+              const canvas = document.createElement("canvas");
+              const context = canvas.getContext("2d", { alpha: false });
+              if (!context) throw new Error("PDF canvas unavailable");
+              canvas.width = Math.floor(viewport.width * outputScale);
+              canvas.height = Math.floor(viewport.height * outputScale);
+              canvas.style.width = `${Math.floor(viewport.width)}px`;
+              canvas.style.height = `${Math.floor(viewport.height)}px`;
+              const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+              const task = page.render({
+                canvasContext: context,
+                viewport,
+                transform,
+                background: "rgb(255, 255, 255)",
+              });
+              state.renderTasks.add(task);
+              await task.promise;
+              state.renderTasks.delete(task);
+              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              slot.replaceChildren(canvas);
+              slot.classList.remove("rendering");
+              state.rendered.add(pageNumber);
+            } catch (e) {
+              if (e && e.name === "RenderingCancelledException") return;
+              if (activePdfRender !== state || !isCurrentFileOpenRequest(request)) return;
+              slot.textContent = `Page ${pageNumber} failed to render`;
+              slot.classList.add("failed");
+            } finally {
+              state.rendering.delete(pageNumber);
+            }
+          };
+          for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+            const slot = el("div", {
+              class: "filePdfPage",
+              "data-page-number": String(pageNumber),
+              style: `width: ${pageWidth}px; min-height: ${pageHeight}px;`,
+            }, [
+              el("span", { class: "filePdfPageLabel", text: `Page ${pageNumber}` }),
+            ]);
+            container.appendChild(slot);
+          }
+          state.observer = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) void renderPage(entry.target);
+              }
+            },
+            { root: fileDiff, rootMargin: "900px 0px" }
+          );
+          container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));
+          updateFileTouchToolbar();
+          return true;
         }
 
         function setFileEditMode(nextMode) {
@@ -7370,8 +7494,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
-          filePdf.removeAttribute("src");
-          filePdf.style.display = "none";
           fileDiff.style.display = "block";
           try {
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
@@ -7414,9 +7536,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               } else if (res.kind === "pdf") {
                 activeFileKind = "pdf";
                 if (typeof res.pdf_url !== "string" || !res.pdf_url) throw new Error("invalid pdf response");
-                fileDiff.style.display = "none";
-                filePdf.src = resolveAppUrl(res.pdf_url);
-                filePdf.style.display = "block";
+                const rendered = await renderPdfFile(rel, resolveAppUrl(res.pdf_url), request);
+                if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
               } else if (res.kind === "download_only") {

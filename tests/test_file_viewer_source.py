@@ -60,6 +60,7 @@ def eval_file_open_request_sequence() -> dict:
           fileViewerSessionId: "sid-1",
           selected: "",
           AbortController,
+          disposePdfRender: () => {{}},
           normalizeLineNumber: (value) => value == null ? null : Number(value),
         }};
         vm.createContext(ctx);
@@ -206,12 +207,23 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_viewer_handles_pdf_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
-        self.assertIn('const filePdf = el("iframe", { id: "filePdf", class: "filePdf", title: "PDF preview" });', source)
+        self.assertNotIn('el("iframe"', source)
+        self.assertIn("pdfjs-dist@5.4.394/build/pdf.mjs", source)
+        self.assertIn("pdf.worker.mjs", source)
         self.assertIn('res.kind === "pdf"', source)
+        self.assertIn("async function renderPdfFile(rel, url, request)", source)
+        self.assertIn('if (typeof IntersectionObserver !== "function") throw new Error("PDF lazy renderer unavailable");', source)
+        self.assertIn("pdfjs.getDocument({ url, withCredentials: true })", source)
+        self.assertIn("new IntersectionObserver", source)
+        self.assertIn('root: fileDiff, rootMargin: "900px 0px"', source)
+        self.assertIn('container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));', source)
+        self.assertIn("state.renderTasks.add(task);", source)
+        self.assertIn("disposePdfRender();", source)
         self.assertIn('res.kind === "download_only"', source)
         self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
         self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
-        self.assertIn(".filePdf {", css_source)
+        self.assertIn(".filePdfPages {", css_source)
+        self.assertIn(".filePdfPage {", css_source)
         self.assertIn(".fileBlockedNotice {", css_source)
 
     def test_attach_limit_comes_from_server_constant(self) -> None:
