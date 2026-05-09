@@ -13,6 +13,7 @@ from codoxear import broker as broker_mod
 from codoxear.broker import Broker
 from codoxear.broker import SHELL_PRE_EXEC_MARKER
 from codoxear.broker import State
+from codoxear.broker import _agent_exec_argv_and_env
 from codoxear.broker import _agent_shell_command
 from codoxear.broker import _exec_agent_via_login_shell
 from codoxear.broker import _observe_shell_pre_exec_marker
@@ -149,6 +150,31 @@ read -r -k 1 option
         self.assertNotIn("Would you like to continue", proc.stdout)
         self.assertNotIn("shell_startup", proc.stdout)
 
+    def test_agent_exec_argv_and_env_adds_common_bin_dirs_and_resolves_cli(self) -> None:
+        with patch("codoxear.broker.AGENT_BIN", "codex"), patch.dict("os.environ", {"PATH": "/usr/bin:/bin"}, clear=False), patch(
+            "codoxear.broker.shutil.which", return_value="/opt/homebrew/bin/codex"
+        ) as which:
+            argv, env = _agent_exec_argv_and_env(agent_args=["--model", "gpt-5.4"])
+
+        self.assertEqual(argv[:2], ["/opt/homebrew/bin/codex", "--model"])
+        self.assertIn("/opt/homebrew/bin", env["PATH"].split(os.pathsep))
+        which.assert_called_once_with("codex", path=env["PATH"])
+
+    def test_web_owned_codex_headless_launch_execs_agent_directly(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.OWNER_TAG", "web"), patch(
+            "codoxear.broker.sys.stdin", fake_stdin
+        ):
+            broker = Broker(cwd=td, codex_args=["--model", "gpt-5.4"])
+
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "codex"), patch(
+            "codoxear.broker._exec_agent"
+        ) as exec_agent, patch("codoxear.broker._exec_agent_via_login_shell") as exec_shell:
+            broker._launch_agent_process(headless=True)
+
+        exec_agent.assert_called_once_with(cwd=td, agent_args=broker.codex_args)
+        exec_shell.assert_not_called()
+
     def test_shell_pre_exec_marker_detection_handles_split_chunks(self) -> None:
         st = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
         marker = SHELL_PRE_EXEC_MARKER.encode("utf-8")
@@ -166,11 +192,11 @@ read -r -k 1 option
         broker.state.output_tail = "Update [Y/n] "
         records: list[dict[str, object]] = []
 
-        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5), patch(
-            "codoxear.broker._now", side_effect=[0.0, 1.0]
-        ), patch("codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)), patch.object(
-            broker, "_teardown_managed_process_group"
-        ) as teardown:
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch(
+            "codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5
+        ), patch("codoxear.broker._now", side_effect=[0.0, 1.0]), patch(
+            "codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)
+        ), patch.object(broker, "_teardown_managed_process_group") as teardown:
             broker._shell_startup_watchdog()
 
         self.assertEqual(records[0]["stage"], "shell_startup")
@@ -239,6 +265,17 @@ read -r -k 1 option
         broker.state.shell_pre_exec_marker_seen = True
 
         with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker._record_launch_attempt") as record:
+            broker._shell_startup_watchdog()
+
+        record.assert_not_called()
+
+    def test_shell_startup_watchdog_skips_direct_codex_headless_launch(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+
+        with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.AGENT_BACKEND", "codex"), patch(
+            "codoxear.broker._record_launch_attempt"
+        ) as record:
             broker._shell_startup_watchdog()
 
         record.assert_not_called()
@@ -445,7 +482,7 @@ read -r -k 1 option
                 broker.run()
 
         self.assertEqual(captured["session_id"], "resume-a")
-        self.assertEqual(captured["log_path"], str(log_path))
+        self.assertEqual(Path(str(captured["log_path"])).resolve(), log_path.resolve())
         self.assertEqual(captured["log_off"], expected_size)
 
 

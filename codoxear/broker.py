@@ -7,6 +7,7 @@ import os
 import pty
 import pwd
 import re
+import shutil
 import signal
 import socket
 import sys
@@ -375,17 +376,53 @@ def _agent_shell_command(argv: list[str], *, pty_slave_path: str) -> str:
     return "exec " + " ".join(q(x) for x in trampoline)
 
 
+def _augmented_exec_path(raw_path: str | None) -> str:
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        cleaned = str(path or "").strip()
+        if not cleaned or cleaned in seen:
+            return
+        seen.add(cleaned)
+        parts.append(cleaned)
+
+    for item in str(raw_path or "").split(os.pathsep):
+        add(item)
+    for item in (
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".cargo" / "bin"),
+    ):
+        add(item)
+    return os.pathsep.join(parts)
+
+
+def _agent_exec_argv_and_env(*, agent_args: list[str]) -> tuple[list[str], dict[str, str]]:
+    env = dict(os.environ)
+    env["PATH"] = _augmented_exec_path(env.get("PATH"))
+    agent_bin = AGENT_BIN
+    if (os.sep not in agent_bin) and (not os.path.isabs(agent_bin)):
+        resolved = shutil.which(agent_bin, path=env["PATH"])
+        if resolved:
+            agent_bin = resolved
+    return [agent_bin, *agent_args], env
+
+
 def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
-    argv = [AGENT_BIN, *agent_args]
+    argv, env = _agent_exec_argv_and_env(agent_args=agent_args)
     os.chdir(cwd)
-    os.execvpe(argv[0], argv, os.environ)
+    os.execvpe(argv[0], argv, env)
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str], pty_slave_path: str) -> None:
-    argv = [AGENT_BIN, *agent_args]
+    argv, env = _agent_exec_argv_and_env(agent_args=agent_args)
     cmd = _agent_shell_command(argv, pty_slave_path=pty_slave_path)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
-    os.execvpe(shell_argv[0], shell_argv, os.environ)
+    os.execvpe(shell_argv[0], shell_argv, env)
 
 
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
@@ -844,6 +881,20 @@ class Broker:
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
 
+    def _headless_launch_uses_login_shell(self) -> bool:
+        # Directly exec Codex for web-owned sessions. Launching Codex through an
+        # interactive login shell causes crossterm to panic on macOS before the
+        # first rollout log is bound.
+        return OWNER_TAG == "web" and AGENT_BACKEND != "codex"
+
+    def _launch_agent_process(self, *, headless: bool, pty_slave_path: str | None = None) -> None:
+        if headless and self._headless_launch_uses_login_shell():
+            if not pty_slave_path:
+                raise RuntimeError("pty_slave_path required for login-shell headless launch")
+            _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args, pty_slave_path=pty_slave_path)
+            return
+        _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
+
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
         with self._lock:
@@ -1063,7 +1114,7 @@ class Broker:
                 pass
 
     def _shell_startup_watchdog(self) -> None:
-        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
+        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0 or (not self._headless_launch_uses_login_shell()):
             return
         deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
         while not self._stop.is_set():
@@ -1523,11 +1574,7 @@ class Broker:
                         os.environ["COLUMNS"] = str(cols)
                         os.environ["LINES"] = str(rows)
                         os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                        _exec_agent_via_login_shell(
-                            cwd=self.cwd,
-                            agent_args=self.codex_args,
-                            pty_slave_path=pty_slave_path,
-                        )
+                        self._launch_agent_process(headless=headless, pty_slave_path=pty_slave_path)
                     except Exception:
                         traceback.print_exc()
                         os._exit(127)
@@ -1569,7 +1616,6 @@ class Broker:
                 )
             )
             raise
-
         if local_terminal:
             try:
                 fd = sys.stdin.fileno()
