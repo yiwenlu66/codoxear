@@ -48,7 +48,7 @@ name = "Right"
         self.assertEqual(defaults["service_tier"], "fast")
         self.assertEqual(defaults["reasoning_effort"], "medium")
 
-    def test_read_codex_launch_defaults_falls_back_to_openai_and_flex(self) -> None:
+    def test_read_codex_launch_defaults_falls_back_to_openai_without_service_tier(self) -> None:
         with TemporaryDirectory() as td:
             config_path = Path(td) / "missing-config.toml"
             models_cache_path = Path(td) / "missing-models.json"
@@ -60,15 +60,18 @@ name = "Right"
         self.assertEqual(defaults["provider_choice"], "openai-api")
         self.assertIsNone(defaults["model"])
         self.assertEqual(defaults["model_providers"], ["chatgpt", "openai-api"])
-        self.assertEqual(defaults["service_tier"], "flex")
+        self.assertIsNone(defaults["service_tier"])
         self.assertIsNone(defaults["reasoning_effort"])
 
     def test_normalize_requested_model_provider_rejects_unknown_value(self) -> None:
         with self.assertRaisesRegex(ValueError, "model_provider must be one of openai, right"):
             _normalize_requested_model_provider("bytecat", allowed={"openai", "right"})
 
+    def test_normalize_requested_service_tier_maps_legacy_default_to_none(self) -> None:
+        self.assertIsNone(_normalize_requested_service_tier("flex"))
+
     def test_normalize_requested_service_tier_rejects_unknown_value(self) -> None:
-        with self.assertRaisesRegex(ValueError, "service_tier must be one of fast, flex"):
+        with self.assertRaisesRegex(ValueError, "service_tier must be fast or omitted"):
             _normalize_requested_service_tier("slow")
 
     def test_normalize_requested_preferred_auth_method_rejects_unknown_value(self) -> None:

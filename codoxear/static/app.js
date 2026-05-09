@@ -344,7 +344,7 @@
           model_providers: modelProviders,
           reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
           reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["xhigh", "high", "medium", "low"],
-          service_tier: typeof raw.service_tier === "string" ? raw.service_tier : "flex",
+          service_tier: typeof raw.service_tier === "string" ? raw.service_tier : null,
           supports_fast: raw.supports_fast !== false,
         };
       }

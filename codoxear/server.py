@@ -1895,9 +1895,12 @@ def _normalize_requested_service_tier(value: Any) -> str | None:
     tier = _clean_optional_text(value)
     if tier is None:
         return None
-    if tier not in {"fast", "flex"}:
-        raise ValueError("service_tier must be one of fast, flex")
-    return tier
+    if tier == "fast":
+        return "fast"
+    if tier in {"flex", "default"}:
+        # Current Codex CLIs treat the legacy default tier as "unset".
+        return None
+    raise ValueError("service_tier must be fast or omitted")
 
 
 def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
@@ -1984,7 +1987,7 @@ def _read_codex_launch_defaults() -> dict[str, Any]:
     configured_effort = None
     configured_provider = "openai"
     configured_auth_method = "apikey"
-    configured_service_tier = "flex"
+    configured_service_tier = None
     configured_providers = ["chatgpt", "openai-api"]
     if CODEX_CONFIG_PATH.exists():
         data = tomllib.loads(CODEX_CONFIG_PATH.read_text(encoding="utf-8"))
