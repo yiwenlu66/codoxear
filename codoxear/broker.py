@@ -7,6 +7,7 @@ import os
 import pty
 import pwd
 import re
+import shutil
 import signal
 import socket
 import sys
@@ -367,20 +368,56 @@ def _replace_stdin_with_devnull() -> None:
             os.close(fd)
 
 
+def _augmented_exec_path(raw_path: str | None) -> str:
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def add(path: str) -> None:
+        cleaned = str(path or "").strip()
+        if not cleaned or cleaned in seen:
+            return
+        seen.add(cleaned)
+        parts.append(cleaned)
+
+    for item in str(raw_path or "").split(os.pathsep):
+        add(item)
+    for item in (
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/bin",
+        "/usr/local/sbin",
+        str(Path.home() / ".local" / "bin"),
+        str(Path.home() / ".cargo" / "bin"),
+    ):
+        add(item)
+    return os.pathsep.join(parts)
+
+
+def _agent_exec_argv_and_env(*, agent_args: list[str]) -> tuple[list[str], dict[str, str]]:
+    env = dict(os.environ)
+    env["PATH"] = _augmented_exec_path(env.get("PATH"))
+    agent_bin = AGENT_BIN
+    if (os.sep not in agent_bin) and (not os.path.isabs(agent_bin)):
+        resolved = shutil.which(agent_bin, path=env["PATH"])
+        if resolved:
+            agent_bin = resolved
+    return [agent_bin, *agent_args], env
+
+
 def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
-    argv = [AGENT_BIN, *agent_args]
+    argv, env = _agent_exec_argv_and_env(agent_args=agent_args)
     os.chdir(cwd)
-    os.execvpe(argv[0], argv, os.environ)
+    os.execvpe(argv[0], argv, env)
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
-    argv = [AGENT_BIN, *agent_args]
+    argv, env = _agent_exec_argv_and_env(agent_args=agent_args)
     shell = _user_shell()
     base = Path(shell).name
     cmd = _agent_shell_command(argv, shell_base=base)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
     _replace_stdin_with_devnull()
-    os.execvpe(shell_argv[0], shell_argv, os.environ)
+    os.execvpe(shell_argv[0], shell_argv, env)
 
 
 def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
@@ -838,6 +875,18 @@ class Broker:
         resume_env = str(os.environ.get("CODEX_WEB_RESUME_SESSION_ID") or "").strip()
         self._resume_session_id = resume_env or _resume_session_id_from_args(self.codex_args)
 
+    def _headless_launch_uses_login_shell(self) -> bool:
+        # Directly exec Codex for web-owned sessions. Launching Codex through an
+        # interactive login shell causes crossterm to panic on macOS before the
+        # first rollout log is bound.
+        return OWNER_TAG == "web" and AGENT_BACKEND != "codex"
+
+    def _launch_agent_process(self, *, headless: bool) -> None:
+        if headless and self._headless_launch_uses_login_shell():
+            _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args)
+            return
+        _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
+
     def _teardown_managed_process_group(self, *, wait_seconds: float = 1.0) -> None:
         self._stop.set()
         with self._lock:
@@ -1035,7 +1084,7 @@ class Broker:
                 break
 
     def _shell_startup_watchdog(self) -> None:
-        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
+        if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0 or (not self._headless_launch_uses_login_shell()):
             return
         deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
         while not self._stop.is_set():
@@ -1490,12 +1539,8 @@ class Broker:
                     except (OSError, termios.error):
                         if DEBUG:
                             traceback.print_exc()
-                if headless:
-                    os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                    _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args)
-                else:
-                    os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                    _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
+                os.environ[BACKEND.home_env_var] = str(self.codex_home)
+                self._launch_agent_process(headless=headless)
             except Exception:
                 traceback.print_exc()
                 os._exit(127)
