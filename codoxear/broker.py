@@ -42,6 +42,7 @@ from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
+from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
 from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
@@ -105,6 +106,16 @@ def _record_launch_attempt(record: dict[str, Any]) -> None:
     if OWNER_TAG != "web":
         return
     try:
+        launch_id = record.get("launch_id")
+        if isinstance(launch_id, str) and launch_id and "submitted_user_messages" not in record:
+            for prev in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
+                if prev.get("launch_id") != launch_id:
+                    continue
+                submitted = prev.get("submitted_user_messages")
+                if isinstance(submitted, list) and submitted:
+                    record = dict(record)
+                    record["submitted_user_messages"] = submitted
+                break
         rec = _append_launch_attempt(record, path=LAUNCH_ATTEMPTS_PATH)
         if rec.get("state") == "failed":
             sys.stderr.write(
@@ -1581,17 +1592,22 @@ class Broker:
             traceback.print_exc()
         with self._lock:
             st2 = self.state
-        if st2 and OWNER_TAG == "web" and exit_code != 0 and st2.log_path is None:
+        if st2 and OWNER_TAG == "web" and st2.log_path is None:
             _record_launch_attempt(
-                _broker_launch_record(
-                    stage="agent_exit_before_log_bind",
-                    error=f"{AGENT_BIN} exited with status {exit_code} before a session log was bound",
-                    cwd=st2.cwd,
-                    start_ts=st2.start_ts,
-                    agent_pid=st2.codex_pid,
-                    log_path=st2.log_path,
-                    exit_code=exit_code,
-                )
+                {
+                    **_broker_launch_record(
+                        stage="agent_exit_before_log_bind",
+                        error=f"{AGENT_BIN} exited with status {exit_code} before a session log was bound",
+                        cwd=st2.cwd,
+                        start_ts=st2.start_ts,
+                        agent_pid=st2.codex_pid,
+                        log_path=st2.log_path,
+                        exit_code=exit_code,
+                    ),
+                    "agent_exit_status": exit_code,
+                    "broker_exit_status": exit_code,
+                    "pty_tail": st2.output_tail[-4000:],
+                }
             )
         if st2 and st2.sock_path:
             try:

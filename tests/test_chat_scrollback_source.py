@@ -29,9 +29,10 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
-        self.assertIn('if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
+        self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
         self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
+        self.assertIn('if (slotChange.current.state !== "failed") kickPoll(900);', block)
         self.assertNotIn("refreshInitPageState", block)
 
     def test_refresh_sessions_is_sidebar_only(self) -> None:
@@ -62,7 +63,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("if (!liveCursor) {", block)
         self.assertIn('if (activeTranscriptState === "pending_bind") {', block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sid, data);", block)
-        self.assertIn('if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
+        self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
+        self.assertIn('if (activeTranscriptState === "failed") return;', block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
         self.assertIn("await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);", block)
         self.assertIn("const slotInfo = transcriptSnapshotFromData(data);", block)

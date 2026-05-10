@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from codoxear import broker as broker_mod
 from codoxear.broker import Broker
 from codoxear.broker import SHELL_PRE_EXEC_MARKER
 from codoxear.broker import State
@@ -13,6 +14,8 @@ from codoxear.broker import _agent_shell_command
 from codoxear.broker import _exec_agent_via_login_shell
 from codoxear.broker import _observe_shell_pre_exec_marker
 from codoxear.agent_backend import get_agent_backend
+from codoxear.util import append_launch_attempt
+from codoxear.util import read_launch_attempts
 
 
 def _broker_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -125,6 +128,41 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertEqual(records[0]["pty_tail"], "Update [Y/n] ")
         teardown.assert_called_once_with()
 
+    def test_broker_failure_record_preserves_prelog_user_messages(self) -> None:
+        now = 1_778_400_000.0
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.OWNER_TAG", "web"), patch.object(
+            broker_mod, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"
+        ), patch("codoxear.util.now", return_value=now), patch("codoxear.broker.time.time", return_value=now + 1.0):
+            msg = {"text": "copy this", "ts": now + 0.5, "source": "send"}
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-a",
+                    "state": "broker_meta_bound",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "submitted_user_messages": [msg],
+                    "created_ts": now,
+                    "updated_ts": now,
+                },
+                path=broker_mod.LAUNCH_ATTEMPTS_PATH,
+            )
+            broker_mod._record_launch_attempt(
+                {
+                    "launch_id": "launch-a",
+                    "state": "failed",
+                    "stage": "agent_exit_before_log_bind",
+                    "error": "codex exited",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "created_ts": now,
+                    "updated_ts": now + 1.0,
+                }
+            )
+            rows = read_launch_attempts(path=broker_mod.LAUNCH_ATTEMPTS_PATH, max_records=10, max_age_s=3600, now_ts=now + 2.0)
+
+        self.assertEqual(rows[0]["state"], "failed")
+        self.assertEqual(rows[0]["submitted_user_messages"][0]["text"], "copy this")
+
     def test_shell_startup_watchdog_ignores_seen_marker(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
@@ -235,6 +273,8 @@ class TestBrokerFailClosed(unittest.TestCase):
                 broker, "_write_meta"
             ), patch(
                 "codoxear.broker.threading.Thread", _FakeThread
+            ), patch(
+                "codoxear.broker._record_launch_attempt"
             ):
                 broker._emulate_terminal = False
                 exit_code = broker.run()
@@ -263,6 +303,8 @@ class TestBrokerFailClosed(unittest.TestCase):
                 broker, "_write_meta"
             ), patch(
                 "codoxear.broker.threading.Thread", _FakeThread
+            ), patch(
+                "codoxear.broker._record_launch_attempt"
             ):
                 exit_code = broker.run()
 

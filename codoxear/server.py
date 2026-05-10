@@ -463,6 +463,92 @@ def _launch_attempt_id(record: dict[str, Any]) -> str:
     return raw
 
 
+def _latest_launch_attempt(launch_id: str) -> dict[str, Any] | None:
+    needle = str(launch_id or "").strip()
+    if not needle:
+        return None
+    for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
+        if _launch_attempt_id(rec) == needle:
+            return rec
+    return None
+
+
+def _submitted_user_messages(record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(record, dict):
+        return []
+    raw = record.get("submitted_user_messages")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        ts = item.get("ts")
+        ts_out = float(ts) if isinstance(ts, (int, float)) else float(record.get("updated_ts", time.time()) or time.time())
+        source = _clean_optional_text(item.get("source")) or "send"
+        out.append({"text": text, "ts": ts_out, "source": source})
+    return out
+
+
+def _launch_failure_tail(record: dict[str, Any]) -> str:
+    for key in ("pty_tail", "tmux_pane_tail"):
+        val = record.get(key)
+        if isinstance(val, str) and val.strip():
+            return val[-4000:]
+    return ""
+
+
+def _launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]:
+    launch_id = _launch_attempt_id(record)
+    ts = record.get("updated_ts", record.get("created_ts", time.time()))
+    ts_f = float(ts) if isinstance(ts, (int, float)) else time.time()
+    events: list[dict[str, Any]] = []
+    for msg in _submitted_user_messages(record):
+        events.append({"role": "user", "text": msg["text"], "ts": msg["ts"]})
+    if record.get("state") == "failed":
+        stage = _clean_optional_text(record.get("stage"))
+        err = _clean_optional_text(record.get("error")) or "session launch failed"
+        lines = ["Session launch failed before a transcript log was created."]
+        if stage:
+            lines.append(f"Stage: {stage}")
+        lines.append(f"Error: {err}")
+        agent_status = record.get("agent_exit_status", record.get("exit_code"))
+        broker_status = record.get("broker_exit_status")
+        if isinstance(agent_status, int):
+            lines.append(f"Agent exit status: {agent_status}")
+        if isinstance(broker_status, int):
+            lines.append(f"Broker exit status: {broker_status}")
+        tail = _launch_failure_tail(record)
+        if tail:
+            lines.extend(["", "Pre-log terminal tail:", tail])
+        events.append({"role": "assistant", "text": "\n".join(lines), "ts": ts_f, "message_class": "error"})
+    return {
+        "transcript_state": "failed",
+        "thread_id": launch_id or None,
+        "log_path": None,
+        "live_cursor": None,
+        "history_cursor": None,
+        "events": events,
+        "has_older": False,
+        "busy": False,
+        "queue_len": 0,
+        "token": None,
+    }
+
+
+def _launch_attempt_transcript_for_session_id(session_id: str) -> dict[str, Any] | None:
+    rec = _latest_launch_attempt(session_id)
+    if rec is None or rec.get("state") != "failed":
+        return None
+    row = _launch_attempt_row(rec)
+    if row is None or row.get("session_id") != session_id:
+        return None
+    return _launch_attempt_transcript_payload(rec)
+
+
 def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
     launch_id = _launch_attempt_id(record)
     state = _clean_optional_text(record.get("state")) or "starting"
@@ -529,6 +615,7 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         "launch_state": state,
         "launch_error": _clean_optional_text(record.get("error")) or ("session launch failed" if failed else ""),
         "launch_stage": _clean_optional_text(record.get("stage")),
+        "submitted_user_message_count": len(_submitted_user_messages(record)),
     }
 
 
@@ -3743,34 +3830,67 @@ class SessionManager:
                 self._sessions.pop(sid, None)
         for sid, sock, s in dead:
             existing_launch_failed = False
+            latest_launch_record: dict[str, Any] | None = None
             if s.launch_id:
-                for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
-                    if _launch_attempt_id(rec) == s.launch_id and rec.get("state") == "failed":
-                        existing_launch_failed = True
-                        break
+                latest_launch_record = _latest_launch_attempt(s.launch_id)
+                existing_launch_failed = bool(latest_launch_record and latest_launch_record.get("state") == "failed")
             if s.owned and s.log_path is None and not existing_launch_failed:
                 try:
+                    tmux_snapshot: dict[str, Any] = {}
+                    if s.transport == "tmux":
+                        tmux_bin = shutil.which("tmux")
+                        if tmux_bin is not None:
+                            pane_id = (
+                                _clean_optional_text(latest_launch_record.get("tmux_pane_id"))
+                                if isinstance(latest_launch_record, dict)
+                                else None
+                            )
+                            tmux_snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=pane_id, window=s.tmux_window)
+                    submitted_messages = _submitted_user_messages(latest_launch_record)
+                    prior_tail = _launch_failure_tail(latest_launch_record) if isinstance(latest_launch_record, dict) else ""
+                    snapshot_tail = _launch_failure_tail(tmux_snapshot)
+                    agent_status = None
+                    broker_status = None
+                    if isinstance(latest_launch_record, dict):
+                        prev_agent_status = latest_launch_record.get("agent_exit_status", latest_launch_record.get("exit_code"))
+                        prev_broker_status = latest_launch_record.get("broker_exit_status")
+                        if isinstance(prev_agent_status, int):
+                            agent_status = prev_agent_status
+                        if isinstance(prev_broker_status, int):
+                            broker_status = prev_broker_status
+                    failure_record: dict[str, Any] = {
+                        "launch_id": s.launch_id,
+                        "state": "failed",
+                        "stage": "session_pruned_before_log_bind",
+                        "error": "web-owned session process disappeared before a session log was bound",
+                        "agent_backend": s.agent_backend,
+                        "cwd": s.cwd,
+                        "created_ts": s.start_ts,
+                        "broker_pid": s.broker_pid,
+                        "agent_pid": s.codex_pid,
+                        "transport": s.transport,
+                        "tmux_session": s.tmux_session,
+                        "tmux_window": s.tmux_window,
+                        "spawn_nonce": s.spawn_nonce,
+                        "model_provider": s.model_provider,
+                        "preferred_auth_method": s.preferred_auth_method,
+                        "model": s.model,
+                        "reasoning_effort": s.reasoning_effort,
+                        "service_tier": s.service_tier,
+                    }
+                    if submitted_messages:
+                        failure_record["submitted_user_messages"] = submitted_messages
+                    if prior_tail:
+                        failure_record["pty_tail"] = prior_tail
+                    if snapshot_tail:
+                        failure_record["tmux_pane_tail"] = snapshot_tail
+                    if agent_status is not None:
+                        failure_record["agent_exit_status"] = agent_status
+                    if broker_status is not None:
+                        failure_record["broker_exit_status"] = broker_status
+                    failure_record.update(tmux_snapshot)
                     _record_launch_attempt(
-                        {
-                            "launch_id": s.launch_id,
-                            "state": "failed",
-                            "stage": "session_pruned_before_log_bind",
-                            "error": "web-owned session process disappeared before a session log was bound",
-                            "agent_backend": s.agent_backend,
-                            "cwd": s.cwd,
-                            "created_ts": s.start_ts,
-                            "broker_pid": s.broker_pid,
-                            "agent_pid": s.codex_pid,
-                            "transport": s.transport,
-                            "tmux_session": s.tmux_session,
-                            "tmux_window": s.tmux_window,
-                            "spawn_nonce": s.spawn_nonce,
-                            "model_provider": s.model_provider,
-                            "preferred_auth_method": s.preferred_auth_method,
-                            "model": s.model,
-                            "reasoning_effort": s.reasoning_effort,
-                            "service_tier": s.service_tier,
-                        }
+                        failure_record
                     )
                 except Exception as e:
                     sys.stderr.write(f"error: failed to record pruned launch failure for {sid}: {type(e).__name__}: {e}\n")
@@ -4672,12 +4792,46 @@ class SessionManager:
             self._clear_deleted_session_state(session_id)
         return ok
 
+    def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
+        if not session.owned or session.log_path is not None or not session.launch_id:
+            return
+        previous = _latest_launch_attempt(session.launch_id)
+        messages = _submitted_user_messages(previous)
+        messages.append({"text": text, "ts": time.time(), "source": source})
+        if len(messages) > 20:
+            messages = messages[-20:]
+        base: dict[str, Any] = dict(previous) if isinstance(previous, dict) else {}
+        base.update(
+            {
+                "launch_id": session.launch_id,
+                "state": _clean_optional_text(base.get("state")) or "broker_meta_bound",
+                "agent_backend": session.agent_backend,
+                "cwd": session.cwd,
+                "created_ts": base.get("created_ts", session.start_ts),
+                "updated_ts": time.time(),
+                "broker_pid": session.broker_pid,
+                "agent_pid": session.codex_pid,
+                "transport": session.transport,
+                "tmux_session": session.tmux_session,
+                "tmux_window": session.tmux_window,
+                "spawn_nonce": session.spawn_nonce,
+                "model_provider": session.model_provider,
+                "preferred_auth_method": session.preferred_auth_method,
+                "model": session.model,
+                "reasoning_effort": session.reasoning_effort,
+                "service_tier": session.service_tier,
+                "submitted_user_messages": messages,
+            }
+        )
+        _record_launch_attempt(base)
+
     def send(self, session_id: str, text: str) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
+        self._record_prelog_user_message(s, text, source="send")
         try:
             resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
         except Exception:
@@ -4700,6 +4854,11 @@ class SessionManager:
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+        self._record_prelog_user_message(s, text, source="enqueue")
         item, ql = self._queue_append_item_local(session_id, text)
         if ql != 1:
             return {"queued": True, "queue_len": int(ql), "item": item}
@@ -5761,6 +5920,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
                 if not s:
+                    launch_payload = _launch_attempt_transcript_for_session_id(session_id)
+                    if launch_payload is not None:
+                        _json_response(self, 200, launch_payload)
+                        _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
+                        return
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)

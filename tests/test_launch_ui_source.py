@@ -21,3 +21,13 @@ def test_launch_attempt_rows_use_dismiss_language() -> None:
     assert 'confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")' in source
     assert 'title: launchRow ? "Dismiss launch record" : "Delete session"' in source
     assert 'if (launchRow && card && card.parentNode) card.remove();' in source
+
+
+def test_failed_launch_rows_are_clickable_transcripts() -> None:
+    source = APP_JS.read_text(encoding="utf-8")
+
+    assert 'return !!(s && !sessionLaunchPending(s));' in source
+    assert 'raw === "bound" || raw === "pending_bind" || raw === "failed"' in source
+    assert 'if (slotChange.current.state !== "failed") kickPoll(900);' in source
+    assert 'if (activeTranscriptState === "failed") return;' in source
+    assert 'failed session cannot receive messages' in source

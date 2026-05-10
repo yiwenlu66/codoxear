@@ -304,7 +304,7 @@
       }
 
       function sessionSelectable(s) {
-        return !!(s && !sessionLaunchFailed(s) && !sessionLaunchPending(s));
+        return !!(s && !sessionLaunchPending(s));
       }
 
       function normalizeAgentBackendName(value) {
@@ -2337,7 +2337,7 @@
 
         function normalizeTranscriptState(data) {
           const raw = data && typeof data.transcript_state === "string" ? data.transcript_state : "";
-          if (raw === "bound" || raw === "pending_bind") return raw;
+          if (raw === "bound" || raw === "pending_bind" || raw === "failed") return raw;
           return data && typeof data.log_path === "string" && data.log_path ? "bound" : "pending_bind";
         }
 
@@ -3192,9 +3192,6 @@
                    return;
                  }
                  setSidebarOpen(false);
-                 if (launchFailed) {
-                   return;
-                 }
                  if (launchPending) {
                    setToast("session still starting");
                    return;
@@ -3209,9 +3206,6 @@
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
 	               card.appendChild(inner);
 	               card.onclick = () => {
-	                 if (launchFailed) {
-	                   return;
-	                 }
 	                 if (launchPending) {
 	                   setToast("session still starting");
 	                   return;
@@ -3464,11 +3458,11 @@
           const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== myGen || selected !== sessionId) return null;
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
-          if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+          if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
 
-          kickPoll(900);
+          if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
           updateHarnessBtnState();
           if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
@@ -3483,10 +3477,11 @@
 	                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
 	                if (gen !== pollGen || sid !== selected) return;
 	                const slotChange = updateSessionTranscriptSlot(sid, data);
-	                if (slotChange.current.state === "bound") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+	                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
 	                applySessionRuntimeFromTail(sid, data);
 	                return;
 	              }
+	              if (activeTranscriptState === "failed") return;
 	              await openSession(sid, { useCache: false });
 	              return;
 	            }
@@ -8295,6 +8290,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (sessionLaunchFailed(sessionIndex.get(selected))) {
+              setToast("failed session cannot receive messages");
+              return;
+            }
             const raw = $("#msg") ? $("#msg").value : "";
             if (raw && raw.trim()) {
               if (!selected) return;
@@ -8815,6 +8814,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         form.onsubmit = async (e) => {
           e.preventDefault();
           if (!selected) return;
+          if (sessionLaunchFailed(sessionIndex.get(selected))) {
+            setToast("failed session cannot receive messages");
+            return;
+          }
           const raw = $("#msg").value;
           if (!raw || !raw.trim()) return;
           if (sending) return;

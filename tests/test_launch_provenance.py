@@ -109,6 +109,34 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(row["busy"], False)
         self.assertEqual(row["final_priority"], 1.0)
 
+    def test_failed_launch_transcript_exposes_submitted_user_message(self) -> None:
+        now = time.time()
+        rec = {
+            "launch_id": "launch-dead",
+            "state": "failed",
+            "stage": "agent_exit_before_log_bind",
+            "error": "codex exited with status 1 before a session log was bound",
+            "agent_backend": "codex",
+            "cwd": "/tmp/work",
+            "created_ts": now,
+            "updated_ts": now + 1.0,
+            "agent_exit_status": 1,
+            "broker_exit_status": 1,
+            "pty_tail": "fatal: provider unavailable\n",
+            "submitted_user_messages": [{"text": "Please recover this prompt", "ts": now + 0.5, "source": "send"}],
+        }
+
+        payload = server._launch_attempt_transcript_payload(rec)
+
+        self.assertEqual(payload["transcript_state"], "failed")
+        self.assertEqual(payload["thread_id"], "launch-dead")
+        self.assertEqual(payload["events"][0]["role"], "user")
+        self.assertEqual(payload["events"][0]["text"], "Please recover this prompt")
+        self.assertEqual(payload["events"][1]["role"], "assistant")
+        self.assertEqual(payload["events"][1]["message_class"], "error")
+        self.assertIn("Agent exit status: 1", payload["events"][1]["text"])
+        self.assertIn("fatal: provider unavailable", payload["events"][1]["text"])
+
     def test_list_sessions_exposes_pending_launch_as_session_row(self) -> None:
         mgr = _make_manager()
         with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"):
@@ -217,6 +245,55 @@ class TestLaunchProvenance(unittest.TestCase):
 
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["stage"], "shell_startup")
+
+    def test_prune_carries_prelog_user_message_and_tmux_tail(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        with TemporaryDirectory() as td, patch.object(server, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"), patch(
+            "codoxear.server.shutil.which", return_value="/usr/bin/tmux"
+        ), patch("codoxear.server._tmux_pane_snapshot", return_value={"tmux_pane_tail": "backend died\n", "tmux_pane_dead_status": "1"}):
+            append_launch_attempt(
+                {
+                    "launch_id": "launch-prelog",
+                    "state": "broker_meta_bound",
+                    "agent_backend": "codex",
+                    "cwd": "/tmp/work",
+                    "transport": "tmux",
+                    "tmux_session": "codoxear",
+                    "tmux_window": "work-dead",
+                    "tmux_pane_id": "%9",
+                    "created_ts": now,
+                    "updated_ts": now,
+                    "submitted_user_messages": [{"text": "copy me", "ts": now + 0.1, "source": "send"}],
+                },
+                path=server.LAUNCH_ATTEMPTS_PATH,
+            )
+            mgr._sessions = {
+                "broker-dead": Session(
+                    session_id="broker-dead",
+                    thread_id="broker-dead",
+                    broker_pid=1234,
+                    codex_pid=1235,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=now,
+                    cwd="/tmp/work",
+                    log_path=None,
+                    sock_path=Path(td) / "missing.sock",
+                    transport="tmux",
+                    tmux_session="codoxear",
+                    tmux_window="work-dead",
+                    launch_id="launch-prelog",
+                )
+            }
+
+            SessionManager._prune_dead_sessions(mgr)
+            rows = read_launch_attempts(path=server.LAUNCH_ATTEMPTS_PATH, max_records=10, max_age_s=3600)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["state"], "failed")
+        self.assertEqual(rows[0]["submitted_user_messages"][0]["text"], "copy me")
+        self.assertEqual(rows[0]["tmux_pane_tail"], "backend died\n")
 
     def test_list_sessions_omits_successful_launch_attempt_without_active_session(self) -> None:
         mgr = _make_manager()
