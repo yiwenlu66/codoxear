@@ -79,8 +79,13 @@ _SHELL_STARTUP_TIMEOUT_RAW = os.environ.get("CODEX_WEB_SHELL_STARTUP_TIMEOUT_SEC
 if _SHELL_STARTUP_TIMEOUT_RAW is None or (not _SHELL_STARTUP_TIMEOUT_RAW.strip()):
     _SHELL_STARTUP_TIMEOUT_RAW = "15.0"
 SHELL_STARTUP_TIMEOUT_SECONDS = max(float(_SHELL_STARTUP_TIMEOUT_RAW), 0.0)
+_SHELL_STARTUP_ENTER_INTERVAL_RAW = os.environ.get("CODEX_WEB_SHELL_STARTUP_ENTER_INTERVAL_SECONDS")
+if _SHELL_STARTUP_ENTER_INTERVAL_RAW is None or (not _SHELL_STARTUP_ENTER_INTERVAL_RAW.strip()):
+    _SHELL_STARTUP_ENTER_INTERVAL_RAW = "0.25"
+SHELL_STARTUP_ENTER_INTERVAL_SECONDS = max(float(_SHELL_STARTUP_ENTER_INTERVAL_RAW), 0.0)
 SHELL_PRE_EXEC_MARKER = "\x1b]777;codoxear=agent-exec-start\x07"
 SHELL_PRE_EXEC_MARKER_BYTES = SHELL_PRE_EXEC_MARKER.encode("utf-8")
+SHELL_STARTUP_ENTER_BYTES = b"\n"
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 _BRACKETED_PASTE_START = b"\x1b[200~"
@@ -352,21 +357,21 @@ def _user_shell() -> str:
 
 def _shell_argv_for_command(cmd: str) -> list[str]:
     shell = _user_shell()
-    base = Path(shell).name
-    if base not in ("zsh", "bash", "fish"):
-        sys.stderr.write(f"error: unsupported login shell for PTY launch: {shell}\n")
-        raise SystemExit(2)
     # -l: login (read profile); -i: interactive (read rc); -c: run command; command begins with exec to avoid wrapper processes.
     return [shell, "-l", "-i", "-c", cmd]
 
 
-def _agent_shell_command(argv: list[str], *, shell_base: str) -> str:
+def _agent_shell_command(argv: list[str]) -> str:
     q = shlex.quote
-    quoted_marker = q(SHELL_PRE_EXEC_MARKER)
-    quoted_argv = " ".join(q(x) for x in argv)
-    if shell_base == "fish":
-        return f"test -r /dev/tty; or exit 125; printf %s {quoted_marker}; exec {quoted_argv} </dev/tty"
-    return f"exec </dev/tty || exit 125; printf %s {quoted_marker}; exec {quoted_argv}"
+    script = (
+        "exec </dev/tty || exit 125; "
+        '"$2" -c \'import sys, termios; termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)\' 2>/dev/null || true; '
+        'printf %s "$1"; '
+        "shift 2; "
+        'exec "$@"'
+    )
+    trampoline = ["/bin/sh", "-c", script, "codoxear-agent-exec", SHELL_PRE_EXEC_MARKER, sys.executable, *argv]
+    return "exec " + " ".join(q(x) for x in trampoline)
 
 
 def _replace_stdin_with_devnull() -> None:
@@ -385,9 +390,7 @@ def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
 
 def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
     argv = [AGENT_BIN, *agent_args]
-    shell = _user_shell()
-    base = Path(shell).name
-    cmd = _agent_shell_command(argv, shell_base=base)
+    cmd = _agent_shell_command(argv)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
     _replace_stdin_with_devnull()
@@ -794,6 +797,8 @@ class State:
     shell_pre_exec_marker_seen: bool = False
     shell_pre_exec_marker_ts: float = 0.0
     shell_pre_exec_marker_tail: bytes = b""
+    shell_startup_enter_count: int = 0
+    prelog_failure_recorded: bool = False
     log_off: int = 0
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
@@ -1049,6 +1054,7 @@ class Broker:
         if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
             return
         deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
+        next_enter_ts = _now() + SHELL_STARTUP_ENTER_INTERVAL_SECONDS
         while not self._stop.is_set():
             now_ts = _now()
             with self._lock:
@@ -1060,6 +1066,8 @@ class Broker:
                 root_pid = int(st.codex_pid)
                 start_ts = st.start_ts
                 cwd = st.cwd
+                pty_master_fd = st.pty_master_fd
+                enter_count = st.shell_startup_enter_count
                 output_tail = st.output_tail[-4000:]
             if now_ts >= deadline:
                 _record_launch_attempt(
@@ -1072,13 +1080,27 @@ class Broker:
                             agent_pid=root_pid,
                         ),
                         "pty_tail": output_tail,
+                        "shell_startup_enter_count": enter_count,
                     }
                 )
+                with self._lock:
+                    if self.state:
+                        self.state.prelog_failure_recorded = True
                 self._teardown_managed_process_group()
                 return
             if not _process_group_alive(root_pid):
                 return
-            time.sleep(min(0.1, max(deadline - now_ts, 0.0)))
+            if SHELL_STARTUP_ENTER_INTERVAL_SECONDS > 0 and now_ts >= next_enter_ts:
+                try:
+                    _write_all(pty_master_fd, SHELL_STARTUP_ENTER_BYTES)
+                except OSError:
+                    return
+                with self._lock:
+                    if self.state and not self.state.shell_pre_exec_marker_seen and self.state.log_path is None:
+                        self.state.shell_startup_enter_count += 1
+                next_enter_ts = now_ts + SHELL_STARTUP_ENTER_INTERVAL_SECONDS
+            sleep_until_enter = max(next_enter_ts - now_ts, 0.0) if SHELL_STARTUP_ENTER_INTERVAL_SECONDS > 0 else 0.1
+            time.sleep(min(0.05, max(deadline - now_ts, 0.0), sleep_until_enter))
 
     def _stdin_to_pty(self) -> None:
         st = self.state
@@ -1592,7 +1614,7 @@ class Broker:
             traceback.print_exc()
         with self._lock:
             st2 = self.state
-        if st2 and OWNER_TAG == "web" and st2.log_path is None:
+        if st2 and OWNER_TAG == "web" and st2.log_path is None and not st2.prelog_failure_recorded:
             _record_launch_attempt(
                 {
                     **_broker_launch_record(

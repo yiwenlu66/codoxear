@@ -1,5 +1,8 @@
 import json
+import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,21 +63,22 @@ class _FakeThread:
 
 class TestBrokerFailClosed(unittest.TestCase):
     def test_login_shell_command_restores_tty_after_startup_before_exec(self) -> None:
-        cmd = _agent_shell_command(["codex", "--model", "gpt-5.4"], shell_base="zsh")
+        cmd = _agent_shell_command(["codex", "--model", "gpt-5.4"])
 
+        self.assertIn("exec /bin/sh -c", cmd)
         self.assertIn("exec </dev/tty || exit 125", cmd)
+        self.assertIn("termios.tcflush", cmd)
         self.assertIn("printf %s", cmd)
         self.assertIn(SHELL_PRE_EXEC_MARKER, cmd)
-        self.assertIn("exec codex --model gpt-5.4", cmd)
+        self.assertIn("codex --model gpt-5.4", cmd)
         self.assertLess(cmd.index("exec </dev/tty"), cmd.index("printf %s"))
-        self.assertLess(cmd.index("printf %s"), cmd.index("exec codex"))
+        self.assertLess(cmd.index("printf %s"), cmd.rindex("exec"))
 
-    def test_fish_login_shell_command_keeps_tty_for_agent_exec(self) -> None:
-        cmd = _agent_shell_command(["pi", "--model", "gpt-5.4"], shell_base="fish")
+    def test_login_shell_argv_does_not_reject_shell_name(self) -> None:
+        with patch("codoxear.broker._user_shell", return_value="/bin/example-shell"):
+            argv = broker_mod._shell_argv_for_command("exec /bin/sh -c true")
 
-        self.assertIn("test -r /dev/tty; or exit 125", cmd)
-        self.assertIn("printf %s", cmd)
-        self.assertIn("exec pi --model gpt-5.4 </dev/tty", cmd)
+        self.assertEqual(argv, ["/bin/example-shell", "-l", "-i", "-c", "exec /bin/sh -c true"])
 
     def test_web_login_shell_exec_starves_startup_stdin(self) -> None:
         calls: dict[str, object] = {}
@@ -99,6 +103,51 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertEqual(argv[:3], ["/bin/zsh", "-l", "-i"])
         self.assertIn(SHELL_PRE_EXEC_MARKER, argv[-1])
 
+    @unittest.skipUnless(shutil.which("zsh"), "zsh is required")
+    def test_web_startup_prompt_reaches_agent_exec_with_neutral_enter(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            home = root / "home"
+            bin_dir = root / "bin"
+            home.mkdir()
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text("#!/bin/sh\necho FAKE_AGENT_STARTED\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            (home / ".zshrc").write_text(
+                """
+printf "[startup] Would you like to continue? [Y/n] "
+read -r -k 1 option
+""".lstrip(),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env.update(
+                {
+                    "HOME": str(home),
+                    "ZDOTDIR": str(home),
+                    "SHELL": shutil.which("zsh") or "zsh",
+                    "CODEX_BIN": str(fake_codex),
+                    "CODEX_WEB_OWNER": "web",
+                    "CODEX_WEB_SHELL_STARTUP_TIMEOUT_SECONDS": "2",
+                    "CODEX_WEB_SHELL_STARTUP_ENTER_INTERVAL_SECONDS": "0.05",
+                    "PATH": f"{bin_dir}:{env.get('PATH', '')}",
+                }
+            )
+            proc = subprocess.run(
+                [sys.executable, "-m", "codoxear.broker", "--cwd", str(root), "--"],
+                cwd=Path(__file__).resolve().parent.parent,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+
+        self.assertIn("FAKE_AGENT_STARTED", proc.stdout)
+        self.assertNotIn("shell_startup", proc.stdout)
+
     def test_shell_pre_exec_marker_detection_handles_split_chunks(self) -> None:
         st = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
         marker = SHELL_PRE_EXEC_MARKER.encode("utf-8")
@@ -117,7 +166,9 @@ class TestBrokerFailClosed(unittest.TestCase):
         records: list[dict[str, object]] = []
 
         with patch("codoxear.broker.OWNER_TAG", "web"), patch("codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 0.5), patch(
-            "codoxear.broker._now", side_effect=[0.0, 1.0]
+            "codoxear.broker.SHELL_STARTUP_ENTER_INTERVAL_SECONDS", 0.0
+        ), patch(
+            "codoxear.broker._now", side_effect=[0.0, 0.0, 1.0]
         ), patch("codoxear.broker._record_launch_attempt", side_effect=lambda rec: records.append(rec)), patch.object(
             broker, "_teardown_managed_process_group"
         ) as teardown:
@@ -126,7 +177,35 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertEqual(records[0]["stage"], "shell_startup")
         self.assertIn("did not reach agent exec", str(records[0]["error"]))
         self.assertEqual(records[0]["pty_tail"], "Update [Y/n] ")
+        self.assertTrue(broker.state.prelog_failure_recorded)
         teardown.assert_called_once_with()
+
+    def test_shell_startup_watchdog_sends_neutral_enter_before_failure(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        read_fd, write_fd = os.pipe()
+        try:
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+            broker.state.pty_master_fd = write_fd
+
+            with patch("codoxear.broker.OWNER_TAG", "web"), patch(
+                "codoxear.broker.SHELL_STARTUP_TIMEOUT_SECONDS", 2.0
+            ), patch("codoxear.broker.SHELL_STARTUP_ENTER_INTERVAL_SECONDS", 0.1), patch(
+                "codoxear.broker._now", side_effect=[0.0, 0.0, 0.2, 0.25]
+            ), patch(
+                "codoxear.broker._process_group_alive", side_effect=[True, False]
+            ), patch(
+                "codoxear.broker.time.sleep", return_value=None
+            ):
+                broker._shell_startup_watchdog()
+
+            os.close(write_fd)
+            write_fd = -1
+            self.assertEqual(os.read(read_fd, 16), b"\n")
+            self.assertEqual(broker.state.shell_startup_enter_count, 1)
+        finally:
+            os.close(read_fd)
+            if write_fd >= 0:
+                os.close(write_fd)
 
     def test_broker_failure_record_preserves_prelog_user_messages(self) -> None:
         now = 1_778_400_000.0
