@@ -378,6 +378,12 @@ def _replace_stdin_with_devnull() -> None:
             os.close(fd)
 
 
+def _prepare_zsh_startup_env() -> None:
+    # Oh My Zsh's updater can read from the terminal in interactive zsh startup.
+    # Web-owned sessions cannot answer that prompt, so disable the updater in this child.
+    os.environ["DISABLE_AUTO_UPDATE"] = "true"
+
+
 def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
     argv = [AGENT_BIN, *agent_args]
     os.chdir(cwd)
@@ -390,6 +396,8 @@ def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
     cmd = _agent_shell_command(argv, shell_base=base)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
+    if base == "zsh":
+        _prepare_zsh_startup_env()
     _replace_stdin_with_devnull()
     os.execvpe(shell_argv[0], shell_argv, os.environ)
 
@@ -794,6 +802,7 @@ class State:
     shell_pre_exec_marker_seen: bool = False
     shell_pre_exec_marker_ts: float = 0.0
     shell_pre_exec_marker_tail: bytes = b""
+    prelog_failure_recorded: bool = False
     log_off: int = 0
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
@@ -1074,6 +1083,9 @@ class Broker:
                         "pty_tail": output_tail,
                     }
                 )
+                with self._lock:
+                    if self.state:
+                        self.state.prelog_failure_recorded = True
                 self._teardown_managed_process_group()
                 return
             if not _process_group_alive(root_pid):
@@ -1592,7 +1604,7 @@ class Broker:
             traceback.print_exc()
         with self._lock:
             st2 = self.state
-        if st2 and OWNER_TAG == "web" and st2.log_path is None:
+        if st2 and OWNER_TAG == "web" and st2.log_path is None and not st2.prelog_failure_recorded:
             _record_launch_attempt(
                 {
                     **_broker_launch_record(

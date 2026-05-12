@@ -1,5 +1,8 @@
 import json
+import os
+import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -82,6 +85,7 @@ class TestBrokerFailClosed(unittest.TestCase):
         def capture_exec(file: str, argv: list[str], env: dict[str, str]) -> None:
             calls["file"] = file
             calls["argv"] = argv
+            calls["env"] = dict(env)
             raise RuntimeError("stop")
 
         with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.AGENT_BIN", "codex"), patch(
@@ -98,6 +102,56 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertIsInstance(argv, list)
         self.assertEqual(argv[:3], ["/bin/zsh", "-l", "-i"])
         self.assertIn(SHELL_PRE_EXEC_MARKER, argv[-1])
+        env = calls["env"]
+        self.assertIsInstance(env, dict)
+        self.assertEqual(env["DISABLE_AUTO_UPDATE"], "true")
+
+    @unittest.skipUnless(shutil.which("zsh"), "zsh is required")
+    def test_web_zsh_startup_disables_oh_my_zsh_update_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            home = root / "home"
+            bin_dir = root / "bin"
+            home.mkdir()
+            bin_dir.mkdir()
+            fake_codex = bin_dir / "codex"
+            fake_codex.write_text("#!/bin/sh\necho FAKE_AGENT_STARTED\n", encoding="utf-8")
+            fake_codex.chmod(0o755)
+            (home / ".zshrc").write_text(
+                """
+if [[ "$DISABLE_AUTO_UPDATE" != true ]]; then
+  printf "[oh-my-zsh] Would you like to update? [Y/n] "
+  read -r -k 1 option
+fi
+""".lstrip(),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env.update(
+                {
+                    "HOME": str(home),
+                    "ZDOTDIR": str(home),
+                    "SHELL": shutil.which("zsh") or "zsh",
+                    "CODEX_BIN": str(fake_codex),
+                    "CODEX_WEB_OWNER": "web",
+                    "CODEX_WEB_SHELL_STARTUP_TIMEOUT_SECONDS": "1",
+                    "PATH": f"{bin_dir}:{env.get('PATH', '')}",
+                }
+            )
+            proc = subprocess.run(
+                [sys.executable, "-m", "codoxear.broker", "--cwd", str(root), "--"],
+                cwd=Path(__file__).resolve().parent.parent,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+
+        self.assertIn("FAKE_AGENT_STARTED", proc.stdout)
+        self.assertNotIn("Would you like to update", proc.stdout)
+        self.assertNotIn("shell_startup", proc.stdout)
 
     def test_shell_pre_exec_marker_detection_handles_split_chunks(self) -> None:
         st = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
@@ -126,6 +180,7 @@ class TestBrokerFailClosed(unittest.TestCase):
         self.assertEqual(records[0]["stage"], "shell_startup")
         self.assertIn("did not reach agent exec", str(records[0]["error"]))
         self.assertEqual(records[0]["pty_tail"], "Update [Y/n] ")
+        self.assertTrue(broker.state.prelog_failure_recorded)
         teardown.assert_called_once_with()
 
     def test_broker_failure_record_preserves_prelog_user_messages(self) -> None:
