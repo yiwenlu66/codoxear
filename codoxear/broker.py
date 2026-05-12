@@ -79,13 +79,8 @@ _SHELL_STARTUP_TIMEOUT_RAW = os.environ.get("CODEX_WEB_SHELL_STARTUP_TIMEOUT_SEC
 if _SHELL_STARTUP_TIMEOUT_RAW is None or (not _SHELL_STARTUP_TIMEOUT_RAW.strip()):
     _SHELL_STARTUP_TIMEOUT_RAW = "15.0"
 SHELL_STARTUP_TIMEOUT_SECONDS = max(float(_SHELL_STARTUP_TIMEOUT_RAW), 0.0)
-_SHELL_STARTUP_ENTER_INTERVAL_RAW = os.environ.get("CODEX_WEB_SHELL_STARTUP_ENTER_INTERVAL_SECONDS")
-if _SHELL_STARTUP_ENTER_INTERVAL_RAW is None or (not _SHELL_STARTUP_ENTER_INTERVAL_RAW.strip()):
-    _SHELL_STARTUP_ENTER_INTERVAL_RAW = "0.25"
-SHELL_STARTUP_ENTER_INTERVAL_SECONDS = max(float(_SHELL_STARTUP_ENTER_INTERVAL_RAW), 0.0)
 SHELL_PRE_EXEC_MARKER = "\x1b]777;codoxear=agent-exec-start\x07"
 SHELL_PRE_EXEC_MARKER_BYTES = SHELL_PRE_EXEC_MARKER.encode("utf-8")
-SHELL_STARTUP_ENTER_BYTES = b"\n"
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 _BRACKETED_PASTE_START = b"\x1b[200~"
@@ -361,26 +356,23 @@ def _shell_argv_for_command(cmd: str) -> list[str]:
     return [shell, "-l", "-i", "-c", cmd]
 
 
-def _agent_shell_command(argv: list[str]) -> str:
+def _agent_shell_command(argv: list[str], *, pty_slave_path: str) -> str:
     q = shlex.quote
     script = (
-        "exec </dev/tty || exit 125; "
-        '"$2" -c \'import sys, termios; termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)\' 2>/dev/null || true; '
-        'printf %s "$1"; '
-        "shift 2; "
-        'exec "$@"'
+        "import os, sys\n"
+        "fd = os.open(sys.argv[1], os.O_RDWR)\n"
+        "try:\n"
+        "    for target in (0, 1, 2):\n"
+        "        os.dup2(fd, target)\n"
+        "finally:\n"
+        "    if fd > 2:\n"
+        "        os.close(fd)\n"
+        "os.write(1, sys.argv[2].encode('utf-8'))\n"
+        "argv = sys.argv[3:]\n"
+        "os.execvpe(argv[0], argv, os.environ)\n"
     )
-    trampoline = ["/bin/sh", "-c", script, "codoxear-agent-exec", SHELL_PRE_EXEC_MARKER, sys.executable, *argv]
+    trampoline = [sys.executable, "-c", script, pty_slave_path, SHELL_PRE_EXEC_MARKER, *argv]
     return "exec " + " ".join(q(x) for x in trampoline)
-
-
-def _replace_stdin_with_devnull() -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    try:
-        os.dup2(fd, 0)
-    finally:
-        if fd > 2:
-            os.close(fd)
 
 
 def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
@@ -388,12 +380,11 @@ def _exec_agent(*, cwd: str, agent_args: list[str]) -> None:
     os.chdir(cwd)
     os.execvpe(argv[0], argv, os.environ)
 
-def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str]) -> None:
+def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str], pty_slave_path: str) -> None:
     argv = [AGENT_BIN, *agent_args]
-    cmd = _agent_shell_command(argv)
+    cmd = _agent_shell_command(argv, pty_slave_path=pty_slave_path)
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
-    _replace_stdin_with_devnull()
     os.execvpe(shell_argv[0], shell_argv, os.environ)
 
 
@@ -797,7 +788,6 @@ class State:
     shell_pre_exec_marker_seen: bool = False
     shell_pre_exec_marker_ts: float = 0.0
     shell_pre_exec_marker_tail: bytes = b""
-    shell_startup_enter_count: int = 0
     prelog_failure_recorded: bool = False
     log_off: int = 0
     last_local_input_ts: float = 0.0
@@ -1050,11 +1040,32 @@ class Broker:
             except OSError:
                 break
 
+    def _startup_output_to_state(self, fd: int) -> None:
+        try:
+            while not self._stop.is_set():
+                try:
+                    b = os.read(fd, 4096)
+                except OSError:
+                    break
+                if not b:
+                    break
+                s = b.decode("utf-8", errors="replace")
+                if not s:
+                    continue
+                with self._lock:
+                    st = self.state
+                    if st and not st.shell_pre_exec_marker_seen and st.log_path is None:
+                        st.output_tail = (st.output_tail + s)[-st.output_tail_max :]
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
     def _shell_startup_watchdog(self) -> None:
         if OWNER_TAG != "web" or SHELL_STARTUP_TIMEOUT_SECONDS <= 0:
             return
         deadline = _now() + SHELL_STARTUP_TIMEOUT_SECONDS
-        next_enter_ts = _now() + SHELL_STARTUP_ENTER_INTERVAL_SECONDS
         while not self._stop.is_set():
             now_ts = _now()
             with self._lock:
@@ -1066,8 +1077,6 @@ class Broker:
                 root_pid = int(st.codex_pid)
                 start_ts = st.start_ts
                 cwd = st.cwd
-                pty_master_fd = st.pty_master_fd
-                enter_count = st.shell_startup_enter_count
                 output_tail = st.output_tail[-4000:]
             if now_ts >= deadline:
                 _record_launch_attempt(
@@ -1080,7 +1089,6 @@ class Broker:
                             agent_pid=root_pid,
                         ),
                         "pty_tail": output_tail,
-                        "shell_startup_enter_count": enter_count,
                     }
                 )
                 with self._lock:
@@ -1090,17 +1098,7 @@ class Broker:
                 return
             if not _process_group_alive(root_pid):
                 return
-            if SHELL_STARTUP_ENTER_INTERVAL_SECONDS > 0 and now_ts >= next_enter_ts:
-                try:
-                    _write_all(pty_master_fd, SHELL_STARTUP_ENTER_BYTES)
-                except OSError:
-                    return
-                with self._lock:
-                    if self.state and not self.state.shell_pre_exec_marker_seen and self.state.log_path is None:
-                        self.state.shell_startup_enter_count += 1
-                next_enter_ts = now_ts + SHELL_STARTUP_ENTER_INTERVAL_SECONDS
-            sleep_until_enter = max(next_enter_ts - now_ts, 0.0) if SHELL_STARTUP_ENTER_INTERVAL_SECONDS > 0 else 0.1
-            time.sleep(min(0.05, max(deadline - now_ts, 0.0), sleep_until_enter))
+            time.sleep(min(0.1, max(deadline - now_ts, 0.0)))
 
     def _stdin_to_pty(self) -> None:
         st = self.state
@@ -1491,47 +1489,86 @@ class Broker:
         headless = (OWNER_TAG == "web")
         local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
+        startup_pipe_read: int | None = None
+        pty_slave_fd: int | None = None
         try:
-            pid, master_fd = pty.fork()
+            if headless:
+                master_fd, pty_slave_fd = pty.openpty()
+                pty_slave_path = os.ttyname(pty_slave_fd)
+                startup_pipe_read, startup_pipe_write = os.pipe()
+                pid = os.fork()
+                if pid == 0:
+                    try:
+                        _set_pdeathsig(signal.SIGHUP)
+                        os.setsid()
+                        os.close(startup_pipe_read)
+                        os.close(master_fd)
+                        devnull_fd = os.open(os.devnull, os.O_RDONLY)
+                        try:
+                            os.dup2(devnull_fd, 0)
+                        finally:
+                            if devnull_fd > 2:
+                                os.close(devnull_fd)
+                        os.dup2(startup_pipe_write, 1)
+                        os.dup2(startup_pipe_write, 2)
+                        if startup_pipe_write > 2:
+                            os.close(startup_pipe_write)
+                        if pty_slave_fd > 2:
+                            os.close(pty_slave_fd)
+                        term_raw = os.environ.get("TERM")
+                        term = str(term_raw).strip() if term_raw is not None else ""
+                        if not term:
+                            term = "xterm-256color"
+                        os.environ.setdefault("TERM", term)
+                        os.environ["COLUMNS"] = str(cols)
+                        os.environ["LINES"] = str(rows)
+                        os.environ[BACKEND.home_env_var] = str(self.codex_home)
+                        _exec_agent_via_login_shell(
+                            cwd=self.cwd,
+                            agent_args=self.codex_args,
+                            pty_slave_path=pty_slave_path,
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        os._exit(127)
+                os.close(startup_pipe_write)
+            else:
+                pid, master_fd = pty.fork()
+                if pid == 0:
+                    try:
+                        _set_pdeathsig(signal.SIGHUP)
+                        term_raw = os.environ.get("TERM")
+                        term = str(term_raw).strip() if term_raw is not None else ""
+                        if not term:
+                            term = "xterm-256color"
+                        os.environ.setdefault("TERM", term)
+                        os.environ["COLUMNS"] = str(cols)
+                        os.environ["LINES"] = str(rows)
+                        os.environ[BACKEND.home_env_var] = str(self.codex_home)
+                        if sys.stdin.isatty():
+                            try:
+                                fd = sys.stdin.fileno()
+                                attrs = termios.tcgetattr(fd)
+                                attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR)
+                                termios.tcsetattr(fd, termios.TCSANOW, attrs)
+                            except (OSError, termios.error):
+                                if DEBUG:
+                                    traceback.print_exc()
+                        os.environ[BACKEND.home_env_var] = str(self.codex_home)
+                        _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
+                    except Exception:
+                        traceback.print_exc()
+                        os._exit(127)
         except Exception as e:
             _record_launch_attempt(
                 _broker_launch_record(
                     stage="pty_fork",
-                    error=f"pty fork failed before agent start: {type(e).__name__}: {e}",
+                    error=f"pty setup failed before agent start: {type(e).__name__}: {e}",
                     cwd=self.cwd,
                     start_ts=start_ts,
                 )
             )
             raise
-        if pid == 0:
-            try:
-                _set_pdeathsig(signal.SIGHUP)
-                term_raw = os.environ.get("TERM")
-                term = str(term_raw).strip() if term_raw is not None else ""
-                if not term:
-                    term = "xterm-256color"
-                os.environ.setdefault("TERM", term)
-                os.environ["COLUMNS"] = str(cols)
-                os.environ["LINES"] = str(rows)
-                os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                if sys.stdin.isatty():
-                    try:
-                        fd = sys.stdin.fileno()
-                        attrs = termios.tcgetattr(fd)
-                        attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR)
-                        termios.tcsetattr(fd, termios.TCSANOW, attrs)
-                    except (OSError, termios.error):
-                        if DEBUG:
-                            traceback.print_exc()
-                if headless:
-                    os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                    _exec_agent_via_login_shell(cwd=self.cwd, agent_args=self.codex_args)
-                else:
-                    os.environ[BACKEND.home_env_var] = str(self.codex_home)
-                    _exec_agent(cwd=self.cwd, agent_args=self.codex_args)
-            except Exception:
-                traceback.print_exc()
-                os._exit(127)
 
         if local_terminal:
             try:
@@ -1577,6 +1614,9 @@ class Broker:
         self._write_meta()
         threading.Thread(target=self._sock_server, daemon=True).start()
         threading.Thread(target=self._pty_to_stdout, daemon=True).start()
+        if startup_pipe_read is not None:
+            startup_fd = startup_pipe_read
+            threading.Thread(target=lambda: self._startup_output_to_state(startup_fd), daemon=True).start()
         threading.Thread(target=self._shell_startup_watchdog, daemon=True).start()
         # Web-owned sessions launched inside tmux still have a real terminal and must
         # forward local pane input like a normal broker session.
@@ -1612,6 +1652,11 @@ class Broker:
             os.close(master_fd)
         except Exception:
             traceback.print_exc()
+        if pty_slave_fd is not None:
+            try:
+                os.close(pty_slave_fd)
+            except Exception:
+                traceback.print_exc()
         with self._lock:
             st2 = self.state
         if st2 and OWNER_TAG == "web" and st2.log_path is None and not st2.prelog_failure_recorded:
