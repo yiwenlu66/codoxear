@@ -66,7 +66,7 @@ def render_markdown_preview(markdown: str, file_path: str, session_id: str) -> s
     return proc.stdout
 
 
-def render_chat_markdown_sequence(markdown: str, session_ids: list[str]) -> list[str]:
+def render_chat_markdown_sequence(markdown: str, session_ids: list[str | None]) -> list[str]:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function escapeHtml")
     end = source.index("function iconSvg")
@@ -82,7 +82,7 @@ def render_chat_markdown_sequence(markdown: str, session_ids: list[str]) -> list
         }};
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_chatMarkdownHtmlCached = chatMarkdownHtmlCached;\n")}, ctx);
-        const outputs = {json.dumps(session_ids)}.map((sid) => ctx.__test_chatMarkdownHtmlCached({json.dumps(markdown)}, sid));
+        const outputs = {json.dumps(session_ids)}.map((sid) => sid === null ? ctx.__test_chatMarkdownHtmlCached({json.dumps(markdown)}) : ctx.__test_chatMarkdownHtmlCached({json.dumps(markdown)}, sid));
         process.stdout.write(JSON.stringify(outputs));
         """
     )
@@ -150,6 +150,11 @@ class TestMarkdownTables(unittest.TestCase):
         self.assertIn("/api/sessions/sess-a/file/blob", first)
         self.assertIn("/api/sessions/sess-b/file/blob", second)
         self.assertNotIn("/api/sessions/sess-a/file/blob", second)
+
+    def test_chat_markdown_without_session_does_not_throw(self) -> None:
+        html = render_chat_markdown_sequence("**bold**", [None])[0]
+
+        self.assertEqual(html, "<p><strong>bold</strong></p>")
 
     def test_oai_mem_citation_block_renders_memory_links(self) -> None:
         html = render_markdown(

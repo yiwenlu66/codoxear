@@ -1113,7 +1113,7 @@
         });
       }
 
-      function chatMarkdownHtmlCached(src, sessionId = selected) {
+      function chatMarkdownHtmlCached(src, sessionId) {
         const sid = String(sessionId || "").trim();
         return mdToHtmlCached(src, {
           cacheKey: sid ? `chat:${sid}` : "chat",
@@ -2685,7 +2685,7 @@
           if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
             bubble.classList.add(messageClass);
           }
-          const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text) });
+          const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text, selected) });
           bubble.appendChild(md);
           void upgradeCandidateFileRefs(md);
           if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
