@@ -1070,11 +1070,13 @@
       }
 
       const mdCache = new Map();
-      function mdToHtmlCached(src) {
-        const key = String(src ?? "");
+      function mdToHtmlCached(src, options = null) {
+        const text = String(src ?? "");
+        const scope = options && typeof options.cacheKey === "string" ? options.cacheKey : "";
+        const key = `${scope}\0${text}`;
         const hit = mdCache.get(key);
         if (hit !== undefined) return hit;
-        const html = mdToHtml(key);
+        const html = mdToHtml(text, options);
         mdCache.set(key, html);
         if (mdCache.size > 1200) {
           // Prevent unbounded growth; chat history is expected to be small.
@@ -1107,6 +1109,16 @@
           },
           resolveImageSrc(rawRef, localRef) {
             return previewImageUrlForRef(rawRef, localRef, { filePath: basePath, sessionId: sid });
+          },
+        });
+      }
+
+      function chatMarkdownHtmlCached(src, sessionId = selected) {
+        const sid = String(sessionId || "").trim();
+        return mdToHtmlCached(src, {
+          cacheKey: sid ? `chat:${sid}` : "chat",
+          resolveImageSrc(rawRef, localRef) {
+            return previewImageUrlForRef(rawRef, localRef, { sessionId: sid });
           },
         });
       }
@@ -2673,7 +2685,7 @@
           if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
             bubble.classList.add(messageClass);
           }
-          const md = el("div", { class: "md", html: mdToHtmlCached(ev.text) });
+          const md = el("div", { class: "md", html: chatMarkdownHtmlCached(ev.text) });
           bubble.appendChild(md);
           void upgradeCandidateFileRefs(md);
           if (typeof ts === "number" && Number.isFinite(ts)) bubble.appendChild(el("div", { class: "ts", text: time24(new Date(ts * 1000)) }));
@@ -2834,7 +2846,7 @@
           pendingEl.removeAttribute("data-pending");
 
           const mdEl = pendingEl.querySelector(".md");
-          if (mdEl && typeof ev.text === "string") mdEl.innerHTML = mdToHtmlCached(ev.text);
+          if (mdEl && typeof ev.text === "string") mdEl.innerHTML = chatMarkdownHtmlCached(ev.text, sessionId);
 
           const row = pendingEl.closest(".msg-row");
           if (row && typeof ev.ts === "number" && Number.isFinite(ev.ts)) row.dataset.ts = String(ev.ts);
