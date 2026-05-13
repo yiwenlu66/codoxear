@@ -45,6 +45,7 @@ from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
+from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
@@ -118,6 +119,7 @@ def _strip_url_prefix(prefix: str, path: str) -> str | None:
 
 
 APP_DIR = _default_app_dir()
+PROC_ROOT = Path("/proc")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
@@ -3621,6 +3623,10 @@ class SessionManager:
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
             launch_id = _clean_optional_text(meta.get("launch_id"))
             spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
+            cwd_raw = meta.get("cwd")
+            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+                raise ValueError(f"invalid cwd in metadata for socket {sock}")
+            cwd = cwd_raw
 
             log_path: Path | None = None
             if "log_path" not in meta:
@@ -3632,11 +3638,23 @@ class SessionManager:
                 if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
                     raise ValueError(f"invalid log_path in metadata for socket {sock}")
                 log_path = Path(log_path_raw)
-            if log_path is not None and log_path.exists():
-                if agent_backend == "codex":
-                    thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
-            else:
+            if log_path is not None and not log_path.exists():
                 log_path = None
+            if log_path is None and _pid_alive(codex_pid):
+                discovered_log_path = _proc_find_open_rollout_log(
+                    proc_root=PROC_ROOT,
+                    root_pid=codex_pid,
+                    agent_backend=agent_backend,
+                    cwd=cwd,
+                )
+                if discovered_log_path is not None and discovered_log_path.exists():
+                    log_path = discovered_log_path
+            if log_path is not None and agent_backend == "codex":
+                session_meta = _read_session_meta(log_path)
+                meta_session_id = session_meta.get("id") if session_meta else None
+                if isinstance(meta_session_id, str) and meta_session_id:
+                    thread_id = meta_session_id
+                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
             if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
                 if owned:
@@ -3679,10 +3697,6 @@ class SessionManager:
                     _unlink_quiet(meta_path)
                 continue
 
-            cwd_raw = meta.get("cwd")
-            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-                raise ValueError(f"invalid cwd in metadata for socket {sock}")
-            cwd = cwd_raw
             if self._remember_recent_cwd(cwd, ts=meta.get("updated_ts", meta.get("start_ts"))):
                 recent_cwd_dirty = True
 
@@ -4200,6 +4214,10 @@ class SessionManager:
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
         agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
         transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+        cwd_raw = meta.get("cwd")
+        if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
+            raise ValueError(f"invalid cwd in metadata for socket {sock}")
+        cwd = cwd_raw
         if "log_path" not in meta:
             raise ValueError(f"missing log_path in metadata for socket {sock}")
         log_path: Path | None
@@ -4210,14 +4228,24 @@ class SessionManager:
             if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
                 raise ValueError(f"invalid log_path in metadata for socket {sock}")
             log_path = Path(log_path_raw)
-        if log_path is not None and log_path.exists():
-            if agent_backend == "codex":
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
+        if log_path is not None and not log_path.exists():
+            log_path = None
+        if log_path is None and _pid_alive(s.codex_pid):
+            discovered_log_path = _proc_find_open_rollout_log(
+                proc_root=PROC_ROOT,
+                root_pid=s.codex_pid,
+                agent_backend=agent_backend,
+                cwd=cwd,
+            )
+            if discovered_log_path is not None and discovered_log_path.exists():
+                log_path = discovered_log_path
+        if log_path is not None and agent_backend == "codex":
+            session_meta = _read_session_meta(log_path)
+            meta_session_id = session_meta.get("id") if session_meta else None
+            if isinstance(meta_session_id, str) and meta_session_id:
+                thread_id = meta_session_id
+            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
 
-        cwd_raw = meta.get("cwd")
-        if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-            raise ValueError(f"invalid cwd in metadata for socket {sock}")
-        cwd = cwd_raw
         resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
         model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
             meta=meta,

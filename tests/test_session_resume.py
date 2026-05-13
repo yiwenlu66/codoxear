@@ -711,6 +711,70 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             self.assertEqual(len(messages), 1)
             self.assertEqual(messages[0].text, "fresh reply after resume")
 
+    def test_discover_existing_binds_open_rollout_when_sidecar_has_no_log(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock_path = sock_dir / "broker-1.sock"
+            sock_path.touch()
+            log_path = root / "rollout-2026-05-13T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            _write_jsonl(
+                log_path,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "thread-1",
+                            "cwd": str(root),
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": None,
+                        "owner": "web",
+                        "broker_pid": 11,
+                        "codex_pid": 12,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": None,
+                        "sock_path": str(sock_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            manager._last_discover_ts = 0.0
+            manager._aliases = {}
+            manager._queues = {}
+            manager._hidden_sessions = set()
+            manager._recent_cwds = {}
+            manager._save_recent_cwds = lambda: None  # type: ignore[method-assign]
+            manager._sock_call = lambda *args, **kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+
+            with patch("codoxear.server.SOCK_DIR", sock_dir), \
+                patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", return_value=log_path):
+                manager._discover_existing(force=True)
+
+            session = manager._sessions["broker-1"]
+            self.assertEqual(session.thread_id, "thread-1")
+            self.assertEqual(session.log_path, log_path)
+
+            with patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", return_value=log_path):
+                manager.refresh_session_meta("broker-1")
+
+            self.assertEqual(session.thread_id, "thread-1")
+            self.assertEqual(session.log_path, log_path)
+
 
 if __name__ == "__main__":
     unittest.main()
