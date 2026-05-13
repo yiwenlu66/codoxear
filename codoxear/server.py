@@ -4129,19 +4129,12 @@ class SessionManager:
         out: list[dict[str, Any]] = []
         for it in items:
             sid = str(it["session_id"])
-            agent_backend = normalize_agent_backend(it.get("agent_backend"), default="codex")
             log_exists = bool(it.get("log_exists"))
-            state_busy = bool(it.get("state_busy"))
             if not log_exists:
                 busy_out = False
             else:
                 idle_val = bool(self.idle_from_log(sid))
-                if agent_backend == "pi":
-                    busy_out = not idle_val
-                else:
-                    # When a log exists, unify semantics with /messages:
-                    # busy if broker says busy OR log-derived idle is false.
-                    busy_out = state_busy or (not idle_val)
+                busy_out = not idle_val
             it2 = dict(it)
             it2.pop("log_exists", None)
             it2.pop("state_busy", None)
@@ -5031,13 +5024,9 @@ def _message_runtime_snapshot(
         raise ValueError("missing busy from broker state response")
     if "queue_len" not in state:
         raise ValueError("missing queue_len from broker state response")
-    state_busy = bool(state.get("busy"))
     if s.log_path is not None and s.log_path.exists():
         idle_val = MANAGER.idle_from_log(session_id)
-        if s.agent_backend == "pi":
-            busy_val = not bool(idle_val)
-        else:
-            busy_val = state_busy or (not bool(idle_val))
+        busy_val = not bool(idle_val)
     else:
         busy_val = False
     queue_val = MANAGER._queue_len(session_id)
@@ -5344,10 +5333,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 busy_val = broker_busy
                 if s.log_path is not None and s.log_path.exists():
                     idle_val = MANAGER.idle_from_log(session_id)
-                    if s.agent_backend == "pi":
-                        busy_val = not bool(idle_val)
-                    else:
-                        busy_val = broker_busy or (not bool(idle_val))
+                    busy_val = not bool(idle_val)
                 _json_response(
                     self,
                     200,
