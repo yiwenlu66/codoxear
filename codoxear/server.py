@@ -4465,6 +4465,8 @@ class SessionManager:
             codex_args = [
                 "-c",
                 _codex_trust_override_for_path(spawn_cwd),
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
             ]
             if model is not None:

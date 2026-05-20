@@ -170,6 +170,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
             ],
         )
@@ -213,6 +215,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--search",
             ],
@@ -255,6 +259,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "resume",
                 "resume-a",
@@ -332,6 +338,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
                 "gpt-5.4",
@@ -384,6 +392,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_PREFERRED_AUTH_METHOD=apikey", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)
         self.assertIn("CODEX_WEB_SERVICE_TIER=fast", shell_cmd)
+        self.assertIn("check_for_update_on_startup=false", shell_cmd)
         self.assertIn("codoxear.broker", shell_cmd)
         wait_mock.assert_called_once()
 
@@ -563,6 +572,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 "--",
                 "-c",
                 trust_override,
+                "-c",
+                "check_for_update_on_startup=false",
                 "--dangerously-bypass-approvals-and-sandbox",
             ],
         )
