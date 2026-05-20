@@ -5704,6 +5704,7 @@
         let fileTouchSelectAnchor = null;
         let fileTouchSelectHead = null;
         let fileTouchSelectGoalColumn = null;
+        let fileTouchDeleteNativeSuppressUntil = 0;
         let fileSessionSelections = new Map();
 
         function currentFileSessionId() {
@@ -6087,6 +6088,57 @@
           } catch (e) {
             setToast(`selection move error: ${e && e.message ? e.message : "unknown error"}`);
           }
+        }
+
+        function isActiveFileEditorInput(target) {
+          if (!(target instanceof HTMLElement)) return false;
+          if (!target.classList.contains("inputarea")) return false;
+          const editor = getActiveFileCodeEditor();
+          const node = editor && typeof editor.getDomNode === "function" ? editor.getDomNode() : null;
+          return Boolean(node && node.contains(target));
+        }
+
+        function fileEditorDeleteCommandForKey(key) {
+          if (key === "backspace") return "deleteLeft";
+          if (key === "delete") return "deleteRight";
+          return "";
+        }
+
+        function handleFileEditorDeleteKeydown(e) {
+          if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return false;
+          const key = String(e.key || "").toLowerCase();
+          const command = fileEditorDeleteCommandForKey(key);
+          if (!command) return false;
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file")) return false;
+          const target = e.target instanceof HTMLElement ? e.target : null;
+          if (!isActiveFileEditorInput(target)) return false;
+          const editor = getActiveFileCodeEditor();
+          if (!editor || typeof editor.trigger !== "function") return false;
+          fileTouchDeleteNativeSuppressUntil = Date.now() + 250;
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            focusActiveFileCodeEditor();
+            editor.trigger("file-editor-delete-key", command, null);
+            if (fileTouchSelectMode) resetFileTouchSelectionState();
+            return true;
+          } catch (e) {
+            setToast(`delete error: ${e && e.message ? e.message : "unknown error"}`);
+            return true;
+          }
+        }
+
+        function isFileEditorNativeDeleteEvent(e) {
+          const inputType = String((e && e.inputType) || "");
+          if (inputType !== "deleteContentBackward" && inputType !== "deleteContentForward") return false;
+          const target = e.target instanceof HTMLElement ? e.target : null;
+          return isActiveFileEditorInput(target);
+        }
+
+        function suppressFileEditorNativeDelete(e) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+          fileTouchDeleteNativeSuppressUntil = 0;
         }
 
         function bindFileTouchPress(button, handler) {
@@ -7864,10 +7916,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             resetFileTouchSelectionState({ collapse: true });
             return;
           }
-          const allowEditorDelete = (key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file";
-          if (allowEditorDelete) {
-            return;
-          }
           const direction = key === "h" ? "left" : key === "j" ? "down" : key === "k" ? "up" : key === "l" ? "right" : "";
           if (!direction) {
             const blocksEdit =
@@ -7887,6 +7935,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           moveFileTouchSelection(direction);
         }
         document.addEventListener("keydown", handleFileTouchSelectionKeydown, true);
+        document.addEventListener("keydown", handleFileEditorDeleteKeydown, true);
+        document.addEventListener(
+          "beforeinput",
+          (e) => {
+            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+          },
+          true
+        );
+        document.addEventListener(
+          "input",
+          (e) => {
+            if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
+          },
+          true
+        );
         document.addEventListener("keydown", (e) => {
           if (e.key !== "Escape") return;
           if (filePasteDialog.style.display === "flex") {

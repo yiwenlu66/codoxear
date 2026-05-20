@@ -178,11 +178,23 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('key.length === 1', source)
         self.assertIn('resetFileTouchSelectionState({ collapse: true });', source)
 
-    def test_delete_backspace_can_remove_selection_in_edit_mode(self) -> None:
+    def test_delete_backspace_is_single_owned_in_touch_select_edit_mode(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('const allowEditorDelete = (key === "backspace" || key === "delete") && fileEditMode && activeFileEditable && fileViewMode === "file";', source)
-        self.assertIn("if (allowEditorDelete) {", source)
-        self.assertNotIn('editor.executeEdits("file-touch-delete"', source)
+        self.assertIn("function handleFileEditorDeleteKeydown(e)", source)
+        self.assertIn("function isActiveFileEditorInput(target)", source)
+        self.assertIn("function fileEditorDeleteCommandForKey(key)", source)
+        self.assertIn("let fileTouchDeleteNativeSuppressUntil = 0;", source)
+        self.assertIn('if (key === "backspace") return "deleteLeft";', source)
+        self.assertIn('if (key === "delete") return "deleteRight";', source)
+        self.assertIn("fileTouchDeleteNativeSuppressUntil = Date.now() + 250;", source)
+        self.assertIn('editor.trigger("file-editor-delete-key", command, null);', source)
+        self.assertIn("function isFileEditorNativeDeleteEvent(e)", source)
+        self.assertIn('inputType !== "deleteContentBackward" && inputType !== "deleteContentForward"', source)
+        self.assertIn('document.addEventListener("keydown", handleFileEditorDeleteKeydown, true);', source)
+        self.assertIn('document.addEventListener(\n          "beforeinput",', source)
+        self.assertIn('document.addEventListener(\n          "input",', source)
+        self.assertIn("e.preventDefault();\n          e.stopPropagation();", source)
+        self.assertNotIn("const allowEditorDelete =", source)
         self.assertIn("if (fileTouchSelectMode) resetFileTouchSelectionState();", source)
 
     def test_range_selection_does_not_collapse_back_to_cursor(self) -> None:
