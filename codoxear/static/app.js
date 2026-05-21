@@ -799,6 +799,67 @@
 
       function mdToHtml(src, options = null) {
         const s = rewriteOaiMemCitations(String(src ?? "").replaceAll("\r\n", "\n"));
+        const listItemInfo = (line) => {
+          const l = String(line ?? "");
+          const mUl = l.match(/^(\s*)([-*\u2022])(\s+)(.*)$/);
+          if (mUl) {
+            return {
+              type: "ul",
+              indent: mUl[1].length,
+              contentIndent: mUl[1].length + mUl[2].length + mUl[3].length,
+              text: (mUl[4] || "").trimStart(),
+            };
+          }
+          const mOl = l.match(/^(\s*)(\d+\.)(\s+)(.*)$/);
+          if (mOl) {
+            return {
+              type: "ol",
+              indent: mOl[1].length,
+              contentIndent: mOl[1].length + mOl[2].length + mOl[3].length,
+              marker: mOl[2],
+              text: (mOl[4] || "").trimStart(),
+            };
+          }
+          return null;
+        };
+
+        const leadingSpaceCount = (line) => {
+          const raw = String(line ?? "");
+          let i = 0;
+          while (i < raw.length && raw[i] === " ") i += 1;
+          return i;
+        };
+
+        const stripContinuationIndent = (line, width) => {
+          const raw = String(line ?? "");
+          let i = 0;
+          while (i < raw.length && i < width && raw[i] === " ") i += 1;
+          return raw.slice(i);
+        };
+
+        const fenceOpenInfo = (line) => {
+          const m = String(line ?? "").match(/^\s{0,3}```\s*([a-zA-Z0-9_-]+)?\s*$/);
+          return m ? { lang: m[1] || "" } : null;
+        };
+
+        const isFenceClose = (line) => /^\s{0,3}```\s*$/.test(String(line ?? ""));
+
+        const pendingListFenceIndent = (priorLines, line) => {
+          const indent = leadingSpaceCount(line);
+          if (!indent) return null;
+          for (let j = priorLines.length - 1; j >= 0; j--) {
+            const prev = priorLines[j] || "";
+            if (!prev.trim()) continue;
+            const info = listItemInfo(prev);
+            if (info) {
+              const contentIndent = info.contentIndent || 0;
+              return indent >= contentIndent && fenceOpenInfo(stripContinuationIndent(line, contentIndent)) ? contentIndent : null;
+            }
+            if (leadingSpaceCount(prev) < indent) return null;
+          }
+          return null;
+        };
+
         const splitByFences = (input) => {
           const chunks = [];
           const lines = String(input ?? "").split("\n");
@@ -807,6 +868,7 @@
           let fenceLang = "";
           let fenceLines = [];
           let fenceStart = "";
+          let deferredFenceIndent = null;
 
           const flushText = () => {
             const v = textLines.join("\n");
@@ -822,12 +884,23 @@
           };
 
           for (const line of lines) {
+            if (deferredFenceIndent !== null) {
+              textLines.push(line);
+              if (isFenceClose(stripContinuationIndent(line, deferredFenceIndent))) deferredFenceIndent = null;
+              continue;
+            }
             if (!inFence) {
-              const m = line.match(/^\s{0,3}```\s*([a-zA-Z0-9_-]+)?\s*$/);
-              if (m) {
+              const m = fenceOpenInfo(line);
+              const nestedIndent = pendingListFenceIndent(textLines, line);
+              if (m || nestedIndent !== null) {
+                if (nestedIndent !== null) {
+                  deferredFenceIndent = nestedIndent;
+                  textLines.push(line);
+                  continue;
+                }
                 flushText();
                 inFence = true;
-                fenceLang = m[1] || "";
+                fenceLang = m.lang || "";
                 fenceStart = line;
                 fenceLines = [];
                 continue;
@@ -835,7 +908,7 @@
               textLines.push(line);
               continue;
             }
-            if (line.match(/^\s{0,3}```\s*$/)) {
+            if (isFenceClose(line)) {
               inFence = false;
               flushFence();
               continue;
@@ -852,17 +925,25 @@
           return chunks;
         };
 
-        const listItemInfo = (line) => {
-          const l = String(line ?? "");
-          let indent = 0;
-          while (indent < l.length && l[indent] === " ") indent += 1;
-          const t = l.trim();
-          if (t.startsWith("- ") || t.startsWith("* ") || t.startsWith("\u2022 ")) {
-            return { type: "ul", indent, text: t.slice(2).trimStart() };
+        const parseIndentedFence = (lines, start, contentIndent) => {
+          const open = fenceOpenInfo(stripContinuationIndent(lines[start], contentIndent));
+          if (!open) return null;
+          const codeLines = [];
+          let i = start + 1;
+          while (i < lines.length) {
+            const stripped = stripContinuationIndent(lines[i], contentIndent);
+            if (isFenceClose(stripped)) {
+              return { node: { type: "code", lang: open.lang, value: codeLines.join("\n") }, next: i + 1 };
+            }
+            codeLines.push(stripped);
+            i += 1;
           }
-          const mOl = t.match(/^(\d+)\.\s+(.*)$/);
-          if (mOl) return { type: "ol", indent, marker: `${mOl[1]}.`, text: (mOl[2] || "").trimStart() };
           return null;
+        };
+
+        const renderCodeBlock = (value, lang) => {
+          const langAttr = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
+          return `<pre><code${langAttr}>${escapeHtml(value)}</code></pre>`;
         };
 
         const parseList = (lines, start) => {
@@ -875,7 +956,14 @@
           let i = start;
           while (i < lines.length) {
             const info = listItemInfo(lines[i]);
-            if (!info) break;
+            if (!info) {
+              const last = items[items.length - 1];
+              const fence = last ? parseIndentedFence(lines, i, last.contentIndent || baseIndent) : null;
+              if (!fence) break;
+              last.blocks.push(fence.node);
+              i = fence.next;
+              continue;
+            }
             if (info.indent < baseIndent) break;
             if (info.indent > baseIndent) {
               if (!items.length) break;
@@ -885,7 +973,7 @@
               continue;
             }
             if (info.type !== listType) break;
-            items.push({ text: info.text, marker: info.marker || "", child: null });
+            items.push({ text: info.text, marker: info.marker || "", contentIndent: info.contentIndent, child: null, blocks: [] });
             i += 1;
           }
           return { node: { type: listType, items }, next: i };
@@ -903,6 +991,9 @@
               out.push("</span>");
             } else {
               out.push(renderInlineMd(it.text || "", options));
+            }
+            for (const block of it.blocks || []) {
+              if (block.type === "code") out.push(renderCodeBlock(block.value, block.lang));
             }
             if (it.child) out.push(renderList(it.child));
             out.push("</li>");
@@ -1003,16 +1094,58 @@
           return out.join("");
         };
 
+        const splitTextBlocks = (input) => {
+          const blocks = [];
+          const lines = String(input ?? "").split("\n");
+          let current = [];
+          let inFence = false;
+          let currentFenceIndent = 0;
+          const flush = () => {
+            const block = current.join("\n");
+            current = [];
+            if (block.trim()) blocks.push(block);
+          };
+          for (const line of lines) {
+            const stripped = line.trim();
+            if (!inFence && !stripped) {
+              flush();
+              continue;
+            }
+            const nestedIndent = pendingListFenceIndent(current, line);
+            const open = fenceOpenInfo(line);
+            if (!inFence && open) {
+              inFence = true;
+              currentFenceIndent = 0;
+              current.push(line);
+              continue;
+            }
+            if (!inFence && nestedIndent !== null) {
+              inFence = true;
+              currentFenceIndent = nestedIndent;
+              current.push(line);
+              continue;
+            }
+            if (inFence && isFenceClose(stripContinuationIndent(line, currentFenceIndent))) {
+              inFence = false;
+              currentFenceIndent = 0;
+              current.push(line);
+              continue;
+            }
+            current.push(line);
+          }
+          flush();
+          return blocks;
+        };
+
         const chunks = splitByFences(s);
 
         const out = [];
         for (const c of chunks) {
           if (c.type === "code") {
-            const langAttr = c.lang ? ` data-lang="${escapeHtml(c.lang)}"` : "";
-            out.push(`<pre><code${langAttr}>${escapeHtml(c.value)}</code></pre>`);
+            out.push(renderCodeBlock(c.value, c.lang));
             continue;
           }
-          const blocks = c.value.split(/\n{2,}/);
+          const blocks = splitTextBlocks(c.value);
           for (const block of blocks) {
             const lines = block.split("\n").map((x) => x.trimEnd());
             if (!lines.length) continue;

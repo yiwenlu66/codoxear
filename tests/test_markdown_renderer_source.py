@@ -37,6 +37,47 @@ def render_markdown(markdown: str) -> str:
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
+    def test_fenced_code_block_nested_under_list_item_renders_as_code(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "**Implementation Plan**",
+                    "",
+                    "1. Update SFT training submission to pipeline steps:",
+                    "   - Build the next N SFT batches ahead of time, e.g. window size 10.",
+                    "   - Submit requests in exact semantic order:",
+                    "     ```text",
+                    "     fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...",
+                    "     ```",
+                    "   - Do not submit all `fwdbwd` first.",
+                ]
+            )
+        )
+
+        self.assertIn('<pre><code data-lang="text">fwdbwd(1), optim(1), fwdbwd(2), optim(2), ...</code></pre>', html)
+        self.assertIn("Submit requests in exact semantic order:<pre>", html)
+        self.assertIn("Do not submit all <code>fwdbwd</code> first.", html)
+        self.assertNotIn("```", html)
+
+    def test_nested_fenced_code_block_preserves_blank_lines(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "- intro:",
+                    "  ```text",
+                    "  one",
+                    "",
+                    "  two",
+                    "  ```",
+                    "- after",
+                ]
+            )
+        )
+
+        self.assertIn('<pre><code data-lang="text">one\n\ntwo</code></pre>', html)
+        self.assertIn("<li>after</li>", html)
+        self.assertNotIn("```", html)
+
     def test_ordered_list_markers_are_literal_when_blank_separated(self) -> None:
         html = render_markdown(
             "\n".join(
