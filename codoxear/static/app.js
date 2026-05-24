@@ -2632,6 +2632,38 @@
           }
         }
 
+        function applySessionListTranscriptIdentity(sessionId, sessionMeta) {
+          if (!sessionId || selected !== sessionId || !sessionMeta) return;
+          const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);
+          if (!slotChange.resetPending) return;
+
+          sessionTailCache.delete(sessionId);
+          liveCursor = null;
+          historyCursor = null;
+          setAttachCount(0);
+          invalidateOlderLoad();
+          recentEventKeys.length = 0;
+          recentEventKeySet.clear();
+          backfillToken += 1;
+          backfillState = null;
+          autoScroll = true;
+          clearTranscriptDom();
+          if (slotChange.current.state === "pending_bind") {
+            renderPendingTranscriptSlot(sessionId);
+          } else {
+            setOlderState({ hasMore: false, isLoading: false });
+            syncJumpButton();
+            kickPoll(0);
+          }
+
+          const running = Boolean(sessionMeta.busy);
+          const queueLen = Number.isFinite(Number(sessionMeta.queue_len)) ? Number(sessionMeta.queue_len) : 0;
+          turnOpen = running;
+          setStatus({ running, queueLen });
+          setContext(sessionMeta.token || null);
+          setTyping(running);
+        }
+
         function updateQueueBadge() {
           if (!queueBadgeEl) return;
           if (!selected) {
@@ -3063,18 +3095,17 @@
                  if (s0) return s0;
                  return String(a.session_id || "").localeCompare(String(b.session_id || ""));
                });
-	           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
-	             sessionIndex = new Map();
-	             for (const s of sessions) sessionIndex.set(s.session_id, s);
-	             swipeRefreshDeferred = true;
-	             return sessions;
-	           }
-	           sessionsWrap.innerHTML = "";
-	           openSwipeContent = null;
-	           sessionIndex = new Map();
-		          for (const s of sessions) {
-		            sessionIndex.set(s.session_id, s);
-		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
+              sessionIndex = new Map();
+		          for (const s of sessions) sessionIndex.set(s.session_id, s);
+              if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
+		             swipeRefreshDeferred = true;
+		             return sessions;
+		           }
+		           sessionsWrap.innerHTML = "";
+		           openSwipeContent = null;
+			          for (const s of sessions) {
+			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
              const title = sessionDisplayName(s);
              const badges = [];

@@ -35,7 +35,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('if (slotChange.current.state !== "failed") kickPoll(900);', block)
         self.assertNotIn("refreshInitPageState", block)
 
-    def test_refresh_sessions_is_sidebar_only(self) -> None:
+    def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function refreshSessions() {")
         end = source.index("function appendEvent(ev) {", start)
@@ -44,6 +44,21 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertNotIn("/messages/live", block)
         self.assertNotIn("/messages/history", block)
         self.assertNotIn("await openSession(", block)
+        self.assertIn("applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));", block)
+
+    def test_session_list_pending_bind_clears_active_transcript_slot(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function applySessionListTranscriptIdentity(")
+        end = source.index("function updateQueueBadge()", start)
+        block = source[start:end]
+        self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, sessionMeta);", block)
+        self.assertIn("if (!slotChange.resetPending) return;", block)
+        self.assertIn("sessionTailCache.delete(sessionId);", block)
+        self.assertIn("liveCursor = null;", block)
+        self.assertIn("historyCursor = null;", block)
+        self.assertIn('if (slotChange.current.state === "pending_bind") {', block)
+        self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
+        self.assertIn("kickPoll(0);", block)
 
     def test_load_older_messages_uses_history_cursor_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
