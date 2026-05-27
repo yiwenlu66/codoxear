@@ -147,7 +147,7 @@ if _DOTENV.exists():
         os.environ.setdefault(_k, _v)
 
 COOKIE_NAME = "codoxear_auth"
-COOKIE_TTL_SECONDS = int(os.environ.get("CODEX_WEB_COOKIE_TTL_SECONDS", str(30 * 24 * 3600)))
+COOKIE_EXPIRES = "Fri, 31 Dec 9999 23:59:59 GMT"
 COOKIE_SECURE = os.environ.get("CODEX_WEB_COOKIE_SECURE", "0") == "1"
 URL_PREFIX = _normalize_url_prefix(os.environ.get("CODEX_WEB_URL_PREFIX"))
 COOKIE_PATH = (URL_PREFIX + "/") if URL_PREFIX else "/"
@@ -810,6 +810,8 @@ def _validate_image(raw: bytes) -> None:
 def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any) -> None:
     body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
+    if getattr(handler, "_codoxear_refresh_auth_cookie", False):
+        _set_auth_cookie(handler)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
@@ -874,12 +876,6 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
             return None
         payload = json.loads(raw.decode("utf-8"))
         if not isinstance(payload, dict):
-            return None
-        exp_raw = payload.get("exp")
-        if exp_raw is None:
-            return None
-        exp = int(exp_raw)
-        if exp <= int(_now()):
             return None
         return payload
     except (TypeError, ValueError, json.JSONDecodeError):
@@ -968,18 +964,22 @@ def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
     token = cookies.get(COOKIE_NAME)
     if not token:
         return False
-    return _verify_cookie(token) is not None
+    payload = _verify_cookie(token)
+    if payload is None:
+        return False
+    if payload.get("v") != 1:
+        setattr(handler, "_codoxear_refresh_auth_cookie", True)
+    return True
 
 
 def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
-    exp = int(_now()) + COOKIE_TTL_SECONDS
-    token = _sign_cookie({"exp": exp})
+    token = _sign_cookie({"v": 1})
     attrs = [
         f"{COOKIE_NAME}={token}",
         f"Path={COOKIE_PATH}",
         "HttpOnly",
         "SameSite=Strict",
-        f"Max-Age={COOKIE_TTL_SECONDS}",
+        f"Expires={COOKIE_EXPIRES}",
     ]
     forwarded_proto_raw = handler.headers.get("X-Forwarded-Proto")
     forwarded_proto = str(forwarded_proto_raw).lower() if forwarded_proto_raw is not None else ""

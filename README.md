@@ -155,6 +155,8 @@ Codex does not always materialize (open) the new `rollout-*.jsonl` file immediat
 
 This project intentionally keeps security out of scope. It provides password gating only and does not provide TLS.
 
+Login state persists until the user logs out, the browser deletes the cookie, or the server HMAC secret is rotated.
+
 Assume anyone who can reach the port can:
 
 - observe traffic (including the password)
@@ -175,7 +177,6 @@ Set these in `.env` (or in the process environment):
 - `CODEX_BIN` (default `codex`)
 - `PI_HOME` (default `~/.pi`)
 - `PI_BIN` (default `pi`)
-- `CODEX_WEB_COOKIE_TTL_SECONDS` (default `2592000`, 30 days)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
 - `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
