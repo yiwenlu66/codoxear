@@ -2617,12 +2617,19 @@
           for (const row of rows.slice(0, removable)) row.remove();
         }
 
-        function makeRow(ev, { ts, pending }) {
+        function makeRow(ev, { ts, pending, live }) {
           if (ev && ev.class === "agent_error") {
             const row = el("div", { class: "msg-row agent-error" });
             row.dataset.role = "system";
             if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
-            const card = el("div", { class: "event-card event-error", role: "alert" });
+            // role="alert" is an assertive live region: announce ONLY a freshly
+            // appended error. Historical cards (session load / scrollback) must
+            // not be assertive, or a screen reader fires a burst of stale errors
+            // at once. They still read in normal document order and carry the
+            // red border + source/type text, so the error is not color-only.
+            const cardAttrs = { class: "event-card event-error" };
+            if (live) cardAttrs.role = "alert";
+            const card = el("div", cardAttrs);
             const headerLine = el("div", { class: "event-error-header" });
             const sourceText = ev.source ? String(ev.source) : "agent";
             const typeText = ev.type ? String(ev.type) : "error";
@@ -3353,7 +3360,7 @@
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
+           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending), live: true });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: true });

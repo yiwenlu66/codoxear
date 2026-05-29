@@ -115,8 +115,12 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
     on Tab navigation (previously inputs set `outline: none` with no replacement,
     and only option buttons had a ring). Confirmed `rgb(91,157,255)` ring on real
     Tab focus across the top-bar and sidebar controls.
-  - Error cards carry `role="alert"` so screen readers announce upstream agent
-    errors instead of relying on the red border alone (color-only signaling).
+  - Error cards carry `role="alert"` ONLY when freshly appended via the live
+    poller, so a newly arriving upstream error is announced. Historical cards
+    rendered on session load / scrollback are NOT assertive (verified: 19
+    cards loaded, 0 with `role="alert"`), avoiding a screen-reader burst of
+    stale errors. The red border + source/type text keep the error non-color-
+    only in both cases.
   - `prefers-reduced-motion: reduce` collapses transitions/animations to ~0s
     (confirmed transition-duration 1e-05s under the emulated setting), so the
     option-press, hover-lift, and spinner motion are suppressed for users who
