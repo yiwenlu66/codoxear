@@ -3073,6 +3073,16 @@
 		          for (const s of sessions) {
 		            sessionIndex.set(s.session_id, s);
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
+		            card.setAttribute("role", "button");
+		            card.setAttribute("tabindex", "0");
+		            card.setAttribute("aria-label", "Open session " + sessionDisplayName(s));
+		            card.addEventListener("keydown", (e) => {
+		              if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+		                e.preventDefault();
+		                setSidebarOpen(false);
+		                selectSession(s.session_id);
+		              }
+		            });
 
              const title = sessionDisplayName(s);
              const badges = [];

@@ -115,6 +115,15 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
     on Tab navigation (previously inputs set `outline: none` with no replacement,
     and only option buttons had a ring). Confirmed `rgb(91,157,255)` ring on real
     Tab focus across the top-bar and sidebar controls.
+  - Session cards (previously clickable `div`s with no keyboard path) are now
+    `role="button"` + `tabindex="0"` with an `aria-label` ("Open session <name>")
+    and Enter/Space activation. Verified live: Tab reaches a card (2px accent
+    ring), Enter selects it and loads the transcript (61 rows). This is the app's
+    primary navigation, so keyboard-only users can now switch sessions.
+  - The queued-message editor (`.queueText`, a borderless inline textarea whose
+    own `outline` is intentionally suppressed) surfaces keyboard focus on its
+    `.queueEditorShell` container via `:focus-within`, so it is no longer a
+    focus-affordance dead spot.
   - Error cards carry `role="alert"` ONLY when freshly appended via the live
     poller, so a newly arriving upstream error is announced. Historical cards
     rendered on session load / scrollback are NOT assertive (verified: 19

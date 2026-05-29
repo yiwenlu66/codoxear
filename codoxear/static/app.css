@@ -2069,6 +2069,14 @@ select {
         background: rgba(255, 255, 255, 0.96);
         padding: 8px 10px;
       }
+      /* The inner .queueText is intentionally borderless/outline-less for its
+         inline look, so surface keyboard focus on the surrounding shell instead
+         (otherwise this control has zero focus affordance — WCAG 2.4.7). */
+      .queueEditorShell:focus-within {
+        border-color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
       .queueActionRail {
         display: inline-flex;
         align-items: center;
