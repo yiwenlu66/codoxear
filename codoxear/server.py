@@ -1554,17 +1554,6 @@ def _current_git_branch(cwd: Path) -> str | None:
     return branch
 
 
-def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    res = _resolve_client_file_path_typed(session_id=session_id, raw_path=raw_path)
-    if res.status == "ok" and res.path is not None:
-        return res.path
-    # Preserve historical fallback behavior: callers that still rely on a Path
-    # will hit FileNotFoundError downstream, just like before.
-    if res.path is not None:
-        return res.path
-    return Path(raw_path).expanduser()
-
-
 @dataclass
 class FileResolution:
     status: str  # "ok" | "not_found" | "dead_symlink" | "permission_denied" | "outside_allowed_root"
@@ -1575,6 +1564,7 @@ class FileResolution:
 
 def _resolve_client_file_path_typed(*, session_id: str, raw_path: str) -> FileResolution:
     raw = Path(raw_path).expanduser()
+    allowed_root = _session_allowed_root(session_id)
     if not raw.is_absolute():
         if session_id:
             try:
@@ -1589,9 +1579,13 @@ def _resolve_client_file_path_typed(*, session_id: str, raw_path: str) -> FileRe
                         base = base.resolve()
                     except OSError:
                         return FileResolution(status="not_found", path=None, detail="session cwd not resolvable")
+                root = allowed_root if allowed_root is not None else _safe_resolve(base)
                 candidate = base / raw
                 tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
                 if tracked is not None and not candidate.exists():
+                    violation = _containment_violation(tracked, root)
+                    if violation is not None:
+                        return violation
                     return _classify_existing(tracked)
                 target = candidate
                 if not target.exists() and not target.is_symlink():
@@ -1604,33 +1598,82 @@ def _resolve_client_file_path_typed(*, session_id: str, raw_path: str) -> FileRe
                     bare = _resolve_unique_bare_filename(repo_root, raw_path)
                     if bare is not None:
                         target = bare
+                violation = _containment_violation(target, root)
+                if violation is not None:
+                    return violation
                 return _classify_path(target)
-            return _classify_path(Path.cwd() / raw)
+            # A session was named but did not resolve (unknown id, or an eviction
+            # race between the handler's lookup and this one). Fail closed: do NOT
+            # fall through to resolving `raw` against the server process cwd, or a
+            # relative `../../etc/passwd` would escape with no containment. This
+            # mirrors the absolute-path guard below.
+            return FileResolution(status="not_found", path=None, detail="session working directory not resolvable")
         return _classify_path(Path.cwd() / raw)
-    # Absolute path: enforce that it stays within the session's working
-    # directory tree, otherwise report outside_allowed_root instead of silently
-    # serving arbitrary files (e.g. /etc/hostname).
-    allowed_root = _session_allowed_root(session_id)
-    if allowed_root is not None:
-        # Use the lexical location of the path itself for the containment check.
-        # Resolving first would misclassify a dead symlink that lives inside the
-        # root but points outside it as outside_allowed_root; we want such a path
-        # to surface as dead_symlink. A real symlink that resolves outside the
-        # root is still caught because its resolved target escapes.
-        lexical = Path(os.path.normpath(str(raw)))
-        target_for_check = lexical
-        if not raw.is_symlink():
-            try:
-                target_for_check = raw.resolve()
-            except OSError:
-                target_for_check = lexical
-        if not _path_within_root(target_for_check, allowed_root):
-            return FileResolution(
-                status="outside_allowed_root",
-                path=None,
-                detail=f"{raw} is outside the session working directory {allowed_root}",
-            )
+    # Absolute path: enforce that it stays within the session's working directory
+    # tree, otherwise report outside_allowed_root instead of silently serving
+    # arbitrary files (e.g. /etc/hostname).
+    #
+    # Fail closed if a session was named but its root could not be resolved
+    # (eviction race between the handler's get_session and _session_allowed_root,
+    # or a transient MANAGER error). Without this, allowed_root=None would make
+    # _containment_violation a no-op and serve any absolute path. A bare
+    # session-less request (no session_id) keeps the historical global behavior.
+    if session_id and allowed_root is None:
+        return FileResolution(status="not_found", path=None, detail="session working directory not resolvable")
+    violation = _containment_violation(raw, allowed_root)
+    if violation is not None:
+        return violation
     return _classify_path(raw)
+
+
+def _safe_resolve(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return Path(os.path.normpath(str(path)))
+
+
+def _containment_violation(raw: Path, allowed_root: Path | None) -> FileResolution | None:
+    """Return an outside_allowed_root FileResolution if `raw` escapes
+    `allowed_root`, else None. `allowed_root` is expected already resolved.
+
+    Two checks:
+      1. Where the path *lives*: resolve the parent directory (so a symlinked
+         component of the session cwd is spelled the same way as `allowed_root`,
+         and `..` is normalized against the real tree), then append the final
+         name. Catches `..` traversal and absolute paths that live elsewhere.
+      2. Where the path *points*: if it resolves (live file or live symlink), the
+         fully resolved target must also live inside the root. Catches an in-cwd
+         symlink whose target points outside.
+
+    A path that fails to resolve (missing file / dead symlink) but whose location
+    is inside the root falls through (returns None) so the classifier can report
+    not_found or dead_symlink rather than outside_allowed_root.
+
+    Resolving the parent rather than `raw` itself is what preserves the
+    dead-symlink-inside-cwd case: the symlink's own location is inside, so a dead
+    symlink is reported as dead_symlink even when its target text points outside.
+    """
+    if allowed_root is None:
+        return None
+
+    def _outside(detail: str) -> FileResolution:
+        return FileResolution(status="outside_allowed_root", path=None, detail=detail)
+
+    try:
+        resolved_parent = raw.parent.resolve(strict=True)
+    except (OSError, RuntimeError):
+        resolved_parent = Path(os.path.normpath(str(raw.parent)))
+    located = Path(os.path.normpath(str(resolved_parent / raw.name)))
+    if not _path_within_root(located, allowed_root):
+        return _outside(f"{raw} is outside the session working directory {allowed_root}")
+    try:
+        resolved = raw.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if not _path_within_root(resolved, allowed_root):
+        return _outside(f"{raw} resolves outside the session working directory {allowed_root}")
+    return None
 
 
 def _session_allowed_root(session_id: str) -> Path | None:
@@ -5235,10 +5278,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                p = _resolve_session_path(base, rel)
+                res = _resolve_client_file_path_typed(session_id=session_id, raw_path=rel)
+                if _file_resolution_http_response(self, res):
+                    return
+                p = res.path
+                if p is None:
+                    _json_response(self, 404, {"error": "File not found", "reason": "not_found"})
+                    return
                 try:
                     raw, size = _read_downloadable_file(p)
                 except FileNotFoundError as e:
@@ -6257,7 +6303,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         _json_response(self, 400, {"error": str(e)})
                         return
                 else:
-                    p = _resolve_session_path(base, path_raw)
+                    res = _resolve_client_file_path_typed(session_id=session_id, raw_path=path_raw)
+                    # Reject EVERY non-ok status, not just outside_allowed_root.
+                    # An overwrite targets an existing, contained file, so `ok` is
+                    # the only valid outcome. Falling back to a weaker resolver
+                    # (_resolve_session_path, non-strict) on a not_found/dead
+                    # status would re-resolve through an in-cwd symlinked dir and
+                    # escape the cwd (arbitrary overwrite). _file_resolution_http_
+                    # response emits the right 400/403/404 for each status.
+                    if _file_resolution_http_response(self, res):
+                        return
+                    p = res.path
+                    if p is None:
+                        _json_response(self, 404, {"error": "File not found", "reason": "not_found"})
+                        return
                     try:
                         _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
                     except FileNotFoundError as e:

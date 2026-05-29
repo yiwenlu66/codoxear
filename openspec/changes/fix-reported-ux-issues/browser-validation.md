@@ -112,12 +112,110 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
 
 ---
 
+## 6. File-path containment hardening (security follow-up)
+
+An adversarial review of the §2 file-viewer work found the original containment
+check only covered absolute paths on the read/blob endpoints. Three escapes
+remained. All are now closed and verified live on 2026-05-29 (session
+`broker-1998985`, cwd `/vePFS-Mindverse/user/intern/lucian/codoxear`):
+
+- 6.1 Relative `..` traversal (`../../../../etc/hostname`, `../workspace`) ->
+  HTTP 400 `outside_allowed_root`. OK. Previously the relative branch joined to
+  the cwd and classified the result with no containment check, so `..` escaped.
+- 6.2 Inside-cwd symlink whose target points outside (`link -> /etc/hostname`)
+  -> HTTP 400 `outside_allowed_root` ("resolves outside ..."). OK. The check now
+  validates BOTH the lexical location and the fully resolved target.
+- 6.3 Inside-cwd dead symlink still reports HTTP 404 `dead_symlink` (not
+  `outside_allowed_root`), because the containment check resolves the symlink's
+  parent (its own in-cwd location) rather than the dead target, so a dead symlink
+  falls through to the classifier. OK.
+- 6.4 `/file/download` and `/file/write` (overwrite branch) now route through the
+  same typed resolver. Absolute-outside and relative-`..` writes/downloads ->
+  HTTP 400; confirmed no file was created outside the cwd. Previously both used
+  `_resolve_session_path`, which resolved arbitrary absolute/`..` paths with no
+  containment. The dead `_resolve_client_file_path` wrapper (which returned the
+  raw escaping path on a non-ok result) was removed.
+- 6.5 Symlinked cwd component: the containment check resolves the request's
+  parent directory the same way `allowed_root` is resolved, so a session whose
+  cwd is reached through a symlinked path component (e.g. macOS `/tmp ->
+  /private/tmp`, bind-mounted homes) does not falsely reject every in-cwd file.
+  Covered by `test_symlinked_cwd_component_does_not_false_reject`.
+- Scope note: the SESSION-scoped endpoints (`/api/sessions/<id>/file/{read,blob,
+  download,write}`) are now contained. The GLOBAL file browser (`/api/files/blob`,
+  `/api/files/read`/`inspect` called WITHOUT a `session_id`) is a separate,
+  pre-existing, auth-gated "open any absolute path" feature and is intentionally
+  NOT cwd-scoped; this change does not alter it.
+- Behavioral narrowing (intended): the relative-path quick-open helpers
+  (bare-filename `os.walk` of the git repo, and tracked-file-by-basename) are now
+  constrained to the session cwd by the containment check. Previously, when the
+  git repo root sits ABOVE the session cwd, a uniquely-named file elsewhere in the
+  repo could be opened from a session view; it now returns `outside_allowed_root`.
+  This is consistent with the security intent (a session view should not reach
+  outside its cwd) and is the deliberate tradeoff of enforcing containment on
+  every resolver branch.
+- 6.6 Arbitrary-overwrite escape via symlinked dir + missing intermediate
+  (CRITICAL, found in the second adversarial pass, now closed): with an in-cwd
+  symlink `cwd/sl -> /outside`, a write-overwrite of `sl/nope/../secret.txt`
+  (where `nope` does not exist) previously fell through the containment check
+  (strict resolve raised on the absent `nope`) and the handler's
+  `_resolve_session_path` fallback re-resolved non-strictly, following `sl` to
+  `/outside/secret.txt` and overwriting it. Fixed by making the write-overwrite
+  handler reject EVERY non-ok resolver status (not just outside_allowed_root) and
+  removing the weaker fallback. Verified live 2026-05-29: read -> 404, write ->
+  404 with the target file content unchanged, direct `sl/secret.txt` -> 400
+  outside_allowed_root. Covered by
+  `test_symlinked_dir_with_missing_intermediate_does_not_resolve_ok_outside`.
+- 6.7 Absolute path fails closed when the session root cannot be resolved
+  (eviction race -> allowed_root None): the absolute branch now returns not_found
+  rather than serving the path with containment disabled. Covered by
+  `test_absolute_path_with_unresolvable_session_root_fails_closed`.
+- 6.8 Relative `..` traversal with a NAMED-but-unresolvable session (HIGH, found
+  in the third adversarial pass, now closed): previously a non-empty but unknown
+  `session_id` plus `../../../../etc/passwd` fell through to resolving against the
+  server process cwd with no containment, serving arbitrary files via
+  `/api/files/read`. The relative branch now fails closed (returns not_found)
+  when a named session does not resolve, symmetric with the absolute branch.
+  Verified live 2026-05-29: unknown-session traversal -> 404 "session working
+  directory not resolvable"; the sessionless global browser
+  (`session_id=""`) is intentionally unchanged and still resolves. Covered by
+  `test_relative_traversal_with_unresolvable_session_fails_closed` and
+  `test_sessionless_relative_path_still_resolves`.
+- Regression coverage: `tests/test_file_resolution.py` now has 15 cases covering
+  relative-`..`, inside->outside symlink (relative + absolute), dead-symlink
+  precedence, symlinked-cwd false-positive, symlinked-dir + missing-intermediate
+  overwrite escape, absolute + relative fail-closed, sessionless still-works, and
+  the in-cwd false-positive guard.
+
+## 7. Busy-state: Claude retry refinement (C1)
+
+The busy-state guard distinguishes Claude auto-retried errors from terminal
+ones, while Pi and Codex errors remain turn-terminal (they carry no retry
+semantics). Covered by tests, no browser step required:
+
+- A Claude `api_error` is non-terminal ONLY with positive evidence of a pending
+  retry (`retryInMs > 0` AND integer `retryAttempt < maxRetries`): the turn stays
+  open and the record counts as activity, so the UI does not flap working<->idle.
+- Every other Claude `api_error` shape closes the turn: no scheduled retry,
+  retries exhausted, or malformed/non-integer retry counters. Defaulting a
+  malformed record to terminal prevents a stuck-busy spinner.
+- Pi `toolResult` `isError` and Codex `*_error` records close the turn
+  (`_close_turn_state`). Keeping them open would disable the idle-fallback
+  (`_should_clear_busy_state` skips while `turn_open and not
+  turn_has_completion_candidate`) and strand the spinner on "working" forever —
+  the original Issue 1. They still render as `agent_error` cards via
+  `rollout_log`, independent of busy state.
+- Coverage: `tests/test_agent_error_events.py` (29 broker/parser cases).
+
+---
+
 ## Already-validated by automated tests
 
 These do not need browser verification:
 
-- Backend parser: `tests/test_agent_error_events.py` (13 cases, all pass)
-- File resolver: `tests/test_file_resolution.py` (5 cases, 4 pass + 1 root-skip)
+- Backend parser + busy state: `tests/test_agent_error_events.py` (27 cases, all pass)
+- File resolver: `tests/test_file_resolution.py` (9 cases, 8 pass + 1 root-skip)
 - Bark channel: `tests/test_bark_channel.py` (6 cases, all pass)
-- HTTP smoke (`/api/files/inspect`, `/api/settings/voice` GET+POST) confirmed
-  via `curl` after server restart on 2026-05-29.
+- Full suite: 328 passed, 1 skipped (root-bypass permission case).
+- HTTP smoke (`/api/files/inspect`, `/api/settings/voice` GET+POST, file
+  read/download/write containment) confirmed via `curl` after server restart on
+  2026-05-29.

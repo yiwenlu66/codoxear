@@ -2712,7 +2712,14 @@
                       // Send the cursor move and the toggle as SEPARATE keystrokes.
                       // A merged "move+space" string races: the space can toggle
                       // the option the cursor is leaving before the move settles.
-                      if (move) await sendSeq(move);
+                      if (move) {
+                        await sendSeq(move);
+                        // The TUI cursor has now moved regardless of what happens
+                        // next, so commit the position before the toggle can fail.
+                        // Otherwise a failed toggle would leave cursorIdx pointing
+                        // at the old row and the next click would mis-compute delta.
+                        cursorIdx = optIdx;
+                      }
                       await sendSeq(" ");
                     }
                     catch (err) { btn.disabled = false; setToast("send error: " + err.message); return; }
@@ -2878,7 +2885,22 @@
       }
 
       function eventKey(ev) {
-        if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return "";
+        if (!ev) return "";
+        if (ev.class === "agent_error") {
+          // agent_error events carry role "system", so they fall outside the
+          // user/assistant dedup path below. Key them on ts+source+type+message
+          // so the same error arriving via both the tail page and a live append
+          // does not render twice. With no timestamp we cannot tell two distinct
+          // same-text errors apart, so we decline to dedup (return "") rather
+          // than risk collapsing two real errors into one card.
+          const ets = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? Math.round(ev.ts * 1000) : null;
+          if (ets === null) return "";
+          const src = typeof ev.source === "string" ? ev.source : "";
+          const etype = typeof ev.type === "string" ? ev.type : "";
+          const emsg = typeof ev.message === "string" ? ev.message : "";
+          return `agent_error|${ets}|${src}|${etype}|${emsg}`;
+        }
+        if (ev.role !== "user" && ev.role !== "assistant") return "";
         const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : null;
         if (ts === null) return "";
         const tsMs = Math.round(ts * 1000);

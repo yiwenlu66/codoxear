@@ -229,7 +229,100 @@ class BrokerBusyStateAgentErrorTests(unittest.TestCase):
         self.assertFalse(st.busy)
         self.assertFalse(st.turn_open)
 
+    def test_claude_api_error_malformed_retry_counters_clears_busy(self):
+        # retryInMs is set but the attempt/maxRetries counters are missing. We
+        # cannot confirm a retry is pending, so the error is treated as terminal
+        # to avoid a stuck-busy UI (no follow-up event would ever clear it).
+        obj = {
+            "type": "system",
+            "subtype": "api_error",
+            "level": "error",
+            "retryInMs": 500,
+            "error": {"status": 529, "error": {"error": {"message": "overloaded", "type": "x"}}},
+        }
+        st = _busy_state()
+        _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
+    def test_claude_api_error_noninteger_retry_counters_clears_busy(self):
+        # Non-integer counters (string shapes) cannot be compared as attempt <
+        # maxRetries, so the error is terminal rather than silently recoverable.
+        obj = {
+            "type": "system",
+            "subtype": "api_error",
+            "level": "error",
+            "retryInMs": 500,
+            "retryAttempt": "1",
+            "maxRetries": "10",
+            "error": {"status": 529, "error": {"error": {"message": "overloaded", "type": "x"}}},
+        }
+        st = _busy_state()
+        _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
+    def test_claude_api_error_bool_retry_in_ms_clears_busy(self):
+        # `retryInMs: true` must not be read as a numeric 1ms delay (bool is an
+        # int subclass in Python). A boolean retry flag is not a scheduled retry,
+        # so the error is terminal.
+        obj = {
+            "type": "system",
+            "subtype": "api_error",
+            "level": "error",
+            "retryInMs": True,
+            "retryAttempt": 1,
+            "maxRetries": 10,
+            "error": {"status": 529, "error": {"error": {"message": "overloaded", "type": "x"}}},
+        }
+        st = _busy_state()
+        _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
+    def test_claude_api_error_nan_retry_in_ms_clears_busy(self):
+        # `retryInMs: NaN` (json.loads accepts NaN/Infinity) is a float, and
+        # `NaN <= 0` is False, so without an isfinite guard it would slip through
+        # as a "pending retry" and strand busy forever. It must be terminal.
+        nan = float("nan")
+        for bad in (nan, float("inf")):
+            obj = {
+                "type": "system",
+                "subtype": "api_error",
+                "level": "error",
+                "retryInMs": bad,
+                "retryAttempt": 1,
+                "maxRetries": 10,
+                "error": {"status": 529, "error": {"error": {"message": "overloaded", "type": "x"}}},
+            }
+            st = _busy_state()
+            _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
+            self.assertFalse(st.busy, f"retryInMs={bad} should be terminal")
+            self.assertFalse(st.turn_open)
+
+    def test_claude_api_error_valid_pending_retry_keeps_busy(self):
+        # Positive evidence of a pending retry (retryInMs>0, attempt<maxRetries)
+        # -> non-terminal, busy stays set and the retry counts as activity.
+        obj = {
+            "type": "system",
+            "subtype": "api_error",
+            "level": "error",
+            "retryInMs": 500,
+            "retryAttempt": 1,
+            "maxRetries": 10,
+            "error": {"status": 529, "error": {"error": {"message": "overloaded", "type": "x"}}},
+        }
+        st = _busy_state()
+        _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.last_turn_activity_ts, 200.0)
+
     def test_pi_tool_error_clears_busy(self):
+        # Pi error records carry no retry semantics, so a toolResult isError is
+        # turn-terminal: it closes the turn and clears busy. Leaving the turn
+        # open would disable the idle-fallback (it only fires once a completion
+        # candidate exists) and strand the spinner on "working" indefinitely.
         obj = {
             "type": "message",
             "message": {
@@ -243,10 +336,13 @@ class BrokerBusyStateAgentErrorTests(unittest.TestCase):
         self.assertFalse(st.turn_open)
 
     def test_codex_stream_error_clears_busy(self):
+        # Codex error records carry no retry semantics, so a stream_error is
+        # turn-terminal (same rationale as the Pi case above).
         obj = {"type": "event_msg", "payload": {"type": "stream_error", "message": "503"}}
         st = _busy_state()
         _apply_rollout_obj_to_state(st, obj, now_ts=200.0)
         self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
 
     def test_normal_user_message_keeps_busy(self):
         obj = {"type": "event_msg", "payload": {"type": "user_message", "message": "hi"}}
