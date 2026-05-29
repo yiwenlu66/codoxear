@@ -946,6 +946,20 @@ def _decode_message_cursor(token: str, *, kind: str, session: "Session") -> int:
     return int(pos)
 
 
+def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session") -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for ev in events:
+        if not isinstance(ev, dict):
+            out.append(ev)
+            continue
+        pos = ev.get("_before_byte")
+        ev2 = {k: v for k, v in ev.items() if k != "_before_byte"}
+        if isinstance(pos, int) and pos >= 0:
+            ev2["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=pos)
+        out.append(ev2)
+    return out
+
+
 def _parse_cookies(header: str | None) -> dict[str, str]:
     if not header:
         return {}
@@ -2380,6 +2394,10 @@ def _extract_chat_events(
     objs: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
     return _rollout_log._extract_chat_events(objs)
+
+
+def _extract_positioned_chat_events(records: list[Any]) -> list[dict[str, Any]]:
+    return _rollout_log._extract_positioned_chat_events(records)
 
 
 def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[Any]:
@@ -5973,6 +5991,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 events, before_byte, after_byte, has_older = _read_chat_tail_page(s.log_path, limit=limit)
                 events = MANAGER._attach_notification_texts(events)
+                events = _attach_history_cursors(events, session=s)
                 live_cursor = _encode_message_cursor(kind="live", session=s, pos=after_byte)
                 history_cursor = _encode_message_cursor(kind="history", session=s, pos=before_byte) if has_older and before_byte > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
@@ -6041,6 +6060,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 events, next_before, has_older = _read_chat_history_page(s.log_path, before_byte=before_byte, limit=limit)
                 events = MANAGER._attach_notification_texts(events)
+                events = _attach_history_cursors(events, session=s)
                 history_cursor = _encode_message_cursor(kind="history", session=s, pos=next_before) if has_older and next_before > 0 else None
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                 transcript = _message_transcript_identity(s)
@@ -6108,12 +6128,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 objs = [record.obj for record in records]
                 events, meta_delta, flags, diag = _extract_chat_events(objs)
                 token_update = _extract_token_update(objs)
+                events = _extract_positioned_chat_events(records)
                 if objs:
                     MANAGER.mark_log_delta(session_id, objs=objs, new_off=next_after)
                 s2 = MANAGER.get_session(session_id)
                 if token_update is not None and s2 is not None:
                     s2.token = token_update
                 events = MANAGER._attach_notification_texts(events)
+                events = _attach_history_cursors(events, session=s)
                 live_cursor = _encode_message_cursor(kind="live", session=s, pos=next_after)
                 t0_state = time.perf_counter()
                 _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)

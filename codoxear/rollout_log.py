@@ -39,6 +39,14 @@ class PositionedChatEvent:
     end: int
 
 
+def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None) -> dict[str, Any]:
+    if before_byte is None:
+        return event
+    out = dict(event)
+    out["_before_byte"] = int(before_byte)
+    return out
+
+
 def _parse_iso8601_to_epoch(ts: str) -> float | None:
     t = ts.strip()
     if t.endswith("Z"):
@@ -189,6 +197,22 @@ def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(p, dict):
             raise ValueError("invalid event_msg payload")
         if p.get("type") != "user_message":
+            pt = p.get("type")
+            if pt in ("error", "stream_error", "warning"):
+                text = _codex_event_text(p)
+                if text is None:
+                    return None
+                ets = _event_ts(obj)
+                message_class = "warning" if pt == "warning" else "error"
+                ev_err: dict[str, Any] = {
+                    "role": "assistant",
+                    "text": text,
+                    "message_class": message_class,
+                    "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
+                }
+                if ets is not None:
+                    ev_err["ts"] = ets
+                return ev_err
             return None
         msg = p.get("message")
         if not isinstance(msg, str):
@@ -464,9 +488,18 @@ def _read_chat_page_reverse(
         break
 
     newest_first.reverse()
-    events = [item.event for item in newest_first]
+    events = [_with_chat_position(item.event, before_byte=item.start) for item in newest_first]
     next_before = newest_first[0].start if newest_first else 0
     return events, next_before, has_older, size
+
+
+def _extract_positioned_chat_events(records: list[JsonlRecord]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for record in records:
+        record_events, _meta, _flags, _diag = _extract_chat_events([record.obj])
+        for event in record_events:
+            events.append(_with_chat_position(event, before_byte=record.start))
+    return events
 
 
 def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
@@ -491,8 +524,9 @@ def _read_chat_live_delta(
     max_bytes: int = 2 * 1024 * 1024,
 ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
+    events = _extract_positioned_chat_events(records)
     objs = [record.obj for record in records]
-    events, meta, flags, diag = _extract_chat_events(objs)
+    _events, meta, flags, diag = _extract_chat_events(objs)
     token_update = _extract_token_update(objs)
     return events, next_after, meta, flags, diag, token_update
 

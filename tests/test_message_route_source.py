@@ -16,6 +16,8 @@ class TestMessageRouteSource(unittest.TestCase):
         source = SERVER_PY.read_text(encoding="utf-8")
         self.assertIn('"live_cursor": live_cursor', source)
         self.assertIn('"history_cursor": history_cursor', source)
+        self.assertIn('ev2["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=pos)', source)
+        self.assertIn('events = _attach_history_cursors(events, session=s)', source)
         self.assertIn('{"error": "cursor required"}', source)
         self.assertIn('_decode_message_cursor(cursor_q[0], kind="live", session=s)', source)
         self.assertIn('_decode_message_cursor(cursor_q[0], kind="history", session=s)', source)

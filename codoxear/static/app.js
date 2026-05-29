@@ -2477,6 +2477,7 @@
           if (typeof ev.message_class === "string") out.message_class = ev.message_class;
           if (typeof ev.message_id === "string") out.message_id = ev.message_id;
           if (typeof ev.notification_text === "string") out.notification_text = ev.notification_text;
+          if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;
           return out;
         }
 
@@ -2800,12 +2801,19 @@
           syncJumpButton();
         }
 
-        function trimRenderedRows({ fromTop }) {
+        function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
           const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
-          if (rows.length <= CHAT_DOM_WINDOW) return;
-          const extra = rows.length - CHAT_DOM_WINDOW;
+          const allowedRows = Number.isFinite(Number(maxRows))
+            ? Math.max(1, Math.floor(Number(maxRows)))
+            : CHAT_DOM_WINDOW;
+          if (rows.length <= allowedRows) return;
+          const extra = rows.length - allowedRows;
           if (fromTop) {
             for (const row of rows.slice(0, extra)) row.remove();
+            const first = rows[extra];
+            if (first && typeof first.dataset.historyCursor === "string" && first.dataset.historyCursor) {
+              historyCursor = first.dataset.historyCursor;
+            }
           } else {
             for (const row of rows.slice(rows.length - extra)) row.remove();
           }
@@ -2844,6 +2852,7 @@
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+          if (!pending && typeof ev.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
           const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
@@ -2901,6 +2910,7 @@
             const row = el("div", { class: `msg-row ${role}` });
             row.dataset.role = role;
             if (ts !== null) row.dataset.ts = String(ts);
+            if (!pending && typeof ev?.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
             const messageClass = typeof ev?.message_class === "string" ? ev.message_class : "";
             const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
             if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
@@ -3413,10 +3423,10 @@
 
           const stick = autoScroll || isNearBottom();
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-           const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
+          const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
-            trimRenderedRows({ fromTop: true });
+            trimRenderedRows({ fromTop: stick });
           rebuildDecorations({ preserveScroll: false });
             if (!ev.pending) markClickFirstPaint();
           markEventSeen(ev);
@@ -3475,7 +3485,7 @@
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
           if (!preserveViewport) chat.scrollTop = 1;
-          trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
+          trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
           rebuildDecorations({ preserveScroll: false });
           if (preserveViewport && anchorRow && anchorRow.isConnected) {
             chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);

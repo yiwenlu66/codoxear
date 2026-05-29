@@ -70,6 +70,41 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("historyCursor = typeof data.history_cursor === \"string\" && data.history_cursor ? data.history_cursor : null;", block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
 
+    def test_live_append_preserves_history_side_when_reading_scrollback(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function appendEvent(ev) {")
+        end = source.index("function renderTranscript(", start)
+        block = source[start:end]
+        self.assertIn("const stick = autoScroll || isNearBottom();", block)
+        self.assertIn("trimRenderedRows({ fromTop: stick });", block)
+        self.assertNotIn("trimRenderedRows({ fromTop: true });", block)
+
+    def test_top_prune_moves_history_cursor_to_oldest_retained_row(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function trimRenderedRows(")
+        end = source.index("function firstVisibleMessageRow()", start)
+        block = source[start:end]
+        self.assertIn("const first = rows[extra];", block)
+        self.assertIn('first.dataset.historyCursor', block)
+        self.assertIn("historyCursor = first.dataset.historyCursor;", block)
+
+    def test_history_prepend_does_not_trim_newly_fetched_older_rows(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function prependOlderEvents(allEvents")
+        end = source.index("async function loadOlderMessages", start)
+        block = source[start:end]
+        self.assertIn("chatInner.insertBefore(frag, anchor);", block)
+        self.assertIn("trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
+        self.assertNotIn("trimRenderedRowsBeforeViewport({ maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });", block)
+
+    def test_rendered_rows_keep_server_history_cursor(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('if (typeof ev.history_cursor === "string" && ev.history_cursor) out.history_cursor = ev.history_cursor;', source)
+        start = source.index("function makeRow(ev, { ts, pending }) {")
+        end = source.index("function safeMakeRow(ev, opts) {", start)
+        block = source[start:end]
+        self.assertIn('row.dataset.historyCursor = ev.history_cursor;', block)
+
     def test_poll_messages_uses_live_cursor_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function pollMessages(")
