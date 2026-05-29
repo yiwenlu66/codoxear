@@ -116,10 +116,17 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
     and only option buttons had a ring). Confirmed `rgb(91,157,255)` ring on real
     Tab focus across the top-bar and sidebar controls.
   - Session cards (previously clickable `div`s with no keyboard path) are now
-    `role="button"` + `tabindex="0"` with an `aria-label` ("Open session <name>")
-    and Enter/Space activation. Verified live: Tab reaches a card (2px accent
-    ring), Enter selects it and loads the transcript (61 rows). This is the app's
-    primary navigation, so keyboard-only users can now switch sessions.
+    keyboard-operable: the title/meta region (`.sessionMain` on desktop,
+    `.sessionInner` on mobile) carries `role="button"` + `tabindex="0"` + an
+    `aria-label` ("Open session <name>") and Enter/Space activation. The role is
+    on that inner region, NOT the `.session` container, because the container
+    also wraps the rename/dup/delete `<button>`s — a `role="button"` ancestor of
+    real buttons is a `nested-interactive` ARIA violation and makes child-button
+    key events bubble into the open handler. The open-target is a SIBLING of the
+    action buttons, and the keydown handler guards `e.target !== node`. Verified
+    live: Tab reaches the open-target (2px accent ring) as a separate stop from
+    the action buttons, Enter on it selects the session and loads the transcript
+    (61 rows), and Enter on a child rename button does NOT also switch sessions.
   - The queued-message editor (`.queueText`, a borderless inline textarea whose
     own `outline` is intentionally suppressed) surfaces keyboard focus on its
     `.queueEditorShell` container via `:focus-within`, so it is no longer a

@@ -3073,16 +3073,6 @@
 		          for (const s of sessions) {
 		            sessionIndex.set(s.session_id, s);
 		            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
-		            card.setAttribute("role", "button");
-		            card.setAttribute("tabindex", "0");
-		            card.setAttribute("aria-label", "Open session " + sessionDisplayName(s));
-		            card.addEventListener("keydown", (e) => {
-		              if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
-		                e.preventDefault();
-		                setSidebarOpen(false);
-		                selectSession(s.session_id);
-		              }
-		            });
 
              const title = sessionDisplayName(s);
              const badges = [];
@@ -3237,11 +3227,33 @@
 	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
 
+             // Make a non-button element keyboard-activatable as the "open
+             // session" target. Kept OFF the .session container because that
+             // wraps the rename/dup/delete <button>s — a role=button ancestor of
+             // real buttons is a nested-interactive ARIA violation and makes
+             // child-button key events bubble into this handler. The open-target
+             // is instead a sibling of the action buttons (mobile: .sessionInner;
+             // desktop: .sessionMain).
+             const makeOpenTarget = (node) => {
+               node.setAttribute("role", "button");
+               node.setAttribute("tabindex", "0");
+               node.setAttribute("aria-label", "Open session " + title);
+               node.addEventListener("keydown", (e) => {
+                 if (e.target !== node) return;
+                 if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+                   e.preventDefault();
+                   setSidebarOpen(false);
+                   selectSession(s.session_id);
+                 }
+               });
+             };
+
              if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
                const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
                const inner = el("div", { class: "sessionInner" }, [top, meta]);
+               makeOpenTarget(inner);
 	               const content = el("div", { class: "sessionContent" }, [inner]);
 	               content.dataset.swipeX = "0";
 	               const swipe = el("div", { class: "sessionSwipe" }, [leftActions, rightActions, content]);
@@ -3340,6 +3352,7 @@
 	               const actions = el("div", { class: "sessionActionsInline" }, [renameBtn, dupBtn, delBtn]);
 	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
 	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
+	               makeOpenTarget(main);
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
 	               card.appendChild(inner);
 	               card.onclick = () => selectSession(s.session_id);
