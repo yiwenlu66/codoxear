@@ -141,6 +141,27 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
     (confirmed transition-duration 1e-05s under the emulated setting), so the
     option-press, hover-lift, and spinner motion are suppressed for users who
     request reduced motion.
+  - Color-contrast audit (self-contained WCAG luminance check with alpha
+    compositing, run live in both schemes since axe-core was not installed):
+    - Light-mode `--muted` was `rgba(0,0,0,0.45)` (~3.1:1 on white, below the
+      4.5:1 AA threshold for normal text); raised to `0.58` (~4.6:1). Dark-mode
+      `--muted` raised `0.52` -> `0.62` for the same reason. This lifts metaText,
+      day separators, "Load older" button, prompt tags, and error timestamps to
+      AA.
+    - `.ts` message timestamps and the composer `.ph` placeholder used a
+      hardcoded dark navy (`rgba(17,24,39,.55/.35)`) with NO dark-mode override,
+      so they were near-invisible dark-on-dark; both now use `var(--muted)` and
+      track the theme.
+    - Two opaque-light surfaces survived the original dark-mode pass and rendered
+      as white-in-dark-mode: the composer input pill (`.composer form`,
+      `rgba(255,255,255,.98)`) and the message copy button (`.msg-copy-btn`).
+      Both now use `var(--panel)`/`var(--muted)`; verified live their dark-mode
+      background is now `rgb(23,26,33)` and the post-fix scan finds zero opaque
+      light surfaces.
+    - Light-mode `--danger` darkened `#c53030` -> `#b91c1c` so the error-card
+      source/type chips reach ~4.5:1 on the tinted card background.
+    - No images missing alt, no inputs missing labels, no buttons missing an
+      accessible name across 250 scanned nodes.
 
 ---
 
