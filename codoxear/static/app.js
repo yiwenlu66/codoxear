@@ -2622,7 +2622,7 @@
             const row = el("div", { class: "msg-row agent-error" });
             row.dataset.role = "system";
             if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
-            const card = el("div", { class: "event-card event-error" });
+            const card = el("div", { class: "event-card event-error", role: "alert" });
             const headerLine = el("div", { class: "event-error-header" });
             const sourceText = ev.source ? String(ev.source) : "agent";
             const typeText = ev.type ? String(ev.type) : "error";

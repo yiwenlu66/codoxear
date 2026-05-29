@@ -109,6 +109,18 @@ Verified 2026-05-29 in both `prefers-color-scheme` modes via headless Chrome.
   read correctly in both themes; primary buttons are filled for clear CTA emphasis.
 - Light mode verified unchanged (1:1 semantic swaps): sidebar white, active
   session subtle highlight, error border red.
+- Accessibility follow-up (verified live 2026-05-29 via headless Chrome):
+  - Keyboard focus rings: buttons, `.icon-btn`, links, and text/password/
+    datetime inputs + selects now show a 2px `--accent` `:focus-visible` outline
+    on Tab navigation (previously inputs set `outline: none` with no replacement,
+    and only option buttons had a ring). Confirmed `rgb(91,157,255)` ring on real
+    Tab focus across the top-bar and sidebar controls.
+  - Error cards carry `role="alert"` so screen readers announce upstream agent
+    errors instead of relying on the red border alone (color-only signaling).
+  - `prefers-reduced-motion: reduce` collapses transitions/animations to ~0s
+    (confirmed transition-duration 1e-05s under the emulated setting), so the
+    option-press, hover-lift, and spinner motion are suppressed for users who
+    request reduced motion.
 
 ---
 

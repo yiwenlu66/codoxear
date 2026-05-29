@@ -603,6 +603,16 @@
         opacity: 0.6;
         cursor: default;
       }
+      /* Keyboard focus rings. Mouse clicks use :focus-visible so the ring only
+         shows for keyboard/AT users, not on pointer press. */
+      button:focus-visible,
+      .icon-btn:focus-visible,
+      a:focus-visible,
+      [role="button"]:focus-visible,
+      [tabindex]:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
 	      .icon-btn {
 	        width: 38px;
 	        height: 38px;
@@ -1124,6 +1134,15 @@ select {
         font-family: inherit;
         font-size: 14px;
         outline: none;
+      }
+      textarea:focus-visible,
+      input[type="password"]:focus-visible,
+      input[type="text"]:focus-visible,
+      input[type="datetime-local"]:focus-visible,
+      select:focus-visible {
+        border-color: var(--accent);
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
       }
       textarea {
         height: 44px;
@@ -2389,4 +2408,18 @@ select {
         border-radius: 999px;
         padding: 9px 10px;
         box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+      }
+
+      /* Respect users who ask the OS to minimize motion: drop transitions and
+         transforms (option-button press, hover lifts, spinners) to near-instant
+         instead of animating. */
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
       }
