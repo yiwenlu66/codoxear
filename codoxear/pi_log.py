@@ -224,6 +224,32 @@ def pi_message_role(obj: dict[str, Any]) -> str | None:
     return role if isinstance(role, str) and role else None
 
 
+def pi_agent_error(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "message":
+        return None
+    message = obj.get("message")
+    if not isinstance(message, dict) or message.get("role") != "toolResult":
+        return None
+    content = message.get("content")
+    if not isinstance(content, list):
+        return None
+    is_error_flag = False
+    text_acc: list[str] = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get("isError") is True or part.get("is_error") is True:
+            is_error_flag = True
+        if part.get("type") == "text" and isinstance(part.get("text"), str):
+            text_acc.append(part["text"])
+    if not is_error_flag:
+        return None
+    text = "".join(text_acc).strip()
+    if not text:
+        text = "Pi tool error"
+    return {"type": "tool_error", "message": text[:2000]}
+
+
 def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None) -> dict[str, Any] | None:
     if obj.get("type") != "message":
         return None

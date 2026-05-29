@@ -139,7 +139,7 @@
         border-radius: 12px;
         margin-bottom: 8px;
         cursor: pointer;
-        background: #ffffff;
+        background: var(--panel);
         display: block;
         touch-action: pan-y;
       }
@@ -153,14 +153,14 @@
 	      .sessionContent {
 	        position: relative;
 	        z-index: 2;
-	        background: #ffffff;
+	        background: var(--panel);
 	        transform: translate3d(0px, 0, 0);
 	        transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
 	        will-change: transform;
 	        touch-action: pan-y;
 	      }
       .session.active .sessionContent {
-        background: #dbeafe;
+        background: var(--accent-weak);
       }
       .sessionActions {
         position: absolute;
@@ -210,8 +210,8 @@
         background: rgba(234, 88, 12, 0.92);
       }
       .session.active {
-        border-color: rgba(37, 99, 235, 0.6);
-        background: #dbeafe;
+        border-color: var(--accent);
+        background: var(--accent-weak);
       }
 	      .sessionMain {
 	        flex: 1 1 auto;
@@ -406,7 +406,7 @@
         font-size: 12px;
         line-height: 1.2;
         border: 1px solid var(--border);
-        background: #ffffff;
+        background: var(--panel);
         color: var(--text);
         overflow: hidden;
         white-space: nowrap;
@@ -483,7 +483,7 @@
         border-radius: 999px;
         border: 1px solid var(--border);
         color: var(--muted);
-        background: #ffffff;
+        background: var(--panel);
         white-space: nowrap;
       }
 	      .badge.busy {
@@ -584,16 +584,20 @@
       }
       button {
         border: 1px solid var(--border);
-        background: #ffffff;
+        background: var(--panel);
         color: var(--text);
         border-radius: 10px;
         padding: 10px 12px;
         cursor: pointer;
       }
       button.primary {
-        border-color: rgba(0, 0, 0, 0.25);
-        background: rgba(0, 0, 0, 0.05);
-        color: #333333;
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #ffffff;
+        font-weight: 500;
+      }
+      button.primary:hover:not(:disabled) {
+        filter: brightness(1.06);
       }
       button:disabled {
         opacity: 0.6;
@@ -942,16 +946,82 @@
       .md tbody tr:last-child td {
         border-bottom: 0;
       }
+      .msg-row.agent-error {
+        justify-content: center;
+        padding: 4px 12px;
+      }
+      .event-card.event-error {
+        max-width: 640px;
+        width: 100%;
+        background: rgba(239, 68, 68, 0.08);
+        border-left: 3px solid var(--danger);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .event-error-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .event-error-source {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.05em;
+        color: var(--danger);
+      }
+      .event-error-type {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        background: rgba(239, 68, 68, 0.15);
+        padding: 1px 6px;
+        border-radius: 4px;
+        color: var(--danger);
+      }
+      .event-error-ts {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .event-error-body {
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.5;
+        color: var(--text);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1117;
+          --panel: #171a21;
+          --border: rgba(255, 255, 255, 0.10);
+          --text: #e6e8ec;
+          --muted: rgba(255, 255, 255, 0.52);
+          --accent: #5b9dff;
+          --accent-weak: rgba(91, 157, 255, 0.16);
+          --danger: #f87171;
+          --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+          --bubble-user: #1f242e;
+          --bubble-assistant: #171a21;
+        }
+        .event-card.event-error {
+          background: rgba(239, 68, 68, 0.12);
+        }
+      }
       .interactive-prompt { display: flex; flex-direction: column; gap: 8px; padding: 4px 0; }
       .interactive-prompt-header { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
+      .interactive-prompt-tag { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; }
       .interactive-prompt-context { font-size: 12px; line-height: 1.45; color: var(--muted); white-space: pre-wrap; }
       .interactive-prompt-note { font-size: 12px; line-height: 1.45; color: var(--muted); padding: 6px 8px; border: 1px solid var(--border); border-radius: 10px; background: rgba(15, 23, 42, 0.035); }
       .interactive-prompt-options { display: flex; flex-wrap: wrap; gap: 6px; }
       .interactive-option-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 7px 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-family: inherit; font-size: 13px; cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.12s; }
-      .interactive-option-btn:hover:not(:disabled) { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.2); }
+      .interactive-option-btn:hover:not(:disabled) { background: var(--accent-weak); border-color: var(--accent); }
       .interactive-option-btn:active:not(:disabled) { transform: translateY(1px); }
       .interactive-option-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      .interactive-option-btn.selected { background: rgba(0,0,0,0.08); border-color: var(--accent); font-weight: 500; }
+      .interactive-option-btn.selected { background: var(--accent-weak); border-color: var(--accent); font-weight: 500; }
       .interactive-option-btn:disabled { opacity: 0.5; cursor: default; }
       .interactive-option-btn.danger { color: var(--danger); border-color: rgba(197,48,48,0.2); }
       .interactive-option-btn.danger:hover:not(:disabled) { background: rgba(197,48,48,0.06); }
@@ -960,6 +1030,12 @@
       .interactive-question-group.pending { opacity: 0.4; }
       .interactive-question-group.answered .interactive-option-btn:not(.selected) { display: none; }
       .interactive-question-group.answered .interactive-option-btn.selected { background: rgba(0,0,0,0.06); border-color: var(--accent); cursor: default; }
+      .interactive-option-btn.multi { border-radius: 10px; padding-left: 34px; position: relative; }
+      .interactive-option-btn.multi::before { content: ""; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; border: 1.5px solid var(--border); border-radius: 4px; background: var(--panel); transition: background 0.15s, border-color 0.15s; }
+      .interactive-option-btn.multi.selected::before { background: var(--accent); border-color: var(--accent); }
+      .interactive-option-btn.multi.selected::after { content: ""; position: absolute; left: 17px; top: calc(50% - 4px); width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+      .interactive-confirm-btn { align-self: flex-start; margin-top: 4px; }
+      .interactive-question-group.answered .interactive-confirm-btn { display: none; }
       @media (pointer: coarse), (max-width: 700px) {
         .interactive-option-btn { min-height: 44px; padding: 8px 16px; border-radius: 22px; }
       }
@@ -981,7 +1057,7 @@
         margin: 10px auto 12px auto;
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
-        background: #ffffff;
+        background: var(--panel);
       }
 
       .composer {
@@ -1041,7 +1117,7 @@ select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--border);
-  background: #ffffff;
+  background: var(--panel);
   color: var(--text);
         border-radius: 18px;
         padding: 10px 12px;
@@ -1184,7 +1260,7 @@ select {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--border);
-        background: #ffffff;
+        background: var(--panel);
         color: var(--text);
         padding: 10px 12px;
         font-family: inherit;
@@ -1310,7 +1386,7 @@ select {
         padding: 10px 12px;
         border-radius: 12px;
         border: 1px solid var(--border);
-        background: #ffffff;
+        background: var(--panel);
         color: var(--text);
         font-family: inherit;
         font-size: 14px;
@@ -1331,7 +1407,7 @@ select {
         overflow: auto;
         border: 1px solid var(--border);
         border-radius: 12px;
-        background: #ffffff;
+        background: var(--panel);
         box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
       }
       .filePickerMenu.open {
@@ -1390,7 +1466,7 @@ select {
         min-height: 0;
         border-radius: 12px;
         border: 1px solid rgba(15, 23, 42, 0.1);
-        background: #ffffff;
+        background: var(--panel);
         overflow: auto;
       }
       .fileDiff .monaco-editor,
@@ -1409,7 +1485,7 @@ select {
         padding: 14px 16px 22px 16px;
         overflow: auto;
         -webkit-overflow-scrolling: touch;
-        background: #ffffff;
+        background: var(--panel);
       }
       .fileImage {
         display: none;
@@ -1420,7 +1496,7 @@ select {
         margin: 0 auto;
         border: 1px solid rgba(15, 23, 42, 0.1);
         border-radius: 12px;
-        background: #ffffff;
+        background: var(--panel);
         object-fit: contain;
       }
       .filePdf {
@@ -1430,7 +1506,7 @@ select {
         width: 100%;
         border: 1px solid rgba(15, 23, 42, 0.1);
         border-radius: 12px;
-        background: #ffffff;
+        background: var(--panel);
       }
       .fileBlockedNotice {
         min-height: 100%;
@@ -1867,7 +1943,7 @@ select {
         padding: 8px 12px;
         font-size: 13px;
         line-height: 1;
-        background: #ffffff;
+        background: var(--panel);
         flex: 0 0 auto;
       }
       .choiceChip.active {

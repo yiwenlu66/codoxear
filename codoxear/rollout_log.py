@@ -19,6 +19,7 @@ from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
+from .pi_log import pi_agent_error
 from .claude_log import claude_assistant_text
 from .claude_log import claude_assistant_thinking_count
 from .claude_log import claude_assistant_tool_use_count
@@ -26,6 +27,7 @@ from .claude_log import claude_is_final_answer
 from .claude_log import claude_is_turn_end
 from .claude_log import claude_token_update
 from .claude_log import claude_user_text
+from .claude_log import claude_agent_error
 from .voice_push import ClassifiedAssistantMessage
 
 
@@ -589,7 +591,7 @@ def _extract_chat_events(
                     tool_input = part.get("input", {})
                     if tool_name == "AskUserQuestion" and isinstance(tool_input.get("questions"), list):
                         ets2 = event_ts(obj)
-                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": tool_input["questions"]}
+                        ev_q = {"role": "assistant", "interactive": "ask_user_question", "tool_use_id": tool_id, "questions": _claude_ask_user_questions(tool_input["questions"])}
                         if ets2 is not None: ev_q["ts"] = ets2
                         events.append(ev_q)
                     elif tool_name == "ExitPlanMode":
@@ -610,6 +612,14 @@ def _extract_chat_events(
             turn_end = True
             continue
 
+        if typ == "system" and obj.get("subtype") == "api_error":
+            err_info = claude_agent_error(obj)
+            if err_info is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="claude", info=err_info, ts=ets))
+                turn_end = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -619,6 +629,13 @@ def _extract_chat_events(
                 if ets is not None:
                     evp["ts"] = ets
                 events.append(evp)
+                continue
+
+            pi_err = pi_agent_error(obj)
+            if pi_err is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="pi", info=pi_err, ts=ets))
+                turn_end = True
                 continue
 
             assistant_text = pi_assistant_text(obj)
@@ -657,6 +674,12 @@ def _extract_chat_events(
             if not isinstance(p, dict):
                 raise ValueError("invalid event_msg payload")
             pt = p.get("type")
+            codex_err = _codex_agent_error(obj)
+            if codex_err is not None:
+                ets = event_ts(obj)
+                events.append(_agent_error_event(obj, source="codex", info=codex_err, ts=ets))
+                turn_end = True
+                continue
             if pt == "user_message":
                 msg = p.get("message")
                 if isinstance(msg, str):
@@ -1137,6 +1160,67 @@ def _pi_ask_user_event_from_tool_call(part: dict[str, Any], ts: float | None) ->
     if ts is not None:
         ev["ts"] = ts
     return ev
+
+
+def _claude_ask_user_questions(questions: Any) -> list[dict[str, Any]]:
+    if not isinstance(questions, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for raw in questions:
+        if not isinstance(raw, dict):
+            continue
+        question = _clean_text(raw.get("question"))
+        if not question:
+            continue
+        q: dict[str, Any] = {
+            "question": question,
+            "options": _normalize_ask_user_options(raw.get("options")),
+            "backend": "claude",
+            "allowMultiple": _clean_bool(raw.get("multiSelect"), False),
+        }
+        header = _clean_text(raw.get("header"))
+        if header:
+            q["header"] = header
+        out.append(q)
+    return out
+
+
+def _codex_agent_error(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "event_msg":
+        return None
+    payload = obj.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    pt = payload.get("type")
+    if not isinstance(pt, str) or not pt:
+        return None
+    is_error = pt == "error" or pt.endswith("_error")
+    if not is_error:
+        return None
+    msg = payload.get("message")
+    if not isinstance(msg, str) or not msg.strip():
+        inner = payload.get("error")
+        if isinstance(inner, dict):
+            inner_msg = inner.get("message")
+            if isinstance(inner_msg, str) and inner_msg.strip():
+                msg = inner_msg
+    if not isinstance(msg, str) or not msg.strip():
+        msg = pt
+    return {"type": pt, "message": msg.strip()[:2000]}
+
+
+def _agent_error_event(obj: dict[str, Any], *, source: str, info: dict[str, Any], ts: float | None) -> dict[str, Any]:
+    ev: dict[str, Any] = {
+        "role": "system",
+        "class": "agent_error",
+        "source": source,
+        "type": str(info.get("type") or "error"),
+        "message": str(info.get("message") or ""),
+    }
+    if ts is not None:
+        ev["ts"] = ts
+    return ev
+
 
 
 def _last_chat_role_ts_from_tail(

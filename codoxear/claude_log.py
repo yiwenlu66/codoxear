@@ -235,6 +235,58 @@ def claude_is_final_answer(obj: dict[str, Any]) -> bool:
     return True
 
 
+def claude_agent_error(obj: dict[str, Any]) -> dict[str, Any] | None:
+    if obj.get("type") != "system" or obj.get("subtype") != "api_error":
+        return None
+    err = obj.get("error")
+    if not isinstance(err, dict):
+        return None
+    status = err.get("status")
+    inner = err.get("error")
+    message_text: str | None = None
+    type_text: str | None = None
+    while isinstance(inner, dict):
+        msg = inner.get("message")
+        if isinstance(msg, str) and msg.strip():
+            message_text = msg.strip()
+        t = inner.get("type")
+        if isinstance(t, str) and t.strip():
+            type_text = t.strip()
+        nxt = inner.get("error")
+        if not isinstance(nxt, dict):
+            break
+        inner = nxt
+    if not message_text:
+        message_text = str(err.get("message") or "").strip() or "Claude API error"
+    if not type_text:
+        outer_t = err.get("type")
+        type_text = str(outer_t).strip() if isinstance(outer_t, str) and outer_t.strip() else "api_error"
+    label = f"api_error_{int(status)}" if isinstance(status, int) else type_text
+    return {"type": label, "message": message_text}
+
+
+def claude_agent_error_is_terminal(obj: dict[str, Any]) -> bool:
+    """True when a Claude api_error record represents a turn-terminal failure.
+
+    The Claude CLI auto-retries transient upstream errors and records each
+    attempt as an api_error with `retryInMs` set and `retryAttempt < maxRetries`.
+    Those are NOT terminal: the CLI keeps working, so clearing busy on them makes
+    the UI flap between "working" and idle. Only treat an api_error as terminal
+    when there is no scheduled retry, or retries are exhausted.
+    """
+    if claude_agent_error(obj) is None:
+        return False
+    retry_in_ms = obj.get("retryInMs")
+    if not isinstance(retry_in_ms, (int, float)) or retry_in_ms <= 0:
+        return True
+    attempt = obj.get("retryAttempt")
+    max_retries = obj.get("maxRetries")
+    if isinstance(attempt, int) and isinstance(max_retries, int) and attempt >= max_retries:
+        return True
+    return False
+
+
+
 def claude_token_update(obj: dict[str, Any]) -> dict[str, Any] | None:
     if obj.get("type") != "assistant":
         return None

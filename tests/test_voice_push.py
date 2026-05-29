@@ -1261,5 +1261,44 @@ class TestVoicePushCoordinator(unittest.TestCase):
             self.assertEqual(playlist.count("#EXTINF:"), 1)
 
 
+class _FakeChannel:
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+        self.calls: list[dict] = []
+
+    def send(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
+        return {"status": "sent"}
+
+
+class TestChannelDispatch(unittest.TestCase):
+    def test_dispatch_calls_each_channel_once(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            a = _FakeChannel("webpush")
+            b = _FakeChannel("bark")
+            coord._channels = [a, b]  # type: ignore[assignment]
+            coord._send_push_notifications(
+                session_id="sid-1",
+                session_display_name="Repo",
+                message_id="m1",
+                notification_text="done",
+                timestamp=1.0,
+            )
+            self.assertEqual(len(a.calls), 1)
+            self.assertEqual(len(b.calls), 1)
+            self.assertEqual(a.calls[0]["session_id"], "sid-1")
+            self.assertEqual(b.calls[0]["notification_text"], "done")
+
+
 if __name__ == "__main__":
     unittest.main()

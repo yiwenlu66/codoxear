@@ -1337,6 +1337,10 @@
           tts_enabled_for_final_response: true,
           tts_base_url: "https://api.openai.com/v1",
           tts_api_key: "",
+          bark_enabled: false,
+          bark_endpoint: "https://api.day.app",
+          bark_token: "",
+          bark_base_url: "",
           audio: { queue_depth: 0, segment_count: 0, last_error: "", stream_url: "/api/audio/live.m3u8" },
           notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
         };
@@ -1948,6 +1952,10 @@
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
+        const barkEnabledToggle = el("input", { id: "barkEnabledToggle", type: "checkbox" });
+        const barkEndpointInput = el("input", { id: "barkEndpointInput", type: "text", autocomplete: "off", spellcheck: "false", placeholder: "https://api.day.app" });
+        const barkTokenInput = el("input", { id: "barkTokenInput", type: "password", autocomplete: "off", spellcheck: "false" });
+        const barkBaseUrlInput = el("input", { id: "barkBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false", placeholder: "http://192.168.1.10:13780" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Settings" }),
@@ -1969,6 +1977,27 @@
                 narrationSettingToggle,
                 el("span", { text: "Announce narration messages" }),
               ]),
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                barkEnabledToggle,
+                el("span", { text: "Send Bark mobile notifications (HTTP-friendly)" }),
+              ]),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark endpoint" }),
+              barkEndpointInput,
+              el("span", { class: "fieldHint", text: "Default https://api.day.app. Use a self-hosted Bark server if you have one." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark device token" }),
+              barkTokenInput,
+              el("span", { class: "fieldHint", text: "From the Bark iOS app. Required to deliver notifications." }),
+            ]),
+            el("label", { class: "field" }, [
+              el("span", { class: "fieldLabel", text: "Bark deep-link base URL" }),
+              barkBaseUrlInput,
+              el("span", { class: "fieldHint", text: "Phone-reachable Codoxear URL (e.g. http://192.168.1.10:13780). Tapping a Bark notification opens the right session. Leave empty to open Bark only." }),
             ]),
           ]),
           el("div", { class: "formActions" }, [
@@ -2327,6 +2356,14 @@
         }
 
         function normalizeTailEvent(ev) {
+          if (ev && ev.class === "agent_error") {
+            const out = { role: "system", class: "agent_error" };
+            if (typeof ev.source === "string") out.source = ev.source;
+            if (typeof ev.type === "string") out.type = ev.type;
+            if (typeof ev.message === "string") out.message = ev.message;
+            if (typeof ev.ts === "number" && Number.isFinite(ev.ts)) out.ts = ev.ts;
+            return out;
+          }
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return null;
           if (typeof ev.text !== "string" || !ev.text.trim()) return null;
           const out = { role: ev.role, text: ev.text };
@@ -2581,6 +2618,28 @@
         }
 
         function makeRow(ev, { ts, pending }) {
+          if (ev && ev.class === "agent_error") {
+            const row = el("div", { class: "msg-row agent-error" });
+            row.dataset.role = "system";
+            if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
+            const card = el("div", { class: "event-card event-error" });
+            const headerLine = el("div", { class: "event-error-header" });
+            const sourceText = ev.source ? String(ev.source) : "agent";
+            const typeText = ev.type ? String(ev.type) : "error";
+            headerLine.appendChild(el("span", { class: "event-error-source", text: sourceText }));
+            headerLine.appendChild(el("span", { class: "event-error-type", text: typeText }));
+            if (typeof ts === "number" && Number.isFinite(ts)) {
+              const dt = new Date(ts * 1000);
+              const tsText = Number.isFinite(dt.getTime()) ? dt.toLocaleString() : "";
+              if (tsText) headerLine.appendChild(el("span", { class: "event-error-ts", text: tsText }));
+            }
+            card.appendChild(headerLine);
+            const body = el("div", { class: "event-error-body" });
+            body.textContent = ev.message ? String(ev.message) : "";
+            card.appendChild(body);
+            row.appendChild(card);
+            return { row, bubble: card };
+          }
           const role = ev.role === "user" ? "user" : "assistant";
           const row = el("div", { class: `msg-row ${role}` });
           row.dataset.role = role;
@@ -2595,6 +2654,8 @@
             const questionGroups = [];
             questions.forEach((q, qIdx) => {
               const group = el("div", { class: "interactive-question-group" + (qIdx > 0 ? " pending" : "") });
+              const qHeaderLabel = typeof q.header === "string" ? q.header.trim() : "";
+              if (qHeaderLabel) group.appendChild(el("div", { class: "interactive-prompt-tag", text: qHeaderLabel }));
               const qHeader = el("div", { class: "interactive-prompt-header", text: q.question });
               group.appendChild(qHeader);
               const qContext = typeof q.context === "string" ? q.context.trim() : "";
@@ -2613,6 +2674,82 @@
               if (isPiAsk && options.length && allowFreeform) noteParts.push("Custom freeform answers are not supported here; choose a listed option or answer in the terminal.");
               if (isPiAsk && options.length && allowComment && !allowMultiple) noteParts.push("Optional comments are not supported here; choosing an option submits it without a comment.");
               if (noteParts.length) group.appendChild(el("div", { class: "interactive-prompt-note", text: noteParts.join(" ") }));
+              const isClaudeMulti = allowMultiple && !isPiAsk && options.length > 0;
+              const sendSeq = (seq) => api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq } });
+              const enableGroupControls = (g, on) => {
+                for (const b of g.querySelectorAll(".interactive-option-btn")) b.disabled = !on;
+              };
+              const advanceAfterSubmit = () => {
+                answeredCount++;
+                if (answeredCount < questions.length) {
+                  const nextGroup = questionGroups[answeredCount];
+                  if (nextGroup) {
+                    nextGroup.classList.remove("pending");
+                    enableGroupControls(nextGroup, nextGroup.dataset.canAnswerOptions === "1");
+                  }
+                }
+              };
+              if (isClaudeMulti) {
+                // Claude multi-select: confirmed TUI protocol (see tasks.md 12.1).
+                // Cursor opens at option 0; Down/Up move one option; Space toggles
+                // the current option's checkbox without advancing; Tab moves to the
+                // trailing Next/Submit button; Enter there advances/submits.
+                let cursorIdx = 0;
+                const picked = new Set();
+                const optBtns = [];
+                options.forEach((opt, optIdx) => {
+                  const label = opt && (opt.label || opt.title) ? String(opt.label || opt.title) : "Option " + (optIdx + 1);
+                  const description = opt && typeof opt.description === "string" ? opt.description : "";
+                  const btn = el("button", { class: "interactive-option-btn multi", type: "button", title: description, "aria-label": label });
+                  btn.textContent = label;
+                  if (qIdx > 0) btn.disabled = true;
+                  btn.onclick = async () => {
+                    if (btn.disabled) return;
+                    const delta = optIdx - cursorIdx;
+                    const move = delta >= 0 ? "\x1b[B".repeat(delta) : "\x1b[A".repeat(-delta);
+                    btn.disabled = true;
+                    try {
+                      // Send the cursor move and the toggle as SEPARATE keystrokes.
+                      // A merged "move+space" string races: the space can toggle
+                      // the option the cursor is leaving before the move settles.
+                      if (move) await sendSeq(move);
+                      await sendSeq(" ");
+                    }
+                    catch (err) { btn.disabled = false; setToast("send error: " + err.message); return; }
+                    cursorIdx = optIdx;
+                    if (picked.has(optIdx)) { picked.delete(optIdx); btn.classList.remove("selected"); }
+                    else { picked.add(optIdx); btn.classList.add("selected"); }
+                    btn.disabled = false;
+                  };
+                  optBtns.push(btn);
+                  optionsWrap.appendChild(btn);
+                });
+                group.appendChild(optionsWrap);
+                const confirmBtn = el("button", { class: "interactive-option-btn interactive-confirm-btn primary", type: "button", text: "Confirm selection" });
+                if (qIdx > 0) confirmBtn.disabled = true;
+                confirmBtn.onclick = async () => {
+                  if (confirmBtn.disabled) return;
+                  for (const b of optBtns) b.disabled = true;
+                  confirmBtn.disabled = true;
+                  group.classList.add("answered");
+                  group.classList.remove("pending");
+                  try {
+                    // Tab to the trailing Next/Submit control, then Enter to
+                    // advance. Separate sends to avoid the move/activate race.
+                    await sendSeq("\t");
+                    await sendSeq("\r");
+                  }
+                  catch (err) {
+                    for (const b of optBtns) b.disabled = false;
+                    confirmBtn.disabled = false;
+                    group.classList.remove("answered");
+                    setToast("submit error: " + err.message);
+                    return;
+                  }
+                  advanceAfterSubmit();
+                };
+                group.appendChild(confirmBtn);
+              } else {
               options.forEach((opt, optIdx) => {
                 const label = opt && (opt.label || opt.title) ? String(opt.label || opt.title) : "Option " + (optIdx + 1);
                 const description = opt && typeof opt.description === "string" ? opt.description : "";
@@ -2626,8 +2763,15 @@
                   btn.classList.add("selected");
                   group.classList.add("answered");
                   group.classList.remove("pending");
-                  const seq = "\x1b[B".repeat(optIdx) + "\r";
-                  try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq } }); }
+                  // Single-select confirmed protocol (tasks.md 12.1): cursor opens
+                  // at option 0, each Down moves one option, Enter confirms and
+                  // auto-advances to the next question. Move and Enter are sent
+                  // separately to avoid the move/activate race seen with merged keys.
+                  const move = "\x1b[B".repeat(optIdx);
+                  try {
+                    if (move) await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: move } });
+                    await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } });
+                  }
                   catch (err) {
                     for (const b of buttons) b.disabled = qIdx > 0 || !canAnswerOptions;
                     btn.classList.remove("selected");
@@ -2636,24 +2780,12 @@
                     setToast("send error: " + err.message);
                     return;
                   }
-                  answeredCount++;
-                  if (answeredCount < questions.length) {
-                    const nextGroup = questionGroups[answeredCount];
-                    if (nextGroup) {
-                      nextGroup.classList.remove("pending");
-                      const nextCanAnswer = nextGroup.dataset.canAnswerOptions === "1";
-                      for (const b of nextGroup.querySelectorAll(".interactive-option-btn")) b.disabled = !nextCanAnswer;
-                    }
-                  } else if (!isPiAsk) {
-                    setTimeout(async () => {
-                      try { await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } }); }
-                      catch (err) { setToast("submit error: " + err.message); }
-                    }, 300);
-                  }
+                  advanceAfterSubmit();
                 };
                 optionsWrap.appendChild(btn);
               });
               if (options.length) group.appendChild(optionsWrap);
+              }
               card.appendChild(group);
               questionGroups.push(group);
             });
@@ -3191,8 +3323,10 @@
         }
 
         function appendEvent(ev) {
-          if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
-          if (consumePendingUserIfMatches(ev)) return;
+          if (!ev) return;
+          const isAgentError = ev.class === "agent_error";
+          if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") return;
+          if (!isAgentError && consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
 
           const stick = autoScroll || isNearBottom();
@@ -3215,8 +3349,10 @@
           const msgs = [];
           const seen = new Set();
           for (const ev of events || []) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
-            if (consumePendingUserIfMatches(ev)) continue;
+            if (!ev) continue;
+            const isAgentError = ev.class === "agent_error";
+            if (!isAgentError && ev.role !== "user" && ev.role !== "assistant") continue;
+            if (!isAgentError && consumePendingUserIfMatches(ev)) continue;
             const k = eventKey(ev);
             if (k && seen.has(k)) continue;
             if (k) seen.add(k);
@@ -3243,7 +3379,8 @@
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
           const msgs = [];
           for (const ev of allEvents) {
-            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            if (!ev) continue;
+            if (ev.class !== "agent_error" && ev.role !== "user" && ev.role !== "assistant") continue;
             msgs.push(ev);
           }
           if (!msgs.length) return;
@@ -4275,6 +4412,10 @@
           if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
           if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
           if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+          if (barkEnabledToggle) barkEnabledToggle.checked = !!voiceSettings.bark_enabled;
+          if (barkEndpointInput && !barkEndpointInput.matches(":focus")) barkEndpointInput.value = String(voiceSettings.bark_endpoint || "https://api.day.app");
+          if (barkTokenInput && !barkTokenInput.matches(":focus")) barkTokenInput.value = String(voiceSettings.bark_token || "");
+          if (barkBaseUrlInput && !barkBaseUrlInput.matches(":focus")) barkBaseUrlInput.value = String(voiceSettings.bark_base_url || "");
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
         }
 
@@ -4305,6 +4446,10 @@
             tts_enabled_for_final_response: true,
             tts_base_url: String(voiceBaseUrlInput.value || voiceSettings.tts_base_url || "").trim(),
             tts_api_key: String(voiceApiKeyInput.value || "").trim(),
+            bark_enabled: !!(barkEnabledToggle && barkEnabledToggle.checked),
+            bark_endpoint: String((barkEndpointInput && barkEndpointInput.value) || voiceSettings.bark_endpoint || "https://api.day.app").trim(),
+            bark_token: String((barkTokenInput && barkTokenInput.value) || "").trim(),
+            bark_base_url: String((barkBaseUrlInput && barkBaseUrlInput.value) || "").trim(),
           };
           const data = await api("/api/settings/voice", { method: "POST", body: payload });
           if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
@@ -4562,6 +4707,30 @@
           voiceSettings.tts_enabled_for_narration = Boolean(e.target.checked);
           scheduleVoiceSave();
         };
+        if (barkEnabledToggle) {
+          barkEnabledToggle.onchange = (e) => {
+            voiceSettings.bark_enabled = Boolean(e.target.checked);
+            scheduleVoiceSave();
+          };
+        }
+        if (barkEndpointInput) {
+          barkEndpointInput.onchange = (e) => {
+            voiceSettings.bark_endpoint = String(e.target.value || "").trim() || "https://api.day.app";
+            scheduleVoiceSave();
+          };
+        }
+        if (barkTokenInput) {
+          barkTokenInput.onchange = (e) => {
+            voiceSettings.bark_token = String(e.target.value || "").trim();
+            scheduleVoiceSave();
+          };
+        }
+        if (barkBaseUrlInput) {
+          barkBaseUrlInput.onchange = (e) => {
+            voiceSettings.bark_base_url = String(e.target.value || "").trim();
+            scheduleVoiceSave();
+          };
+        }
         voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
         $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
         voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
@@ -6639,14 +6808,34 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             });
             return { exists: true, ...res };
           } catch (e) {
-            if (e && e.status === 404) return { exists: false };
+            const data = e && e.obj && typeof e.obj === "object" ? e.obj : {};
+            const reason = typeof data.reason === "string" ? data.reason : "";
+            const target = typeof data.target === "string" ? data.target : "";
+            const detail = typeof data.detail === "string" ? data.detail : "";
+            if (e && (e.status === 404 || e.status === 403 || e.status === 400)) {
+              return { exists: false, reason, target, detail, status: e.status };
+            }
             throw e;
           }
         }
 
         async function resolveFileOpenMode(path, { changed = null } = {}) {
           const inspect = await inspectSessionFilePath(path);
-          if (!inspect || !inspect.exists) throw new Error("file not found");
+          if (!inspect || !inspect.exists) {
+            const reason = inspect && inspect.reason ? inspect.reason : "";
+            let msg = "File not found";
+            if (reason === "dead_symlink") {
+              const tgt = inspect && inspect.target ? inspect.target : "";
+              msg = tgt ? `Symlink target does not exist (-> ${tgt})` : "Symlink target does not exist";
+            } else if (reason === "permission_denied") {
+              msg = "Server cannot read this file (permission denied)";
+            } else if (reason === "outside_allowed_root") {
+              msg = "Path is outside this session's working directory";
+            }
+            const err = new Error(msg);
+            err.reason = reason;
+            throw err;
+          }
           const kind = String(inspect.kind || "").trim();
           const isChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
           if (isChanged && isDiffableFileKind(kind)) return "diff";
