@@ -771,7 +771,9 @@
         width: 30px;
         height: 30px;
         border-radius: 999px;
-        border: 1px solid var(--border);
+        /* Stronger than the default --border so the circular affordance stays
+           visible against the page bg in both themes (the fill is near-bg). */
+        border: 1px solid var(--muted);
         background: var(--panel);
         color: var(--muted);
         box-shadow: var(--shadow-sm);
