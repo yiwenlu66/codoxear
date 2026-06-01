@@ -69,8 +69,9 @@
 
 ## 8. PR Hand-off
 
-- [ ] 8.1 Run `openspec validate fix-claude-ask-user-final-submit --type change`. Pass: exit 0, no errors.
-- [ ] 8.2 Stage only intended files: `git add codoxear/static/app.js tests/test_ask_user_normalize.py tests/test_broker_busy_state.py openspec/changes/fix-claude-ask-user-final-submit/`. Run `git status` and confirm no `.pi/`, `.playwright-mcp/`, `__pycache__/`, `probe/` (debug-only artifacts), or other untracked artifacts are staged. Pass: `git diff --cached --name-only` lists exactly those files.
-- [ ] 8.3 Commit with message `Fix Claude AskUserQuestion final-question submit and cursor drift`, body listing the five verified scenarios from phase 7. Pass: `git log -1 --pretty=%s` matches.
-- [ ] 8.4 Push to a new branch `fix/claude-ask-user-final-submit`, open PR to `main` with the proposal.md content as the PR description. Pass: PR URL recorded in this tasks.md as 8.4 done.
+- [x] 8.1 Run `openspec validate fix-claude-ask-user-final-submit --type change`. Pass: exit 0, no errors. <!-- "Change 'fix-claude-ask-user-final-submit' is valid" -->
+- [x] 8.2 Stage only intended files: `git add codoxear/static/app.js tests/test_ask_user_normalize.py tests/test_broker_busy_state.py openspec/changes/fix-claude-ask-user-final-submit/`. Run `git status` and confirm no `.pi/`, `.playwright-mcp/`, `__pycache__/`, `probe/` (debug-only artifacts), or other untracked artifacts are staged. Pass: `git diff --cached --name-only` lists exactly those files. <!-- 8 files staged: app.js + 2 test files + 5 openspec files (proposal/design/tasks/spec/browser-validation). probe/ deliberately excluded. -->
+- [x] 8.3 Commit with message `Fix Claude AskUserQuestion final-question submit and cursor drift`, body listing the five verified scenarios from phase 7. Pass: `git log -1 --pretty=%s` matches. <!-- commit df3f58c, body lists single-select n=3, single-select n=1, multi-select n=3, multi-select n=1, cursor-drift regression. -->
+- [x] 8.4 Push to a new branch `fix/claude-ask-user-final-submit`, open PR to `main` with the proposal.md content as the PR description. Pass: PR URL recorded in this tasks.md as 8.4 done. <!-- Pushed to origin/fix/claude-ask-user-final-submit; PR opened against fork base (lysrain21/codoxear:main, not upstream yiwenlu66): https://github.com/lysrain21/codoxear/pull/4 -->
+
 
