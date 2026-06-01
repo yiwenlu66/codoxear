@@ -2659,6 +2659,25 @@
             const questions = ev.questions.filter((q) => q && q.question);
             let answeredCount = 0;
             const questionGroups = [];
+            // Prompt-level cursor model. The Claude TUI tracks one (qIdx, optIdx)
+            // pair across the whole AskUserQuestion event. Per-click handlers
+            // compute their move as a delta against this shared state, persist
+            // the new position on the DOM card so a transcript re-render does
+            // not desync the model, and reset opt to 0 after a non-final answer
+            // because Claude auto-advances to the next question's option 0.
+            // See design.md "Confirmed TUI Protocol" F3-F8 for the full protocol.
+            const readPromptCursorOpt = () => {
+              const v = parseInt(card.dataset.cursorOpt || "0", 10);
+              return Number.isFinite(v) ? v : 0;
+            };
+            const writePromptCursorOpt = (v) => { card.dataset.cursorOpt = String(v | 0); };
+            writePromptCursorOpt(0);
+            const markPromptSubmitted = () => {
+              card.classList.add("submitted");
+              for (const b of card.querySelectorAll(".interactive-option-btn")) b.disabled = true;
+              for (const b of card.querySelectorAll(".interactive-confirm-btn")) b.disabled = true;
+              for (const g of card.querySelectorAll(".interactive-question-group.pending")) g.classList.remove("pending");
+            };
             questions.forEach((q, qIdx) => {
               const group = el("div", { class: "interactive-question-group" + (qIdx > 0 ? " pending" : "") });
               const qHeaderLabel = typeof q.header === "string" ? q.header.trim() : "";
@@ -2688,6 +2707,9 @@
               };
               const advanceAfterSubmit = () => {
                 answeredCount++;
+                // Claude advances cursor to q[i+1] option 0 after a non-final
+                // answer; reset the shared prompt cursor model to match.
+                writePromptCursorOpt(0);
                 if (answeredCount < questions.length) {
                   const nextGroup = questionGroups[answeredCount];
                   if (nextGroup) {
@@ -2697,11 +2719,14 @@
                 }
               };
               if (isClaudeMulti) {
-                // Claude multi-select: confirmed TUI protocol (see tasks.md 12.1).
-                // Cursor opens at option 0; Down/Up move one option; Space toggles
-                // the current option's checkbox without advancing; Tab moves to the
-                // trailing Next/Submit button; Enter there advances/submits.
-                let cursorIdx = 0;
+                // Claude multi-select: confirmed TUI protocol (see design.md
+                // F3-F8). Cursor opens at option 0; Down/Up move one option;
+                // Space toggles the current option without advancing. Tab on
+                // a non-final question advances directly to q[i+1] option 0;
+                // Tab on the FINAL question opens the "Review your answers"
+                // screen, and a subsequent Enter submits. Move and action keys
+                // are sent as separate awaited /keys calls (Decision 2) to
+                // avoid the merged-keys race that bit task 12.1.
                 const picked = new Set();
                 const optBtns = [];
                 options.forEach((opt, optIdx) => {
@@ -2712,25 +2737,24 @@
                   if (qIdx > 0) btn.disabled = true;
                   btn.onclick = async () => {
                     if (btn.disabled) return;
-                    const delta = optIdx - cursorIdx;
+                    const cursorOpt = readPromptCursorOpt();
+                    const delta = optIdx - cursorOpt;
                     const move = delta >= 0 ? "\x1b[B".repeat(delta) : "\x1b[A".repeat(-delta);
                     btn.disabled = true;
                     try {
-                      // Send the cursor move and the toggle as SEPARATE keystrokes.
-                      // A merged "move+space" string races: the space can toggle
-                      // the option the cursor is leaving before the move settles.
                       if (move) {
                         await sendSeq(move);
-                        // The TUI cursor has now moved regardless of what happens
-                        // next, so commit the position before the toggle can fail.
-                        // Otherwise a failed toggle would leave cursorIdx pointing
-                        // at the old row and the next click would mis-compute delta.
-                        cursorIdx = optIdx;
+                        // Commit the new cursor position the moment the move
+                        // resolves, before the toggle send can fail. Otherwise
+                        // a failed toggle would leave the model believing the
+                        // cursor was still at the old option, and the next
+                        // click would send a wrong delta (Decision 3).
+                        writePromptCursorOpt(optIdx);
                       }
                       await sendSeq(" ");
                     }
                     catch (err) { btn.disabled = false; setToast("send error: " + err.message); return; }
-                    cursorIdx = optIdx;
+                    writePromptCursorOpt(optIdx);
                     if (picked.has(optIdx)) { picked.delete(optIdx); btn.classList.remove("selected"); }
                     else { picked.add(optIdx); btn.classList.add("selected"); }
                     btn.disabled = false;
@@ -2743,24 +2767,40 @@
                 if (qIdx > 0) confirmBtn.disabled = true;
                 confirmBtn.onclick = async () => {
                   if (confirmBtn.disabled) return;
+                  const isFinal = qIdx === questions.length - 1;
                   for (const b of optBtns) b.disabled = true;
                   confirmBtn.disabled = true;
                   group.classList.add("answered");
                   group.classList.remove("pending");
                   try {
-                    // Tab to the trailing Next/Submit control, then Enter to
-                    // advance. Separate sends to avoid the move/activate race.
+                    // Multi-select submit protocol (design.md F8):
+                    //   non-final: Tab advances directly to q[i+1] option 0
+                    //              with NO auto-select. Sending a trailing
+                    //              \r after the Tab is HARMFUL — Enter at
+                    //              q[i+1] opt 0 toggles that option ON, then
+                    //              the user's first Space click would toggle
+                    //              it back OFF, silently dropping the user's
+                    //              first multi-select pick on every non-first
+                    //              question. Live-verified on broker-169813
+                    //              2026-06-01: with trailing \r, q[1] opt 0
+                    //              and opt 2 each lost their first selection.
+                    //   final:     Tab opens the "Review your answers" screen
+                    //              with cursor pre-positioned on "Submit
+                    //              answers"; Enter dismisses the review and
+                    //              submits.
+                    // Both paths use Tab; only the final path sends an Enter.
                     await sendSeq("\t");
-                    await sendSeq("\r");
+                    if (isFinal) await sendSeq("\r");
                   }
                   catch (err) {
                     for (const b of optBtns) b.disabled = false;
                     confirmBtn.disabled = false;
                     group.classList.remove("answered");
-                    setToast("submit error: " + err.message);
+                    setToast(isFinal ? "Submit failed; press ✔ Submit in the terminal" : "submit error: " + err.message);
                     return;
                   }
-                  advanceAfterSubmit();
+                  if (isFinal) markPromptSubmitted();
+                  else advanceAfterSubmit();
                 };
                 group.appendChild(confirmBtn);
               } else {
@@ -2772,29 +2812,49 @@
                 if (qIdx > 0 || !canAnswerOptions) btn.disabled = true;
                 btn.onclick = async () => {
                   if (btn.disabled) return;
+                  // Compute isFinal BEFORE any await (Decision 4): a click on
+                  // the last question of an n>=2 prompt needs an extra Enter
+                  // to dismiss the "Review your answers" screen Claude opens
+                  // after option-Enter. n=1 prompts skip the review screen
+                  // entirely, so they use the bare-Enter path. See design.md F7.
+                  const isFinal = qIdx === questions.length - 1;
+                  const isSingleQuestion = questions.length === 1;
                   const buttons = Array.from(optionsWrap.querySelectorAll(".interactive-option-btn"));
                   for (const b of buttons) { b.disabled = true; b.classList.remove("selected"); }
                   btn.classList.add("selected");
                   group.classList.add("answered");
                   group.classList.remove("pending");
-                  // Single-select confirmed protocol (tasks.md 12.1): cursor opens
-                  // at option 0, each Down moves one option, Enter confirms and
-                  // auto-advances to the next question. Move and Enter are sent
-                  // separately to avoid the move/activate race seen with merged keys.
-                  const move = "\x1b[B".repeat(optIdx);
+                  // Single-select submit protocol (design.md F7):
+                  //   non-final           : move + "\r"          (Enter selects + auto-advances)
+                  //   final, n=1          : move + "\r"          (Enter submits directly, no review)
+                  //   final, n>=2         : move + "\r" + "\r"   (1st Enter selects + opens review,
+                  //                                                2nd Enter on pre-positioned
+                  //                                                "Submit answers" submits)
+                  // Move and action keys are SEPARATE awaited sends (Decision 2).
+                  const cursorOpt = readPromptCursorOpt();
+                  const delta = optIdx - cursorOpt;
+                  const move = delta >= 0 ? "\x1b[B".repeat(delta) : "\x1b[A".repeat(-delta);
                   try {
-                    if (move) await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: move } });
+                    if (move) {
+                      await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: move } });
+                      writePromptCursorOpt(optIdx);
+                    }
                     await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } });
+                    if (isFinal && !isSingleQuestion) {
+                      // Dismiss the "Review your answers" screen.
+                      await api("/api/sessions/" + selected + "/keys", { method: "POST", body: { seq: "\r" } });
+                    }
                   }
                   catch (err) {
                     for (const b of buttons) b.disabled = qIdx > 0 || !canAnswerOptions;
                     btn.classList.remove("selected");
                     group.classList.remove("answered");
                     if (qIdx > 0) group.classList.add("pending");
-                    setToast("send error: " + err.message);
+                    setToast(isFinal ? "Submit failed; press ✔ Submit in the terminal" : "send error: " + err.message);
                     return;
                   }
-                  advanceAfterSubmit();
+                  if (isFinal) markPromptSubmitted();
+                  else advanceAfterSubmit();
                 };
                 optionsWrap.appendChild(btn);
               });

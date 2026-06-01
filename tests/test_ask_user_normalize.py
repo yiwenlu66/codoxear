@@ -54,6 +54,25 @@ class ClaudeAskUserNormalizeTests(unittest.TestCase):
             [{"label": "plain"}, {"label": "T", "description": "d"}],
         )
 
+    def test_question_order_stable_for_isfinal_check(self):
+        """The frontend uses qIdx === questions.length - 1 to detect the final
+        question, which only works if the parser preserves input order. A
+        4-question prompt must yield 4 outputs in the same order so the last
+        input question is also the last output question.
+        """
+        qs = [
+            {"question": "Q1", "header": "First", "options": [{"label": "a"}]},
+            {"question": "Q2", "header": "Second", "options": [{"label": "b"}]},
+            {"question": "Q3", "header": "Third", "options": [{"label": "c"}]},
+            {"question": "Q4", "header": "Fourth", "options": [{"label": "d"}]},
+        ]
+        out = _claude_ask_user_questions(qs)
+        self.assertEqual(len(out), 4)
+        self.assertEqual([q["question"] for q in out], ["Q1", "Q2", "Q3", "Q4"])
+        self.assertEqual([q["header"] for q in out], ["First", "Second", "Third", "Fourth"])
+        # The frontend's final-question detection must hold:
+        self.assertEqual(out[-1]["question"], qs[-1]["question"])
+
 
 if __name__ == "__main__":
     unittest.main()
