@@ -786,6 +786,217 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             self.assertEqual(session.thread_id, "thread-1")
             self.assertEqual(session.log_path, log_path)
 
+    def test_discover_existing_does_not_rebind_ignored_detached_rollout(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock_path = sock_dir / "broker-1.sock"
+            sock_path.touch()
+            old_log = root / "rollout-2026-05-13T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            _write_jsonl(
+                old_log,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "old-thread",
+                            "cwd": str(root),
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": None,
+                        "owner": "web",
+                        "broker_pid": 11,
+                        "codex_pid": 12,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": None,
+                        "ignored_rollout_paths": [str(old_log)],
+                        "sock_path": str(sock_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            manager._last_discover_ts = 0.0
+            manager._aliases = {}
+            manager._queues = {}
+            manager._hidden_sessions = set()
+            manager._recent_cwds = {}
+            manager._save_recent_cwds = lambda: None  # type: ignore[method-assign]
+            manager._sock_call = lambda *args, **kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+
+            def _find_open(**kwargs: object) -> Path | None:
+                self.assertEqual(kwargs.get("ignored_paths"), {old_log})
+                return None
+
+            with patch("codoxear.server.SOCK_DIR", sock_dir), \
+                patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", side_effect=_find_open):
+                manager._discover_existing(force=True)
+
+            session = manager._sessions["broker-1"]
+            self.assertEqual(session.thread_id, "broker-1")
+            self.assertIsNone(session.log_path)
+
+            with patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", side_effect=_find_open):
+                manager.refresh_session_meta("broker-1")
+
+            self.assertEqual(session.thread_id, "broker-1")
+            self.assertIsNone(session.log_path)
+
+    def test_refresh_session_meta_treats_null_sidecar_as_detach_for_existing_log(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock_path = sock_dir / "broker-1.sock"
+            sock_path.touch()
+            old_log = root / "rollout-2026-05-13T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            _write_jsonl(
+                old_log,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "old-thread",
+                            "cwd": str(root),
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": None,
+                        "owner": "web",
+                        "broker_pid": 11,
+                        "codex_pid": 12,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": None,
+                        "sock_path": str(sock_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {
+                "broker-1": Session(
+                    session_id="broker-1",
+                    thread_id="old-thread",
+                    broker_pid=11,
+                    codex_pid=12,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=100.0,
+                    cwd=str(root),
+                    log_path=old_log,
+                    sock_path=sock_path,
+                )
+            }
+            manager._queues = {}
+            def _sock_call(_sock: Path, req: dict[str, object], **_kwargs: object) -> dict[str, object]:
+                if req.get("cmd") == "tail":
+                    return {"tail": "To continue this session, run codex resume old-thread"}
+                return {"busy": False, "queue_len": 0, "token": None}
+
+            manager._sock_call = _sock_call  # type: ignore[method-assign]
+
+            def _find_open(**kwargs: object) -> Path | None:
+                self.assertEqual(kwargs.get("ignored_paths"), {old_log})
+                return None
+
+            with patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", side_effect=_find_open):
+                manager.refresh_session_meta("broker-1")
+
+            session = manager._sessions["broker-1"]
+            self.assertEqual(session.thread_id, "old-thread")
+            self.assertIsNone(session.log_path)
+
+    def test_refresh_session_meta_still_repairs_stale_null_sidecar_without_detach_marker(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock_path = sock_dir / "broker-1.sock"
+            sock_path.touch()
+            log_path = root / "rollout-2026-05-13T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            _write_jsonl(
+                log_path,
+                [
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "thread-1",
+                            "cwd": str(root),
+                            "source": "cli",
+                        },
+                    }
+                ],
+            )
+            sock_path.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": None,
+                        "owner": "web",
+                        "broker_pid": 11,
+                        "codex_pid": 12,
+                        "cwd": str(root),
+                        "start_ts": 100.0,
+                        "log_path": None,
+                        "sock_path": str(sock_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {
+                "broker-1": Session(
+                    session_id="broker-1",
+                    thread_id="broker-1",
+                    broker_pid=11,
+                    codex_pid=12,
+                    agent_backend="codex",
+                    owned=True,
+                    start_ts=100.0,
+                    cwd=str(root),
+                    log_path=log_path,
+                    sock_path=sock_path,
+                )
+            }
+            manager._queues = {}
+            def _sock_call(_sock: Path, req: dict[str, object], **_kwargs: object) -> dict[str, object]:
+                if req.get("cmd") == "tail":
+                    return {"tail": "plain startup output"}
+                return {"busy": False, "queue_len": 0, "token": None}
+
+            manager._sock_call = _sock_call  # type: ignore[method-assign]
+
+            with patch("codoxear.server._pid_alive", return_value=True), \
+                patch("codoxear.server._proc_find_open_rollout_log", return_value=log_path):
+                manager.refresh_session_meta("broker-1")
+
+            session = manager._sessions["broker-1"]
+            self.assertEqual(session.thread_id, "thread-1")
+            self.assertEqual(session.log_path, log_path)
+
 
 if __name__ == "__main__":
     unittest.main()

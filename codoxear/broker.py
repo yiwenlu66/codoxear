@@ -1250,6 +1250,7 @@ class Broker:
             "cwd": st.cwd,
             "start_ts": st.start_ts,
             "log_path": str(st.log_path) if st.log_path else None,
+            "ignored_rollout_paths": sorted(str(p) for p in st.ignored_rollout_paths),
             "sock_path": str(st.sock_path),
             "agent_backend": AGENT_BACKEND,
             "launch_id": (os.environ.get("CODEX_WEB_LAUNCH_ID") or "").strip() or None,

@@ -411,6 +411,25 @@ read -r -k 1 option
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             self.assertIsNone(meta["resume_session_id"])
 
+    def test_write_meta_tracks_ignored_rollout_paths(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sock_path = root / "broker.sock"
+            old_log = root / "rollout-2026-03-29T10-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
+            old_log.write_text("", encoding="utf-8")
+            broker.state = _broker_state(codex_pid=1234, sock_path=sock_path)
+            broker.state.session_id = None
+            broker.state.cwd = td
+            broker.state.log_path = None
+            broker.state.ignored_rollout_paths.add(old_log)
+
+            broker._write_meta()
+
+            meta = json.loads(sock_path.with_suffix(".json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["log_path"], None)
+            self.assertEqual(meta["ignored_rollout_paths"], [str(old_log)])
+
     def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
         captured: dict[str, object] = {}

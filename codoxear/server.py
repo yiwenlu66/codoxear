@@ -2510,6 +2510,32 @@ def _message_transcript_identity(session: Session) -> dict[str, Any]:
     }
 
 
+def _metadata_ignored_rollout_paths(meta: dict[str, Any], *, sock: Path) -> set[Path]:
+    raw = meta.get("ignored_rollout_paths")
+    if raw is None:
+        return set()
+    if not isinstance(raw, list):
+        raise ValueError(f"invalid ignored_rollout_paths in metadata for socket {sock}")
+    out: set[Path] = set()
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"invalid ignored_rollout_paths entry in metadata for socket {sock}")
+        out.add(Path(item))
+    return out
+
+
+def _metadata_detaches_current_log(meta: dict[str, Any], current_log_path: Path | None) -> bool:
+    if current_log_path is None:
+        return False
+    return _clean_optional_text(meta.get("session_id")) is None and meta.get("log_path") is None
+
+
+def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
+    if agent_backend != "codex" or not isinstance(tail, str):
+        return False
+    return "To continue this session, run " in tail
+
+
 class SessionManager:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -3658,12 +3684,14 @@ class SessionManager:
                 log_path = Path(log_path_raw)
             if log_path is not None and not log_path.exists():
                 log_path = None
+            ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
             if log_path is None and _pid_alive(codex_pid):
                 discovered_log_path = _proc_find_open_rollout_log(
                     proc_root=PROC_ROOT,
                     root_pid=codex_pid,
                     agent_backend=agent_backend,
                     cwd=cwd,
+                    ignored_paths=ignored_rollout_paths,
                 )
                 if discovered_log_path is not None and discovered_log_path.exists():
                     log_path = discovered_log_path
@@ -4214,6 +4242,7 @@ class SessionManager:
             if not s:
                 return
             sock = s.sock_path
+            current_log_path = s.log_path
         meta_path = sock.with_suffix(".json")
         if not meta_path.exists():
             raise RuntimeError(f"missing metadata sidecar for socket {sock}")
@@ -4241,12 +4270,21 @@ class SessionManager:
             log_path = Path(log_path_raw)
         if log_path is not None and not log_path.exists():
             log_path = None
+        ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
+        if _metadata_detaches_current_log(meta, current_log_path):
+            try:
+                tail_state = self._sock_call(sock, {"cmd": "tail"}, timeout_s=0.4)
+            except Exception:
+                tail_state = {}
+            if _broker_tail_has_session_detach_marker(agent_backend, tail_state.get("tail") if isinstance(tail_state, dict) else None):
+                ignored_rollout_paths.add(current_log_path)
         if log_path is None and _pid_alive(s.codex_pid):
             discovered_log_path = _proc_find_open_rollout_log(
                 proc_root=PROC_ROOT,
                 root_pid=s.codex_pid,
                 agent_backend=agent_backend,
                 cwd=cwd,
+                ignored_paths=ignored_rollout_paths,
             )
             if discovered_log_path is not None and discovered_log_path.exists():
                 log_path = discovered_log_path
