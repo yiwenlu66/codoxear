@@ -78,6 +78,38 @@ class TestMarkdownRendererSource(unittest.TestCase):
         self.assertIn("<li>after</li>", html)
         self.assertNotIn("```", html)
 
+    def test_nested_fenced_code_block_after_blank_line_in_list_item(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "- OpenAI native web search:",
+                    "  - Command:",
+                    "",
+                    "    ```bash",
+                    "    pi --no-session --print 'Use native provider web_search ...'",
+                    "    ```",
+                    "",
+                    "  - Output:",
+                    "",
+                    "    ```text",
+                    "    https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses",
+                    "    ```",
+                ]
+            )
+        )
+
+        self.assertIn(
+            '<pre><code data-lang="bash">pi --no-session --print &#39;Use native provider web_search ...&#39;</code></pre>',
+            html,
+        )
+        self.assertIn(
+            '<pre><code data-lang="text">https://platform.openai.com/docs/guides/tools-web-search?api-mode=responses</code></pre>',
+            html,
+        )
+        self.assertIn("<li>OpenAI native web search:<ul><li>Command:<pre>", html)
+        self.assertIn("</pre></li><li>Output:<pre>", html)
+        self.assertNotIn("```", html)
+
     def test_ordered_list_markers_are_literal_when_blank_separated(self) -> None:
         html = render_markdown(
             "\n".join(

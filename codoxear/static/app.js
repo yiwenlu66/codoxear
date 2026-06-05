@@ -860,6 +860,19 @@
           return null;
         };
 
+        const continuesPriorList = (priorLines, line) => {
+          const next = listItemInfo(line);
+          if (!next) return false;
+          for (let j = priorLines.length - 1; j >= 0; j--) {
+            const prev = priorLines[j] || "";
+            if (!prev.trim()) continue;
+            const info = listItemInfo(prev);
+            if (info) return next.indent >= info.indent;
+            if (leadingSpaceCount(prev) < next.indent) return false;
+          }
+          return false;
+        };
+
         const splitByFences = (input) => {
           const chunks = [];
           const lines = String(input ?? "").split("\n");
@@ -958,6 +971,21 @@
             const info = listItemInfo(lines[i]);
             if (!info) {
               const last = items[items.length - 1];
+              if (last && !String(lines[i] || "").trim()) {
+                let j = i + 1;
+                while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
+                const nextFence = j < lines.length ? parseIndentedFence(lines, j, last.contentIndent || baseIndent) : null;
+                if (nextFence) {
+                  last.blocks.push(nextFence.node);
+                  i = nextFence.next;
+                  continue;
+                }
+                const nextInfo = j < lines.length ? listItemInfo(lines[j]) : null;
+                if (nextInfo && nextInfo.indent >= baseIndent) {
+                  i = j;
+                  continue;
+                }
+              }
               const fence = last ? parseIndentedFence(lines, i, last.contentIndent || baseIndent) : null;
               if (!fence) break;
               last.blocks.push(fence.node);
@@ -1105,9 +1133,19 @@
             current = [];
             if (block.trim()) blocks.push(block);
           };
-          for (const line of lines) {
+          for (let idx = 0; idx < lines.length; idx++) {
+            const line = lines[idx];
             const stripped = line.trim();
             if (!inFence && !stripped) {
+              let j = idx + 1;
+              while (j < lines.length && !String(lines[j] || "").trim()) j += 1;
+              if (
+                j < lines.length &&
+                (pendingListFenceIndent(current, lines[j]) !== null || continuesPriorList(current, lines[j]))
+              ) {
+                current.push(line);
+                continue;
+              }
               flush();
               continue;
             }
