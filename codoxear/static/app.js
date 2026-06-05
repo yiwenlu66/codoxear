@@ -1412,8 +1412,8 @@
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
-        let historyCursor = null;
         let hasOlder = false;
+        let renderedAtLiveTail = true;
         let loadingOlder = false;
         let olderLoadRequestId = 0;
         let olderLoadController = null;
@@ -2432,8 +2432,8 @@
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
           liveCursor = null;
-          historyCursor = null;
           hasOlder = false;
+          renderedAtLiveTail = true;
           loadingOlder = false;
           olderAutoTriggerAt = 0;
               clickMetricPending = false;
@@ -2459,6 +2459,23 @@
           olderWrap.style.display = hasOlder ? "flex" : "none";
           olderBtn.disabled = loadingOlder;
           olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+        }
+
+        function renderedMessageRows() {
+          return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row"));
+        }
+
+        function oldestRenderedHistoryCursor() {
+          for (const row of renderedMessageRows()) {
+            const cursor = typeof row.dataset.historyCursor === "string" ? row.dataset.historyCursor : "";
+            if (cursor) return cursor;
+          }
+          return null;
+        }
+
+        function clearRenderedTranscriptRange() {
+          hasOlder = false;
+          renderedAtLiveTail = true;
         }
 
         function initPageLimit() {
@@ -2506,10 +2523,10 @@
         }
 
         function getSessionTranscriptSlot(sessionId) {
-          if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0 };
+          if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
           const current = sessionTranscriptSlots.get(sessionId);
           if (current) return current;
-          return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0 };
+          return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
         }
 
         function syncActiveTranscriptSlot(sessionId) {
@@ -2542,22 +2559,48 @@
         function updateSessionTranscriptSlot(sessionId, data) {
           const prev = getSessionTranscriptSlot(sessionId);
           const snap = transcriptSnapshotFromData(data);
+          if (prev.state === "pending_bind" && prev.ignoredKey && snap.state === "bound" && snap.key === prev.ignoredKey) {
+            const next = { ...prev };
+            if (sessionId) sessionTranscriptSlots.set(sessionId, next);
+            if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
+            return { previous: prev, current: next, resetPending: false, ignoredStaleBound: true };
+          }
           let epoch = prev.epoch;
           let resetPending = false;
+          let ignoredKey = null;
           if (snap.state === "pending_bind") {
             if (prev.state === "bound") {
               epoch += 1;
               resetPending = true;
+              ignoredKey = prev.key;
+            } else {
+              ignoredKey = prev.ignoredKey || null;
             }
           } else if (prev.state === "bound" && prev.key !== snap.key) {
             epoch += 1;
             resetPending = true;
           }
-          const next = { ...snap, epoch };
+          const next = { ...snap, epoch, ignoredKey };
           if (sessionId) sessionTranscriptSlots.set(sessionId, next);
           if (resetPending) dropPendingUserRows(sessionId, () => true);
           if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
-          return { previous: prev, current: next, resetPending };
+          return { previous: prev, current: next, resetPending, ignoredStaleBound: false };
+        }
+
+        function beginTranscriptRenewal(sessionId) {
+          if (!sessionId) return;
+          const prev = getSessionTranscriptSlot(sessionId);
+          const next = {
+            state: "pending_bind",
+            threadId: null,
+            logPath: null,
+            key: null,
+            epoch: Number(prev.epoch || 0) + 1,
+            ignoredKey: prev.state === "bound" ? prev.key : prev.ignoredKey || null,
+          };
+          sessionTranscriptSlots.set(sessionId, next);
+          dropPendingUserRows(sessionId, () => true);
+          if (selected === sessionId) syncActiveTranscriptSlot(sessionId);
         }
 
         function tailCacheMatchesSession(cache, session) {
@@ -2586,7 +2629,6 @@
             threadId: typeof session.thread_id === "string" ? session.thread_id : null,
             logPath: typeof session.log_path === "string" ? session.log_path : null,
             liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
-            historyCursor: typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null,
             hasOlder: Boolean(data.has_older),
             busy: Boolean(data.busy),
             queueLen: Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0,
@@ -2611,7 +2653,6 @@
             threadId: meta && typeof meta.thread_id === "string" ? meta.thread_id : current ? current.threadId : null,
             logPath: meta && typeof meta.log_path === "string" ? meta.log_path : current ? current.logPath : null,
             liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
-            historyCursor: current ? current.historyCursor : null,
             hasOlder: current ? Boolean(current.hasOlder) : false,
             busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
             queueLen: Number.isFinite(Number(queueLen)) ? Number(queueLen) : current ? Number(current.queueLen || 0) : 0,
@@ -2640,7 +2681,7 @@
 
           sessionTailCache.delete(sessionId);
           liveCursor = null;
-          historyCursor = null;
+          clearRenderedTranscriptRange();
           setAttachCount(0);
           invalidateOlderLoad();
           recentEventKeys.length = 0;
@@ -2728,7 +2769,7 @@
         }
 
         function syncJumpButton() {
-          jumpBtn.style.display = autoScroll || isNearBottom() ? "none" : "inline-flex";
+          jumpBtn.style.display = renderedAtLiveTail && (autoScroll || isNearBottom()) ? "none" : "inline-flex";
         }
 
         function scrollToBottom() {
@@ -2810,12 +2851,10 @@
           const extra = rows.length - allowedRows;
           if (fromTop) {
             for (const row of rows.slice(0, extra)) row.remove();
-            const first = rows[extra];
-            if (first && typeof first.dataset.historyCursor === "string" && first.dataset.historyCursor) {
-              historyCursor = first.dataset.historyCursor;
-            }
+            renderedAtLiveTail = true;
           } else {
             for (const row of rows.slice(rows.length - extra)) row.remove();
+            renderedAtLiveTail = false;
           }
         }
 
@@ -2970,6 +3009,12 @@
           const t = normalizeTextForPendingMatch(s);
           return t.replace(/[ \t]+$/gm, "").replace(/\s+$/, "");
         }
+
+      function isTranscriptRenewalCommand(raw, sessionId = selected) {
+        const session = sessionId ? sessionIndex.get(sessionId) : null;
+        if (!session || sessionAgentBackend(session) !== "codex") return false;
+        return String(raw || "").trim() === "/new";
+      }
 
       function takePendingUserMatch(ev, sessionId = selected, { allowUntimedCommit = true } = {}) {
         if (ev.role !== "user" || ev.pending) return false;
@@ -3163,7 +3208,7 @@
                    activeLogPath = null;
                    activeThreadId = null;
                    liveCursor = null;
-                   historyCursor = null;
+                   clearRenderedTranscriptRange();
                    turnOpen = false;
                    localStorage.removeItem("codexweb.selected");
                    setSessionHash("");
@@ -3421,9 +3466,15 @@
           if (consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
 
-          const stick = autoScroll || isNearBottom();
+          const pending = Boolean(ev.pending);
+          const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));
+          if (!pending && !renderedAtLiveTail) {
+            markEventSeen(ev);
+            syncJumpButton();
+            return;
+          }
           const ts = typeof ev.ts === "number" && Number.isFinite(ev.ts) ? ev.ts : ev.pending ? Date.now() / 1000 : null;
-          const { row } = safeMakeRow(ev, { ts, pending: Boolean(ev.pending) });
+          const { row } = safeMakeRow(ev, { ts, pending });
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: stick });
@@ -3448,6 +3499,7 @@
             if (k) seen.add(k);
             msgs.push(ev);
           }
+          renderedAtLiveTail = true;
           clearTranscriptDom();
           if (!msgs.length) {
             restorePendingUserRowsForSession(selected);
@@ -3484,8 +3536,12 @@
           const firstMsg = chatInner.querySelector(".msg-row:not(.typing-row)");
           const anchor = firstMsg || (typingRow && typingRow.isConnected ? typingRow : bottomSentinel);
           chatInner.insertBefore(frag, anchor);
+          const wasAtLiveTail = renderedAtLiveTail;
           if (!preserveViewport) chat.scrollTop = 1;
           trimRenderedRows({ fromTop: false, maxRows: CHAT_DOM_WINDOW_WITH_HISTORY_SLACK });
+          if (wasAtLiveTail && renderedAtLiveTail === false) {
+            autoScroll = false;
+          }
           rebuildDecorations({ preserveScroll: false });
           if (preserveViewport && anchorRow && anchorRow.isConnected) {
             chat.scrollTop = Math.max(0, anchorRow.offsetTop - anchorOffset);
@@ -3511,8 +3567,8 @@
           olderLoadController = ctl;
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
-            if (!historyCursor) throw new Error("history cursor missing");
-            const reqCursor = historyCursor;
+            const reqCursor = oldestRenderedHistoryCursor();
+            if (!reqCursor) throw new Error("history cursor missing");
             const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
               signal: ctl.signal,
             });
@@ -3521,7 +3577,6 @@
             const nextHasOlder = Boolean(data.has_older);
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
-            historyCursor = typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
           } catch (e) {
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
             if (e && e.status === 409) {
@@ -3542,7 +3597,6 @@
         function applySessionRuntimeFromTail(sessionId, data) {
           const slot = syncActiveTranscriptSlot(sessionId);
           liveCursor = slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
-          historyCursor = slot.state === "bound" && typeof data.history_cursor === "string" && data.history_cursor ? data.history_cursor : null;
           setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
           const nowBusy = Boolean(data && data.busy);
           turnOpen = nowBusy;
@@ -3570,6 +3624,7 @@
         function renderPendingTranscriptSlot(sessionId) {
           clearTranscriptDom();
           setOlderState({ hasMore: false, isLoading: false });
+          renderedAtLiveTail = true;
           restorePendingUserRowsForSession(sessionId);
           markClickFirstPaint();
           syncJumpButton();
@@ -3583,7 +3638,6 @@
           });
           syncActiveTranscriptSlot(sessionId);
           liveCursor = cache.liveCursor || null;
-          historyCursor = cache.historyCursor || null;
           setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
           renderSessionTail(cache.events);
           const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
@@ -3616,7 +3670,7 @@
           activeLogPath = null;
           activeThreadId = null;
           liveCursor = null;
-          historyCursor = null;
+          clearRenderedTranscriptRange();
           turnOpen = false;
           setAttachCount(0);
           updateQueueBadge();
@@ -3644,6 +3698,12 @@
           const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== myGen || selected !== sessionId) return null;
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
+          if (slotChange.ignoredStaleBound) {
+            renderPendingTranscriptSlot(sessionId);
+            applySessionRuntimeFromTail(sessionId, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
+            if (slotChange.current.state !== "failed") kickPoll(900);
+            return data;
+          }
           if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
@@ -3660,11 +3720,16 @@
 			          try {
 	            if (!liveCursor) {
 	              if (activeTranscriptState === "pending_bind") {
-	                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
-	                if (gen !== pollGen || sid !== selected) return;
-	                const slotChange = updateSessionTranscriptSlot(sid, data);
-	                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
-	                applySessionRuntimeFromTail(sid, data);
+		                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
+		                if (gen !== pollGen || sid !== selected) return;
+		                const slotChange = updateSessionTranscriptSlot(sid, data);
+		                if (slotChange.ignoredStaleBound) {
+		                  renderPendingTranscriptSlot(sid);
+		                  applySessionRuntimeFromTail(sid, { transcript_state: "pending_bind", busy: data.busy, queue_len: data.queue_len, token: data.token });
+		                  return;
+		                }
+		                if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+		                applySessionRuntimeFromTail(sid, data);
 	                return;
 	              }
 	              if (activeTranscriptState === "failed") return;
@@ -3726,7 +3791,7 @@
               activeLogPath = null;
               activeThreadId = null;
               liveCursor = null;
-              historyCursor = null;
+              clearRenderedTranscriptRange();
               pollGen += 1;
               if (pollTimer) clearTimeout(pollTimer);
               pollTimer = null;
@@ -9027,7 +9092,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const localId = ++localEchoSeq;
           const t0 = Date.now() / 1000;
           const renderHere = sessionId === selected;
-          if (renderHere) {
+          const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
+          if (renderHere && !renewsTranscript) {
+            if (!renderedAtLiveTail) {
+              clearTranscriptDom();
+              clearRenderedTranscriptRange();
+              setOlderState({ hasMore: false, isLoading: false });
+            }
             const slot = getSessionTranscriptSlot(sessionId);
             pendingUser.push({ id: localId, sessionId, epoch: slot.epoch, key: pendingMatchKey(raw), loose: normalizeTextForPendingMatch(raw), t0, text: raw });
             appendEvent({ role: "user", text: raw, pending: true, localId, ts: t0 });
@@ -9036,6 +9107,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           try {
             const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw } });
+            if (renderHere && renewsTranscript) {
+              sessionTailCache.delete(sessionId);
+              beginTranscriptRenewal(sessionId);
+              liveCursor = null;
+              clearRenderedTranscriptRange();
+              invalidateOlderLoad();
+              renderPendingTranscriptSlot(sessionId);
+              turnOpen = true;
+              currentRunning = true;
+            }
             if (res.queued) setToast(`queued (queue ${res.queue_len})`);
             else setToast("sent");
             setAttachCount(0);

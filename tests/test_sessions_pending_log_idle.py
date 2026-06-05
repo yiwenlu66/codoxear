@@ -70,6 +70,32 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertIs(out[0].get("busy"), False)
 
+    def test_idle_from_log_path_survives_detach_after_row_snapshot(self) -> None:
+        mgr = _make_manager()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text('{"type":"session_meta","payload":{"id":"thread-old","source":"cli"}}\n', encoding="utf-8")
+            s = Session(
+                session_id="broker-1",
+                thread_id="thread-new",
+                broker_pid=1,
+                codex_pid=2,
+                agent_backend="codex",
+                owned=False,
+                start_ts=123.0,
+                cwd="/tmp",
+                log_path=None,
+                sock_path=Path("/tmp/broker-1.sock"),
+                busy=True,
+                queue_len=0,
+            )
+            mgr._sessions[s.session_id] = s
+
+            self.assertIs(mgr.idle_from_log_path(s.session_id, log_path), True)
+
+        self.assertEqual(s.idle_cache_log_off, -1)
+        self.assertIsNone(s.idle_cache_value)
+
     def test_message_snapshot_uses_log_idle_over_stale_broker_busy(self) -> None:
         class _Manager:
             def get_state(self, _session_id):

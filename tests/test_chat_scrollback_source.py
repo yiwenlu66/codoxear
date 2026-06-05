@@ -55,38 +55,42 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("if (!slotChange.resetPending) return;", block)
         self.assertIn("sessionTailCache.delete(sessionId);", block)
         self.assertIn("liveCursor = null;", block)
-        self.assertIn("historyCursor = null;", block)
+        self.assertIn("clearRenderedTranscriptRange();", block)
         self.assertIn('if (slotChange.current.state === "pending_bind") {', block)
         self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
         self.assertIn("kickPoll(0);", block)
 
-    def test_load_older_messages_uses_history_cursor_only(self) -> None:
+    def test_load_older_messages_uses_oldest_rendered_row_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function loadOlderMessages({ auto = false } = {}) {")
         end = source.index("function maybeAutoLoadOlder()", start)
         block = source[start:end]
-        self.assertIn("if (!historyCursor) throw new Error(\"history cursor missing\");", block)
+        self.assertIn("const reqCursor = oldestRenderedHistoryCursor();", block)
+        self.assertIn("if (!reqCursor) throw new Error(\"history cursor missing\");", block)
         self.assertIn("`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`", block)
-        self.assertIn("historyCursor = typeof data.history_cursor === \"string\" && data.history_cursor ? data.history_cursor : null;", block)
+        self.assertNotIn("historyCursor", block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
 
-    def test_live_append_preserves_history_side_when_reading_scrollback(self) -> None:
+    def test_live_append_does_not_splice_into_history_window(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("function appendEvent(ev) {")
         end = source.index("function renderTranscript(", start)
         block = source[start:end]
-        self.assertIn("const stick = autoScroll || isNearBottom();", block)
+        self.assertIn("const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));", block)
+        self.assertIn("if (!pending && !renderedAtLiveTail) {", block)
+        self.assertIn("markEventSeen(ev);", block)
+        self.assertIn("return;", block)
         self.assertIn("trimRenderedRows({ fromTop: stick });", block)
         self.assertNotIn("trimRenderedRows({ fromTop: true });", block)
 
-    def test_top_prune_moves_history_cursor_to_oldest_retained_row(self) -> None:
+    def test_history_request_cursor_is_derived_from_rendered_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function trimRenderedRows(")
-        end = source.index("function firstVisibleMessageRow()", start)
+        start = source.index("function oldestRenderedHistoryCursor() {")
+        end = source.index("function clearRenderedTranscriptRange()", start)
         block = source[start:end]
-        self.assertIn("const first = rows[extra];", block)
-        self.assertIn('first.dataset.historyCursor', block)
-        self.assertIn("historyCursor = first.dataset.historyCursor;", block)
+        self.assertIn("for (const row of renderedMessageRows())", block)
+        self.assertIn("row.dataset.historyCursor", block)
+        self.assertIn("return cursor;", block)
 
     def test_history_prepend_does_not_trim_newly_fetched_older_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -104,6 +108,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("function safeMakeRow(ev, opts) {", start)
         block = source[start:end]
         self.assertIn('row.dataset.historyCursor = ev.history_cursor;', block)
+        self.assertNotIn("let historyCursor", source)
 
     def test_poll_messages_uses_live_cursor_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -187,6 +192,20 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn('messageClass === "error" || messageClass === "warning"', block)
         self.assertIn("bubble.classList.add(messageClass);", block)
+
+    def test_new_command_begins_transcript_renewal_after_send_ack(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function sendText(")
+        end = source.index("form.onsubmit = async", start)
+        block = source[start:end]
+        self.assertIn("const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);", block)
+        self.assertIn("const res = await api(`/api/sessions/${sessionId}/send`, { method: \"POST\", body: { text: raw } });", block)
+        self.assertIn("if (renderHere && renewsTranscript) {", block)
+        self.assertIn("beginTranscriptRenewal(sessionId);", block)
+        self.assertIn("renderPendingTranscriptSlot(sessionId);", block)
+        self.assertLess(block.index("const res = await api"), block.index("beginTranscriptRenewal(sessionId);"))
+        self.assertIn("if (renderHere && !renewsTranscript) {", block)
+        self.assertIn("if (!renderedAtLiveTail)", block)
 
 
 if __name__ == "__main__":

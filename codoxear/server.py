@@ -4135,6 +4135,7 @@ class SessionManager:
                         "start_ts": s.start_ts,
                         "updated_ts": updated_ts,
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
+                        "_log_path_obj": s.log_path,
                         "log_exists": log_exists,
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
@@ -4176,12 +4177,17 @@ class SessionManager:
         for it in items:
             sid = str(it["session_id"])
             log_exists = bool(it.get("log_exists"))
-            if not log_exists:
+            log_path_obj = it.get("_log_path_obj")
+            if (not log_exists) or not isinstance(log_path_obj, Path):
                 busy_out = False
             else:
-                idle_val = bool(self.idle_from_log(sid))
-                busy_out = not idle_val
+                try:
+                    idle_val = bool(self.idle_from_log_path(sid, log_path_obj))
+                    busy_out = not idle_val
+                except FileNotFoundError:
+                    busy_out = False
             it2 = dict(it)
+            it2.pop("_log_path_obj", None)
             it2.pop("log_exists", None)
             it2.pop("state_busy", None)
             it2["busy"] = bool(busy_out)
@@ -4382,17 +4388,26 @@ class SessionManager:
             if not s:
                 raise KeyError("unknown session")
             lp = s.log_path
-            cached_off = int(s.idle_cache_log_off)
-            cached_idle = s.idle_cache_value
-        if lp is None or (not lp.exists()):
+        if lp is None:
+            raise FileNotFoundError(f"missing rollout log for session {session_id}")
+        return self.idle_from_log_path(session_id, lp)
+
+    def idle_from_log_path(self, session_id: str, log_path: Path) -> bool:
+        lp = log_path
+        with self._lock:
+            s = self._sessions.get(session_id)
+            cache_matches_path = bool(s and s.log_path == lp)
+            cached_off = int(s.idle_cache_log_off) if cache_matches_path and s else -1
+            cached_idle = s.idle_cache_value if cache_matches_path and s else None
+        if not lp.exists():
             raise FileNotFoundError(f"missing rollout log for session {session_id}")
         sz = int(lp.stat().st_size)
-        if (sz >= 0) and (cached_off == sz) and isinstance(cached_idle, bool):
+        if cache_matches_path and (sz >= 0) and (cached_off == sz) and isinstance(cached_idle, bool):
             return bool(cached_idle)
         idle = _compute_idle_from_log(lp)
         with self._lock:
             s2 = self._sessions.get(session_id)
-            if s2:
+            if s2 and s2.log_path == lp:
                 s2.idle_cache_log_off = sz
                 s2.idle_cache_value = idle
         if idle is None:
