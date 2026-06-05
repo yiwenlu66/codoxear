@@ -172,6 +172,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 trust_override,
                 "-c",
                 "check_for_update_on_startup=false",
+                "--disable",
+                "goals",
                 "--dangerously-bypass-approvals-and-sandbox",
             ],
         )
@@ -217,6 +219,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 trust_override,
                 "-c",
                 "check_for_update_on_startup=false",
+                "--disable",
+                "goals",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--search",
             ],
@@ -261,6 +265,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 trust_override,
                 "-c",
                 "check_for_update_on_startup=false",
+                "--disable",
+                "goals",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "resume",
                 "resume-a",
@@ -340,6 +346,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 trust_override,
                 "-c",
                 "check_for_update_on_startup=false",
+                "--disable",
+                "goals",
                 "--dangerously-bypass-approvals-and-sandbox",
                 "--model",
                 "gpt-5.4",
@@ -393,6 +401,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_MODEL=gpt-5.4", shell_cmd)
         self.assertIn("CODEX_WEB_SERVICE_TIER=fast", shell_cmd)
         self.assertIn("check_for_update_on_startup=false", shell_cmd)
+        self.assertIn("--disable", shell_cmd)
+        self.assertIn("goals", shell_cmd)
         self.assertIn("codoxear.broker", shell_cmd)
         wait_mock.assert_called_once()
 
@@ -473,6 +483,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertEqual(env["CODEX_WEB_MODEL_PROVIDER"], "macaron")
         self.assertEqual(env["CODEX_WEB_MODEL"], "gpt-5.4")
         self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "medium")
+        self.assertNotIn("--disable", argv)
+        self.assertNotIn("goals", argv)
         self.assertEqual(result, {"broker_pid": 7654})
         self.assertEqual(thread_calls, ["start"])
 
@@ -574,6 +586,8 @@ class TestSpawnWebSessionResume(unittest.TestCase):
                 trust_override,
                 "-c",
                 "check_for_update_on_startup=false",
+                "--disable",
+                "goals",
                 "--dangerously-bypass-approvals-and-sandbox",
             ],
         )
