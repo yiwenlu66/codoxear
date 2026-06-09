@@ -216,7 +216,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("cancelPendingFileOpen();\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
-    def test_file_viewer_handles_pdf_and_download_only_kinds(self) -> None:
+    def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
         self.assertNotIn('el("iframe"', source)
@@ -231,11 +231,18 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('container.querySelectorAll(".filePdfPage").forEach((slot) => state.observer.observe(slot));', source)
         self.assertIn("state.renderTasks.add(task);", source)
         self.assertIn("disposePdfRender();", source)
+        self.assertIn('const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });', source)
+        self.assertIn('res.kind === "video"', source)
+        self.assertIn("fileVideo.pause();", source)
+        self.assertIn('fileVideo.src = resolveAppUrl(res.video_url);', source)
+        self.assertIn('fileVideo.style.display = "block";', source)
+        self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
         self.assertIn('res.kind === "download_only"', source)
         self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
         self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
         self.assertIn(".filePdfPages {", css_source)
         self.assertIn(".filePdfPage {", css_source)
+        self.assertIn(".fileVideo {", css_source)
         self.assertIn(".fileBlockedNotice {", css_source)
 
     def test_attach_limit_comes_from_server_constant(self) -> None:
@@ -249,6 +256,8 @@ class TestFileViewerSource(unittest.TestCase):
     def test_clickable_file_extensions_include_pdf_and_archives(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('"pdf"', source)
+        self.assertIn('"mp4"', source)
+        self.assertIn('"webm"', source)
         self.assertIn('"zip"', source)
         self.assertIn('"tar"', source)
 

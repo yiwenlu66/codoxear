@@ -506,7 +506,11 @@
         "json",
         "jsonl",
         "log",
+        "m4v",
         "md",
+        "mov",
+        "mp4",
+        "ogv",
         "pdf",
         "patch",
         "png",
@@ -522,6 +526,7 @@
         "ts",
         "tsx",
         "txt",
+        "webm",
         "webp",
         "xml",
         "xz",
@@ -1855,6 +1860,7 @@
         ]);
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
+        const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
@@ -1864,6 +1870,7 @@
           fileStatus,
           fileDiff,
           fileImage,
+          fileVideo,
           fileTouchToolbar,
         ]);
         root.appendChild(fileBackdrop);
@@ -6073,6 +6080,10 @@
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.style.display = "block";
         }
 
@@ -6847,6 +6858,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderMarkdownPreview(rel, text) {
           disposeFileEditor();
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.innerHTML = "";
           const preview = el("div", {
             class: "md fileMarkdownPreview",
@@ -6859,6 +6874,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
           disposeFileEditor();
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.innerHTML = "";
           const body = el("div", { class: "fileBlockedNotice" }, [
             el("div", { class: "title", text: "Preview unavailable" }),
@@ -6871,6 +6890,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function renderPdfFile(rel, url, request) {
           disposeFileEditor();
           disposePdfRender();
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.innerHTML = "";
           fileDiff.style.display = "block";
           fileDiff.scrollTop = 0;
@@ -7206,6 +7229,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.style.display = "block";
           try {
             if (fileViewMode !== "file") setFileViewMode("file");
@@ -7830,6 +7857,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
           fileDiff.style.display = "block";
           try {
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
@@ -7863,6 +7894,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (res.kind === "image") {
                 activeFileKind = "image";
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
+                fileVideo.pause();
+                fileVideo.removeAttribute("src");
+                fileVideo.load();
+                fileVideo.style.display = "none";
                 fileDiff.style.display = "none";
                 fileImage.src = resolveAppUrl(res.image_url);
                 fileImage.alt = rel;
@@ -7876,6 +7911,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (!rendered || !isCurrentFileOpenRequest(request)) return false;
                 const size = typeof res.size === "number" ? res.size : 0;
                 fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;
+              } else if (res.kind === "video") {
+                activeFileKind = "video";
+                if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
+                fileDiff.style.display = "none";
+                fileVideo.src = resolveAppUrl(res.video_url);
+                fileVideo.style.display = "block";
+                const size = typeof res.size === "number" ? res.size : 0;
+                fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
               } else if (res.kind === "download_only") {
                 activeFileKind = "download_only";
                 const size = typeof res.size === "number" ? res.size : 0;

@@ -11,6 +11,7 @@ from codoxear.server import _read_text_file_for_client
 from codoxear.server import _read_text_file_for_write
 from codoxear.server import _read_text_or_image
 from codoxear.server import _read_downloadable_file
+from codoxear.server import _single_byte_range
 from codoxear.server import _write_new_text_file_atomic
 from codoxear.server import _write_text_file_atomic
 
@@ -105,6 +106,28 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(size2, len(raw_in))
             self.assertEqual(content_type2, "application/pdf")
             self.assertIsNone(raw)
+
+    def test_video_is_supported_for_metadata_and_read(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "clip.mp4"
+            raw_in = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + (b"\x00" * 8192)
+            path.write_bytes(raw_in)
+            size, kind, content_type = _inspect_client_path(path)
+            self.assertEqual(kind, "video")
+            self.assertEqual(content_type, "video/mp4")
+            self.assertEqual(size, len(raw_in))
+            kind2, size2, content_type2, raw = _read_text_or_image(path)
+            self.assertEqual(kind2, "video")
+            self.assertEqual(size2, len(raw_in))
+            self.assertEqual(content_type2, "video/mp4")
+            self.assertIsNone(raw)
+
+    def test_single_byte_range_supports_video_seek_shapes(self) -> None:
+        self.assertEqual(_single_byte_range("bytes=10-19", 100), (10, 19))
+        self.assertEqual(_single_byte_range("bytes=95-", 100), (95, 99))
+        self.assertEqual(_single_byte_range("bytes=-5", 100), (95, 99))
+        with self.assertRaises(ValueError):
+            _single_byte_range("bytes=100-110", 100)
 
     def test_text_file_for_client_marks_utf8_as_editable(self) -> None:
         with tempfile.TemporaryDirectory() as td:

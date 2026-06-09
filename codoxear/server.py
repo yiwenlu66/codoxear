@@ -200,6 +200,13 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
 )
 FILE_LIST_IGNORED_DIRS = frozenset({".git", ".hg", ".mypy_cache", ".pytest_cache", ".svn", "__pycache__", "build", "dist", "node_modules", "venv", ".venv"})
 MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
+VIDEO_CONTENT_TYPES = {
+    ".m4v": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mp4": "video/mp4",
+    ".ogv": "video/ogg",
+    ".webm": "video/webm",
+}
 TEXTUAL_EXTENSIONS = frozenset(
     {
         "bash",
@@ -754,6 +761,19 @@ def _pdf_content_type(path: Path, raw: bytes) -> str | None:
     return None
 
 
+def _video_content_type(path: Path, raw: bytes) -> str | None:
+    ctype = VIDEO_CONTENT_TYPES.get(path.suffix.lower())
+    if ctype is not None:
+        return ctype
+    if len(raw) >= 12 and raw[4:8] == b"ftyp":
+        return "video/mp4"
+    if raw.startswith(b"\x1a\x45\xdf\xa3"):
+        return "video/webm"
+    if raw.startswith(b"OggS"):
+        return "video/ogg"
+    return None
+
+
 def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
     ctype = _image_content_type(path, raw)
     if ctype is not None:
@@ -761,7 +781,71 @@ def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
     ctype = _pdf_content_type(path, raw)
     if ctype is not None:
         return "pdf", ctype
+    ctype = _video_content_type(path, raw)
+    if ctype is not None:
+        return "video", ctype
     return "text", None
+
+
+def _single_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
+    if not header:
+        return None
+    raw = header.strip()
+    if not raw.startswith("bytes="):
+        raise ValueError("unsupported range unit")
+    spec = raw[len("bytes=") :].strip()
+    if "," in spec or "-" not in spec:
+        raise ValueError("unsupported byte range")
+    start_raw, end_raw = spec.split("-", 1)
+    if start_raw == "":
+        if not end_raw.isdigit():
+            raise ValueError("invalid byte range")
+        suffix = int(end_raw)
+        if suffix <= 0 or size <= 0:
+            raise ValueError("unsatisfiable byte range")
+        return max(0, size - suffix), size - 1
+    if not start_raw.isdigit() or (end_raw and not end_raw.isdigit()):
+        raise ValueError("invalid byte range")
+    start = int(start_raw)
+    end = int(end_raw) if end_raw else size - 1
+    if start >= size or start > end:
+        raise ValueError("unsatisfiable byte range")
+    return start, min(end, size - 1)
+
+
+def _send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path: Path, content_type: str) -> None:
+    size = int(path.stat().st_size)
+    try:
+        byte_range = _single_byte_range(handler.headers.get("Range"), size)
+    except ValueError:
+        handler.send_response(416)
+        handler.send_header("Content-Range", f"bytes */{size}")
+        handler.send_header("Accept-Ranges", "bytes")
+        handler.end_headers()
+        return
+    start = 0 if byte_range is None else byte_range[0]
+    end = size - 1 if byte_range is None else byte_range[1]
+    length = max(0, end - start + 1)
+    handler.send_response(206 if byte_range is not None else 200)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(length))
+    handler.send_header("Accept-Ranges", "bytes")
+    if byte_range is not None:
+        handler.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+    handler.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path.name, safe='')}")
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Pragma", "no-cache")
+    handler.send_header("Expires", "0")
+    handler.end_headers()
+    with path.open("rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = f.read(min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            handler.wfile.write(chunk)
+            remaining -= len(chunk)
 
 
 def _repair_png_crc(raw: bytes) -> bytes:
@@ -1847,7 +1931,7 @@ def _read_client_file_view(path_obj: Path) -> ClientFileView:
     except PermissionError as e:
         raise PermissionError("permission denied") from e
     kind, content_type = _file_kind(path_obj, prefix)
-    if kind in {"image", "pdf"}:
+    if kind in {"image", "pdf", "video"}:
         return ClientFileView(kind=kind, size=size, content_type=content_type)
     if size > FILE_READ_MAX_BYTES:
         return ClientFileView(
@@ -1872,7 +1956,7 @@ def _read_client_file_view(path_obj: Path) -> ClientFileView:
 
 def _read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
     view = _read_client_file_view(path_obj)
-    if view.kind in {"image", "pdf", "download_only", "directory"}:
+    if view.kind in {"image", "pdf", "video", "download_only", "directory"}:
         return view.kind, view.size, view.content_type, None
     raw = path_obj.read_bytes()
     return view.kind, view.size, view.content_type, raw
@@ -5542,6 +5626,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
+                if view.kind == "video":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "video",
+                            "content_type": view.content_type,
+                            "path": str(p),
+                            "rel": str(rel),
+                            "size": int(view.size),
+                            "video_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                        },
+                    )
+                    return
                 if view.kind == "download_only":
                     _json_response(
                         self,
@@ -5691,20 +5790,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not p.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
-                raw = p.read_bytes()
-                _kind, ctype = _file_kind(p, raw)
-                if _kind not in {"image", "pdf"} or ctype is None:
+                with p.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, ctype = _file_kind(p, prefix)
+                if _kind not in {"image", "pdf", "video"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(raw)))
-                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(p.name, safe='')}")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(raw)
+                _send_inline_file_response(self, p, ctype)
                 return
 
             if path == "/api/files/blob":
@@ -5723,20 +5815,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_obj.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
-                raw = path_obj.read_bytes()
-                _kind, ctype = _file_kind(path_obj, raw)
-                if _kind not in {"image", "pdf"} or ctype is None:
+                with path_obj.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, ctype = _file_kind(path_obj, prefix)
+                if _kind not in {"image", "pdf", "video"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(raw)))
-                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(raw)
+                _send_inline_file_response(self, path_obj, ctype)
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/download"):
@@ -6603,6 +6688,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         },
                     )
                     return
+                if view.kind == "video":
+                    _json_response(
+                        self,
+                        200,
+                        {
+                            "ok": True,
+                            "kind": "video",
+                            "content_type": view.content_type,
+                            "path": str(path_obj),
+                            "size": int(view.size),
+                            "video_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
+                        },
+                    )
+                    return
                 if view.kind == "download_only":
                     _json_response(
                         self,
@@ -6692,20 +6791,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_obj.is_file():
                     _json_response(self, 400, {"error": "path is not a file"})
                     return
-                raw = path_obj.read_bytes()
-                _kind, ctype = _file_kind(path_obj, raw)
-                if _kind not in {"image", "pdf"} or ctype is None:
+                with path_obj.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, ctype = _file_kind(path_obj, prefix)
+                if _kind not in {"image", "pdf", "video"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(raw)))
-                self.send_header("Content-Disposition", f"inline; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}")
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(raw)
+                _send_inline_file_response(self, path_obj, ctype)
                 return
 
             session_id = _match_session_route(path, "file", "write")
