@@ -480,6 +480,8 @@
 
       const CLICKABLE_FILE_EXTENSIONS = new Set([
         "7z",
+        "3gp",
+        "avi",
         "bash",
         "bin",
         "bz2",
@@ -490,6 +492,7 @@
         "cpp",
         "css",
         "csv",
+        "flv",
         "gif",
         "go",
         "gz",
@@ -508,8 +511,11 @@
         "log",
         "m4v",
         "md",
+        "mkv",
         "mov",
         "mp4",
+        "mpeg",
+        "mpg",
         "ogv",
         "pdf",
         "patch",
@@ -528,6 +534,7 @@
         "txt",
         "webm",
         "webp",
+        "wmv",
         "xml",
         "xz",
         "yaml",
@@ -7918,7 +7925,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 fileVideo.src = resolveAppUrl(res.video_url);
                 fileVideo.style.display = "block";
                 const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
+                fileStatus.textContent = `${rel} - video preview - ${fmtBytes(size)}`;
               } else if (res.kind === "download_only") {
                 activeFileKind = "download_only";
                 const size = typeof res.size === "number" ? res.size : 0;

@@ -1,9 +1,13 @@
 import hashlib
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
+from codoxear import server
 from codoxear.server import _download_disposition
+from codoxear.server import _ensure_video_preview
 from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_openable_file
 from codoxear.server import _read_client_file_view
@@ -128,6 +132,60 @@ class TestInspectOpenableFile(unittest.TestCase):
         self.assertEqual(_single_byte_range("bytes=-5", 100), (95, 99))
         with self.assertRaises(ValueError):
             _single_byte_range("bytes=100-110", 100)
+
+    @unittest.skipIf(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, "ffmpeg and ffprobe required")
+    def test_video_preview_transcodes_to_browser_safe_mp4(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            src = td_path / "clip.mkv"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "color=c=red:s=160x90:d=0.2",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=channel_layout=stereo:sample_rate=44100",
+                    "-shortest",
+                    "-c:v",
+                    "mpeg4",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(src),
+                ],
+                check=True,
+            )
+            old_dir = server.VIDEO_PREVIEW_DIR
+            try:
+                server.VIDEO_PREVIEW_DIR = td_path / "previews"
+                preview = _ensure_video_preview(src)
+                self.assertEqual(preview.suffix, ".mp4")
+                self.assertTrue(preview.exists())
+                info = subprocess.check_output(
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "v:0",
+                        "-show_entries",
+                        "stream=codec_name,pix_fmt",
+                        "-of",
+                        "default=noprint_wrappers=1",
+                        str(preview),
+                    ],
+                    text=True,
+                )
+                self.assertIn("codec_name=h264", info)
+                self.assertIn("pix_fmt=yuv420p", info)
+            finally:
+                server.VIDEO_PREVIEW_DIR = old_dir
 
     def test_text_file_for_client_marks_utf8_as_editable(self) -> None:
         with tempfile.TemporaryDirectory() as td:

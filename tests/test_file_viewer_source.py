@@ -7,6 +7,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
 
 
 def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
@@ -236,7 +237,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileVideo.pause();", source)
         self.assertIn('fileVideo.src = resolveAppUrl(res.video_url);', source)
         self.assertIn('fileVideo.style.display = "block";', source)
-        self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
+        self.assertIn('fileStatus.textContent = `${rel} - video preview - ${fmtBytes(size)}`;', source)
         self.assertIn('res.kind === "download_only"', source)
         self.assertIn("renderBlockedFileNotice(rel, String(res.reason || \"\"), Number(res.viewer_max_bytes || 0), size);", source)
         self.assertIn('fileStatus.textContent = `${rel} - PDF - ${fmtBytes(size)}`;', source)
@@ -244,6 +245,18 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn(".filePdfPage {", css_source)
         self.assertIn(".fileVideo {", css_source)
         self.assertIn(".fileBlockedNotice {", css_source)
+
+    def test_video_preview_uses_browser_safe_server_transcode(self) -> None:
+        server_source = SERVER_PY.read_text(encoding="utf-8")
+        self.assertIn("VIDEO_PREVIEW_DIR = APP_DIR / \"video_previews\"", server_source)
+        self.assertIn("def _ensure_video_preview(path: Path) -> Path:", server_source)
+        self.assertIn('"libx264"', server_source)
+        self.assertIn('"-pix_fmt"', server_source)
+        self.assertIn('"yuv420p"', server_source)
+        self.assertIn('"aac"', server_source)
+        self.assertIn('"video preview failed:', server_source)
+        self.assertIn('"content_type": "video/mp4"', server_source)
+        self.assertIn('_send_inline_file_response(self, preview, "video/mp4")', server_source)
 
     def test_attach_limit_comes_from_server_constant(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -257,6 +270,8 @@ class TestFileViewerSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('"pdf"', source)
         self.assertIn('"mp4"', source)
+        self.assertIn('"mkv"', source)
+        self.assertIn('"avi"', source)
         self.assertIn('"webm"', source)
         self.assertIn('"zip"', source)
         self.assertIn('"tar"', source)

@@ -134,6 +134,7 @@ ALIAS_PATH = APP_DIR / "session_aliases.json"
 SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
 HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
+VIDEO_PREVIEW_DIR = APP_DIR / "video_previews"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
 VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
@@ -201,11 +202,18 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
 FILE_LIST_IGNORED_DIRS = frozenset({".git", ".hg", ".mypy_cache", ".pytest_cache", ".svn", "__pycache__", "build", "dist", "node_modules", "venv", ".venv"})
 MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
 VIDEO_CONTENT_TYPES = {
+    ".3gp": "video/3gpp",
+    ".avi": "video/x-msvideo",
+    ".flv": "video/x-flv",
     ".m4v": "video/mp4",
+    ".mkv": "video/x-matroska",
     ".mov": "video/quicktime",
     ".mp4": "video/mp4",
+    ".mpeg": "video/mpeg",
+    ".mpg": "video/mpeg",
     ".ogv": "video/ogg",
     ".webm": "video/webm",
+    ".wmv": "video/x-ms-wmv",
 }
 TEXTUAL_EXTENSIONS = frozenset(
     {
@@ -846,6 +854,63 @@ def _send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path
                 break
             handler.wfile.write(chunk)
             remaining -= len(chunk)
+
+
+def _video_preview_path(path: Path) -> Path:
+    st = path.stat()
+    payload = f"{path.resolve()}\0{int(st.st_size)}\0{int(st.st_mtime_ns)}".encode("utf-8", errors="surrogateescape")
+    return VIDEO_PREVIEW_DIR / f"{hashlib.sha256(payload).hexdigest()}.mp4"
+
+
+def _ensure_video_preview(path: Path) -> Path:
+    out = _video_preview_path(path)
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("ffmpeg is required for compatible video previews")
+    VIDEO_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.stem}.{os.getpid()}.{secrets.token_hex(8)}.tmp.mp4")
+    _unlink_quiet(tmp)
+    cmd = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a:0?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        str(tmp),
+    ]
+    try:
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(err or f"ffmpeg exited with code {proc.returncode}")
+        if not tmp.exists() or tmp.stat().st_size <= 0:
+            raise RuntimeError("ffmpeg produced an empty preview")
+        os.replace(tmp, out)
+        return out
+    finally:
+        _unlink_quiet(tmp)
 
 
 def _repair_png_crc(raw: bytes) -> bytes:
@@ -5627,13 +5692,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if view.kind == "video":
+                    try:
+                        _ensure_video_preview(p)
+                    except RuntimeError as e:
+                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                        return
                     _json_response(
                         self,
                         200,
                         {
                             "ok": True,
                             "kind": "video",
-                            "content_type": view.content_type,
+                            "content_type": "video/mp4",
                             "path": str(p),
                             "rel": str(rel),
                             "size": int(view.size),
@@ -5793,7 +5863,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with p.open("rb") as f:
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(p, prefix)
-                if _kind not in {"image", "pdf", "video"} or ctype is None:
+                if _kind == "video":
+                    try:
+                        preview = _ensure_video_preview(p)
+                    except RuntimeError as e:
+                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                        return
+                    _send_inline_file_response(self, preview, "video/mp4")
+                    return
+                if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, p, ctype)
@@ -5818,7 +5896,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(path_obj, prefix)
-                if _kind not in {"image", "pdf", "video"} or ctype is None:
+                if _kind == "video":
+                    try:
+                        preview = _ensure_video_preview(path_obj)
+                    except RuntimeError as e:
+                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                        return
+                    _send_inline_file_response(self, preview, "video/mp4")
+                    return
+                if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, path_obj, ctype)
@@ -6689,13 +6775,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if view.kind == "video":
+                    try:
+                        _ensure_video_preview(path_obj)
+                    except RuntimeError as e:
+                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                        return
                     _json_response(
                         self,
                         200,
                         {
                             "ok": True,
                             "kind": "video",
-                            "content_type": view.content_type,
+                            "content_type": "video/mp4",
                             "path": str(path_obj),
                             "size": int(view.size),
                             "video_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
@@ -6794,7 +6885,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(path_obj, prefix)
-                if _kind not in {"image", "pdf", "video"} or ctype is None:
+                if _kind == "video":
+                    try:
+                        preview = _ensure_video_preview(path_obj)
+                    except RuntimeError as e:
+                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                        return
+                    _send_inline_file_response(self, preview, "video/mp4")
+                    return
+                if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, path_obj, ctype)
