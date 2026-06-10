@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .agent_backend import get_agent_backend
-from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
+
+PI_DEFAULT_RESERVED_TOKENS = 16384
 
 
 def _read_jsonl_first_object(path: Path) -> dict[str, Any] | None:
@@ -26,17 +27,33 @@ def _read_jsonl_first_object(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
-    if context_window <= CONTEXT_WINDOW_BASELINE_TOKENS:
+def _context_percent_remaining(*, used_input_context_tokens: int, max_input_tokens: int) -> int:
+    if max_input_tokens <= 0:
         return 0
-    effective = context_window - CONTEXT_WINDOW_BASELINE_TOKENS
-    used = max(tokens_in_context - CONTEXT_WINDOW_BASELINE_TOKENS, 0)
-    remaining = max(effective - used, 0)
-    return int(round((remaining / effective) * 100.0))
+    remaining = max(max_input_tokens - used_input_context_tokens, 0)
+    return int(round((remaining / max_input_tokens) * 100.0))
+
+
+def _context_token_update(*, context_window: int, tokens_in_context: int, reserved_tokens: int, as_of: str | None = None) -> dict[str, Any]:
+    normalized_reserved_tokens = min(max(int(reserved_tokens), 0), int(context_window))
+    max_input_tokens = max(int(context_window) - normalized_reserved_tokens, 0)
+    return {
+        "context_window": int(context_window),
+        "tokens_in_context": int(tokens_in_context),
+        "tokens_remaining": max(max_input_tokens - int(tokens_in_context), 0),
+        "percent_remaining": _context_percent_remaining(used_input_context_tokens=int(tokens_in_context), max_input_tokens=max_input_tokens),
+        "reserved_tokens": normalized_reserved_tokens,
+        "max_input_tokens": max_input_tokens,
+        "as_of": as_of,
+    }
 
 
 def _default_pi_models_path() -> Path:
     return get_agent_backend("pi").home().joinpath("agent", "models.json")
+
+
+def _default_pi_settings_path() -> Path:
+    return get_agent_backend("pi").home().joinpath("agent", "settings.json")
 
 
 @functools.lru_cache(maxsize=8)
@@ -85,6 +102,43 @@ def pi_model_context_window(provider: str | None, model: str | None, *, models_p
     except Exception:
         return None
     return index.get((provider.strip(), model.strip()))
+
+
+@functools.lru_cache(maxsize=8)
+def _pi_reserved_tokens(settings_path_str: str, mtime_ns: int) -> int:
+    path = Path(settings_path_str)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return PI_DEFAULT_RESERVED_TOKENS
+    if not isinstance(data, dict):
+        return PI_DEFAULT_RESERVED_TOKENS
+    compaction = data.get("compaction")
+    if not isinstance(compaction, dict):
+        return PI_DEFAULT_RESERVED_TOKENS
+    reserve_tokens = compaction.get("reserveTokens")
+    if not isinstance(reserve_tokens, int) or reserve_tokens < 0:
+        return PI_DEFAULT_RESERVED_TOKENS
+    return int(reserve_tokens)
+
+
+def pi_reserved_tokens(*, settings_path: Path | None = None) -> int:
+    path = _default_pi_settings_path() if settings_path is None else settings_path
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return PI_DEFAULT_RESERVED_TOKENS
+    except Exception:
+        return PI_DEFAULT_RESERVED_TOKENS
+    try:
+        return _pi_reserved_tokens(str(path.resolve()), int(stat.st_mtime_ns))
+    except Exception:
+        return PI_DEFAULT_RESERVED_TOKENS
+
+
+def pi_context_token_update(*, context_window: int, tokens_in_context: int, as_of: str | None = None, reserved_tokens: int | None = None, settings_path: Path | None = None) -> dict[str, Any]:
+    reserve = pi_reserved_tokens(settings_path=settings_path) if reserved_tokens is None else reserved_tokens
+    return _context_token_update(context_window=context_window, tokens_in_context=tokens_in_context, reserved_tokens=reserve, as_of=as_of)
 
 
 def read_pi_session_header(path: Path) -> dict[str, Any] | None:
@@ -238,7 +292,7 @@ def pi_message_role(obj: dict[str, Any]) -> str | None:
     return role if isinstance(role, str) and role else None
 
 
-def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None) -> dict[str, Any] | None:
+def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None, settings_path: Path | None = None) -> dict[str, Any] | None:
     if obj.get("type") != "message":
         return None
     message = obj.get("message")
@@ -256,14 +310,7 @@ def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None) -> 
     if not isinstance(context_window, int) or context_window <= 0:
         return None
     as_of = obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None
-    return {
-        "context_window": context_window,
-        "tokens_in_context": total_tokens,
-        "tokens_remaining": max(context_window - total_tokens, 0),
-        "percent_remaining": _context_percent_remaining(tokens_in_context=total_tokens, context_window=context_window),
-        "baseline_tokens": CONTEXT_WINDOW_BASELINE_TOKENS,
-        "as_of": as_of,
-    }
+    return pi_context_token_update(context_window=context_window, tokens_in_context=total_tokens, as_of=as_of, settings_path=settings_path)
 
 
 def read_pi_run_settings(path: Path, *, max_scan_bytes: int = 8 * 1024 * 1024) -> tuple[str | None, str | None, str | None]:

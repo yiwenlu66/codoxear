@@ -24,13 +24,13 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
-from codoxear.constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
 from codoxear.pi_log import pi_assistant_thinking_count as _pi_assistant_thinking_count
 from codoxear.pi_log import pi_assistant_tool_use_count as _pi_assistant_tool_use_count
 from codoxear.pi_log import pi_message_role as _pi_message_role
+from codoxear.pi_log import pi_context_token_update as _pi_context_token_update
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
 from codoxear import pty_util as _pty_util
@@ -386,15 +386,6 @@ def _exec_agent_via_login_shell(*, cwd: str, agent_args: list[str], pty_slave_pa
     shell_argv = _shell_argv_for_command(cmd)
     os.chdir(cwd)
     os.execvpe(shell_argv[0], shell_argv, os.environ)
-
-
-def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
-    if context_window <= CONTEXT_WINDOW_BASELINE_TOKENS:
-        return 0
-    effective = context_window - CONTEXT_WINDOW_BASELINE_TOKENS
-    used = max(tokens_in_context - CONTEXT_WINDOW_BASELINE_TOKENS, 0)
-    remaining = max(effective - used, 0)
-    return int(round((remaining / effective) * 100.0))
 
 
 def _enter_seq_bytes() -> bytes:
@@ -1217,14 +1208,11 @@ class Broker:
                             if isinstance(ctx, int) and isinstance(last, dict):
                                 tt = last.get("total_tokens")
                                 if isinstance(tt, int):
-                                    token_update = {
-                                        "context_window": ctx,
-                                        "tokens_in_context": tt,
-                                        "tokens_remaining": max(ctx - tt, 0),
-                                        "percent_remaining": _context_percent_remaining(tokens_in_context=tt, context_window=ctx),
-                                        "baseline_tokens": CONTEXT_WINDOW_BASELINE_TOKENS,
-                                        "as_of": obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-                                    }
+                                    token_update = _pi_context_token_update(
+                                        context_window=ctx,
+                                        tokens_in_context=tt,
+                                        as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                                    )
                                     with self._lock:
                                         if self.state:
                                             self.state.token = token_update

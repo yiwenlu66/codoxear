@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Any
 from typing import Iterator
 
-from .constants import CONTEXT_WINDOW_BASELINE_TOKENS
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
+from .pi_log import pi_context_token_update
 from .pi_log import pi_token_update
 from .pi_log import pi_user_text
 from .voice_push import ClassifiedAssistantMessage
@@ -139,15 +139,6 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
         return None
 
     return None
-
-
-def _context_percent_remaining(*, tokens_in_context: int, context_window: int) -> int:
-    if context_window <= CONTEXT_WINDOW_BASELINE_TOKENS:
-        return 0
-    effective = context_window - CONTEXT_WINDOW_BASELINE_TOKENS
-    used = max(tokens_in_context - CONTEXT_WINDOW_BASELINE_TOKENS, 0)
-    remaining = max(effective - used, 0)
-    return int(round((remaining / effective) * 100.0))
 
 
 def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
@@ -279,14 +270,11 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
         tt = last.get("total_tokens")
         if not isinstance(tt, int):
             continue
-        return {
-            "context_window": ctx,
-            "tokens_in_context": tt,
-            "tokens_remaining": max(ctx - tt, 0),
-            "percent_remaining": _context_percent_remaining(tokens_in_context=tt, context_window=ctx),
-            "baseline_tokens": CONTEXT_WINDOW_BASELINE_TOKENS,
-            "as_of": obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-        }
+        return pi_context_token_update(
+            context_window=ctx,
+            tokens_in_context=tt,
+            as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+        )
     return None
 
 

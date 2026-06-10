@@ -2454,10 +2454,14 @@
 	            return;
 	          }
 	          const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
-	          lastToken = { ctx, used, pct: p, remaining: Math.max(ctx - used, 0), baseline: Number(tok.baseline_tokens) || 0, asOf: tok.as_of || "" };
+	          const maxInput = Number(tok.max_input_tokens);
+	          const reserved = Number(tok.reserved_tokens);
+	          const effectiveMaxInput = Number.isFinite(maxInput) && maxInput >= 0 ? maxInput : ctx;
+	          const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
+	          lastToken = { ctx, used, pct: p, remaining: Math.max(effectiveMaxInput - used, 0), maxInput: effectiveMaxInput, reserved: effectiveReserved, asOf: tok.as_of || "" };
 	          ctxChip.style.display = "inline-flex";
 	          ctxChip.textContent = p === null ? "Ctx" : `Ctx ${p}%`;
-	          ctxChip.title = `Context: ${used}/${ctx} tokens (baseline ${lastToken.baseline}).`;
+	          ctxChip.title = `Context input: ${used}/${lastToken.maxInput} tokens (${lastToken.reserved} reserved; window ${ctx}).`;
 	        }
         ctxChip.onclick = () => {
           if (!lastToken) return;
@@ -8691,7 +8695,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	              const pct = Number(tok.percent_remaining);
               if (Number.isFinite(ctx) && Number.isFinite(used) && ctx > 0 && used >= 0) {
                 const p = Number.isFinite(pct) ? Math.max(0, Math.min(100, Math.round(pct))) : null;
-                const txt = p === null ? `${used}/${ctx}` : `${used}/${ctx} (${p}% left)`;
+                const maxInput = Number(tok.max_input_tokens);
+                const reserved = Number(tok.reserved_tokens);
+                const effectiveMaxInput = Number.isFinite(maxInput) && maxInput >= 0 ? maxInput : ctx;
+                const effectiveReserved = Number.isFinite(reserved) && reserved >= 0 ? reserved : Math.max(ctx - effectiveMaxInput, 0);
+                const txt = p === null ? `${used}/${effectiveMaxInput}` : `${used}/${effectiveMaxInput} (${p}% left; ${effectiveReserved} reserved)`;
                 addRow("Context", txt);
               }
             }

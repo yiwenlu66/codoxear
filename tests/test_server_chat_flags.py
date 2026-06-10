@@ -238,6 +238,8 @@ class TestServerChatFlags(unittest.TestCase):
                 '{"providers":{"macaron":{"models":[{"id":"gpt-5.4","contextWindow":1000000}]}}}\n',
                 encoding="utf-8",
             )
+            settings_path = Path(td) / "settings.json"
+            settings_path.write_text('{"compaction":{"reserveTokens":20000}}\n', encoding="utf-8")
             obj = {
                 "type": "message",
                 "timestamp": "2026-03-30T08:44:03.883Z",
@@ -249,10 +251,14 @@ class TestServerChatFlags(unittest.TestCase):
                     "content": [{"type": "text", "text": "done"}],
                 },
             }
-            token = pi_token_update(obj, models_path=models_path)
+            token = pi_token_update(obj, models_path=models_path, settings_path=settings_path)
         self.assertIsNotNone(token)
         self.assertEqual(token["context_window"], 1000000)
         self.assertEqual(token["tokens_in_context"], 11817)
+        self.assertEqual(token["reserved_tokens"], 20000)
+        self.assertEqual(token["max_input_tokens"], 980000)
+        self.assertEqual(token["tokens_remaining"], 968183)
+        self.assertEqual(token["percent_remaining"], 99)
 
 
 if __name__ == "__main__":
