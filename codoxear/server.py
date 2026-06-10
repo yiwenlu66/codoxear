@@ -3858,7 +3858,7 @@ class SessionManager:
             if log_path is not None and not log_path.exists():
                 log_path = None
             ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
-            if log_path is None and _pid_alive(codex_pid):
+            if log_path is None and agent_backend == "codex" and _pid_alive(codex_pid):
                 discovered_log_path = _proc_find_open_rollout_log(
                     proc_root=PROC_ROOT,
                     root_pid=codex_pid,
@@ -4457,7 +4457,7 @@ class SessionManager:
                 tail_state = {}
             if _broker_tail_has_session_detach_marker(agent_backend, tail_state.get("tail") if isinstance(tail_state, dict) else None):
                 ignored_rollout_paths.add(current_log_path)
-        if log_path is None and _pid_alive(s.codex_pid):
+        if log_path is None and agent_backend == "codex" and _pid_alive(s.codex_pid):
             discovered_log_path = _proc_find_open_rollout_log(
                 proc_root=PROC_ROOT,
                 root_pid=s.codex_pid,

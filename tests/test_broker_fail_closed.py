@@ -16,6 +16,8 @@ from codoxear.broker import State
 from codoxear.broker import _agent_shell_command
 from codoxear.broker import _exec_agent_via_login_shell
 from codoxear.broker import _observe_shell_pre_exec_marker
+from codoxear.broker import _pi_bridge_extension_path
+from codoxear.broker import _read_pi_active_session_marker
 from codoxear.agent_backend import get_agent_backend
 from codoxear.util import append_launch_attempt
 from codoxear.util import read_launch_attempts
@@ -127,6 +129,7 @@ read -r -k 1 option
                     "ZDOTDIR": str(home),
                     "SHELL": shutil.which("zsh") or "zsh",
                     "CODEX_BIN": str(fake_codex),
+                    "CODEX_WEB_AGENT_BACKEND": "codex",
                     "CODEX_WEB_OWNER": "web",
                     "CODEX_WEB_SHELL_STARTUP_TIMEOUT_SECONDS": "2",
                     "PATH": f"{bin_dir}:{env.get('PATH', '')}",
@@ -249,22 +252,48 @@ read -r -k 1 option
             "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
         ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
             broker = Broker(cwd="/tmp/pi-work", codex_args=["--model", "gpt-5.4"])
+            marker_env = os.environ.get("CODEX_WEB_PI_ACTIVE_SESSION_FILE")
 
-        self.assertEqual(broker.codex_args[:2], ["--model", "gpt-5.4"])
-        self.assertEqual(broker.codex_args[-2], "--session")
-        session_path = Path(broker.codex_args[-1])
-        self.assertTrue(str(session_path).startswith(str(Path(td) / "agent" / "sessions" / "--tmp-pi-work--")))
-        self.assertIsNone(broker._resume_session_id)
+            self.assertEqual(broker.codex_args[:2], ["--model", "gpt-5.4"])
+            session_idx = broker.codex_args.index("--session")
+            session_path = Path(broker.codex_args[session_idx + 1])
+            self.assertTrue(str(session_path).startswith(str(Path(td) / "agent" / "sessions" / "--tmp-pi-work--")))
+            self.assertEqual(broker.codex_args[-2:], ["--extension", str(_pi_bridge_extension_path())])
+            self.assertEqual(marker_env, str(broker.pi_active_session_marker_path))
+            self.assertIsNone(broker._resume_session_id)
 
-    def test_pi_discover_log_watcher_switches_when_new_log_appears_while_current_exists(self) -> None:
+    def test_read_pi_active_session_marker_rejects_paths_outside_sessions_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sessions_dir = root / "sessions"
+            sessions_dir.mkdir()
+            marker = root / "marker.json"
+            outside = root / "outside.jsonl"
+            marker.write_text(json.dumps({"version": 1, "sessionFile": str(outside)}) + "\n", encoding="utf-8")
+
+            self.assertIsNone(_read_pi_active_session_marker(marker, sessions_dir=sessions_dir))
+
+    def test_read_pi_active_session_marker_accepts_session_dir_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            sessions_dir = Path(td) / "sessions"
+            log_path = sessions_dir / "--tmp--" / "session.jsonl"
+            log_path.parent.mkdir(parents=True)
+            marker = Path(td) / "marker.json"
+            marker.write_text(json.dumps({"version": 1, "sessionFile": str(log_path)}) + "\n", encoding="utf-8")
+
+            self.assertEqual(_read_pi_active_session_marker(marker, sessions_dir=sessions_dir), log_path.resolve())
+
+    def test_pi_discover_log_watcher_switches_to_marker_log_while_current_exists(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
         with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
             "os.environ", {"PI_HOME": td}, clear=False
         ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
             broker = Broker(cwd="/tmp", codex_args=[])
-            current = Path(td) / "current.jsonl"
+            sessions_dir = Path(td) / "agent" / "sessions"
+            current = sessions_dir / "current.jsonl"
+            current.parent.mkdir(parents=True, exist_ok=True)
             current.write_text('{"type":"session","id":"current","cwd":"/tmp"}\n', encoding="utf-8")
-            new = Path(td) / "new.jsonl"
+            new = sessions_dir / "new.jsonl"
             new.write_text('{"type":"session","id":"new","cwd":"/tmp"}\n', encoding="utf-8")
             broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
             broker.state.log_path = current
@@ -276,12 +305,49 @@ read -r -k 1 option
                 seen.append(log_path)
                 broker._stop.set()
 
-            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=new), patch.object(
+            broker.pi_active_session_marker_path.parent.mkdir(parents=True, exist_ok=True)
+            broker.pi_active_session_marker_path.write_text(
+                json.dumps({"version": 1, "sessionFile": str(new)}) + "\n",
+                encoding="utf-8",
+            )
+
+            with patch("codoxear.broker._proc_find_open_rollout_log") as proc_find, patch.object(
                 broker, "_maybe_register_or_switch_rollout", side_effect=_capture_switch
             ), patch("codoxear.broker.time.sleep", side_effect=lambda _seconds: None):
                 broker._discover_log_watcher()
 
+        proc_find.assert_not_called()
         self.assertEqual(seen, [new])
+
+    def test_pi_discover_log_watcher_ignores_proc_log_without_marker(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            current = Path(td) / "agent" / "sessions" / "current.jsonl"
+            current.parent.mkdir(parents=True, exist_ok=True)
+            current.write_text('{"type":"session","id":"current","cwd":"/tmp"}\n', encoding="utf-8")
+            candidate = Path(td) / "agent" / "sessions" / "candidate.jsonl"
+            candidate.write_text('{"type":"session","id":"candidate","cwd":"/tmp"}\n', encoding="utf-8")
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path(td) / "broker.sock")
+            broker.state.log_path = current
+            seen: list[Path] = []
+            sleep_count = 0
+
+            def _sleep(_seconds: float) -> None:
+                nonlocal sleep_count
+                sleep_count += 1
+                if sleep_count >= 2:
+                    broker._stop.set()
+
+            with patch("codoxear.broker._proc_find_open_rollout_log", return_value=candidate) as proc_find, patch.object(
+                broker, "_maybe_register_or_switch_rollout", side_effect=lambda *, log_path: seen.append(log_path)
+            ), patch("codoxear.broker.time.sleep", side_effect=_sleep), patch("codoxear.broker.os.waitpid", return_value=(0, 0)):
+                broker._discover_log_watcher()
+
+        proc_find.assert_not_called()
+        self.assertEqual(seen, [])
 
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
@@ -299,12 +365,13 @@ read -r -k 1 option
                 proc.wait(timeout=2.0)
 
     def test_discover_log_watcher_failure_triggers_teardown(self) -> None:
-        broker = Broker(cwd="/tmp", codex_args=[])
-        broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
+        with patch("codoxear.broker.AGENT_BACKEND", "codex"):
+            broker = Broker(cwd="/tmp", codex_args=[])
+            broker.state = _broker_state(codex_pid=1234, sock_path=Path("/tmp/test-broker.sock"))
 
-        with patch("codoxear.broker._proc_find_open_rollout_log", side_effect=RuntimeError("boom")):
-            with patch.object(broker, "_teardown_managed_process_group") as teardown:
-                broker._discover_log_watcher()
+            with patch("codoxear.broker._proc_find_open_rollout_log", side_effect=RuntimeError("boom")):
+                with patch.object(broker, "_teardown_managed_process_group") as teardown:
+                    broker._discover_log_watcher()
 
         teardown.assert_called_once_with()
 

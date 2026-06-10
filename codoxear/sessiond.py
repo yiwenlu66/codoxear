@@ -396,7 +396,7 @@ class Sessiond:
             with self._lock:
                 st0 = self.state
             pid = int(st0.codex_pid) if st0 else 0
-            if pid > 0:
+            if pid > 0 and AGENT_BACKEND == "codex":
                 lp = _proc_find_open_rollout_log(proc_root=PROC_ROOT, root_pid=pid, agent_backend=AGENT_BACKEND, cwd=self.cwd)
             else:
                 lp = None

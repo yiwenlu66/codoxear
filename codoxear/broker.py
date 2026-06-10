@@ -258,6 +258,62 @@ def _pi_new_session_log_path(*, cwd: str, sessions_dir: Path) -> Path:
     return session_dir / filename
 
 
+def _pi_active_session_marker_path(*, broker_pid: int | None = None) -> Path:
+    pid = int(os.getpid() if broker_pid is None else broker_pid)
+    return _default_app_dir() / "pi-active-sessions" / f"broker-{pid}.json"
+
+
+def _pi_bridge_extension_path() -> Path:
+    return Path(__file__).resolve().parent / "pi_active_session_bridge.ts"
+
+
+def _ensure_pi_bridge_args(*, args: list[str], marker_path: Path) -> list[str]:
+    if AGENT_BACKEND != "pi":
+        return list(args)
+    bridge = str(_pi_bridge_extension_path())
+    out = list(args)
+    for idx, token in enumerate(out[:-1]):
+        if token in ("--extension", "-e") and out[idx + 1] == bridge:
+            os.environ["CODEX_WEB_PI_ACTIVE_SESSION_FILE"] = str(marker_path)
+            return out
+    os.environ["CODEX_WEB_PI_ACTIVE_SESSION_FILE"] = str(marker_path)
+    out.extend(["--extension", bridge])
+    return out
+
+
+def _reset_pi_active_session_marker(marker_path: Path) -> None:
+    try:
+        marker_path.unlink()
+    except FileNotFoundError:
+        return
+    except Exception:
+        return
+
+
+def _read_pi_active_session_marker(marker_path: Path, *, sessions_dir: Path) -> Path | None:
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("version") != 1:
+        return None
+    raw = data.get("sessionFile")
+    if not isinstance(raw, str) or not raw.strip() or not raw.endswith(".jsonl"):
+        return None
+    path = Path(raw).expanduser()
+    try:
+        resolved = path.resolve()
+    except Exception:
+        resolved = path
+    try:
+        resolved.relative_to(sessions_dir.resolve())
+    except Exception:
+        return None
+    return resolved
+
+
 def _ensure_pi_session_arg(*, args: list[str], cwd: str, sessions_dir: Path) -> list[str]:
     if AGENT_BACKEND != "pi":
         return list(args)
@@ -815,7 +871,11 @@ def _observe_shell_pre_exec_marker(st: State, chunk: bytes, *, now_ts: float) ->
 class Broker:
     def __init__(self, *, cwd: str, codex_args: list[str]) -> None:
         self.cwd = cwd
+        self.pi_active_session_marker_path = _pi_active_session_marker_path()
+        if AGENT_BACKEND == "pi":
+            _reset_pi_active_session_marker(self.pi_active_session_marker_path)
         base_args = _ensure_pi_session_arg(args=codex_args, cwd=self.cwd, sessions_dir=BACKEND.sessions_dir())
+        base_args = _ensure_pi_bridge_args(args=base_args, marker_path=self.pi_active_session_marker_path)
         # Headless web sessions need different defaults for robust injection and log discovery.
         # These flags are only for the interactive Codex CLI.
         if OWNER_TAG == "web" and AGENT_BACKEND == "codex":
@@ -868,42 +928,32 @@ class Broker:
                     if not st:
                         return
                     current_log_path = st.log_path
-                    need = (current_log_path is None) or (not current_log_path.exists())
                     root_pid = int(st.codex_pid)
-                    sock_path = st.sock_path
-                    known_paths = set(st.known_rollout_paths)
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
-                    lp = _proc_find_open_rollout_log(
-                        proc_root=PROC_ROOT,
-                        root_pid=root_pid,
-                        agent_backend=AGENT_BACKEND,
-                        cwd=self.cwd,
-                        ignored_paths=ignored_paths,
-                    )
-                    if lp and lp.exists():
-                        if current_log_path is None or (not _paths_match(lp, current_log_path)):
-                            self._maybe_register_or_switch_rollout(log_path=lp)
-                            time.sleep(0.25)
-                            continue
                     if AGENT_BACKEND == "pi":
-                        claimed_paths = _claimed_log_paths_from_sock_meta(sock_dir=SOCK_DIR, exclude_sock=sock_path)
-                        discovered = _find_new_session_log(
+                        lp = _read_pi_active_session_marker(
+                            self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
-                            agent_backend="pi",
-                            cwd=self.cwd,
-                            after_ts=0.0,
-                            preexisting=known_paths,
-                            exclude_paths=claimed_paths | ignored_paths,
-                            timeout_s=0.0,
                         )
-                        if discovered is not None:
-                            _sid, lp = discovered
-                            if lp.exists():
-                                if current_log_path is None or (not _paths_match(lp, current_log_path)):
-                                    self._maybe_register_or_switch_rollout(log_path=lp)
-                                    time.sleep(0.25)
-                                    continue
+                        if lp is not None and lp.exists():
+                            if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                                self._maybe_register_or_switch_rollout(log_path=lp)
+                                time.sleep(0.25)
+                                continue
+                    else:
+                        lp = _proc_find_open_rollout_log(
+                            proc_root=PROC_ROOT,
+                            root_pid=root_pid,
+                            agent_backend=AGENT_BACKEND,
+                            cwd=self.cwd,
+                            ignored_paths=ignored_paths,
+                        )
+                        if lp and lp.exists():
+                            if current_log_path is None or (not _paths_match(lp, current_log_path)):
+                                self._maybe_register_or_switch_rollout(log_path=lp)
+                                time.sleep(0.25)
+                                continue
                     # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
