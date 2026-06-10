@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from codoxear.pi_log import pi_token_update
 from codoxear.server import _compute_idle_from_log
@@ -252,13 +253,67 @@ class TestServerChatFlags(unittest.TestCase):
                 },
             }
             token = pi_token_update(obj, models_path=models_path, settings_path=settings_path)
-        self.assertIsNotNone(token)
+        if token is None:
+            self.fail("missing token update")
         self.assertEqual(token["context_window"], 1000000)
         self.assertEqual(token["tokens_in_context"], 11817)
         self.assertEqual(token["reserved_tokens"], 20000)
         self.assertEqual(token["max_input_tokens"], 980000)
         self.assertEqual(token["tokens_remaining"], 968183)
         self.assertEqual(token["percent_remaining"], 99)
+
+    def test_pi_token_update_queries_pi_registry_for_builtin_context_window(self) -> None:
+        with TemporaryDirectory() as td:
+            models_path = Path(td) / "models.json"
+            models_path.write_text(
+                '{"providers":{"occ":{"models":[{"id":"gpt-5.5","contextWindow":272000}]}}}\n',
+                encoding="utf-8",
+            )
+            settings_path = Path(td) / "settings.json"
+            settings_path.write_text('{"compaction":{"reserveTokens":16000}}\n', encoding="utf-8")
+            obj = {
+                "type": "message",
+                "timestamp": "2026-06-10T18:10:25.343Z",
+                "message": {
+                    "role": "assistant",
+                    "provider": "openai-codex",
+                    "model": "gpt-5.5",
+                    "usage": {"totalTokens": 185136},
+                    "content": [{"type": "text", "text": "done"}],
+                },
+            }
+            with patch("codoxear.pi_log._default_pi_models_path", return_value=models_path), patch(
+                "codoxear.pi_log._query_pi_context_windows",
+                return_value={("openai-codex", "gpt-5.5"): 272000},
+            ) as query:
+                token = pi_token_update(obj, settings_path=settings_path)
+        query.assert_called_once_with(models_path)
+        if token is None:
+            self.fail("missing token update")
+        self.assertEqual(token["context_window"], 272000)
+        self.assertEqual(token["tokens_in_context"], 185136)
+        self.assertEqual(token["reserved_tokens"], 16000)
+        self.assertEqual(token["max_input_tokens"], 256000)
+        self.assertEqual(token["tokens_remaining"], 70864)
+
+    def test_pi_token_update_ignores_error_usage(self) -> None:
+        obj = {
+            "type": "message",
+            "timestamp": "2026-06-10T17:58:50.128Z",
+            "message": {
+                "role": "assistant",
+                "provider": "openai-codex",
+                "model": "gpt-5.5",
+                "stopReason": "error",
+                "usage": {"totalTokens": 0},
+                "content": [],
+                "errorMessage": "OpenAI API error (522): 522 status code (no body)",
+            },
+        }
+        with patch("codoxear.pi_log._query_pi_context_windows") as query:
+            token = pi_token_update(obj)
+        query.assert_not_called()
+        self.assertIsNone(token)
 
 
 if __name__ == "__main__":

@@ -3947,8 +3947,12 @@ class SessionManager:
 
             if log_path is not None:
                 meta_log_off = int(log_path.stat().st_size)
+                token = _rollout_log._find_latest_token_update(log_path)
             else:
                 meta_log_off = 0
+                token = None
+            if token is None and log_path is None:
+                token = resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None
 
             s = Session(
                 session_id=session_id,
@@ -3964,7 +3968,7 @@ class SessionManager:
                 sock_path=sock,
                 busy=bool(resp.get("busy")),
                 queue_len=int(resp.get("queue_len")),
-                token=(resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None),
+                token=token,
                 meta_thinking=0,
                 meta_tools=0,
                 meta_system=0,
@@ -4036,7 +4040,9 @@ class SessionManager:
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
-                        s2.token = tok
+                        log_available = s2.log_path is not None and s2.log_path.exists()
+                        if not log_available:
+                            s2.token = tok
         return True, None
 
     def _prune_dead_sessions(self) -> None:
@@ -5178,7 +5184,9 @@ class SessionManager:
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
-                        s2.token = tok
+                        log_available = s2.log_path is not None and s2.log_path.exists()
+                        if not log_available:
+                            s2.token = tok
         return resp
 
     def get_tail(self, session_id: str) -> str:
@@ -5283,9 +5291,13 @@ def _message_runtime_snapshot(
         state_token = state.get("token")
         if not (isinstance(state_token, dict) or state_token is None):
             raise ValueError("invalid token from broker state response")
-        token_val = state_token if isinstance(state_token, dict) else (s.token if isinstance(s.token, dict) else None)
-    elif isinstance(token_update, dict):
+    log_available = s.log_path is not None and s.log_path.exists()
+    if isinstance(token_update, dict):
         token_val = token_update
+    elif isinstance(s.token, dict):
+        token_val = s.token
+    elif (not log_available) and "token" in state and isinstance(state.get("token"), dict):
+        token_val = state.get("token")
     return state, bool(busy_val), int(queue_val), token_val
 
 

@@ -3,12 +3,16 @@ from __future__ import annotations
 import functools
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from .agent_backend import get_agent_backend
 
 PI_DEFAULT_RESERVED_TOKENS = 16384
+PI_MODEL_QUERY_TIMEOUT_SECONDS = 10.0
+PI_MODEL_QUERY_ID = "codoxear-models"
 
 
 def _read_jsonl_first_object(path: Path) -> dict[str, Any] | None:
@@ -56,6 +60,26 @@ def _default_pi_settings_path() -> Path:
     return get_agent_backend("pi").home().joinpath("agent", "settings.json")
 
 
+def _context_windows_from_model_rows(rows: Any) -> dict[tuple[str, str], int]:
+    if not isinstance(rows, list):
+        return {}
+    out: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        provider_name = row.get("provider")
+        model_id = row.get("id")
+        context_window = row.get("contextWindow")
+        if not isinstance(provider_name, str) or not provider_name.strip():
+            continue
+        if not isinstance(model_id, str) or not model_id.strip():
+            continue
+        if not isinstance(context_window, int) or context_window <= 0:
+            continue
+        out[(provider_name.strip(), model_id.strip())] = int(context_window)
+    return out
+
+
 @functools.lru_cache(maxsize=8)
 def _pi_context_windows(models_path_str: str, mtime_ns: int) -> dict[tuple[str, str], int]:
     path = Path(models_path_str)
@@ -65,7 +89,7 @@ def _pi_context_windows(models_path_str: str, mtime_ns: int) -> dict[tuple[str, 
     providers = data.get("providers")
     if not isinstance(providers, dict):
         return {}
-    out: dict[tuple[str, str], int] = {}
+    rows: list[dict[str, Any]] = []
     for provider_name, provider_cfg in providers.items():
         if not isinstance(provider_name, str) or not isinstance(provider_cfg, dict):
             continue
@@ -75,14 +99,95 @@ def _pi_context_windows(models_path_str: str, mtime_ns: int) -> dict[tuple[str, 
         for row in models:
             if not isinstance(row, dict):
                 continue
-            model_id = row.get("id")
-            context_window = row.get("contextWindow")
-            if not isinstance(model_id, str) or not model_id.strip():
-                continue
-            if not isinstance(context_window, int) or context_window <= 0:
-                continue
-            out[(provider_name.strip(), model_id.strip())] = int(context_window)
-    return out
+            row2 = dict(row)
+            row2["provider"] = provider_name
+            rows.append(row2)
+    return _context_windows_from_model_rows(rows)
+
+
+def _context_windows_from_models_file(path: Path) -> dict[tuple[str, str], int]:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+    try:
+        return _pi_context_windows(str(path.resolve()), int(stat.st_mtime_ns))
+    except Exception:
+        return {}
+
+
+def _file_mtime_ns(path: Path) -> int:
+    try:
+        return int(path.stat().st_mtime_ns)
+    except FileNotFoundError:
+        return -1
+    except Exception:
+        return -1
+
+
+@functools.lru_cache(maxsize=8)
+def _pi_rpc_context_windows(pi_executable: str, pi_mtime_ns: int, models_path_str: str, models_mtime_ns: int) -> dict[tuple[str, str], int]:
+    request = json.dumps({"id": PI_MODEL_QUERY_ID, "type": "get_available_models"}) + "\n"
+    env = dict(os.environ)
+    env["PI_OFFLINE"] = "1"
+    env.setdefault("PI_HOME", str(get_agent_backend("pi").home()))
+    cmd = [
+        pi_executable,
+        "--mode",
+        "rpc",
+        "--no-session",
+        "--no-tools",
+        "--no-extensions",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--offline",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=request,
+            text=True,
+            capture_output=True,
+            timeout=PI_MODEL_QUERY_TIMEOUT_SECONDS,
+            env=env,
+            check=False,
+        )
+    except Exception:
+        return {}
+    if proc.returncode != 0:
+        return {}
+    for line in proc.stdout.splitlines():
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if obj.get("id") != PI_MODEL_QUERY_ID or obj.get("command") != "get_available_models" or obj.get("success") is not True:
+            continue
+        data = obj.get("data")
+        if not isinstance(data, dict):
+            return {}
+        return _context_windows_from_model_rows(data.get("models"))
+    return {}
+
+
+def _query_pi_context_windows(models_path: Path) -> dict[tuple[str, str], int]:
+    configured_pi = get_agent_backend("pi").cli_bin()
+    pi_executable = shutil.which(configured_pi)
+    if not pi_executable:
+        return {}
+    pi_path = Path(pi_executable)
+    return _pi_rpc_context_windows(
+        str(pi_path),
+        _file_mtime_ns(pi_path),
+        str(models_path),
+        _file_mtime_ns(models_path),
+    )
 
 
 def pi_model_context_window(provider: str | None, model: str | None, *, models_path: Path | None = None) -> int | None:
@@ -90,18 +195,17 @@ def pi_model_context_window(provider: str | None, model: str | None, *, models_p
         return None
     if not isinstance(model, str) or not model.strip():
         return None
+    key = (provider.strip(), model.strip())
     path = _default_pi_models_path() if models_path is None else models_path
-    try:
-        stat = path.stat()
-    except FileNotFoundError:
-        return None
-    except Exception:
-        return None
-    try:
-        index = _pi_context_windows(str(path.resolve()), int(stat.st_mtime_ns))
-    except Exception:
-        return None
-    return index.get((provider.strip(), model.strip()))
+    local_index = _context_windows_from_models_file(path)
+    local_context_window = local_index.get(key)
+    if isinstance(local_context_window, int) and local_context_window > 0:
+        return local_context_window
+    if models_path is None:
+        queried_context_window = _query_pi_context_windows(path).get(key)
+        if isinstance(queried_context_window, int) and queried_context_window > 0:
+            return queried_context_window
+    return None
 
 
 @functools.lru_cache(maxsize=8)
@@ -297,6 +401,9 @@ def pi_token_update(obj: dict[str, Any], *, models_path: Path | None = None, set
         return None
     message = obj.get("message")
     if not isinstance(message, dict) or message.get("role") != "assistant":
+        return None
+    stop_reason = message.get("stopReason")
+    if stop_reason == "aborted" or stop_reason == "error":
         return None
     usage = message.get("usage")
     if not isinstance(usage, dict):
