@@ -5962,6 +5962,7 @@
         let activeFileEditable = false;
         let activeFileVersion = "";
         let activeFileDraft = false;
+        let activeVideoFallback = null;
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
@@ -6082,15 +6083,22 @@
           return historyFileSelectionForSession(sid);
         }
 
+        function clearFileVideo() {
+          activeVideoFallback = null;
+          fileVideo.onerror = null;
+          fileVideo.onloadedmetadata = null;
+          fileVideo.pause();
+          fileVideo.removeAttribute("src");
+          fileVideo.load();
+          fileVideo.style.display = "none";
+        }
+
         function resetFileViewerPanel() {
           disposeFileEditor();
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.style.display = "block";
         }
 
@@ -6865,10 +6873,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderMarkdownPreview(rel, text) {
           disposeFileEditor();
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.innerHTML = "";
           const preview = el("div", {
             class: "md fileMarkdownPreview",
@@ -6881,10 +6886,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function renderBlockedFileNotice(rel, reason, viewerMaxBytes, size) {
           disposeFileEditor();
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.innerHTML = "";
           const body = el("div", { class: "fileBlockedNotice" }, [
             el("div", { class: "title", text: "Preview unavailable" }),
@@ -6897,10 +6899,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function renderPdfFile(rel, url, request) {
           disposeFileEditor();
           disposePdfRender();
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.innerHTML = "";
           fileDiff.style.display = "block";
           fileDiff.scrollTop = 0;
@@ -7236,10 +7235,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.style.display = "block";
           try {
             if (fileViewMode !== "file") setFileViewMode("file");
@@ -7864,10 +7860,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           resetActiveFileBufferState();
           fileImage.removeAttribute("src");
           fileImage.style.display = "none";
-          fileVideo.pause();
-          fileVideo.removeAttribute("src");
-          fileVideo.load();
-          fileVideo.style.display = "none";
+          clearFileVideo();
           fileDiff.style.display = "block";
           try {
             const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
@@ -7901,10 +7894,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (res.kind === "image") {
                 activeFileKind = "image";
                 if (typeof res.image_url !== "string" || !res.image_url) throw new Error("invalid image response");
-                fileVideo.pause();
-                fileVideo.removeAttribute("src");
-                fileVideo.load();
-                fileVideo.style.display = "none";
+                clearFileVideo();
                 fileDiff.style.display = "none";
                 fileImage.src = resolveAppUrl(res.image_url);
                 fileImage.alt = rel;
@@ -7921,11 +7911,38 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               } else if (res.kind === "video") {
                 activeFileKind = "video";
                 if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
+                const previewUrl = typeof res.video_preview_url === "string" ? res.video_preview_url : "";
+                const size = typeof res.size === "number" ? res.size : 0;
+                const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
+                activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false } : null;
+                fileVideo.onerror = () => {
+                  const state = activeVideoFallback;
+                  if (!state || state.token !== videoToken) {
+                    if (!previewUrl) fileStatus.textContent = `${rel} - video unsupported`;
+                    return;
+                  }
+                  if (state.used) {
+                    activeVideoFallback = null;
+                    fileVideo.onerror = null;
+                    fileVideo.onloadedmetadata = null;
+                    fileStatus.textContent = `${rel} - video preview unavailable (ffmpeg missing or conversion failed)`;
+                    return;
+                  }
+                  state.used = true;
+                  fileStatus.textContent = `${rel} - building compatible video preview...`;
+                  fileVideo.src = resolveAppUrl(state.previewUrl);
+                  fileVideo.load();
+                };
+                fileVideo.onloadedmetadata = () => {
+                  const state = activeVideoFallback;
+                  if (state && state.token === videoToken && state.used) {
+                    fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;
+                  }
+                };
                 fileDiff.style.display = "none";
                 fileVideo.src = resolveAppUrl(res.video_url);
                 fileVideo.style.display = "block";
-                const size = typeof res.size === "number" ? res.size : 0;
-                fileStatus.textContent = `${rel} - video preview - ${fmtBytes(size)}`;
+                fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
               } else if (res.kind === "download_only") {
                 activeFileKind = "download_only";
                 const size = typeof res.size === "number" ? res.size : 0;

@@ -856,6 +856,30 @@ def _send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path
             remaining -= len(chunk)
 
 
+def _video_response_payload(
+    *,
+    path_obj: Path,
+    size: int,
+    content_type: str | None,
+    video_url: str,
+    preview_url: str,
+    rel: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ok": True,
+        "kind": "video",
+        "content_type": content_type or "application/octet-stream",
+        "preview_content_type": "video/mp4",
+        "path": str(path_obj),
+        "size": int(size),
+        "video_url": video_url,
+        "video_preview_url": preview_url,
+    }
+    if rel is not None:
+        payload["rel"] = str(rel)
+    return payload
+
+
 def _video_preview_path(path: Path) -> Path:
     st = path.stat()
     payload = f"{path.resolve()}\0{int(st.st_size)}\0{int(st.st_mtime_ns)}".encode("utf-8", errors="surrogateescape")
@@ -5692,23 +5716,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if view.kind == "video":
-                    try:
-                        _ensure_video_preview(p)
-                    except RuntimeError as e:
-                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                        return
                     _json_response(
                         self,
                         200,
-                        {
-                            "ok": True,
-                            "kind": "video",
-                            "content_type": "video/mp4",
-                            "path": str(p),
-                            "rel": str(rel),
-                            "size": int(view.size),
-                            "video_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
-                        },
+                        _video_response_payload(
+                            path_obj=p,
+                            rel=str(rel),
+                            size=int(view.size),
+                            content_type=view.content_type,
+                            video_url=f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                            preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}",
+                        ),
                     )
                     return
                 if view.kind == "download_only":
@@ -5864,17 +5882,56 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(p, prefix)
                 if _kind == "video":
-                    try:
-                        preview = _ensure_video_preview(p)
-                    except RuntimeError as e:
-                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                        return
-                    _send_inline_file_response(self, preview, "video/mp4")
+                    _send_inline_file_response(self, p, ctype or "application/octet-stream")
                     return
                 if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, p, ctype)
+                return
+
+            if path.startswith("/api/sessions/") and path.endswith("/file/video_preview"):
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                parts = path.split("/")
+                session_id = parts[3] if len(parts) >= 4 else ""
+                if not session_id:
+                    self.send_error(404)
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                rel = path_q[0]
+                base = Path(s.cwd).expanduser()
+                if not base.is_absolute():
+                    base = base.resolve()
+                p = _resolve_session_path(base, rel)
+                if not p.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not p.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                with p.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, _ctype = _file_kind(p, prefix)
+                if _kind != "video":
+                    _json_response(self, 400, {"error": "file is not a video"})
+                    return
+                try:
+                    preview = _ensure_video_preview(p)
+                except RuntimeError as e:
+                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                    return
+                _send_inline_file_response(self, preview, "video/mp4")
                 return
 
             if path == "/api/files/blob":
@@ -5897,17 +5954,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(path_obj, prefix)
                 if _kind == "video":
-                    try:
-                        preview = _ensure_video_preview(path_obj)
-                    except RuntimeError as e:
-                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                        return
-                    _send_inline_file_response(self, preview, "video/mp4")
+                    _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
                     return
                 if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, path_obj, ctype)
+                return
+
+            if path == "/api/files/video_preview":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                path_obj = Path(path_q[0]).expanduser().resolve()
+                if not path_obj.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not path_obj.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                with path_obj.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, _ctype = _file_kind(path_obj, prefix)
+                if _kind != "video":
+                    _json_response(self, 400, {"error": "file is not a video"})
+                    return
+                try:
+                    preview = _ensure_video_preview(path_obj)
+                except RuntimeError as e:
+                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                    return
+                _send_inline_file_response(self, preview, "video/mp4")
                 return
 
             if path.startswith("/api/sessions/") and path.endswith("/file/download"):
@@ -6775,22 +6857,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     )
                     return
                 if view.kind == "video":
-                    try:
-                        _ensure_video_preview(path_obj)
-                    except RuntimeError as e:
-                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                        return
                     _json_response(
                         self,
                         200,
-                        {
-                            "ok": True,
-                            "kind": "video",
-                            "content_type": "video/mp4",
-                            "path": str(path_obj),
-                            "size": int(view.size),
-                            "video_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
-                        },
+                        _video_response_payload(
+                            path_obj=path_obj,
+                            size=int(view.size),
+                            content_type=view.content_type,
+                            video_url=f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
+                            preview_url=f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}",
+                        ),
                     )
                     return
                 if view.kind == "download_only":
@@ -6886,17 +6962,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     prefix = f.read(4096)
                 _kind, ctype = _file_kind(path_obj, prefix)
                 if _kind == "video":
-                    try:
-                        preview = _ensure_video_preview(path_obj)
-                    except RuntimeError as e:
-                        _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                        return
-                    _send_inline_file_response(self, preview, "video/mp4")
+                    _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
                     return
                 if _kind not in {"image", "pdf"} or ctype is None:
                     _json_response(self, 400, {"error": "file is not previewable inline"})
                     return
                 _send_inline_file_response(self, path_obj, ctype)
+                return
+
+            if path == "/api/files/video_preview":
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                path_q = qs.get("path")
+                if not path_q or not path_q[0]:
+                    _json_response(self, 400, {"error": "path required"})
+                    return
+                path_obj = Path(path_q[0]).expanduser().resolve()
+                if not path_obj.exists():
+                    _json_response(self, 404, {"error": "file not found"})
+                    return
+                if not path_obj.is_file():
+                    _json_response(self, 400, {"error": "path is not a file"})
+                    return
+                with path_obj.open("rb") as f:
+                    prefix = f.read(4096)
+                _kind, _ctype = _file_kind(path_obj, prefix)
+                if _kind != "video":
+                    _json_response(self, 400, {"error": "file is not a video"})
+                    return
+                try:
+                    preview = _ensure_video_preview(path_obj)
+                except RuntimeError as e:
+                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
+                    return
+                _send_inline_file_response(self, preview, "video/mp4")
                 return
 
             session_id = _match_session_route(path, "file", "write")
