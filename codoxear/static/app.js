@@ -1416,6 +1416,8 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 5 14h6l-1 8 8-12h-6z"/></svg>`;
         if (name === "duplicate")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="11" height="11" rx="2"/><rect x="5" y="5" width="11" height="11" rx="2"/></svg>`;
+        if (name === "search")
+          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`;
         if (name === "copy")
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M7 15H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v1"/></svg>`;
         if (name === "paste")
@@ -1491,11 +1493,32 @@
           "aria-label": "Jump to latest",
           html: iconSvg("down"),
         });
+        const chatSearchInput = el("input", {
+          id: "chatSearchInput",
+          class: "chatSearchInput",
+          type: "search",
+          placeholder: "Search loaded chat",
+          "aria-label": "Search loaded chat messages",
+          autocomplete: "off",
+        });
+        const chatSearchPrevBtn = el("button", { id: "chatSearchPrevBtn", class: "icon-btn", type: "button", title: "Previous match", "aria-label": "Previous match", html: iconSvg("up") });
+        const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", html: iconSvg("down") });
+        const chatSearchCloseBtn = el("button", { id: "chatSearchCloseBtn", class: "icon-btn", type: "button", title: "Close search", "aria-label": "Close search", html: iconSvg("x") });
+        const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Loaded" });
+        const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search loaded chat messages" }, [
+          chatSearchInput,
+          chatSearchStatus,
+          chatSearchPrevBtn,
+          chatSearchNextBtn,
+          chatSearchCloseBtn,
+        ]);
+        chatSearchBar.style.display = "none";
         chatInner.appendChild(olderWrap);
         chatInner.appendChild(bottomSentinel);
         chat.appendChild(chatInner);
         chatWrap.appendChild(chat);
         chatWrap.appendChild(jumpBtn);
+        chatWrap.appendChild(chatSearchBar);
         const composer = el("div", { class: "composer" });
 
         let selected = null;
@@ -1511,6 +1534,10 @@
         let activeLogPath = null;
         let activeThreadId = null;
         let activeFileLine = null;
+        let chatSearchOpen = false;
+        let chatSearchQuery = "";
+        let chatSearchMatches = [];
+        let chatSearchIndex = -1;
         let hasOlder = false;
         let renderedAtLiveTail = true;
         let loadingOlder = false;
@@ -1724,6 +1751,15 @@
           html: iconSvg("down"),
         });
         nextUserBtn.disabled = true;
+        const chatSearchBtn = el("button", {
+          id: "chatSearchBtn",
+          class: "icon-btn",
+          title: "Search loaded messages",
+          "aria-label": "Search loaded messages",
+          type: "button",
+          html: iconSvg("search"),
+        });
+        chatSearchBtn.disabled = true;
         const fileBtn = el("button", {
           id: "fileBtn",
           class: "icon-btn",
@@ -1764,6 +1800,7 @@
           el("div", { class: "actions topActions" }, [
             fileBtn,
             copyConversationBtn,
+            chatSearchBtn,
             prevUserBtn,
             nextUserBtn,
             diagBtn,
@@ -2622,6 +2659,7 @@
 	          typingRow = null;
 	          jumpBtn.style.display = "none";
               updateChatNavButtons();
+              if (chatSearchOpen) closeChatSearch();
 	          backfillState = null;
 	          backfillToken += 1;
 	          lastScrollTop = 0;
@@ -2713,6 +2751,119 @@
           e.preventDefault();
           e.stopPropagation();
           jumpToLoadedUserMessage(1);
+        };
+
+        function clearChatSearchMarks() {
+          for (const row of renderedMessageRows()) row.classList.remove("chat-search-hit", "chat-search-current");
+        }
+
+        function rowSearchText(row) {
+          const md = row ? row.querySelector(".md") : null;
+          return String((md || row || {}).textContent || "");
+        }
+
+        function syncChatSearchStatus() {
+          const total = chatSearchMatches.length;
+          chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded` : "Loaded";
+          chatSearchPrevBtn.disabled = total <= 0;
+          chatSearchNextBtn.disabled = total <= 0;
+        }
+
+        function focusChatSearchMatch(index, { jump = true } = {}) {
+          clearChatSearchMarks();
+          if (!chatSearchMatches.length) {
+            chatSearchIndex = -1;
+            syncChatSearchStatus();
+            return;
+          }
+          const total = chatSearchMatches.length;
+          chatSearchIndex = ((index % total) + total) % total;
+          const row = chatSearchMatches[chatSearchIndex];
+          for (const match of chatSearchMatches) match.classList.add("chat-search-hit");
+          row.classList.add("chat-search-current");
+          syncChatSearchStatus();
+          if (jump) {
+            row.scrollIntoView({ block: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+            pulseNavigatedRow(row);
+          }
+        }
+
+        function refreshLoadedChatSearch({ jump = false, preserveCurrent = true } = {}) {
+          const query = String(chatSearchInput.value || "").trim().toLowerCase();
+          chatSearchQuery = query;
+          clearChatSearchMarks();
+          if (!query) {
+            chatSearchMatches = [];
+            chatSearchIndex = -1;
+            syncChatSearchStatus();
+            return;
+          }
+          const previous = preserveCurrent && chatSearchIndex >= 0 ? chatSearchMatches[chatSearchIndex] : null;
+          chatSearchMatches = renderedMessageRows().filter((row) => rowSearchText(row).toLowerCase().includes(query));
+          if (!chatSearchMatches.length) {
+            chatSearchIndex = -1;
+            syncChatSearchStatus();
+            return;
+          }
+          const nextIndex = previous ? Math.max(0, chatSearchMatches.indexOf(previous)) : 0;
+          focusChatSearchMatch(nextIndex, { jump });
+        }
+
+        function openChatSearch() {
+          if (!selected) return;
+          chatSearchOpen = true;
+          chatSearchBar.style.display = "flex";
+          refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
+          chatSearchInput.focus({ preventScroll: true });
+          chatSearchInput.select();
+        }
+
+        function closeChatSearch() {
+          chatSearchOpen = false;
+          chatSearchBar.style.display = "none";
+          clearChatSearchMarks();
+        }
+
+        function stepChatSearch(delta) {
+          if (!chatSearchOpen) openChatSearch();
+          refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
+          if (!chatSearchMatches.length) {
+            setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search");
+            return;
+          }
+          focusChatSearchMatch(chatSearchIndex + delta, { jump: true });
+        }
+
+        chatSearchBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (chatSearchOpen) closeChatSearch();
+          else openChatSearch();
+        };
+        chatSearchInput.oninput = () => refreshLoadedChatSearch({ jump: true, preserveCurrent: false });
+        chatSearchInput.onkeydown = (e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            closeChatSearch();
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            stepChatSearch(e.shiftKey ? -1 : 1);
+          }
+        };
+        chatSearchPrevBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          stepChatSearch(-1);
+        };
+        chatSearchNextBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          stepChatSearch(1);
+        };
+        chatSearchCloseBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          closeChatSearch();
         };
 
         function oldestRenderedHistoryCursor() {
@@ -3091,6 +3242,7 @@
           }
           syncJumpButton();
           updateChatNavButtons();
+          if (chatSearchOpen) refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
@@ -4201,6 +4353,8 @@
           }
           fileBtn.disabled = !selected;
           copyConversationBtn.disabled = !selected;
+          chatSearchBtn.disabled = !selected;
+          if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
           diagBtn.disabled = !selected;
         }

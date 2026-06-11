@@ -727,6 +727,53 @@
         line-height: 1.1;
         color: var(--muted);
       }
+      .chatSearchBar {
+        position: absolute;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 8;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        max-width: min(680px, calc(100% - 24px));
+        padding: 6px;
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: var(--shadow);
+      }
+      .chatSearchInput {
+        min-width: min(340px, 48vw);
+        border: 1px solid rgba(15, 23, 42, 0.14);
+        border-radius: 10px;
+        padding: 8px 10px;
+        font-size: 14px;
+        outline: none;
+      }
+      .chatSearchInput:focus {
+        border-color: rgba(37, 99, 235, 0.45);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      }
+      .chatSearchStatus {
+        min-width: 64px;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        text-align: center;
+      }
+      .chatSearchBar .icon-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+      }
+      .msg-row.chat-search-hit .msg {
+        border-color: rgba(245, 158, 11, 0.35);
+      }
+      .msg-row.chat-search-current .msg {
+        border-color: rgba(37, 99, 235, 0.5);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), var(--shadow-sm);
+      }
       .msg-row {
         display: flex;
         margin-top: 6px;

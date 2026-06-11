@@ -104,3 +104,10 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_chat_navigation_source.py tests/test_button_tooltips_source.py -q` passed (`4 passed`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`380 passed, 2 skipped in 9.48s`).
+
+## 2026-06-12 00:55
+- Implemented Phase C loaded-message search: a compact top-bar search affordance opens a floating search bar over the chat, searches rendered rows only, supports Enter/Shift+Enter and previous/next buttons, shows loaded-scope counts, and highlights the current match.
+- Extended `tests/test_chat_navigation_source.py` for loaded-search button copy, rendered-row-only matching, no-match toast copy, and compact overlay/current-hit styling.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_chat_navigation_source.py -q` passed (`5 passed`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`382 passed, 2 skipped in 9.54s`).
