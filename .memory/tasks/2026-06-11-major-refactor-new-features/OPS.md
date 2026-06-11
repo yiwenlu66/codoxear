@@ -233,3 +233,7 @@
 - Targeted validation: local `node --check codoxear/static/app.js` passed; `scripts/codoxear-docker-sandbox test tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_message_index.py -q` passed (`27 passed`).
 - Full validation: `scripts/codoxear-docker-sandbox test` passed (`428 passed, 2 skipped in 10.91s`); Dockerized `node --check codoxear/static/app.js` passed.
 - Updated current acceptance evidence in `PROMPT.md` and `recon/final-acceptance-summary.md` from 427 to 428 tests and clarified the stronger assistant-dedupe scope.
+
+## 2026-06-12 02:37
+- Final clean-room review after the client live-append dedupe change used a concise read-only `delegate` gate.
+- Review result: no blockers; risks limited to deferred live-like backend/device/performance validation, unresolved Codex per-model reasoning source, and complex non-adjacent/streaming duplicate patterns outside adjacent dedupe coverage. Verdict: PASS/yield `develop`; do not merge `main` without approval.
