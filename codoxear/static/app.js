@@ -1692,8 +1692,8 @@
         const harnessBtn = el("button", {
           id: "harnessBtn",
           class: "icon-btn",
-          title: "Harness mode",
-          "aria-label": "Harness mode",
+          title: "Unattended mode",
+          "aria-label": "Unattended mode",
           type: "button",
           html: iconSvg("harness"),
         });
@@ -1769,25 +1769,25 @@
           html: iconSvg("file"),
         });
         fileBtn.disabled = true;
-        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Harness mode settings" }, [
+        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
           el("div", { class: "row" }, [
             el("label", {}, [
               el("input", { type: "checkbox", id: "harnessEnabled" }),
-              el("span", { text: "Harness mode" }),
+              el("span", { text: "Unattended mode" }),
 			            ]),
 			          ]),
 			          el("div", { class: "harnessGrid" }, [
 			            el("div", {}, [
 			              el("div", { class: "label", text: "Cooldown time (minutes)" }),
-			              el("input", { id: "harnessCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Harness cooldown time in minutes" }),
+			              el("input", { id: "harnessCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Unattended cooldown time in minutes" }),
 			            ]),
 			            el("div", {}, [
 			              el("div", { class: "label", text: "Number of injections" }),
-			              el("input", { id: "harnessRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Harness remaining injections" }),
+			              el("input", { id: "harnessRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Unattended remaining injections" }),
 			            ]),
 			          ]),
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
-			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for harness prompt" }),
+			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for unattended prompt" }),
 			        ]);
         const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
         liveAudio.style.display = "none";
@@ -2107,12 +2107,12 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
 </ul>
-<div class="muted">Harness</div>
+<div class="muted">Unattended mode</div>
 <ul class="md">
-  <li>Harness is a per-session idle nudge. Open the Harness button in the top bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
-  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next harness prompt is injected.</li>
-  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each harness prompt decrements it, and harness turns itself off when it reaches zero.</li>
-  <li>Harness runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show a <b>harness</b> badge in the sidebar.</li>
+  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the top bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
+  <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next unattended prompt is injected.</li>
+  <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each unattended prompt decrements it, and unattended mode turns itself off when it reaches zero.</li>
+  <li>Unattended mode runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show an <b>unattended</b> badge in the sidebar.</li>
 </ul>
 <div class="muted">Files</div>
 <ul class="md">
@@ -3571,7 +3571,7 @@
              const launchRow = launchFailed || launchPending;
              if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
-             if (s.harness_enabled) badges.push(el("span", { class: "badge harness", text: "harness", title: "Harness mode enabled" }));
+             if (s.unattended_enabled) badges.push(el("span", { class: "badge harness", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
 
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
@@ -4324,26 +4324,26 @@
 
         function updateHarnessBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
-          const on = Boolean(s && s.harness_enabled);
+          const on = Boolean(s && s.unattended_enabled);
           harnessBtn.disabled = !selected;
           harnessBtn.classList.toggle("active", Boolean(selected && on));
           if (
             selected &&
             s &&
             !harnessNumberDirty.cooldown_minutes &&
-            Number.isInteger(s.harness_cooldown_minutes) &&
-            s.harness_cooldown_minutes >= 1
+            Number.isInteger(s.unattended_cooldown_minutes) &&
+            s.unattended_cooldown_minutes >= 1
           ) {
-            harnessCfg.cooldown_minutes = s.harness_cooldown_minutes;
+            harnessCfg.cooldown_minutes = s.unattended_cooldown_minutes;
           }
           if (
             selected &&
             s &&
             !harnessNumberDirty.remaining_injections &&
-            Number.isInteger(s.harness_remaining_injections) &&
-            s.harness_remaining_injections >= 0
+            Number.isInteger(s.unattended_remaining_injections) &&
+            s.unattended_remaining_injections >= 0
           ) {
-            harnessCfg.remaining_injections = s.harness_remaining_injections;
+            harnessCfg.remaining_injections = s.unattended_remaining_injections;
           }
           syncHarnessNumberDraftsFromCfg();
           if (harnessMenuOpen) {
@@ -4361,13 +4361,13 @@
            async function loadHarnessCfgForSelected() {
              if (!selected) return;
              const sid = selected;
-              const d = await api(`/api/sessions/${sid}/harness`);
+              const d = await api(`/api/sessions/${sid}/unattended`);
               if (selected !== sid) return;
-              if (!d || typeof d !== "object") throw new Error("invalid harness response");
-              if (typeof d.enabled !== "boolean") throw new Error("invalid harness.enabled");
-              if (typeof d.request !== "string") throw new Error("invalid harness.request");
-              if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
-              if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
+              if (!d || typeof d !== "object") throw new Error("invalid unattended response");
+              if (typeof d.enabled !== "boolean") throw new Error("invalid unattended.enabled");
+              if (typeof d.request !== "string") throw new Error("invalid unattended.request");
+              if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
+              if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
               harnessCfg = {
                 enabled: d.enabled,
                 request: d.request,
@@ -4390,7 +4390,7 @@
 			          harnessSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
                try {
-                 const saved = await api(`/api/sessions/${sid}/harness`, {
+                 const saved = await api(`/api/sessions/${sid}/unattended`, {
                    method: "POST",
                    body: {
                      enabled: harnessCfg.enabled,
@@ -4399,11 +4399,11 @@
                      remaining_injections: harnessCfg.remaining_injections,
                    },
                  });
-                 if (!saved || typeof saved !== "object") throw new Error("invalid harness response");
-                 if (typeof saved.enabled !== "boolean") throw new Error("invalid harness.enabled");
-                 if (typeof saved.request !== "string") throw new Error("invalid harness.request");
-                 if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid harness.cooldown_minutes");
-                 if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid harness.remaining_injections");
+                 if (!saved || typeof saved !== "object") throw new Error("invalid unattended response");
+                 if (typeof saved.enabled !== "boolean") throw new Error("invalid unattended.enabled");
+                 if (typeof saved.request !== "string") throw new Error("invalid unattended.request");
+                 if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
+                 if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
                  harnessCfg = {
                    enabled: saved.enabled,
                    request: saved.request,
@@ -4415,8 +4415,8 @@
                  syncHarnessNumberDraftsFromCfg();
                  await refreshSessions();
                } catch (e) {
-                 console.error("save harness failed", e);
-                 setToast(`harness save error: ${e && e.message ? e.message : "unknown error"}`);
+                 console.error("save unattended mode failed", e);
+                 setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
                }
                updateHarnessBtnState();
              }, 450);
@@ -4440,8 +4440,8 @@
              try {
                await loadHarnessCfgForSelected();
              } catch (e) {
-               console.error("load harness failed", e);
-               setToast(`harness load error: ${e && e.message ? e.message : "unknown error"}`);
+               console.error("load unattended mode failed", e);
+               setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
                hideHarnessMenu();
              }
            }
@@ -4479,7 +4479,9 @@
 			            if (!selected) return;
 			            harnessCfg.enabled = Boolean(e.target.checked);
 			            const s = sessionIndex.get(selected);
-			            if (s) s.harness_enabled = harnessCfg.enabled;
+			            if (s) {
+                  s.unattended_enabled = harnessCfg.enabled;
+                }
 			            updateHarnessBtnState();
 			            scheduleHarnessSave();
 			          };
@@ -4508,8 +4510,10 @@
             harnessCfg.remaining_injections = value;
             const s = sessionIndex.get(selected);
             if (s) {
-              s.harness_remaining_injections = value;
-              if (value <= 0) s.harness_enabled = false;
+              s.unattended_remaining_injections = value;
+              if (value <= 0) {
+                s.unattended_enabled = false;
+              }
             }
             updateHarnessBtnState();
             scheduleHarnessSave();

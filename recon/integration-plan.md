@@ -66,10 +66,9 @@ The fastest safe path is not a framework rewrite or a whole-PR merge. It is a se
 ### Phase D — Unattended mode rename
 
 1. User-facing copy hard-switch from Harness mode to Unattended mode.
-2. Add `/unattended` API alias and dual session-list fields.
-3. Read old `harness.json`, prefer/write `unattended.json`.
-4. Keep old API/fields during transition for cached app.js compatibility.
-5. Rename internals only if the diff remains reviewable; otherwise do user-facing/API/state migration first and leave internal aliases for a later cleanup commit.
+2. Replace the public route with `/unattended` and expose only `unattended_*` session-list fields.
+3. Write state to `unattended.json`; old `harness.json` compatibility is not required per user correction.
+4. Rename internals only if the diff remains reviewable; otherwise complete the public API/state migration first and leave internal cleanup for a later commit.
 
 ### Phase E — Claude Code (`cc`) support
 

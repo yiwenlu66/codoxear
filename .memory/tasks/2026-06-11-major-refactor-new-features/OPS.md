@@ -111,3 +111,12 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_chat_navigation_source.py -q` passed (`5 passed`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`382 passed, 2 skipped in 9.54s`).
+
+## 2026-06-12 01:03
+- User corrected Phase D scope: no compatibility layer is needed for Harness naming. Removed the planned `/harness` alias and `harness_*` public session fields from the implementation direction.
+- Implemented clean public rename to Unattended mode: UI copy/help/badge/API calls now use Unattended terminology; server exposes `/api/sessions/<id>/unattended`, emits only `unattended_*` session-list fields, writes `unattended.json`, and uses `CODEX_WEB_UNATTENDED_SWEEP_SECONDS`.
+- Updated `PROMPT.md` and `recon/integration-plan.md` to remove compatibility requirements for this rename.
+- Added `tests/test_unattended_mode_source.py` for Unattended UI copy/API path, no `/harness` route alias, no `harness_*` public session fields, new env/state names, and README terminology.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_unattended_mode_source.py tests/test_harness_input_source.py tests/test_harness_sweep.py -q` passed (`12 passed`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`387 passed, 2 skipped in 9.75s`).

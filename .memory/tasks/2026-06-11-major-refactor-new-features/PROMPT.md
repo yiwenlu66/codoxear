@@ -28,7 +28,7 @@ Open blockers / unknowns:
 - Current Docker setup for isolated Codoxear testing.
 - Current implementation details for Claude Code logs, process launch, session metadata, and resume semantics.
 - Which historical bug reports are still reproducible.
-- The final accurate replacement name and compatibility strategy for the current `harness` feature/API/state keys.
+- The final accurate replacement name and clean rename strategy for the current `harness` feature/API/state keys. User clarified that compatibility with old Harness API/fields is not required.
 - Which long-chat navigation primitives best improve real use without turning the chat view into a detailed transcript/debug UI.
 - Backend/model-specific thinking-level semantics: Codex thinking-level support is currently incomplete, and Pi may not support all thinking efforts for all models.
 
@@ -122,7 +122,7 @@ The workstreams below are interacting areas of investigation and implementation,
    - Treat "harness mode" as inaccurate terminology unless investigation proves otherwise.
    - Determine the actual mechanism and choose a more accurate name. Current observations indicate the feature is server-side idle-triggered prompt injection for unattended continuation.
    - Prefer a user-facing name that describes the behavior, e.g. "Unattended mode" or another mechanism-accurate term. Do not keep vague "Harness mode" copy.
-   - Decide deliberately whether internal API/state names should be renamed immediately, aliased for compatibility, or left internal while the UI/copy changes. Avoid silent compatibility fallbacks that hide broken contracts.
+   - Rename the public API/state surface cleanly; do not preserve `/harness` or `harness_*` compatibility aliases. Internal implementation names may be cleaned separately only if the diff remains reviewable.
    - Validate the renamed feature in the standalone Docker instance.
 
 10. Long-conversation chat navigation ergonomics

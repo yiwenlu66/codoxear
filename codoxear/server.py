@@ -129,7 +129,7 @@ STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 LAUNCH_ATTEMPTS_PATH = _launch_attempts_path(APP_DIR)
 UPLOAD_DIR = APP_DIR / "uploads"
-HARNESS_PATH = APP_DIR / "harness.json"
+HARNESS_PATH = APP_DIR / "unattended.json"
 ALIAS_PATH = APP_DIR / "session_aliases.json"
 SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
 HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
@@ -176,11 +176,11 @@ DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 HARNESS_DEFAULT_IDLE_MINUTES = 5
 HARNESS_DEFAULT_MAX_INJECTIONS = 10
-HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_HARNESS_SWEEP_SECONDS", "2.5"))
+HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_UNATTENDED_SWEEP_SECONDS", "2.5"))
 QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
 VOICE_PUSH_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_VOICE_PUSH_SWEEP_SECONDS", "1.0"))
 QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
-HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_HARNESS_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
+HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
@@ -323,9 +323,9 @@ def _clean_harness_cooldown_minutes(raw: Any) -> int:
     if raw is None:
         return HARNESS_DEFAULT_IDLE_MINUTES
     if isinstance(raw, bool) or not isinstance(raw, int):
-        raise ValueError("harness cooldown_minutes must be an integer")
+        raise ValueError("unattended cooldown_minutes must be an integer")
     if raw < 1:
-        raise ValueError("harness cooldown_minutes must be at least 1")
+        raise ValueError("unattended cooldown_minutes must be at least 1")
     return raw
 
 
@@ -333,11 +333,11 @@ def _clean_harness_remaining_injections(raw: Any, *, allow_zero: bool) -> int:
     if raw is None:
         return HARNESS_DEFAULT_MAX_INJECTIONS
     if isinstance(raw, bool) or not isinstance(raw, int):
-        raise ValueError("harness remaining_injections must be an integer")
+        raise ValueError("unattended remaining_injections must be an integer")
     minimum = 0 if allow_zero else 1
     if raw < minimum:
         lower = "0" if allow_zero else "1"
-        raise ValueError(f"harness remaining_injections must be at least {lower}")
+        raise ValueError(f"unattended remaining_injections must be at least {lower}")
     return raw
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
@@ -618,9 +618,9 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         "thinking": 0,
         "tools": 0,
         "system": 0,
-        "harness_enabled": False,
-        "harness_cooldown_minutes": HARNESS_DEFAULT_IDLE_MINUTES,
-        "harness_remaining_injections": HARNESS_DEFAULT_MAX_INJECTIONS,
+        "unattended_enabled": False,
+        "unattended_cooldown_minutes": HARNESS_DEFAULT_IDLE_MINUTES,
+        "unattended_remaining_injections": HARNESS_DEFAULT_MAX_INJECTIONS,
         "alias": "",
         "files": [],
         "git_branch": "",
@@ -2852,7 +2852,7 @@ class SessionManager:
             return
         obj = json.loads(raw)
         if not isinstance(obj, dict):
-            raise ValueError("invalid harness.json (expected object)")
+            raise ValueError("invalid unattended.json (expected object)")
         cleaned: dict[str, dict[str, Any]] = {}
         for sid, v in obj.items():
             if not isinstance(sid, str) or not sid:
@@ -2861,12 +2861,12 @@ class SessionManager:
                 continue
             enabled = bool(v.get("enabled")) if "enabled" in v else False
             if "text" in v:
-                raise ValueError(f"invalid harness config for session {sid!r} (use 'request', not 'text')")
+                raise ValueError(f"invalid unattended config for session {sid!r} (use 'request', not 'text')")
             request = v.get("request")
             if request is None:
                 request = ""
             if not isinstance(request, str):
-                raise ValueError(f"invalid harness request for session {sid!r}")
+                raise ValueError(f"invalid unattended request for session {sid!r}")
             cooldown_minutes = _clean_harness_cooldown_minutes(v.get("cooldown_minutes"))
             remaining_injections = _clean_harness_remaining_injections(v.get("remaining_injections"), allow_zero=True)
             cleaned[sid] = {
@@ -4379,9 +4379,9 @@ class SessionManager:
                         "thinking": int(s.meta_thinking),
                         "tools": int(s.meta_tools),
                         "system": int(s.meta_system),
-                        "harness_enabled": h_enabled,
-                        "harness_cooldown_minutes": h_cooldown_minutes,
-                        "harness_remaining_injections": h_remaining_injections,
+                        "unattended_enabled": h_enabled,
+                        "unattended_cooldown_minutes": h_cooldown_minutes,
+                        "unattended_remaining_injections": h_remaining_injections,
                         "alias": alias,
                         "files": list(files),
                         "git_branch": git_branch,
@@ -6594,7 +6594,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"tail": tail})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/harness"):
+            if path.startswith("/api/sessions/") and path.endswith("/unattended"):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
@@ -7425,7 +7425,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/harness"):
+            if path.startswith("/api/sessions/") and path.endswith("/unattended"):
                 if not _require_auth(self):
                     self._unauthorized()
                     return

@@ -70,11 +70,11 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
-6. (Optional) Enable Harness mode for a session:
+6. (Optional) Enable Unattended mode for a session:
 
-   - Click the Harness icon in the top bar, toggle it on, tune cooldown minutes and injection count, and edit the optional extra request.
-   - Harness runs in the server process (not the browser tab), so it continues even if you close the web page.
-   - Settings are per session; each injection decrements the remaining count and harness turns itself off at zero. Enabled sessions show a `harness` badge in the sidebar.
+   - Click the Unattended icon in the top bar, toggle it on, tune cooldown minutes and injection count, and edit the optional extra request.
+   - Unattended mode runs in the server process (not the browser tab), so it continues even if you close the web page.
+   - Settings are per session; each injection decrements the remaining count and unattended mode turns itself off at zero. Enabled sessions show an `unattended` badge in the sidebar.
 
 ## Tailscale HTTPS
 
@@ -180,7 +180,7 @@ Set these in `.env` (or in the process environment):
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
 - `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to serve static assets with long-lived immutable cache headers)
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
-- `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
+- `CODEX_WEB_UNATTENDED_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
 - `CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS` (default `1.0`)

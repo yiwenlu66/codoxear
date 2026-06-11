@@ -132,3 +132,8 @@ Commitments:
 - Observation: loaded-message search can reuse rendered `.md` text without backend indexing or transcript-detail expansion.
 - Intervention prediction: a floating loaded-search bar improves orientation in long loaded chats while keeping the main transcript sparse and honest about scope.
 - Scoped claim: search currently covers rendered/loaded rows only; full-history server-side search remains deferred until evidence shows loaded search is insufficient.
+
+## 2026-06-12 01:03
+- Observation: user explicitly rejected compatibility for the Harness→Unattended rename.
+- Revision: previous compatibility-alias plan was over-conservative. The public contract should be clean Unattended naming rather than dual routes/fields.
+- Scoped claim: public UI/API/session-list/env/state-file surfaces now use Unattended naming without `/harness` or `harness_*` aliases; internal implementation identifiers still contain harness names and can be cleaned later if it remains reviewable.
