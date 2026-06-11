@@ -1957,7 +1957,88 @@ def _normalize_requested_reasoning_effort(value: Any) -> str | None:
     return out
 
 
-def _normalize_requested_pi_reasoning_effort(value: Any) -> str | None:
+def _clean_reasoning_effort_list(raw: Any, *, supported: tuple[str, ...]) -> list[str] | None:
+    if not isinstance(raw, list):
+        return None
+    out: list[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            continue
+        value = item.strip().lower()
+        if not value or value not in supported or value in out:
+            continue
+        out.append(value)
+    return out or None
+
+
+def _pi_reasoning_efforts_for_model_row(row: dict[str, Any]) -> list[str] | None:
+    explicit = (
+        _clean_reasoning_effort_list(row.get("reasoning_efforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
+        or _clean_reasoning_effort_list(row.get("reasoningEfforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
+        or _clean_reasoning_effort_list(row.get("thinking_efforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
+        or _clean_reasoning_effort_list(row.get("thinkingEfforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
+    )
+    if explicit is not None:
+        return explicit
+    reasoning = row.get("reasoning")
+    if reasoning is False:
+        return ["off"]
+    if reasoning is True:
+        return list(SUPPORTED_PI_REASONING_EFFORTS)
+    return None
+
+
+def _pi_reasoning_effort_key(provider: str | None, model: str | None) -> str | None:
+    model_clean = _clean_optional_text(model)
+    if model_clean is None:
+        return None
+    provider_clean = _clean_optional_text(provider)
+    return f"{provider_clean}/{model_clean}" if provider_clean else model_clean
+
+
+def _read_pi_reasoning_efforts_by_model() -> dict[str, list[str]]:
+    if not PI_MODELS_PATH.exists():
+        return {}
+    data = json.loads(PI_MODELS_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"invalid Pi models config in {PI_MODELS_PATH}")
+    providers = data.get("providers")
+    if not isinstance(providers, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for provider, value in providers.items():
+        provider_name = provider.strip() if isinstance(provider, str) else ""
+        if not provider_name or not isinstance(value, dict):
+            continue
+        models = value.get("models")
+        if not isinstance(models, list):
+            continue
+        for row in models:
+            if not isinstance(row, dict):
+                continue
+            model_id = _clean_optional_text(row.get("id"))
+            if model_id is None:
+                continue
+            efforts = _pi_reasoning_efforts_for_model_row(row)
+            if efforts is None:
+                continue
+            out.setdefault(model_id, list(efforts))
+            out[f"{provider_name}/{model_id}"] = list(efforts)
+    return out
+
+
+def _pi_allowed_reasoning_efforts_for_model(*, model_provider: str | None, model: str | None) -> list[str] | None:
+    mapping = _read_pi_reasoning_efforts_by_model()
+    key = _pi_reasoning_effort_key(model_provider, model)
+    if key and key in mapping:
+        return list(mapping[key])
+    model_clean = _clean_optional_text(model)
+    if model_clean and model_clean in mapping:
+        return list(mapping[model_clean])
+    return None
+
+
+def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str | None = None, model: str | None = None) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
@@ -1965,8 +2046,10 @@ def _normalize_requested_pi_reasoning_effort(value: Any) -> str | None:
     out = value.strip().lower()
     if not out:
         return None
-    if out not in SUPPORTED_PI_REASONING_EFFORTS:
-        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_PI_REASONING_EFFORTS)}")
+    allowed = _pi_allowed_reasoning_efforts_for_model(model_provider=model_provider, model=model) or list(SUPPORTED_PI_REASONING_EFFORTS)
+    if out not in allowed:
+        model_label = _clean_optional_text(model) or "selected model"
+        raise ValueError(f"reasoning_effort must be one of {', '.join(allowed)} for Pi model {model_label}")
     return out
 
 
@@ -2356,6 +2439,7 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
     configured_effort: str | None = "high"
     provider_choices: list[str] = []
     model_choices: list[str] = []
+    reasoning_efforts_by_model = _read_pi_reasoning_efforts_by_model()
 
     if PI_SETTINGS_PATH.exists():
         data = json.loads(PI_SETTINGS_PATH.read_text(encoding="utf-8"))
@@ -2416,6 +2500,11 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
         provider_choices.insert(0, configured_provider)
     if configured_model is not None and configured_model not in model_choices:
         model_choices.insert(0, configured_model)
+    configured_efforts = _pi_allowed_reasoning_efforts_for_model(model_provider=configured_provider, model=configured_model)
+    if configured_efforts is None:
+        configured_efforts = list(SUPPORTED_PI_REASONING_EFFORTS)
+    if configured_effort not in configured_efforts:
+        configured_effort = configured_efforts[0] if configured_efforts else None
 
     return {
         "agent_backend": "pi",
@@ -2426,7 +2515,8 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
         "model": configured_model,
         "models": model_choices,
         "reasoning_effort": configured_effort,
-        "reasoning_efforts": list(SUPPORTED_PI_REASONING_EFFORTS),
+        "reasoning_efforts": configured_efforts,
+        "reasoning_efforts_by_model": reasoning_efforts_by_model,
         "service_tier": None,
         "supports_fast": False,
     }
@@ -6832,7 +6922,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return
                 else:
                     try:
-                        reasoning_effort = _normalize_requested_pi_reasoning_effort(obj.get("reasoning_effort"))
+                        reasoning_effort = _normalize_requested_pi_reasoning_effort(
+                            obj.get("reasoning_effort"),
+                            model_provider=model_provider,
+                            model=model,
+                        )
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return

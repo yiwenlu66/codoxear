@@ -120,3 +120,11 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_unattended_mode_source.py tests/test_harness_input_source.py tests/test_harness_sweep.py -q` passed (`12 passed`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`387 passed, 2 skipped in 9.75s`).
+
+## 2026-06-12 01:07
+- Implemented user-added thinking-level capability workstream for Pi: server reads per-model reasoning effort capabilities from Pi `models.json` (`reasoning:false`, `reasoningEfforts`/`reasoning_efforts`/thinking aliases), exposes `reasoning_efforts_by_model`, and rejects unsupported Pi model/effort combinations instead of passing them through.
+- Updated new-session UI reasoning choices to use the current provider/model capability map and revalidate effort selection when provider/model changes.
+- Added `tests/test_reasoning_effort_source.py` and extended `tests/test_launch_defaults.py` for Pi model-specific efforts and hard rejection of unsupported `high` for a `reasoning:false` model.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_launch_defaults.py tests/test_reasoning_effort_source.py -q` passed (`15 passed`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`392 passed, 2 skipped in 9.97s`).

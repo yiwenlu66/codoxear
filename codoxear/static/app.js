@@ -376,6 +376,7 @@
           models: modelChoices,
           reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
           reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["off", "minimal", "low", "medium", "high", "xhigh"],
+          reasoning_efforts_by_model: raw.reasoning_efforts_by_model && typeof raw.reasoning_efforts_by_model === "object" ? raw.reasoning_efforts_by_model : {},
           service_tier: null,
           supports_fast: false,
         };
@@ -405,10 +406,19 @@
         return out;
       }
 
-      function reasoningChoicesForBackend(backend) {
+      function reasoningChoicesForBackend(backend, { provider = null, model = null } = {}) {
         const defaults = defaultsForAgentBackend(backend);
+        let rawChoices = Array.isArray(defaults.reasoning_efforts) ? defaults.reasoning_efforts : [];
+        const map = defaults.reasoning_efforts_by_model && typeof defaults.reasoning_efforts_by_model === "object" ? defaults.reasoning_efforts_by_model : null;
+        const modelName = typeof model === "string" ? model.trim() : "";
+        const providerName = typeof provider === "string" ? provider.trim() : "";
+        if (map && modelName) {
+          const providerKey = providerName ? `${providerName}/${modelName}` : "";
+          if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];
+          else if (Array.isArray(map[modelName])) rawChoices = map[modelName];
+        }
         const out = [];
-        for (const value of Array.isArray(defaults.reasoning_efforts) ? defaults.reasoning_efforts : []) {
+        for (const value of rawChoices) {
           if (typeof value !== "string") continue;
           const trimmed = value.trim().toLowerCase();
           if (!trimmed || out.includes(trimmed)) continue;
@@ -5541,9 +5551,24 @@
           }
         }
 
+        function currentNewSessionModelForCapabilities() {
+          const raw = String(newSessionModelInput.value || "").trim();
+          const defaults = defaultsForAgentBackend(newSessionBackend);
+          const fallback = typeof defaults.model === "string" ? defaults.model.trim() : "";
+          const model = raw || fallback;
+          return model && model.toLowerCase() !== "default" ? model : null;
+        }
+
+        function currentReasoningChoices() {
+          return reasoningChoicesForBackend(newSessionBackend, {
+            provider: newSessionProvider,
+            model: currentNewSessionModelForCapabilities(),
+          });
+        }
+
         function renderNewSessionReasoningMenu() {
           newSessionReasoningMenu.innerHTML = "";
-          const items = reasoningChoicesForBackend(newSessionBackend);
+          const items = currentReasoningChoices();
           for (const value of items) {
             const label = value;
             const btn = el("button", {
@@ -5586,7 +5611,7 @@
           if (resetSelections || previous !== next) {
             newSessionModelInput.value = modelDefault;
           }
-          const reasoningChoices = reasoningChoicesForBackend(next);
+          const reasoningChoices = currentReasoningChoices();
           const defaultEffort = typeof defaults.reasoning_effort === "string" ? defaults.reasoning_effort.trim().toLowerCase() : "";
           if (resetSelections || previous !== next || !reasoningChoices.includes(newSessionReasoningEffort)) {
             setNewSessionReasoningEffort(defaultEffort || reasoningChoices[0] || "high");
@@ -5611,6 +5636,8 @@
           newSessionProvider = options.includes(next) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
           rememberProviderChoice(newSessionBackend, newSessionProvider);
           setPickerButtonContent(newSessionProviderBtn, newSessionProvider || "Default provider", "", !newSessionProvider);
+          setNewSessionReasoningEffort(newSessionReasoningEffort);
+          renderNewSessionReasoningMenu();
         }
 
         function renderNewSessionProviderMenu() {
@@ -5674,7 +5701,7 @@
         }
 
         function setNewSessionReasoningEffort(value) {
-          const choices = reasoningChoicesForBackend(newSessionBackend);
+          const choices = currentReasoningChoices();
           const next = String(value || "").trim().toLowerCase();
           const fallback = String(defaultsForAgentBackend(newSessionBackend).reasoning_effort || "").trim().toLowerCase();
           newSessionReasoningEffort = choices.includes(next) ? next : (choices.includes(fallback) ? fallback : choices[0] || "high");
@@ -5768,6 +5795,8 @@
           newSessionModelInput.value = String(model || "default");
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
+          setNewSessionReasoningEffort(newSessionReasoningEffort);
+          renderNewSessionReasoningMenu();
           applyDialogMenus();
           newSessionModelInput.focus();
           const end = newSessionModelInput.value.length;
@@ -6185,6 +6214,8 @@
         newSessionModelInput.oninput = () => {
           newSessionModelMenuFocus = -1;
           renderNewSessionModelMenu();
+          setNewSessionReasoningEffort(newSessionReasoningEffort);
+          renderNewSessionReasoningMenu();
           newSessionModelMenuOpen = true;
           newSessionReasoningMenuOpen = false;
           newSessionProviderMenuOpen = false;

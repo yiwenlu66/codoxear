@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.server import _normalize_requested_model_provider
+from codoxear.server import _normalize_requested_pi_reasoning_effort
 from codoxear.server import _normalize_requested_preferred_auth_method
 from codoxear.server import _normalize_requested_service_tier
 from codoxear.server import _read_codex_launch_defaults
@@ -161,6 +162,35 @@ base_url = "https://example.com/v1"
         self.assertEqual(defaults["provider_choices"], ["macaron"])
         self.assertEqual(defaults["models"], ["gpt-5.4", "gpt-5.4-mini"])
         self.assertFalse(defaults["supports_fast"])
+
+    def test_read_pi_launch_defaults_reports_model_specific_reasoning_efforts(self) -> None:
+        with TemporaryDirectory() as td:
+            settings_path = Path(td) / "settings.json"
+            models_path = Path(td) / "models.json"
+            auth_path = Path(td) / "missing-auth.json"
+            settings_path.write_text('{"defaultProvider":"macaron","defaultModel":"plain"}\n', encoding="utf-8")
+            models_path.write_text(
+                '{"providers":{"macaron":{"models":[{"id":"plain","reasoning":false},{"id":"smart","reasoningEfforts":["low","high"]}]}}}\n',
+                encoding="utf-8",
+            )
+            with patch("codoxear.server.PI_SETTINGS_PATH", settings_path), patch("codoxear.server.PI_MODELS_PATH", models_path), patch(
+                "codoxear.server.PI_AUTH_PATH", auth_path
+            ):
+                defaults = _read_pi_launch_defaults()
+
+        self.assertEqual(defaults["reasoning_effort"], "off")
+        self.assertEqual(defaults["reasoning_efforts"], ["off"])
+        self.assertEqual(defaults["reasoning_efforts_by_model"]["macaron/plain"], ["off"])
+        self.assertEqual(defaults["reasoning_efforts_by_model"]["macaron/smart"], ["low", "high"])
+
+    def test_normalize_requested_pi_reasoning_effort_rejects_unsupported_model_effort(self) -> None:
+        with TemporaryDirectory() as td:
+            models_path = Path(td) / "models.json"
+            models_path.write_text('{"providers":{"macaron":{"models":[{"id":"plain","reasoning":false}]}}}\n', encoding="utf-8")
+            with patch("codoxear.server.PI_MODELS_PATH", models_path):
+                with self.assertRaisesRegex(ValueError, "must be one of off for Pi model plain"):
+                    _normalize_requested_pi_reasoning_effort("high", model_provider="macaron", model="plain")
+                self.assertEqual(_normalize_requested_pi_reasoning_effort("off", model_provider="macaron", model="plain"), "off")
 
     def test_read_new_session_defaults_includes_both_backends(self) -> None:
         with TemporaryDirectory() as td:
