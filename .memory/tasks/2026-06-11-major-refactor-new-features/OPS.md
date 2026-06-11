@@ -160,3 +160,8 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py tests/test_launch_defaults.py -q` passed (`19 passed`).
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`422 passed, 2 skipped in 9.90s`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+
+## 2026-06-12 01:44
+- Added deterministic git-history pressure-test regressions without behavior changes: Unattended/legacy harness sweep now covers three sessions sharing one thread and zero remaining injections disabling without sending; JSONL offset reader now covers a complete line followed by a partial appended JSON object.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_harness_sweep.py tests/test_read_jsonl_from_offset.py -q` passed (`10 passed`).
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`425 passed, 2 skipped in 10.01s`).

@@ -142,6 +142,54 @@ class TestHarnessSweep(unittest.TestCase):
 
             self.assertEqual(sent, [])
 
+    def test_dedupes_injection_for_three_sessions_sharing_thread(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            for sid, request in (("sid-a", "A"), ("sid-b", "B"), ("sid-c", "C")):
+                mgr._sessions[sid] = _make_session(sid=sid, thread_id="thread-1", log_path=p)
+                mgr._harness[sid] = {"enabled": True, "request": request, "cooldown_minutes": 5, "remaining_injections": 10}
+
+            sent: list[tuple[str, str]] = []
+            mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.send = lambda sid, text: (sent.append((sid, text)) or {"ok": True})  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0), patch(
+                "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
+            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
+                mgr._harness_sweep()
+
+            self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
+            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 9)
+            self.assertEqual(mgr._harness["sid-b"]["remaining_injections"], 10)
+            self.assertEqual(mgr._harness["sid-c"]["remaining_injections"], 10)
+
+    def test_zero_remaining_disables_without_sending(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}
+            mgr._harness_last_injected["sid-a"] = 900.0
+
+            sent: list[tuple[str, str]] = []
+            mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.send = lambda sid, text: (sent.append((sid, text)) or {"ok": True})  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0), patch(
+                "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
+            ):
+                mgr._harness_sweep()
+
+            self.assertEqual(sent, [])
+            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 0)
+            self.assertFalse(mgr._harness["sid-a"]["enabled"])
+            self.assertNotIn("sid-a", mgr._harness_last_injected)
+
     def test_disables_harness_after_last_injection(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

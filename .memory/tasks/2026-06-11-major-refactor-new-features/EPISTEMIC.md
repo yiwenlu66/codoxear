@@ -162,3 +162,8 @@ Commitments:
 - Observation: the new-session model menu already used recent sessions but collapsed them to model strings, losing provider information and forcing repeat launches to use both provider and model controls.
 - Mechanism: carrying provider metadata on recent model options lets one existing combobox action restore a provider/model pair without adding another visible control or nested picker.
 - Scoped claim: repeat launches for recent provider/model pairs now need fewer interactions; this does not implement a full provider/model selector or provider-specific model catalog.
+
+## 2026-06-12 01:44
+- Observation: git-history mining identified missing deterministic coverage for Unattended thread dedup/counter boundaries and JSONL partial-append handling.
+- Interpretation: these are cheap regression tests with high evidence value because they constrain prior failure mechanisms without requiring live broker/CLI processes.
+- Scoped claim: the added tests pressure the deterministic mechanisms only; live shell startup, browser/Monaco integration, and real backend lifecycle pressure tests remain outside this tests-only commit.
