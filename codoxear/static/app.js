@@ -5695,40 +5695,63 @@
           }
         }
 
+        function newSessionModelOption(model, { providerChoice = "", recent = false } = {}) {
+          const cleanModel = String(model || "").trim();
+          const cleanProvider = String(providerChoice || "").trim();
+          return {
+            model: cleanModel,
+            providerChoice: cleanProvider,
+            recent: !!recent,
+            searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel,
+          };
+        }
+
         function sessionModelOptions() {
           const seen = new Set();
           const out = [];
           const defaults = defaultsForAgentBackend(newSessionBackend);
+          const providerChoices = providerChoicesForBackend(newSessionBackend);
           const configured = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (configured) {
-            seen.add(configured);
-            out.push(configured);
-          }
-          for (const value of Array.isArray(defaults.models) ? defaults.models : []) {
-            if (typeof value !== "string") continue;
-            const model = value.trim();
-            if (!model || seen.has(model)) continue;
-            seen.add(model);
-            out.push(model);
+            seen.add(`|${configured}`);
+            out.push(newSessionModelOption(configured));
           }
           for (const item of latestSessions) {
             if (sessionAgentBackend(item) !== newSessionBackend) continue;
             const model = typeof item.model === "string" ? item.model.trim() : "";
-            if (!model || seen.has(model)) continue;
-            seen.add(model);
-            out.push(model);
+            if (!model) continue;
+            const provider = sessionProviderChoice(item);
+            const providerChoice = providerChoices.includes(provider) ? provider : "";
+            const key = `${providerChoice}|${model}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push(newSessionModelOption(model, { providerChoice, recent: true }));
           }
-          if (!out.length) out.push("default");
+          for (const value of Array.isArray(defaults.models) ? defaults.models : []) {
+            if (typeof value !== "string") continue;
+            const model = value.trim();
+            const key = `|${model}`;
+            if (!model || seen.has(key)) continue;
+            seen.add(key);
+            out.push(newSessionModelOption(model));
+          }
+          if (!out.length) out.push(newSessionModelOption("default"));
           return out;
+        }
+
+        function modelOptionMatches(option, query) {
+          const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();
+          if (!query) return true;
+          return text === query || text.startsWith(query) || text.includes(query);
         }
 
         function filteredNewSessionModelOptions() {
           const query = String(newSessionModelInput.value || "").trim().toLowerCase();
           const options = sessionModelOptions();
           if (!query) return options.slice(0, 12);
-          const exact = options.filter((value) => value.toLowerCase() === query);
-          const prefix = options.filter((value) => value.toLowerCase() !== query && value.toLowerCase().startsWith(query));
-          const contains = options.filter((value) => !value.toLowerCase().startsWith(query) && value.toLowerCase().includes(query));
+          const exact = options.filter((item) => String(item.model || "").toLowerCase() === query || String(item.searchText || "").toLowerCase() === query);
+          const prefix = options.filter((item) => !exact.includes(item) && String(item.searchText || item.model || "").toLowerCase().startsWith(query));
+          const contains = options.filter((item) => !exact.includes(item) && !prefix.includes(item) && modelOptionMatches(item, query));
           return exact.concat(prefix, contains).slice(0, 12);
         }
 
@@ -5823,8 +5846,12 @@
           }
         }
 
-        function selectNewSessionModel(model) {
-          newSessionModelInput.value = String(model || "default");
+        function selectNewSessionModel(option) {
+          const item = option && typeof option === "object" ? option : newSessionModelOption(option || "default");
+          newSessionModelInput.value = String(item.model || "default");
+          if (item.providerChoice && providerChoicesForBackend(newSessionBackend).includes(item.providerChoice)) {
+            setNewSessionProvider(item.providerChoice);
+          }
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
           setNewSessionReasoningEffort(newSessionReasoningEffort);
@@ -5846,7 +5873,7 @@
           if (newSessionModelMenuFocus < 0) {
             const selected = raw || configured;
             if (selected) {
-              const selectedIdx = items.findIndex((item) => item === selected);
+              const selectedIdx = items.findIndex((item) => item.model === selected);
               if (selectedIdx >= 0) newSessionModelMenuFocus = selectedIdx;
             }
           }
@@ -5856,7 +5883,9 @@
             newSessionModelInput.removeAttribute("aria-activedescendant");
             return items;
           }
-          for (const [idx, model] of items.entries()) {
+          for (const [idx, item] of items.entries()) {
+            const model = item.model;
+            const title = item.providerChoice ? `${item.providerChoice}/${model}` : model;
             const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && raw === model);
             const btn = el("button", {
               id: `newSessionModelOption-${idx}`,
@@ -5864,11 +5893,12 @@
               type: "button",
               role: "option",
               "aria-selected": active ? "true" : "false",
-              title: model,
+              title,
             });
             btn.appendChild(el("span", { class: "fileMenuPath", text: model }));
+            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.recent ? `Recent: ${item.providerChoice}` : item.providerChoice }));
             btn.onmousedown = (e) => e.preventDefault();
-            btn.onclick = () => selectNewSessionModel(model);
+            btn.onclick = () => selectNewSessionModel(item);
             newSessionModelMenu.appendChild(btn);
           }
           if (newSessionModelMenuFocus >= 0) newSessionModelInput.setAttribute("aria-activedescendant", `newSessionModelOption-${newSessionModelMenuFocus}`);

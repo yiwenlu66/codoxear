@@ -152,3 +152,11 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py -q` passed (`20 passed`).
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`419 passed, 2 skipped in 9.72s`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+
+## 2026-06-12 01:42
+- Implemented minimal new-session provider/model ergonomics improvement: recent session model menu entries now retain provider choice metadata, are searchable as `provider/model`, and selecting such an entry updates both model and provider through the existing model combobox.
+- Avoided a broad combined picker rewrite; the intervention preserves the existing sparse controls while reducing repeat-launch steps for recent provider/model pairs.
+- Added `tests/test_new_session_model_options_source.py` with Node VM coverage for provider-bearing recent model options and provider/model filtering.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py tests/test_launch_defaults.py -q` passed (`19 passed`).
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`422 passed, 2 skipped in 9.90s`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.

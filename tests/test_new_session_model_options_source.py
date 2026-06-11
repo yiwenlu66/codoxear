@@ -1,0 +1,69 @@
+import json
+import subprocess
+import textwrap
+import unittest
+from pathlib import Path
+
+
+APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+
+
+def eval_new_session_model_options(query: str = "") -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function newSessionModelOption(model")
+    end = source.index("function setNewSessionReasoningEffort(value) {", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          newSessionBackend: "codex",
+          newSessionModelInput: {{ value: {json.dumps(query)} }},
+          latestSessions: [
+            {{ agent_backend: "codex", model: "gpt-5.4", model_provider: "openai", preferred_auth_method: "chatgpt" }},
+            {{ agent_backend: "codex", model: "gpt-5.4", model_provider: "crs", preferred_auth_method: "apikey" }},
+            {{ agent_backend: "pi", model: "gpt-5.4", model_provider: "macaron" }},
+          ],
+          defaultsForAgentBackend: () => ({{ model: "gpt-5.4-mini", models: ["gpt-5.4", "o4-mini"] }}),
+          providerChoicesForBackend: () => ["chatgpt", "openai-api", "crs"],
+          sessionAgentBackend: (item) => item.agent_backend || "codex",
+          sessionProviderChoice: (item) => item.model_provider === "openai" && item.preferred_auth_method === "chatgpt" ? "chatgpt" : item.model_provider,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_model_options = { sessionModelOptions, filteredNewSessionModelOptions };\n")}, ctx);
+        process.stdout.write(JSON.stringify({{
+          options: ctx.__test_model_options.sessionModelOptions(),
+          filtered: ctx.__test_model_options.filteredNewSessionModelOptions(),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+class TestNewSessionModelOptionsSource(unittest.TestCase):
+    def test_recent_model_options_keep_provider_choice(self) -> None:
+        result = eval_new_session_model_options()
+        options = result["options"]
+        self.assertEqual(options[0]["model"], "gpt-5.4-mini")
+        recent_pairs = {(item["providerChoice"], item["model"]) for item in options if item.get("recent")}
+        self.assertIn(("chatgpt", "gpt-5.4"), recent_pairs)
+        self.assertIn(("crs", "gpt-5.4"), recent_pairs)
+        self.assertNotIn(("macaron", "gpt-5.4"), recent_pairs)
+
+    def test_model_filter_matches_provider_model_text(self) -> None:
+        result = eval_new_session_model_options("crs/gpt")
+        self.assertEqual(result["filtered"][0]["providerChoice"], "crs")
+        self.assertEqual(result["filtered"][0]["model"], "gpt-5.4")
+
+    def test_source_selecting_recent_model_updates_provider(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function newSessionModelOption(model", source)
+        self.assertIn("providerChoice: cleanProvider", source)
+        self.assertIn("searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel", source)
+        self.assertIn("setNewSessionProvider(item.providerChoice);", source)
+        self.assertIn("Recent: ${item.providerChoice}", source)
+
+
+if __name__ == "__main__":
+    unittest.main()
