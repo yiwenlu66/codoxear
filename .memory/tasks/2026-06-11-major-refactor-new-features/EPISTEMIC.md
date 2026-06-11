@@ -213,3 +213,6 @@ Commitments:
 - Observation: git-history mining identified assistant-message duplication as a medium-risk area, while delivery notifications already had adjacent duplicate suppression. Chat page/live extraction lacked equivalent direct coverage.
 - Mechanism: duplicate adjacent assistant rows in a single assistant stretch are more likely log/read artifacts than semantically distinct user-visible turns; resetting on user messages preserves repeated answers in separate turns.
 - Scoped claim: Codoxear now constrains duplicate assistant chat events within batch/page extraction. This does not prove cross-poll duplicate suppression if a duplicate arrives in a later live delta after the previous batch has already rendered.
+
+## 2026-06-12 02:27
+- Clean-room review after closing the deterministic assistant-dedupe gap found no blocker. The remaining uncertainties are either broader live-like validation or explicitly scoped behavior beyond the implemented batch/page dedupe.

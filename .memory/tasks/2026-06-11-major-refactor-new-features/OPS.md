@@ -222,3 +222,7 @@
 - Targeted validation: `python3 -m py_compile codoxear/rollout_log.py` passed; `scripts/codoxear-docker-sandbox test tests/test_message_index.py tests/test_transcript_export.py tests/test_voice_push.py -q` passed (`36 passed`).
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`427 passed, 2 skipped in 11.53s`).
 - Updated `PROMPT.md` and `recon/final-acceptance-summary.md` validation evidence to the new 427-test count.
+
+## 2026-06-12 02:27
+- Final clean-room review after assistant chat-dedupe change used a concise read-only `delegate` gate.
+- Review result: no blockers; risks limited to deferred real backend/device/performance validation, unresolved Codex per-model reasoning source, and cross-poll duplicate suppression beyond batch/page extraction not being proven. Verdict: PASS/yield `develop`; do not merge `main` without approval.
