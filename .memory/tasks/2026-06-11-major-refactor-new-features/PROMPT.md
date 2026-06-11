@@ -1,0 +1,158 @@
+## Objective
+Create and execute a major refactoring/new-features program for Codoxear with one acceptance target: a single `develop` branch containing the integrated candidate work. Workstreams are interacting and need not be forced into independent final branches. The agent should determine the branch topology that best preserves evidence and reviewability, but the user should only need to evaluate one `develop` branch for acceptance. Nothing may merge to `main` until the user explicitly approves.
+
+Done means:
+- A single `develop` branch exists as the acceptance candidate and contains the integrated, reviewable result.
+- Temporary topic branches/worktrees may be used for exploration, PR cherry-picks, or risky changes, but they are implementation scaffolding, not the final deliverable.
+- Commits on `develop` are atomic enough to review and ordered by dependency/mechanism where possible.
+- Each accepted change preserves Codoxear's design philosophy: CLI and web share the same broker; UI remains minimal; sidebar remains GTD-style without nesting; chat view deliberately omits low-value details.
+- The integrated result may include creative product improvements beyond the enumerated workstreams when evidence or product judgment shows they make Codoxear better without violating the hard constraints or product philosophy.
+- All server/browser validation runs against a standalone Docker test instance with isolated app/session state, not live sessions or the live server.
+- The user receives evidence for what changed, what was tested, what remains uncertain, which PRs were accepted/rejected/deferred, and why.
+
+## Workbench
+Current status: task memory initialized and corrected. No implementation branch work has started in this session.
+
+Selected next tasks:
+1. Inspect the current git branch topology, create or reset the `develop` acceptance branch from the approved base, and decide any temporary topic branches/worktrees needed for evidence-preserving implementation.
+2. Design or locate a standalone Docker test instance that can run the server/UI with isolated Codoxear app/session state and without touching live runtime state.
+3. Inventory open GitHub PRs and existing git-history bug signals before choosing interventions.
+4. Investigate the existing `harness`/"Harness mode" feature and rename it to a mechanism-accurate term. Current code evidence suggests it is an idle-triggered unattended prompt injector, not a generic harness; likely user-facing terminology should be closer to "Unattended mode" or "Idle follow-up", with final naming based on confirmed semantics.
+5. Investigate long-conversation chat navigation and design low-friction ergonomics such as in-chat search, jump to previous/next user message, and time-based navigation without bloating the chat view.
+6. For each workstream and any creative product improvement, record observations, hypotheses, expected behavior, interventions, and validation evidence in `OPS.md` / `EPISTEMIC.md`.
+
+Observed failures: none yet; no code has been tested as part of this task setup.
+
+Open blockers / unknowns:
+- Exact GitHub PR list and whether local credentials/`gh` access are available.
+- Current Docker setup for isolated Codoxear testing.
+- Current implementation details for Claude Code logs, process launch, session metadata, and resume semantics.
+- Which historical bug reports are still reproducible.
+- The final accurate replacement name and compatibility strategy for the current `harness` feature/API/state keys.
+- Which long-chat navigation primitives best improve real use without turning the chat view into a detailed transcript/debug UI.
+
+## Context
+Required project context:
+- `AGENTS.md` for architecture, design philosophy, development reminders, and safe restart constraints.
+- `codoxear.server`, `codoxear.broker`, `codoxear.sessiond`, `codoxear.rollout_log`, `codoxear.pi_log`, and `codoxear/static/*`.
+- Runtime app directory convention: `~/.local/share/codoxear` for real sessions; do not use it for this task's server/browser testing.
+- Existing git history and open GitHub PRs for regression signals and candidate changes.
+- Provider configs in `~/.pi/agent` may inform test workloads.
+- Existing `harness` code paths in `codoxear/server.py` and `codoxear/static/app.js`; these appear to schedule/send prompts after an idle assistant turn and should be renamed or recast with accurate terminology.
+- Current chat view rendering, message normalization, scroll behavior, session message APIs, and any browser performance costs that affect long-conversation navigation.
+
+Testing preferences from user:
+- Prefer `deepseek-v4-flash` for cost-efficient workloads.
+- Prefer `occ-claude`'s `claude-haiku-4-5` for Claude-specific workloads.
+- Use a headless agent browser when useful for UI testing.
+
+Design philosophy that must constrain PR acceptance and new implementation:
+- CLI and web share the same broker model.
+- Minimal UI.
+- GTD-style sidebar without nesting.
+- Deliberate omission of details in chat view.
+- Navigation affordances for long conversations should help users regain orientation without making the chat view visually dense or exposing low-value implementation detail.
+- Prefer replacing semantically wrong subsystems over layering patches onto confused structures.
+- Define semantic invariants before implementing queueing/streaming, chat navigation, or UI state machinery.
+
+## Working style
+- Be creative and product-minded. The numbered workstreams are not a ceiling.
+- Do whatever makes Codoxear materially better when the intervention respects the hard operational constraints, product philosophy, and validation requirements.
+- Prefer coherent product improvements over narrow checklist execution, but preserve evidence: state the mechanism, expected user benefit, validation path, and any tradeoff.
+- Do not use open-ended latitude as permission for unchecked scope creep, silent fallbacks, live-runtime risk, or UI complexity that contradicts the project philosophy.
+
+## Branch topology
+- Final acceptance target: `develop`.
+- `main` is not an acceptance target and must not receive merges without explicit user approval.
+- Workstreams are not fully orthogonal. The agent should choose the branch topology after inspecting dependencies, conflicts, and PR shapes.
+- Allowed scaffolding: temporary topic branches, throwaway worktrees, or local experiment branches when they reduce risk or preserve evidence.
+- Required integration behavior: accepted work is integrated into `develop`; rejected/deferred experiments are documented and not left as required deliverables.
+- Keep reviewability by using atomic commits, explicit commit messages, and evidence notes rather than by pretending every workstream can be a separate final branch.
+
+## Task specifications
+The workstreams below are interacting areas of investigation and implementation, not an exhaustive checklist or branch map. They should inform each other, and branch topology should follow the evidence rather than the numbered list. Additional product improvements are allowed when they are causally motivated, validated, and compatible with the design philosophy.
+
+1. Architecture review and refactoring
+   - Review current server/broker/log/UI architecture and identify mechanisms that are semantically confused or overly patched.
+   - Refactor only where a clearer invariant is identified and validation can show preservation of behavior.
+   - Avoid broad rewrites without evidence that they reduce complexity or fix a real mechanism.
+
+2. Review and cherry-pick GitHub PRs
+   - Inventory open PRs, summarize the behavior each PR changes, and decide accept/reject/defer.
+   - Accept only PRs compatible with the design philosophy above.
+   - If accepted, merge or cherry-pick into `develop` or a temporary integration branch that will be folded into `develop`; do not merge to `main`.
+   - Preserve rationale for rejected PRs, especially when rejection is due to UI complexity, broker divergence, sidebar nesting, or chat detail creep.
+
+3. Optimizations: UI responsiveness and network traffic
+   - Measure current polling/network behavior and responsiveness, especially under slow mobile-network conditions.
+   - Optimize only after identifying the dominant mechanism, such as redundant polling, oversized payloads, inefficient DOM updates, or unnecessary re-rendering.
+   - Validate with browser/network evidence from the standalone Docker instance.
+
+4. Claude Code support
+   - Add Claude Code (`cc`) support analogous to existing `codex` and `pi` backends.
+   - Preserve the shared broker architecture rather than adding a separate path.
+   - Define log discovery, metadata, launch defaults, message normalization, idle/busy detection, and session creation semantics before implementation.
+   - Use `occ-claude`'s `claude-haiku-4-5` for Claude-specific test workload if an actual backend test is needed and safe.
+
+5. New-session view ergonomics
+   - Consider combining provider and model into a single `provider/model` selector.
+   - Improve recent-list ergonomics so the user does not need to type the full `provider/model` name.
+   - Keep the UI minimal; avoid a complex nested picker unless evidence shows it is necessary.
+   - Validate keyboard and mobile ergonomics in headless/browser tests where possible.
+
+6. File viewer combobox and fuzzy search
+   - Re-check combobox logic.
+   - Ensure recently viewed files are easy to select.
+   - Ensure project files can be fuzzy-searched.
+   - Preserve simple file-viewer/editor ergonomics and test edge cases around selection, typing, recent entries, and missing files.
+
+7. Pressure-test frequent git-history bugs
+   - Mine git history for frequently mentioned bugs around file viewer/editor ergonomics, rollout log binding, and startup error handling.
+   - Reproduce or falsify each bug in the standalone Docker instance.
+   - Add regression checks or harden behavior where the mechanism is understood.
+   - Record bugs that cannot be reproduced with the evidence and conditions tested.
+
+8. Overall UI cleanliness and responsiveness
+   - Improve visual cleanliness and interaction responsiveness without adding conceptual complexity.
+   - Keep chat view intentionally sparse and sidebar GTD-style without nesting.
+   - Validate desktop and mobile-ish layouts in the Docker/headless-browser environment.
+
+9. Rename/recast `harness mode`
+   - Treat "harness mode" as inaccurate terminology unless investigation proves otherwise.
+   - Determine the actual mechanism and choose a more accurate name. Current observations indicate the feature is server-side idle-triggered prompt injection for unattended continuation.
+   - Prefer a user-facing name that describes the behavior, e.g. "Unattended mode" or another mechanism-accurate term. Do not keep vague "Harness mode" copy.
+   - Decide deliberately whether internal API/state names should be renamed immediately, aliased for compatibility, or left internal while the UI/copy changes. Avoid silent compatibility fallbacks that hide broken contracts.
+   - Validate the renamed feature in the standalone Docker instance.
+
+10. Long-conversation chat navigation ergonomics
+   - Improve navigation when conversations become long.
+   - Consider lightweight search within visible/loaded chat messages, jump to previous/next user message, jump to latest/oldest relevant turn, and time-based navigation or markers.
+   - Preserve deliberate chat-detail omission: navigation can use timestamps/roles as affordances, but should not turn the main chat view into a dense log/debug transcript.
+   - Optimize for mobile and keyboard ergonomics; controls should be discoverable without occupying excessive space.
+   - Validate against synthetic or fixture long conversations in the standalone Docker/browser environment, including slow-device or slow-network conditions where feasible.
+
+Cross-workstream verification criteria:
+- `python3 -m pip install -e .` succeeds in the isolated test environment where applicable.
+- Server starts in Docker with test-only app/session state and required password configuration.
+- API and UI checks exercise relevant changed behavior without touching live sessions or the live server.
+- Changed Python paths have targeted tests or equivalent scripted validation.
+- Changed UI behavior has browser-level evidence when feasible.
+- Long-conversation navigation changes are validated against large enough conversations to expose scroll/search/performance and orientation problems.
+- Git status is reviewed before and after each workstream/integration step; only intended files are changed.
+- `develop` is the branch presented for user acceptance, with any temporary branches clearly identified as non-final scaffolding.
+
+## Constraints
+Hard rules:
+- Do not touch live sessions.
+- Do not touch, stop, restart, or kill the live server.
+- Do not kill `codoxear-broker` or underlying backend CLI processes.
+- Test everything in a standalone Docker instance with isolated app/session state.
+- Present only one final acceptance branch: `develop`.
+- Determine branch topology from actual dependencies and evidence; do not force the numbered workstreams into separate final branches.
+- Do not merge anything to `main` without explicit user approval.
+- Do not commit secrets, provider credentials, live logs, runtime sockets, app state, or bulky scratch artifacts.
+- Do not use `git add -A`, `git add .`, or broad staging when unrelated files may exist.
+- Preserve existing design philosophy: shared broker for CLI/web, minimal UI, GTD-style sidebar without nesting, deliberate chat-detail omission.
+- Creative/product latitude does not override the hard ops constraints, `develop` acceptance target, validation requirements, or product philosophy.
+- Do not add silent fallbacks that hide broken contracts; prefer explicit errors or explicit degraded-mode semantics.
+- If a PR or implementation conflicts with the design philosophy, reject or redesign it rather than accepting the conflict.
