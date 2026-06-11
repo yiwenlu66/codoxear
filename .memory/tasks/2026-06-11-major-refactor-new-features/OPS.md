@@ -165,3 +165,10 @@
 - Added deterministic git-history pressure-test regressions without behavior changes: Unattended/legacy harness sweep now covers three sessions sharing one thread and zero remaining injections disabling without sending; JSONL offset reader now covers a complete line followed by a partial appended JSON object.
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_harness_sweep.py tests/test_read_jsonl_from_offset.py -q` passed (`10 passed`).
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`425 passed, 2 skipped in 10.01s`).
+
+## 2026-06-12 01:46
+- Ran browser-level validation against isolated Docker server on port 18791 with isolated root `/tmp/codoxear-docker-sandbox-browser`; did not touch live server/session state.
+- Browser evidence via `agent-browser`: pre-login page showed password/login; after login, top bar showed `Search loaded messages`, previous/next user-message controls, and `Unattended mode` controls disabled with no selected session.
+- New-session modal browser snapshot showed backend tabs `Codex`, `Pi`, and `Claude` plus model/reasoning/provider/tmux controls.
+- After clicking `Claude`, browser eval returned `providerVisible:false`, `fastVisible:false`, `reasoningText:"medium"`, and model placeholder `Model`.
+- Cleanup: closed ephemeral `agent-browser` session and stopped Docker sandbox; subsequent curl to `127.0.0.1:18791` failed to connect as expected.
