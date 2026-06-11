@@ -848,6 +848,7 @@ class State:
     detach_trigger_tail: str = ""
     detach_trigger_tail_max: int = 8192
     token: dict[str, Any] | None = None
+    declared_log_path: Path | None = None
     last_rollout_path: Path | None = None
     last_detected_rollout_path: Path | None = None
     ignored_rollout_paths: set[Path] = field(default_factory=set)
@@ -928,10 +929,24 @@ class Broker:
                     if not st:
                         return
                     current_log_path = st.log_path
+                    current_session_id = st.session_id
+                    current_last_rollout_path = st.last_rollout_path
+                    declared_log_path = st.declared_log_path
                     root_pid = int(st.codex_pid)
                     ignored_paths = set(st.ignored_rollout_paths)
                 if root_pid > 0:
                     if AGENT_BACKEND == "pi":
+                        if declared_log_path is not None and declared_log_path.exists():
+                            if (
+                                current_log_path is None
+                                or (not _paths_match(declared_log_path, current_log_path))
+                                or current_session_id is None
+                                or current_last_rollout_path is None
+                                or (not _paths_match(current_last_rollout_path, declared_log_path))
+                            ):
+                                self._maybe_register_or_switch_rollout(log_path=declared_log_path)
+                                time.sleep(0.25)
+                                continue
                         lp = _read_pi_active_session_marker(
                             self.pi_active_session_marker_path,
                             sessions_dir=self.sessions_dir,
@@ -1633,11 +1648,21 @@ class Broker:
             busy=False,
             resume_session_id=self._resume_session_id,
         )
+        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
+        st.declared_log_path = declared_log_path
         if AGENT_BACKEND == "pi":
             st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
+        if declared_log_path is not None:
+            st.log_path = declared_log_path
+            if declared_log_path.exists():
+                try:
+                    st.log_off = int(declared_log_path.stat().st_size)
+                except Exception:
+                    st.log_off = 0
+            else:
+                st.log_off = 0
         self.state = st
-        declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
         if declared_log_path is not None and declared_log_path.exists():
             self._maybe_register_or_switch_rollout(log_path=declared_log_path)
 

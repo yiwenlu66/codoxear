@@ -497,6 +497,73 @@ read -r -k 1 option
             self.assertEqual(meta["log_path"], None)
             self.assertEqual(meta["ignored_rollout_paths"], [str(old_log)])
 
+    def test_pi_new_run_reserves_log_path_before_first_write(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        captured: dict[str, object] = {}
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td, "CODEX_WEB_RESUME_SESSION_ID": ""}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            broker = Broker(cwd="/tmp", codex_args=["--model", "gpt-5.4"])
+            session_idx = broker.codex_args.index("--session")
+            reserved_log_path = Path(broker.codex_args[session_idx + 1])
+
+            def _capture_write_meta() -> None:
+                st = broker.state
+                captured["session_id"] = st.session_id if st else None
+                captured["log_path"] = str(st.log_path) if st and st.log_path else None
+                captured["declared_log_path"] = str(st.declared_log_path) if st and st.declared_log_path else None
+                captured["log_off"] = st.log_off if st else None
+
+            with patch("codoxear.broker.OWNER_TAG", ""), patch("codoxear.broker._require_proc"), patch(
+                "codoxear.broker._term_size", return_value=(24, 80)
+            ), patch("codoxear.broker.pty.fork", return_value=(1234, 55)), patch("codoxear.broker._set_winsize"), patch(
+                "codoxear.broker.signal.signal"
+            ), patch("codoxear.broker.os.waitpid", return_value=(1234, 0)), patch("codoxear.broker.os.close"), patch.object(
+                broker, "_write_meta", side_effect=_capture_write_meta
+            ), patch("codoxear.broker.threading.Thread", _FakeThread):
+                broker.run()
+
+        self.assertIsNone(captured["session_id"])
+        self.assertEqual(captured["log_path"], str(reserved_log_path))
+        self.assertEqual(captured["declared_log_path"], str(reserved_log_path))
+        self.assertEqual(captured["log_off"], 0)
+
+    def test_pi_discover_log_watcher_registers_declared_log_when_file_appears(self) -> None:
+        fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.sys.stdin", fake_stdin), patch.dict(
+            "os.environ", {"PI_HOME": td}, clear=False
+        ), patch("codoxear.broker.AGENT_BACKEND", "pi"), patch("codoxear.broker.BACKEND", get_agent_backend("pi")):
+            root = Path(td)
+            sessions_dir = root / "agent" / "sessions"
+            log_path = sessions_dir / "--tmp--" / "2026-04-07T00-00-00-000Z_test.jsonl"
+            broker = Broker(cwd="/tmp", codex_args=[])
+            broker.state = _broker_state(codex_pid=1234, sock_path=root / "broker.sock")
+            broker.state.sessions_dir = sessions_dir
+            broker.state.declared_log_path = log_path
+            broker.sessions_dir = sessions_dir
+            seen: list[Path] = []
+            sleep_count = 0
+
+            def _capture_switch(*, log_path: Path) -> None:
+                seen.append(log_path)
+                broker._stop.set()
+
+            def _sleep(_seconds: float) -> None:
+                nonlocal sleep_count
+                sleep_count += 1
+                if sleep_count == 1:
+                    log_path.parent.mkdir(parents=True, exist_ok=True)
+                    log_path.write_text('{"type":"session","id":"declared","cwd":"/tmp"}\n', encoding="utf-8")
+                if sleep_count > 3:
+                    broker._stop.set()
+
+            with patch.object(broker, "_maybe_register_or_switch_rollout", side_effect=_capture_switch), patch(
+                "codoxear.broker.os.waitpid", return_value=(0, 0)
+            ), patch("codoxear.broker.time.sleep", side_effect=_sleep):
+                broker._discover_log_watcher()
+
+        self.assertEqual(seen, [log_path])
+
     def test_pi_resume_run_binds_log_path_from_session_arg_before_first_write(self) -> None:
         fake_stdin = SimpleNamespace(isatty=lambda: False, fileno=lambda: 9)
         captured: dict[str, object] = {}
