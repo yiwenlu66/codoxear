@@ -65,7 +65,7 @@ class TestSessionResumeCandidates(unittest.TestCase):
         self.assertEqual(rows[0]["cwd"], "/repo")
         self.assertEqual(rows[0]["log_path"], str(same_new))
 
-    def test_first_user_message_preview_skips_harness_scaffolding(self) -> None:
+    def test_first_user_message_preview_skips_unattended_scaffolding(self) -> None:
         with TemporaryDirectory() as td:
             log_path = Path(td) / "rollout-2026-03-08T01-00-00-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa.jsonl"
             _write_jsonl(

@@ -1403,7 +1403,7 @@
           return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 17H5l2-2v-4a5 5 0 1 1 10 0v4l2 2h-4"/><path d="M10 17a2 2 0 0 0 4 0"/></svg>`;
         if (name === "play")
           return `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
-	        if (name === "harness")
+	        if (name === "unattended")
 	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h3l2-4 3 8 2-4h6"/><path d="M12 21a9 9 0 1 0-9-9"/></svg>`;
 	        if (name === "stop")
 	          return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>`;
@@ -1693,11 +1693,11 @@
          const RECENT_EVENT_KEYS_MAX = 320;
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
-              let harnessMenuOpen = false;
-              let harnessCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
-              let harnessNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
-              let harnessNumberDirty = { cooldown_minutes: false, remaining_injections: false };
-              let harnessSaveTimer = null;
+              let unattendedMenuOpen = false;
+              let unattendedCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
+              let unattendedNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
+              let unattendedNumberDirty = { cooldown_minutes: false, remaining_injections: false };
+              let unattendedSaveTimer = null;
               let editSessionId = null;
 
             const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
@@ -1727,16 +1727,16 @@
 	          "aria-label": "Toggle sidebar",
 	          html: iconSvg("menu"),
 	        });
-        const harnessBtn = el("button", {
-          id: "harnessBtn",
+        const unattendedBtn = el("button", {
+          id: "unattendedBtn",
           class: "icon-btn",
           title: "Unattended mode",
           "aria-label": "Unattended mode",
           type: "button",
-          html: iconSvg("harness"),
+          html: iconSvg("unattended"),
         });
-        harnessBtn.disabled = true;
-        harnessBtn.classList.toggle("active", false);
+        unattendedBtn.disabled = true;
+        unattendedBtn.classList.toggle("active", false);
         const announceBtn = el("button", {
           id: "announceBtn",
           class: "icon-btn",
@@ -1807,25 +1807,25 @@
           html: iconSvg("file"),
         });
         fileBtn.disabled = true;
-        const harnessMenu = el("div", { id: "harnessMenu", class: "harnessMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
+        const unattendedMenu = el("div", { id: "unattendedMenu", class: "unattendedMenu", role: "dialog", "aria-label": "Unattended mode settings" }, [
           el("div", { class: "row" }, [
             el("label", {}, [
-              el("input", { type: "checkbox", id: "harnessEnabled" }),
+              el("input", { type: "checkbox", id: "unattendedEnabled" }),
               el("span", { text: "Unattended mode" }),
 			            ]),
 			          ]),
-			          el("div", { class: "harnessGrid" }, [
+			          el("div", { class: "unattendedGrid" }, [
 			            el("div", {}, [
 			              el("div", { class: "label", text: "Cooldown time (minutes)" }),
-			              el("input", { id: "harnessCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Unattended cooldown time in minutes" }),
+			              el("input", { id: "unattendedCooldownMinutes", type: "number", min: "1", step: "1", inputmode: "numeric", "aria-label": "Unattended cooldown time in minutes" }),
 			            ]),
 			            el("div", {}, [
 			              el("div", { class: "label", text: "Number of injections" }),
-			              el("input", { id: "harnessRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Unattended remaining injections" }),
+			              el("input", { id: "unattendedRemainingInjections", type: "number", min: "0", step: "1", inputmode: "numeric", "aria-label": "Unattended remaining injections" }),
 			            ]),
 			          ]),
 			          el("div", { class: "label", text: "Additional request to append (optional; per session)" }),
-			          el("textarea", { id: "harnessRequest", "aria-label": "Additional request for unattended prompt" }),
+			          el("textarea", { id: "unattendedRequest", "aria-label": "Additional request for unattended prompt" }),
 			        ]);
         const liveAudio = el("audio", { id: "liveAudio", preload: "none", playsinline: "true" });
         liveAudio.style.display = "none";
@@ -1843,7 +1843,7 @@
             nextUserBtn,
             diagBtn,
             interruptBtn,
-            harnessBtn,
+            unattendedBtn,
           ]),
         ]);
 
@@ -1886,7 +1886,7 @@
         app.appendChild(main);
         app.appendChild(backdrop);
         root.appendChild(app);
-        root.appendChild(harnessMenu);
+        root.appendChild(unattendedMenu);
         root.appendChild(liveAudio);
 
         const fileBackdrop = el("div", { class: "modalBackdrop", id: "fileBackdrop" });
@@ -3610,7 +3610,7 @@
              const launchRow = launchFailed || launchPending;
              if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
-             if (s.unattended_enabled) badges.push(el("span", { class: "badge harness", text: "unattended", title: "Unattended mode enabled" }));
+             if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
 
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
@@ -3660,8 +3660,8 @@
                    setAttachCount(0);
                    resetChatRenderState();
                    updateQueueBadge();
-                   if (harnessMenuOpen) hideHarnessMenu();
-                   updateHarnessBtnState();
+                   if (unattendedMenuOpen) hideUnattendedMenu();
+                   updateUnattendedBtnState();
                  }
                  sessionTranscriptSlots.delete(s.session_id);
                  sessionTailCache.delete(s.session_id);
@@ -3897,7 +3897,7 @@
             const s = sessionIndex.get(selected);
             if (s) titleLabel.textContent = sessionTitleWithId(s);
           }
-          updateHarnessBtnState();
+          updateUnattendedBtnState();
           updateQueueBadge();
           return sessions;
         }
@@ -4151,7 +4151,7 @@
 
           if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
-          updateHarnessBtnState();
+          updateUnattendedBtnState();
           if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
           return data;
         }
@@ -4319,8 +4319,8 @@
           await openSession(id, { useCache: true });
         }
 
-        function parseHarnessDraftInt(name) {
-          const raw = String(harnessNumberDraft[name] ?? "").trim();
+        function parseUnattendedDraftInt(name) {
+          const raw = String(unattendedNumberDraft[name] ?? "").trim();
           if (!raw) return null;
           const minValue = name === "cooldown_minutes" ? 1 : 0;
           const value = Number.parseInt(raw, 10);
@@ -4328,66 +4328,66 @@
           return value;
         }
 
-        function syncHarnessNumberDraftsFromCfg() {
-          if (!harnessNumberDirty.cooldown_minutes) harnessNumberDraft.cooldown_minutes = String(harnessCfg.cooldown_minutes);
-          if (!harnessNumberDirty.remaining_injections) harnessNumberDraft.remaining_injections = String(harnessCfg.remaining_injections);
+        function syncUnattendedNumberDraftsFromCfg() {
+          if (!unattendedNumberDirty.cooldown_minutes) unattendedNumberDraft.cooldown_minutes = String(unattendedCfg.cooldown_minutes);
+          if (!unattendedNumberDirty.remaining_injections) unattendedNumberDraft.remaining_injections = String(unattendedCfg.remaining_injections);
         }
 
-        function syncHarnessNumberInputs() {
-          const cooldownEl = $("#harnessCooldownMinutes");
-          const remainingEl = $("#harnessRemainingInjections");
+        function syncUnattendedNumberInputs() {
+          const cooldownEl = $("#unattendedCooldownMinutes");
+          const remainingEl = $("#unattendedRemainingInjections");
           if (cooldownEl) {
-            cooldownEl.value = harnessNumberDirty.cooldown_minutes
-              ? harnessNumberDraft.cooldown_minutes
-              : String(harnessCfg.cooldown_minutes);
+            cooldownEl.value = unattendedNumberDirty.cooldown_minutes
+              ? unattendedNumberDraft.cooldown_minutes
+              : String(unattendedCfg.cooldown_minutes);
           }
           if (remainingEl) {
-            remainingEl.value = harnessNumberDirty.remaining_injections
-              ? harnessNumberDraft.remaining_injections
-              : String(harnessCfg.remaining_injections);
+            remainingEl.value = unattendedNumberDirty.remaining_injections
+              ? unattendedNumberDraft.remaining_injections
+              : String(unattendedCfg.remaining_injections);
           }
         }
 
-        function restoreHarnessNumberDraft(name) {
-          harnessNumberDirty[name] = false;
-          harnessNumberDraft[name] = String(harnessCfg[name]);
-          syncHarnessNumberInputs();
+        function restoreUnattendedNumberDraft(name) {
+          unattendedNumberDirty[name] = false;
+          unattendedNumberDraft[name] = String(unattendedCfg[name]);
+          syncUnattendedNumberInputs();
         }
 
-        function finalizeHarnessNumberDraft(name) {
-          const value = parseHarnessDraftInt(name);
-          if (value === null || value !== harnessCfg[name]) return;
-          harnessNumberDirty[name] = false;
-          harnessNumberDraft[name] = String(harnessCfg[name]);
+        function finalizeUnattendedNumberDraft(name) {
+          const value = parseUnattendedDraftInt(name);
+          if (value === null || value !== unattendedCfg[name]) return;
+          unattendedNumberDirty[name] = false;
+          unattendedNumberDraft[name] = String(unattendedCfg[name]);
         }
 
-        function updateHarnessBtnState() {
+        function updateUnattendedBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
           const on = Boolean(s && s.unattended_enabled);
-          harnessBtn.disabled = !selected;
-          harnessBtn.classList.toggle("active", Boolean(selected && on));
+          unattendedBtn.disabled = !selected;
+          unattendedBtn.classList.toggle("active", Boolean(selected && on));
           if (
             selected &&
             s &&
-            !harnessNumberDirty.cooldown_minutes &&
+            !unattendedNumberDirty.cooldown_minutes &&
             Number.isInteger(s.unattended_cooldown_minutes) &&
             s.unattended_cooldown_minutes >= 1
           ) {
-            harnessCfg.cooldown_minutes = s.unattended_cooldown_minutes;
+            unattendedCfg.cooldown_minutes = s.unattended_cooldown_minutes;
           }
           if (
             selected &&
             s &&
-            !harnessNumberDirty.remaining_injections &&
+            !unattendedNumberDirty.remaining_injections &&
             Number.isInteger(s.unattended_remaining_injections) &&
             s.unattended_remaining_injections >= 0
           ) {
-            harnessCfg.remaining_injections = s.unattended_remaining_injections;
+            unattendedCfg.remaining_injections = s.unattended_remaining_injections;
           }
-          syncHarnessNumberDraftsFromCfg();
-          if (harnessMenuOpen) {
-            const enabledEl = $("#harnessEnabled");
-            syncHarnessNumberInputs();
+          syncUnattendedNumberDraftsFromCfg();
+          if (unattendedMenuOpen) {
+            const enabledEl = $("#unattendedEnabled");
+            syncUnattendedNumberInputs();
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
           fileBtn.disabled = !selected;
@@ -4397,7 +4397,7 @@
           updateChatNavButtons();
           diagBtn.disabled = !selected;
         }
-           async function loadHarnessCfgForSelected() {
+           async function loadUnattendedCfgForSelected() {
              if (!selected) return;
              const sid = selected;
               const d = await api(`/api/sessions/${sid}/unattended`);
@@ -4407,35 +4407,35 @@
               if (typeof d.request !== "string") throw new Error("invalid unattended.request");
               if (!Number.isInteger(d.cooldown_minutes) || d.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
               if (!Number.isInteger(d.remaining_injections) || d.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
-              harnessCfg = {
+              unattendedCfg = {
                 enabled: d.enabled,
                 request: d.request,
                 cooldown_minutes: d.cooldown_minutes,
                 remaining_injections: d.remaining_injections,
               };
-             harnessNumberDirty.cooldown_minutes = false;
-             harnessNumberDirty.remaining_injections = false;
-             syncHarnessNumberDraftsFromCfg();
-             const enabledEl = $("#harnessEnabled");
-             const requestEl = $("#harnessRequest");
-             if (enabledEl) enabledEl.checked = harnessCfg.enabled;
-             syncHarnessNumberInputs();
-             if (requestEl) requestEl.value = harnessCfg.request;
+             unattendedNumberDirty.cooldown_minutes = false;
+             unattendedNumberDirty.remaining_injections = false;
+             syncUnattendedNumberDraftsFromCfg();
+             const enabledEl = $("#unattendedEnabled");
+             const requestEl = $("#unattendedRequest");
+             if (enabledEl) enabledEl.checked = unattendedCfg.enabled;
+             syncUnattendedNumberInputs();
+             if (requestEl) requestEl.value = unattendedCfg.request;
            }
-			        function scheduleHarnessSave() {
+			        function scheduleUnattendedSave() {
 			          if (!selected) return;
 			          const sid = selected;
-			          if (harnessSaveTimer) clearTimeout(harnessSaveTimer);
-			          harnessSaveTimer = setTimeout(async () => {
+			          if (unattendedSaveTimer) clearTimeout(unattendedSaveTimer);
+			          unattendedSaveTimer = setTimeout(async () => {
 			            if (selected !== sid) return;
                try {
                  const saved = await api(`/api/sessions/${sid}/unattended`, {
                    method: "POST",
                    body: {
-                     enabled: harnessCfg.enabled,
-                     request: harnessCfg.request,
-                     cooldown_minutes: harnessCfg.cooldown_minutes,
-                     remaining_injections: harnessCfg.remaining_injections,
+                     enabled: unattendedCfg.enabled,
+                     request: unattendedCfg.request,
+                     cooldown_minutes: unattendedCfg.cooldown_minutes,
+                     remaining_injections: unattendedCfg.remaining_injections,
                    },
                  });
                  if (!saved || typeof saved !== "object") throw new Error("invalid unattended response");
@@ -4443,110 +4443,110 @@
                  if (typeof saved.request !== "string") throw new Error("invalid unattended.request");
                  if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
                  if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
-                 harnessCfg = {
+                 unattendedCfg = {
                    enabled: saved.enabled,
                    request: saved.request,
                    cooldown_minutes: saved.cooldown_minutes,
                    remaining_injections: saved.remaining_injections,
                  };
-                 finalizeHarnessNumberDraft("cooldown_minutes");
-                 finalizeHarnessNumberDraft("remaining_injections");
-                 syncHarnessNumberDraftsFromCfg();
+                 finalizeUnattendedNumberDraft("cooldown_minutes");
+                 finalizeUnattendedNumberDraft("remaining_injections");
+                 syncUnattendedNumberDraftsFromCfg();
                  await refreshSessions();
                } catch (e) {
                  console.error("save unattended mode failed", e);
                  setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
                }
-               updateHarnessBtnState();
+               updateUnattendedBtnState();
              }, 450);
            }
-			        function hideHarnessMenu() {
-			          harnessMenuOpen = false;
-			          harnessMenu.style.display = "none";
+			        function hideUnattendedMenu() {
+			          unattendedMenuOpen = false;
+			          unattendedMenu.style.display = "none";
 			        }
-			        async function showHarnessMenu() {
+			        async function showUnattendedMenu() {
 			          if (!selected) return;
-			          harnessMenuOpen = true;
-			          harnessMenu.style.display = "block";
-			          const rect = harnessBtn.getBoundingClientRect();
+			          unattendedMenuOpen = true;
+			          unattendedMenu.style.display = "block";
+			          const rect = unattendedBtn.getBoundingClientRect();
 			          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
-			          harnessMenu.style.top = `${top}px`;
-			          harnessMenu.style.left = "12px";
-			          harnessMenu.style.right = "auto";
-             const w = harnessMenu.offsetWidth || 320;
+			          unattendedMenu.style.top = `${top}px`;
+			          unattendedMenu.style.left = "12px";
+			          unattendedMenu.style.right = "auto";
+             const w = unattendedMenu.offsetWidth || 320;
              const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
-             harnessMenu.style.left = `${left}px`;
+             unattendedMenu.style.left = `${left}px`;
              try {
-               await loadHarnessCfgForSelected();
+               await loadUnattendedCfgForSelected();
              } catch (e) {
                console.error("load unattended mode failed", e);
                setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
-               hideHarnessMenu();
+               hideUnattendedMenu();
              }
            }
-			        function toggleHarnessMenu() {
-			          if (harnessMenuOpen) hideHarnessMenu();
-			          else showHarnessMenu();
+			        function toggleUnattendedMenu() {
+			          if (unattendedMenuOpen) hideUnattendedMenu();
+			          else showUnattendedMenu();
 			        }
 
-			        harnessBtn.onclick = (e) => {
+			        unattendedBtn.onclick = (e) => {
 			          e.preventDefault();
 			          e.stopPropagation();
-		          toggleHarnessMenu();
+		          toggleUnattendedMenu();
 		        };
-		        harnessMenu.onclick = (e) => e.stopPropagation();
-		        if (window.__codexwebHarnessGlobalHandlers) {
-		          const h = window.__codexwebHarnessGlobalHandlers;
+		        unattendedMenu.onclick = (e) => e.stopPropagation();
+		        if (window.__codexwebUnattendedGlobalHandlers) {
+		          const h = window.__codexwebUnattendedGlobalHandlers;
 		          if (h.docClick) document.removeEventListener("click", h.docClick);
 		          if (h.resize) window.removeEventListener("resize", h.resize);
 		        }
 		        const onDocClick = () => {
-		          if (harnessMenuOpen) hideHarnessMenu();
+		          if (unattendedMenuOpen) hideUnattendedMenu();
 		        };
 		        const onResize = () => {
-		          if (harnessMenuOpen) hideHarnessMenu();
+		          if (unattendedMenuOpen) hideUnattendedMenu();
 		        };
-			        window.__codexwebHarnessGlobalHandlers = { docClick: onDocClick, resize: onResize };
+			        window.__codexwebUnattendedGlobalHandlers = { docClick: onDocClick, resize: onResize };
 			        document.addEventListener("click", onDocClick);
 			        window.addEventListener("resize", onResize);
-			        const harnessEnabledEl = $("#harnessEnabled");
-			        const harnessCooldownEl = $("#harnessCooldownMinutes");
-			        const harnessRemainingEl = $("#harnessRemainingInjections");
-			        const harnessRequestEl = $("#harnessRequest");
-			        if (harnessEnabledEl)
-			          harnessEnabledEl.onchange = (e) => {
+			        const unattendedEnabledEl = $("#unattendedEnabled");
+			        const unattendedCooldownEl = $("#unattendedCooldownMinutes");
+			        const unattendedRemainingEl = $("#unattendedRemainingInjections");
+			        const unattendedRequestEl = $("#unattendedRequest");
+			        if (unattendedEnabledEl)
+			          unattendedEnabledEl.onchange = (e) => {
 			            if (!selected) return;
-			            harnessCfg.enabled = Boolean(e.target.checked);
+			            unattendedCfg.enabled = Boolean(e.target.checked);
 			            const s = sessionIndex.get(selected);
 			            if (s) {
-                  s.unattended_enabled = harnessCfg.enabled;
+                  s.unattended_enabled = unattendedCfg.enabled;
                 }
-			            updateHarnessBtnState();
-			            scheduleHarnessSave();
+			            updateUnattendedBtnState();
+			            scheduleUnattendedSave();
 			          };
-        if (harnessCooldownEl)
-          harnessCooldownEl.oninput = (e) => {
+        if (unattendedCooldownEl)
+          unattendedCooldownEl.oninput = (e) => {
             if (!selected) return;
-            harnessNumberDraft.cooldown_minutes = String(e.target.value ?? "");
-            harnessNumberDirty.cooldown_minutes = true;
-            const value = parseHarnessDraftInt("cooldown_minutes");
+            unattendedNumberDraft.cooldown_minutes = String(e.target.value ?? "");
+            unattendedNumberDirty.cooldown_minutes = true;
+            const value = parseUnattendedDraftInt("cooldown_minutes");
             if (value === null) return;
-            harnessCfg.cooldown_minutes = value;
-            scheduleHarnessSave();
+            unattendedCfg.cooldown_minutes = value;
+            scheduleUnattendedSave();
           };
-        if (harnessCooldownEl)
-          harnessCooldownEl.onblur = () => {
-            if (parseHarnessDraftInt("cooldown_minutes") !== null) return;
-            restoreHarnessNumberDraft("cooldown_minutes");
+        if (unattendedCooldownEl)
+          unattendedCooldownEl.onblur = () => {
+            if (parseUnattendedDraftInt("cooldown_minutes") !== null) return;
+            restoreUnattendedNumberDraft("cooldown_minutes");
           };
-        if (harnessRemainingEl)
-          harnessRemainingEl.oninput = (e) => {
+        if (unattendedRemainingEl)
+          unattendedRemainingEl.oninput = (e) => {
             if (!selected) return;
-            harnessNumberDraft.remaining_injections = String(e.target.value ?? "");
-            harnessNumberDirty.remaining_injections = true;
-            const value = parseHarnessDraftInt("remaining_injections");
+            unattendedNumberDraft.remaining_injections = String(e.target.value ?? "");
+            unattendedNumberDirty.remaining_injections = true;
+            const value = parseUnattendedDraftInt("remaining_injections");
             if (value === null) return;
-            harnessCfg.remaining_injections = value;
+            unattendedCfg.remaining_injections = value;
             const s = sessionIndex.get(selected);
             if (s) {
               s.unattended_remaining_injections = value;
@@ -4554,19 +4554,19 @@
                 s.unattended_enabled = false;
               }
             }
-            updateHarnessBtnState();
-            scheduleHarnessSave();
+            updateUnattendedBtnState();
+            scheduleUnattendedSave();
           };
-        if (harnessRemainingEl)
-          harnessRemainingEl.onblur = () => {
-            if (parseHarnessDraftInt("remaining_injections") !== null) return;
-            restoreHarnessNumberDraft("remaining_injections");
+        if (unattendedRemainingEl)
+          unattendedRemainingEl.onblur = () => {
+            if (parseUnattendedDraftInt("remaining_injections") !== null) return;
+            restoreUnattendedNumberDraft("remaining_injections");
           };
-        if (harnessRequestEl)
-          harnessRequestEl.oninput = (e) => {
+        if (unattendedRequestEl)
+          unattendedRequestEl.oninput = (e) => {
             if (!selected) return;
-            harnessCfg.request = String(e.target.value ?? "");
-            scheduleHarnessSave();
+            unattendedCfg.request = String(e.target.value ?? "");
+            scheduleUnattendedSave();
           };
 
         function voiceAnnouncementsEnabled() {

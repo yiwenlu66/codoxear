@@ -14,7 +14,7 @@ def _make_manager() -> SessionManager:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
     mgr._sessions = {}
-    mgr._harness = {}
+    mgr._unattended = {}
     mgr._aliases = {}
     mgr._sidebar_meta = {}
     mgr._hidden_sessions = set()
@@ -26,7 +26,7 @@ def _make_manager() -> SessionManager:
     mgr._save_hidden_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_aliases = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_sidebar_meta = lambda *args, **kwargs: None  # type: ignore[method-assign]
-    mgr._save_harness = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_unattended = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]

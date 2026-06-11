@@ -188,3 +188,9 @@ Commitments:
 ## 2026-06-12 02:01
 - Clean-room review after additional long-chat browser validation found no blocker to yielding the `develop` candidate.
 - Remaining uncertainty is no longer about unrun deterministic tests; it is about live-like backend lifecycle and device/performance conditions that require user authorization or broader sandbox setup.
+
+## 2026-06-12 02:09
+- Observation: no implementation/docs source outside tests now contains Harness naming; the remaining Harness strings are deliberate negative source assertions.
+- Interpretation: the public rename is now backed by internal naming consistency, reducing future maintenance risk where implementation names could reintroduce old public compatibility or confuse the mechanism.
+- Browser observation: the renamed Unattended menu DOM/API path works in a real browser against isolated state, and the renamed sweep decremented the synthetic injection budget after enabling an idle session.
+- Scoped claim: this is a semantic cleanup with preserved behavior under tests and browser smoke; it does not add new live-backend lifecycle evidence.

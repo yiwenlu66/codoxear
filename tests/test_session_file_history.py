@@ -32,7 +32,7 @@ def _make_session(session_id: str, cwd: str) -> Session:
 
 class TestSessionFileHistory(unittest.TestCase):
     def _build_manager(self) -> SessionManager:
-        with patch.object(SessionManager, "_load_harness", lambda self: None), \
+        with patch.object(SessionManager, "_load_unattended", lambda self: None), \
             patch.object(SessionManager, "_load_aliases", lambda self: None), \
             patch.object(SessionManager, "_load_sidebar_meta", lambda self: None), \
             patch.object(SessionManager, "_load_hidden_sessions", lambda self: None), \

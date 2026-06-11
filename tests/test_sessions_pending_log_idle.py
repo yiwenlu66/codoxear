@@ -13,7 +13,7 @@ def _make_manager() -> SessionManager:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
     mgr._sessions = {}
-    mgr._harness = {}
+    mgr._unattended = {}
     mgr._aliases = {}
     mgr._files = {}
     mgr._discover_existing_if_stale = lambda *args, **kwargs: None  # type: ignore[method-assign]

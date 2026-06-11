@@ -190,3 +190,12 @@
 - Ran clean-room final yield gate via `architect` subagent after the added long-chat browser validation.
 - Review result: no blockers under stated constraints. Risks are deferred live-like Codex/Pi/Claude creation, mobile/performance/network tracing and Monaco/file-viewer races, zsh/oh-my-zsh startup pressure, real-device long-transcript testing, and the scoped idle limitation of the synthetic long-chat fixture.
 - Verdict: yielding now is acceptable for `develop` as acceptance candidate; do not merge `main` without explicit approval.
+
+## 2026-06-12 02:09
+- Continued safe PROMPT work by cleaning the remaining internal Harness implementation names to Unattended terminology. Public API/state was already Unattended-only; this commit removes the residual semantic mismatch in constants, manager fields/methods, sweep/thread names, DOM IDs/classes/functions, tests, and AGENTS.md state-file docs.
+- Source check: `grep -R "harness\|HARNESS\|Harness" -n codoxear README.md AGENTS.md .env.example` returned no matches after the cleanup; remaining test matches are negative assertions that guard against reintroducing Harness compatibility.
+- Syntax validation: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; Dockerized `node --check codoxear/static/app.js` passed.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_unattended_sweep.py tests/test_unattended_input_source.py tests/test_unattended_mode_source.py tests/test_stale_sidecars.py tests/test_session_file_history.py tests/test_session_sidebar_priority.py tests/test_hidden_sessions_startup.py tests/test_launch_provenance.py tests/test_session_resume.py tests/test_sessions_pending_log_idle.py -q` passed.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`425 passed, 2 skipped in 10.66s`).
+- Browser smoke for renamed Unattended DOM/API: isolated Docker server on port 18793 with synthetic broker/log; browser login succeeded; Unattended button rendered and opened `#unattendedMenu`; default controls loaded; toggling enabled and editing fields saved through `/api/sessions/unattended/unattended`; persisted sandbox `unattended.json` contained enabled true, cooldown 7, request text. Remaining injections was observed as 2 rather than typed 3 because the isolated sweep immediately injected once into the idle synthetic session, which also exercises the renamed sweep path.
+- Cleanup: closed the ephemeral browser and stopped the Docker sandbox; port 18793 no longer accepted connections.

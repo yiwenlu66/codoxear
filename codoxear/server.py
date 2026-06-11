@@ -132,7 +132,7 @@ STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
 LAUNCH_ATTEMPTS_PATH = _launch_attempts_path(APP_DIR)
 UPLOAD_DIR = APP_DIR / "uploads"
-HARNESS_PATH = APP_DIR / "unattended.json"
+UNATTENDED_PATH = APP_DIR / "unattended.json"
 ALIAS_PATH = APP_DIR / "session_aliases.json"
 SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
 HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
@@ -181,13 +181,13 @@ SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
-HARNESS_DEFAULT_IDLE_MINUTES = 5
-HARNESS_DEFAULT_MAX_INJECTIONS = 10
-HARNESS_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_UNATTENDED_SWEEP_SECONDS", "2.5"))
+UNATTENDED_DEFAULT_IDLE_MINUTES = 5
+UNATTENDED_DEFAULT_MAX_INJECTIONS = 10
+UNATTENDED_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_UNATTENDED_SWEEP_SECONDS", "2.5"))
 QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
 VOICE_PUSH_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_VOICE_PUSH_SWEEP_SECONDS", "1.0"))
 QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
-HARNESS_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
+UNATTENDED_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
@@ -283,7 +283,7 @@ def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> di
     }
 
 
-HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
+UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain four internal sections:
   1. Deliverables
@@ -318,17 +318,17 @@ HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, 
 """
 
 
-def _render_harness_prompt(request: str | None) -> str:
-    base = HARNESS_PROMPT_PREFIX.rstrip()
+def _render_unattended_prompt(request: str | None) -> str:
+    base = UNATTENDED_PROMPT_PREFIX.rstrip()
     r = (request or "").strip()
     if not r:
         return base + "\n"
     return base + "\n\n---\n\nAdditional request from user: " + r + "\n"
 
 
-def _clean_harness_cooldown_minutes(raw: Any) -> int:
+def _clean_unattended_cooldown_minutes(raw: Any) -> int:
     if raw is None:
-        return HARNESS_DEFAULT_IDLE_MINUTES
+        return UNATTENDED_DEFAULT_IDLE_MINUTES
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise ValueError("unattended cooldown_minutes must be an integer")
     if raw < 1:
@@ -336,9 +336,9 @@ def _clean_harness_cooldown_minutes(raw: Any) -> int:
     return raw
 
 
-def _clean_harness_remaining_injections(raw: Any, *, allow_zero: bool) -> int:
+def _clean_unattended_remaining_injections(raw: Any, *, allow_zero: bool) -> int:
     if raw is None:
-        return HARNESS_DEFAULT_MAX_INJECTIONS
+        return UNATTENDED_DEFAULT_MAX_INJECTIONS
     if isinstance(raw, bool) or not isinstance(raw, int):
         raise ValueError("unattended remaining_injections must be an integer")
     minimum = 0 if allow_zero else 1
@@ -626,8 +626,8 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         "tools": 0,
         "system": 0,
         "unattended_enabled": False,
-        "unattended_cooldown_minutes": HARNESS_DEFAULT_IDLE_MINUTES,
-        "unattended_remaining_injections": HARNESS_DEFAULT_MAX_INJECTIONS,
+        "unattended_cooldown_minutes": UNATTENDED_DEFAULT_IDLE_MINUTES,
+        "unattended_remaining_injections": UNATTENDED_DEFAULT_MAX_INJECTIONS,
         "alias": "",
         "files": [],
         "git_branch": "",
@@ -2910,7 +2910,7 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
-        self._harness: dict[str, dict[str, Any]] = {}
+        self._unattended: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
         self._sidebar_meta: dict[str, dict[str, Any]] = {}
         self._hidden_sessions: set[str] = set()
@@ -2918,9 +2918,9 @@ class SessionManager:
         self._queues: dict[str, list[dict[str, Any]]] = {}
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
-        self._harness_last_injected: dict[str, float] = {}
-        self._harness_last_injected_scope: dict[str, float] = {}
-        self._load_harness()
+        self._unattended_last_injected: dict[str, float] = {}
+        self._unattended_last_injected_scope: dict[str, float] = {}
+        self._load_unattended()
         self._load_aliases()
         self._load_sidebar_meta()
         self._load_hidden_sessions()
@@ -2937,8 +2937,8 @@ class SessionManager:
             vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
         )
         self._discover_existing(force=True)
-        self._harness_thr = threading.Thread(target=self._harness_loop, name="harness", daemon=True)
-        self._harness_thr.start()
+        self._unattended_thr = threading.Thread(target=self._unattended_loop, name="unattended", daemon=True)
+        self._unattended_thr.start()
         self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
         self._queue_thr.start()
         self._voice_push_scan_thr = threading.Thread(target=self._voice_push_scan_loop, name="voice-push-scan", daemon=True)
@@ -3005,9 +3005,9 @@ class SessionManager:
         except TypeError:
             self._discover_existing()
 
-    def _load_harness(self) -> None:
+    def _load_unattended(self) -> None:
         try:
-            raw = HARNESS_PATH.read_text(encoding="utf-8")
+            raw = UNATTENDED_PATH.read_text(encoding="utf-8")
         except FileNotFoundError:
             return
         obj = json.loads(raw)
@@ -3027,8 +3027,8 @@ class SessionManager:
                 request = ""
             if not isinstance(request, str):
                 raise ValueError(f"invalid unattended request for session {sid!r}")
-            cooldown_minutes = _clean_harness_cooldown_minutes(v.get("cooldown_minutes"))
-            remaining_injections = _clean_harness_remaining_injections(v.get("remaining_injections"), allow_zero=True)
+            cooldown_minutes = _clean_unattended_cooldown_minutes(v.get("cooldown_minutes"))
+            remaining_injections = _clean_unattended_remaining_injections(v.get("remaining_injections"), allow_zero=True)
             cleaned[sid] = {
                 "enabled": enabled,
                 "request": request,
@@ -3036,15 +3036,15 @@ class SessionManager:
                 "remaining_injections": remaining_injections,
             }
         with self._lock:
-            self._harness = cleaned
+            self._unattended = cleaned
 
-    def _save_harness(self) -> None:
+    def _save_unattended(self) -> None:
         with self._lock:
-            obj = dict(self._harness)
+            obj = dict(self._unattended)
         os.makedirs(APP_DIR, exist_ok=True)
-        tmp = HARNESS_PATH.with_suffix(".json.tmp")
+        tmp = UNATTENDED_PATH.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, HARNESS_PATH)
+        os.replace(tmp, UNATTENDED_PATH)
 
     def _load_aliases(self) -> None:
         try:
@@ -3268,7 +3268,7 @@ class SessionManager:
 
     def _clear_deleted_session_state(self, session_id: str) -> None:
         changed_sidebar = False
-        changed_harness = False
+        changed_unattended = False
         changed_files = False
         changed_queues = False
         with self._lock:
@@ -3287,10 +3287,10 @@ class SessionManager:
                         continue
                     entry.pop("dependency_session_id", None)
                     changed_sidebar = True
-            harness = getattr(self, "_harness", None)
-            if isinstance(harness, dict) and session_id in harness:
-                harness.pop(session_id, None)
-                changed_harness = True
+            unattended = getattr(self, "_unattended", None)
+            if isinstance(unattended, dict) and session_id in unattended:
+                unattended.pop(session_id, None)
+                changed_unattended = True
             files = getattr(self, "_files", None)
             if isinstance(files, dict):
                 for key in [f"sid:{session_id}", session_id]:
@@ -3304,8 +3304,8 @@ class SessionManager:
         self._save_aliases()
         if changed_sidebar:
             self._save_sidebar_meta()
-        if changed_harness:
-            self._save_harness()
+        if changed_unattended:
+            self._save_unattended()
         if changed_files:
             self._save_files()
         if changed_queues:
@@ -3774,19 +3774,19 @@ class SessionManager:
         if dirty:
             self._save_files()
 
-    def harness_get(self, session_id: str) -> dict[str, Any]:
+    def unattended_get(self, session_id: str) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            cfg0 = self._harness.get(session_id)
+            cfg0 = self._unattended.get(session_id)
             cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
         enabled = bool(cfg.get("enabled"))
         request = cfg.get("request")
         if not isinstance(request, str):
             request = ""
-        cooldown_minutes = _clean_harness_cooldown_minutes(cfg.get("cooldown_minutes"))
-        remaining_injections = _clean_harness_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
+        cooldown_minutes = _clean_unattended_cooldown_minutes(cfg.get("cooldown_minutes"))
+        remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
         return {
             "enabled": enabled,
             "request": request,
@@ -3794,7 +3794,7 @@ class SessionManager:
             "remaining_injections": remaining_injections,
         }
 
-    def harness_set(
+    def unattended_set(
         self,
         session_id: str,
         *,
@@ -3807,23 +3807,23 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            cur0 = self._harness.get(session_id)
+            cur0 = self._unattended.get(session_id)
             cur = dict(cur0) if isinstance(cur0, dict) else {}
             if enabled is not None:
                 cur["enabled"] = bool(enabled)
             if request is not None:
                 cur["request"] = str(request)
             if cooldown_minutes is not None:
-                cur["cooldown_minutes"] = _clean_harness_cooldown_minutes(cooldown_minutes)
+                cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cooldown_minutes)
             if remaining_injections is not None:
-                cur["remaining_injections"] = _clean_harness_remaining_injections(remaining_injections, allow_zero=True)
-            cur["cooldown_minutes"] = _clean_harness_cooldown_minutes(cur.get("cooldown_minutes"))
-            cur["remaining_injections"] = _clean_harness_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-            self._harness[session_id] = cur
+                cur["remaining_injections"] = _clean_unattended_remaining_injections(remaining_injections, allow_zero=True)
+            cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
+            cur["remaining_injections"] = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+            self._unattended[session_id] = cur
             if enabled is not None and bool(enabled) is False:
-                self._harness_last_injected.pop(session_id, None)
-        self._save_harness()
-        return self.harness_get(session_id)
+                self._unattended_last_injected.pop(session_id, None)
+        self._save_unattended()
+        return self.unattended_get(session_id)
 
     def _session_display_name(self, session_id: str) -> str:
         with self._lock:
@@ -3903,18 +3903,18 @@ class SessionManager:
                 off = new_off
                 loops += 1
 
-    def _harness_loop(self) -> None:
+    def _unattended_loop(self) -> None:
         # Persist across browser disconnects: server is the scheduler.
         while not self._stop.is_set():
             try:
-                self._harness_sweep()
+                self._unattended_sweep()
             except Exception as e:
-                sys.stderr.write(f"error: harness sweep failed: {type(e).__name__}: {e}\n")
+                sys.stderr.write(f"error: unattended sweep failed: {type(e).__name__}: {e}\n")
                 traceback.print_exc(file=sys.stderr)
                 sys.stderr.flush()
-            self._stop.wait(HARNESS_SWEEP_SECONDS)
+            self._stop.wait(UNATTENDED_SWEEP_SECONDS)
 
-    def _harness_sweep(self) -> None:
+    def _unattended_sweep(self) -> None:
         now = time.time()
         # Keep discovery fresh; sessions can appear/disappear without UI polling.
         self._discover_existing_if_stale()
@@ -3922,38 +3922,38 @@ class SessionManager:
         with self._lock:
             items: list[tuple[str, Session, dict[str, Any], float]] = []
             for sid, s in self._sessions.items():
-                cfg0 = self._harness.get(sid)
+                cfg0 = self._unattended.get(sid)
                 cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
-                last_inj = float(self._harness_last_injected.get(sid, 0.0))
+                last_inj = float(self._unattended_last_injected.get(sid, 0.0))
                 items.append((sid, s, cfg, last_inj))
 
         for sid, s, cfg, last_inj in items:
             if not bool(cfg.get("enabled")):
                 continue
             try:
-                cooldown_minutes = _clean_harness_cooldown_minutes(cfg.get("cooldown_minutes"))
+                cooldown_minutes = _clean_unattended_cooldown_minutes(cfg.get("cooldown_minutes"))
                 cooldown_seconds = float(cooldown_minutes * 60)
-                remaining_injections = _clean_harness_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
+                remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
                 if remaining_injections <= 0:
                     with self._lock:
-                        cur0 = self._harness.get(sid)
+                        cur0 = self._unattended.get(sid)
                         cur = dict(cur0) if isinstance(cur0, dict) else {}
                         cur["enabled"] = False
                         cur["remaining_injections"] = 0
-                        self._harness[sid] = cur
-                        self._harness_last_injected.pop(sid, None)
-                    self._save_harness()
+                        self._unattended[sid] = cur
+                        self._unattended_last_injected.pop(sid, None)
+                    self._save_unattended()
                     continue
                 request = cfg.get("request")
                 if not isinstance(request, str):
                     request = ""
-                prompt = _render_harness_prompt(request)
+                prompt = _render_unattended_prompt(request)
                 lp = s.log_path
                 if lp is None or (not lp.exists()):
                     continue
                 scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
                 with self._lock:
-                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+                    scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
                 if (last_inj and (now - last_inj) < cooldown_seconds) or (scope_last and (now - scope_last) < cooldown_seconds):
                     continue
                 st = self.get_state(sid)
@@ -3965,7 +3965,7 @@ class SessionManager:
                 ql = int(st.get("queue_len"))
                 if busy or ql > 0 or self._queue_len(sid) > 0:
                     continue
-                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=HARNESS_MAX_SCAN_BYTES)
+                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES)
                 if not last:
                     continue
                 role, ts = last
@@ -3974,24 +3974,24 @@ class SessionManager:
                 if (now - float(ts)) < cooldown_seconds:
                     continue
                 with self._lock:
-                    scope_last = float(self._harness_last_injected_scope.get(scope_key, 0.0))
+                    scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
                 if scope_last and (now - scope_last) < cooldown_seconds:
                     continue
                 self.send(sid, prompt)
                 with self._lock:
-                    self._harness_last_injected[sid] = now
-                    self._harness_last_injected_scope[scope_key] = now
-                    cur0 = self._harness.get(sid)
+                    self._unattended_last_injected[sid] = now
+                    self._unattended_last_injected_scope[scope_key] = now
+                    cur0 = self._unattended.get(sid)
                     cur = dict(cur0) if isinstance(cur0, dict) else {}
                     next_remaining = max(0, remaining_injections - 1)
                     cur["remaining_injections"] = next_remaining
                     if next_remaining <= 0:
                         cur["enabled"] = False
-                        self._harness_last_injected.pop(sid, None)
-                    self._harness[sid] = cur
-                self._save_harness()
+                        self._unattended_last_injected.pop(sid, None)
+                    self._unattended[sid] = cur
+                self._save_unattended()
             except Exception as e:
-                sys.stderr.write(f"error: harness session {sid} skipped: {type(e).__name__}: {e}\n")
+                sys.stderr.write(f"error: unattended session {sid} skipped: {type(e).__name__}: {e}\n")
                 traceback.print_exc(file=sys.stderr)
                 sys.stderr.flush()
 
@@ -4428,13 +4428,13 @@ class SessionManager:
             meta_map = getattr(self, "_sidebar_meta", None)
             active_ids = set(self._sessions.keys())
             for s in self._sessions.values():
-                cfg0 = self._harness.get(s.session_id)
-                h_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
-                h_cooldown_minutes = _clean_harness_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else HARNESS_DEFAULT_IDLE_MINUTES
-                h_remaining_injections = (
-                    _clean_harness_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
+                cfg0 = self._unattended.get(s.session_id)
+                unattended_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
+                unattended_cooldown_minutes = _clean_unattended_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else UNATTENDED_DEFAULT_IDLE_MINUTES
+                unattended_remaining_injections = (
+                    _clean_unattended_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
                     if isinstance(cfg0, dict)
-                    else HARNESS_DEFAULT_MAX_INJECTIONS
+                    else UNATTENDED_DEFAULT_MAX_INJECTIONS
                 )
                 alias = self._aliases.get(s.session_id)
                 if not isinstance(alias, str):
@@ -4539,9 +4539,9 @@ class SessionManager:
                         "thinking": int(s.meta_thinking),
                         "tools": int(s.meta_tools),
                         "system": int(s.meta_system),
-                        "unattended_enabled": h_enabled,
-                        "unattended_cooldown_minutes": h_cooldown_minutes,
-                        "unattended_remaining_injections": h_remaining_injections,
+                        "unattended_enabled": unattended_enabled,
+                        "unattended_cooldown_minutes": unattended_cooldown_minutes,
+                        "unattended_remaining_injections": unattended_remaining_injections,
                         "alias": alias,
                         "files": list(files),
                         "git_branch": git_branch,
@@ -6797,7 +6797,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 session_id = parts[3]
                 try:
-                    cfg = MANAGER.harness_get(session_id)
+                    cfg = MANAGER.unattended_get(session_id)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
@@ -7678,7 +7678,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 cooldown_minutes: int | None
                 if cooldown_minutes_raw is not None:
                     try:
-                        cooldown_minutes = _clean_harness_cooldown_minutes(cooldown_minutes_raw)
+                        cooldown_minutes = _clean_unattended_cooldown_minutes(cooldown_minutes_raw)
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
@@ -7687,14 +7687,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 remaining_injections: int | None
                 if remaining_injections_raw is not None:
                     try:
-                        remaining_injections = _clean_harness_remaining_injections(remaining_injections_raw, allow_zero=True)
+                        remaining_injections = _clean_unattended_remaining_injections(remaining_injections_raw, allow_zero=True)
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
                 else:
                     remaining_injections = None
 
-                cfg = MANAGER.harness_set(
+                cfg = MANAGER.unattended_set(
                     session_id,
                     enabled=enabled,
                     request=request,

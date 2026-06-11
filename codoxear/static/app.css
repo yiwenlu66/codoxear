@@ -496,7 +496,7 @@
 	        color: var(--accent);
 	        border-color: rgba(37, 99, 235, 0.5);
 	      }
-	      .badge.harness {
+	      .badge.unattended {
 	        color: var(--accent);
 	        border-color: rgba(37, 99, 235, 0.5);
 	        background: rgba(37, 99, 235, 0.08);
@@ -1227,7 +1227,7 @@ select {
 	        font-size: 16px;
 	      }
 
-	      .harnessMenu {
+	      .unattendedMenu {
 	        display: none;
 	        position: fixed;
 	        z-index: 60;
@@ -1238,35 +1238,35 @@ select {
 	        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
 	        padding: 12px;
 	      }
-	      .harnessMenu .row {
+	      .unattendedMenu .row {
 	        display: flex;
 	        align-items: center;
 	        justify-content: space-between;
 	        gap: 10px;
 	        margin-bottom: 10px;
 	      }
-	      .harnessMenu .label {
+	      .unattendedMenu .label {
 	        font-size: 13px;
 	        color: var(--muted);
 	        margin: 6px 0 8px 0;
 	      }
-	      .harnessMenu .harnessGrid {
+	      .unattendedMenu .unattendedGrid {
 	        display: grid;
 	        grid-template-columns: repeat(2, minmax(0, 1fr));
 	        gap: 12px;
 	        margin-bottom: 6px;
 	      }
-	      .harnessMenu label {
+	      .unattendedMenu label {
 	        display: inline-flex;
 	        align-items: center;
 	        gap: 8px;
 	        font-size: 14px;
 	      }
-	      .harnessMenu input[type="checkbox"] {
+	      .unattendedMenu input[type="checkbox"] {
 	        width: 16px;
 	        height: 16px;
 	      }
-      .harnessMenu input[type="number"] {
+      .unattendedMenu input[type="number"] {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid var(--border);
@@ -1277,7 +1277,7 @@ select {
         font-size: 14px;
         border-radius: 14px;
       }
-      .harnessMenu textarea {
+      .unattendedMenu textarea {
         min-height: 160px;
         height: 160px;
         max-height: 320px;
@@ -1879,7 +1879,7 @@ select {
         }
         .newSessionRunConfigRow .fieldLabel,
         .newSessionOptionsRow .fieldLabel,
-        .harnessMenu .label {
+        .unattendedMenu .label {
           font-size: 12px;
         }
         .newSessionRunConfigRow .checkField,

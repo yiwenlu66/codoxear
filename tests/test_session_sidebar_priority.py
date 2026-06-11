@@ -14,7 +14,7 @@ def _make_manager() -> SessionManager:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
     mgr._sessions = {}
-    mgr._harness = {}
+    mgr._unattended = {}
     mgr._aliases = {}
     mgr._sidebar_meta = {}
     mgr._hidden_sessions = set()
@@ -27,7 +27,7 @@ def _make_manager() -> SessionManager:
     mgr._save_sidebar_meta = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_hidden_sessions = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_aliases = lambda *args, **kwargs: None  # type: ignore[method-assign]
-    mgr._save_harness = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    mgr._save_unattended = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_files = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]
@@ -100,7 +100,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
             "target": {"priority_offset": 0.5},
         }
         mgr._queues = {"target": ["queued"]}
-        mgr._harness = {"target": {"enabled": True, "request": "x"}}
+        mgr._unattended = {"target": {"enabled": True, "request": "x"}}
         mgr._files = {"cwd:/tmp/target": ["/tmp/target/a.py"]}
         called = {"shutdown": 0}
 
@@ -116,7 +116,7 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertEqual(called["shutdown"], 1)
         self.assertNotIn("target", mgr._sidebar_meta)
         self.assertNotIn("target", mgr._queues)
-        self.assertNotIn("target", mgr._harness)
+        self.assertNotIn("target", mgr._unattended)
         self.assertNotIn("cwd:/tmp/target", mgr._files)
         self.assertIsNone(mgr._sidebar_meta["blocked"].get("dependency_session_id"))
 

@@ -12,12 +12,12 @@ def _make_manager() -> SessionManager:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
     mgr._sessions = {}
-    mgr._harness = {}
-    mgr._harness_last_injected = {}
-    mgr._harness_last_injected_scope = {}
+    mgr._unattended = {}
+    mgr._unattended_last_injected = {}
+    mgr._unattended_last_injected_scope = {}
     mgr._discover_existing = lambda: None  # type: ignore[method-assign]
     mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
-    mgr._save_harness = lambda: None  # type: ignore[method-assign]
+    mgr._save_unattended = lambda: None  # type: ignore[method-assign]
     return mgr
 
 
@@ -36,7 +36,7 @@ def _make_session(*, sid: str, thread_id: str, log_path: Path) -> Session:
     )
 
 
-class TestHarnessSweep(unittest.TestCase):
+class TestUnattendedSweep(unittest.TestCase):
     def test_dedupes_injection_for_same_thread(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"
@@ -45,8 +45,8 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
             mgr._sessions["sid-b"] = _make_session(sid="sid-b", thread_id="thread-1", log_path=p)
-            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
-            mgr._harness["sid-b"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-b"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -54,12 +54,12 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
-            self.assertIn("thread:thread-1", mgr._harness_last_injected_scope)
-            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 9)
+            self.assertIn("thread:thread-1", mgr._unattended_last_injected_scope)
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 9)
 
     def test_injects_once_per_distinct_thread(self) -> None:
         with TemporaryDirectory() as td:
@@ -71,8 +71,8 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p1)
             mgr._sessions["sid-b"] = _make_session(sid="sid-b", thread_id="thread-2", log_path=p2)
-            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
-            mgr._harness["sid-b"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-b"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -80,8 +80,8 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(
                 sent,
@@ -101,8 +101,8 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             mgr._sessions["sid-timeout"] = _make_session(sid="sid-timeout", thread_id="thread-timeout", log_path=p1)
             mgr._sessions["sid-ok"] = _make_session(sid="sid-ok", thread_id="thread-ok", log_path=p2)
-            mgr._harness["sid-timeout"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
-            mgr._harness["sid-ok"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-timeout"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
+            mgr._unattended["sid-ok"] = {"enabled": True, "request": "B", "cooldown_minutes": 5, "remaining_injections": 10}
 
             sent: list[tuple[str, str]] = []
 
@@ -116,8 +116,8 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [("sid-ok", "PFX\n\n---\n\nAdditional request from user: B\n")])
 
@@ -128,8 +128,8 @@ class TestHarnessSweep(unittest.TestCase):
 
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
-            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 2, "remaining_injections": 10}
-            mgr._harness_last_injected["sid-a"] = 950.0
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 2, "remaining_injections": 10}
+            mgr._unattended_last_injected["sid-a"] = 950.0
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -137,8 +137,8 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [])
 
@@ -150,7 +150,7 @@ class TestHarnessSweep(unittest.TestCase):
             mgr = _make_manager()
             for sid, request in (("sid-a", "A"), ("sid-b", "B"), ("sid-c", "C")):
                 mgr._sessions[sid] = _make_session(sid=sid, thread_id="thread-1", log_path=p)
-                mgr._harness[sid] = {"enabled": True, "request": request, "cooldown_minutes": 5, "remaining_injections": 10}
+                mgr._unattended[sid] = {"enabled": True, "request": request, "cooldown_minutes": 5, "remaining_injections": 10}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -158,13 +158,13 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
-            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 9)
-            self.assertEqual(mgr._harness["sid-b"]["remaining_injections"], 10)
-            self.assertEqual(mgr._harness["sid-c"]["remaining_injections"], 10)
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 9)
+            self.assertEqual(mgr._unattended["sid-b"]["remaining_injections"], 10)
+            self.assertEqual(mgr._unattended["sid-c"]["remaining_injections"], 10)
 
     def test_zero_remaining_disables_without_sending(self) -> None:
         with TemporaryDirectory() as td:
@@ -173,8 +173,8 @@ class TestHarnessSweep(unittest.TestCase):
 
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
-            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}
-            mgr._harness_last_injected["sid-a"] = 900.0
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}
+            mgr._unattended_last_injected["sid-a"] = 900.0
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -183,21 +183,21 @@ class TestHarnessSweep(unittest.TestCase):
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
             ):
-                mgr._harness_sweep()
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [])
-            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 0)
-            self.assertFalse(mgr._harness["sid-a"]["enabled"])
-            self.assertNotIn("sid-a", mgr._harness_last_injected)
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 0)
+            self.assertFalse(mgr._unattended["sid-a"]["enabled"])
+            self.assertNotIn("sid-a", mgr._unattended_last_injected)
 
-    def test_disables_harness_after_last_injection(self) -> None:
+    def test_disables_unattended_after_last_injection(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"
             p.write_text("{}", encoding="utf-8")
 
             mgr = _make_manager()
             mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
-            mgr._harness["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 1}
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 1}
 
             sent: list[tuple[str, str]] = []
             mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
@@ -205,12 +205,12 @@ class TestHarnessSweep(unittest.TestCase):
 
             with patch("codoxear.server.time.time", return_value=1000.0), patch(
                 "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 600.0)
-            ), patch("codoxear.server.HARNESS_PROMPT_PREFIX", "PFX"):
-                mgr._harness_sweep()
+            ), patch("codoxear.server.UNATTENDED_PROMPT_PREFIX", "PFX"):
+                mgr._unattended_sweep()
 
             self.assertEqual(sent, [("sid-a", "PFX\n\n---\n\nAdditional request from user: A\n")])
-            self.assertEqual(mgr._harness["sid-a"]["remaining_injections"], 0)
-            self.assertFalse(mgr._harness["sid-a"]["enabled"])
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 0)
+            self.assertFalse(mgr._unattended["sid-a"]["enabled"])
 
 
 if __name__ == "__main__":

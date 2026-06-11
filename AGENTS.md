@@ -19,7 +19,7 @@ Currently supported agent backends:
 - Terminal-owned sessions: created by running `codoxear-broker` with the desired backend environment (for example plain Codex broker wrappers, `CODEX_WEB_AGENT_BACKEND=pi` for Pi, or `CODEX_WEB_AGENT_BACKEND=cc` for Claude Code).
 - `GET /api/sessions` returns backend-aware launch defaults, including provider/model/reasoning choices per backend.
 - Runtime state directory: `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
-- Additional persisted UI state includes `session_sidebar.json`, `session_files.json`, `session_queues.json`, `harness.json`, and `session_aliases.json` under the same app dir.
+- Additional persisted UI state includes `session_sidebar.json`, `session_files.json`, `session_queues.json`, `unattended.json`, and `session_aliases.json` under the same app dir.
 
 ### `codoxear.broker`
 

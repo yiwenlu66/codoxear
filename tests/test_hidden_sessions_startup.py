@@ -18,7 +18,7 @@ class TestHiddenSessionsStartup(unittest.TestCase):
 
             return _fn
 
-        with patch.object(SessionManager, "_load_harness", record("_load_harness")), \
+        with patch.object(SessionManager, "_load_unattended", record("_load_unattended")), \
             patch.object(SessionManager, "_load_aliases", record("_load_aliases")), \
             patch.object(SessionManager, "_load_sidebar_meta", record("_load_sidebar_meta")), \
             patch.object(SessionManager, "_load_hidden_sessions", record("_load_hidden_sessions")), \
