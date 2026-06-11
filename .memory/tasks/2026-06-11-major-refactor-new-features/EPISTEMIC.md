@@ -224,3 +224,7 @@ Commitments:
 
 ## 2026-06-12 02:37
 - Clean-room review after the client cross-poll dedupe patch found no blocker. The remaining duplicate risk is scoped to patterns that are not adjacent assistant repeats, while the original cross-poll adjacent case now has a mechanism and regression test.
+
+## 2026-06-12 02:44
+- Observation: package-data coverage did not explicitly include the newly added Claude Code logo, even though the runtime UI computes backend logo paths generically as `static/logos/<backend>.svg`.
+- Mechanism: asserting `codoxear/static/logos/cc.svg` inside the built wheel protects installed deployments from a source-vs-wheel asset mismatch for the Claude backend. This reduces packaging uncertainty without changing runtime behavior.

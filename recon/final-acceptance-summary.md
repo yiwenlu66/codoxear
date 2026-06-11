@@ -51,7 +51,7 @@ The implementation avoided whole stale PR-branch merges. Accepted work was reimp
 ### Claude Code backend
 
 - Added minimal `cc` backend support through the same broker/log/session abstractions used by Codex and Pi.
-- Added `codoxear/cc_log.py` for Claude Code log normalization and tests for chat extraction, idle/busy inference, backend registration, session log discovery, and launch defaults.
+- Added `codoxear/cc_log.py` for Claude Code log normalization and tests for chat extraction, idle/busy inference, backend registration, session log discovery, launch defaults, and packaged Claude logo assets.
 - UI exposes a Claude backend tab and hides provider/Fast controls for Claude.
 
 ## PR decisions

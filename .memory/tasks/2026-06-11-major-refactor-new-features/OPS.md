@@ -237,3 +237,10 @@
 ## 2026-06-12 02:37
 - Final clean-room review after the client live-append dedupe change used a concise read-only `delegate` gate.
 - Review result: no blockers; risks limited to deferred live-like backend/device/performance validation, unresolved Codex per-model reasoning source, and complex non-adjacent/streaming duplicate patterns outside adjacent dedupe coverage. Verdict: PASS/yield `develop`; do not merge `main` without approval.
+
+## 2026-06-12 02:44
+- Continued after user request under Unattended-mode rules. Reloaded `PROMPT.md` and confirmed `develop` is clean and remains the acceptance branch; `main` is untouched.
+- Deterministic gap found: the wheel/package-data regression covered nested Codex/Pi logos but did not explicitly assert the newly added Claude Code `cc.svg` logo. Since the UI path resolves backend logos by backend id, missing package data would break installed Claude UI despite source tests passing.
+- Added `codoxear/static/logos/cc.svg` to `tests/test_static_assets.py::test_wheel_includes_nested_logo_assets` assertions and updated `recon/final-acceptance-summary.md` to include packaged Claude logo coverage.
+- Targeted validation: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py -q` passed (`8 passed`).
+- Full validation: `scripts/codoxear-docker-sandbox test` passed (`428 passed, 2 skipped in 10.89s`).

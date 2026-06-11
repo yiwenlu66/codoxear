@@ -103,6 +103,7 @@ class TestStaticAssets(unittest.TestCase):
                 names = set(zf.namelist())
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
+        self.assertIn("codoxear/static/logos/cc.svg", names)
 
 
 if __name__ == "__main__":
