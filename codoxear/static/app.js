@@ -1706,6 +1706,24 @@
           html: iconSvg("copy"),
         });
         copyConversationBtn.disabled = true;
+        const prevUserBtn = el("button", {
+          id: "prevUserBtn",
+          class: "icon-btn",
+          title: "Previous user message",
+          "aria-label": "Previous user message",
+          type: "button",
+          html: iconSvg("up"),
+        });
+        prevUserBtn.disabled = true;
+        const nextUserBtn = el("button", {
+          id: "nextUserBtn",
+          class: "icon-btn",
+          title: "Next user message",
+          "aria-label": "Next user message",
+          type: "button",
+          html: iconSvg("down"),
+        });
+        nextUserBtn.disabled = true;
         const fileBtn = el("button", {
           id: "fileBtn",
           class: "icon-btn",
@@ -1746,6 +1764,8 @@
           el("div", { class: "actions topActions" }, [
             fileBtn,
             copyConversationBtn,
+            prevUserBtn,
+            nextUserBtn,
             diagBtn,
             interruptBtn,
             harnessBtn,
@@ -2601,6 +2621,7 @@
               setOlderState({ hasMore: false, isLoading: false });
 	          typingRow = null;
 	          jumpBtn.style.display = "none";
+              updateChatNavButtons();
 	          backfillState = null;
 	          backfillToken += 1;
 	          lastScrollTop = 0;
@@ -2624,6 +2645,75 @@
         function renderedMessageRows() {
           return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row"));
         }
+
+        function loadedUserMessageRows() {
+          return renderedMessageRows().filter((row) => row.dataset.role === "user");
+        }
+
+        function updateChatNavButtons() {
+          const enabled = Boolean(selected && loadedUserMessageRows().length);
+          prevUserBtn.disabled = !enabled;
+          nextUserBtn.disabled = !enabled;
+        }
+
+        function prefersReducedMotion() {
+          return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+        }
+
+        function pulseNavigatedRow(row) {
+          if (!row) return;
+          row.classList.remove("nav-pulse");
+          void row.offsetWidth;
+          row.classList.add("nav-pulse");
+          setTimeout(() => row.classList.remove("nav-pulse"), 1400);
+        }
+
+        function jumpToLoadedUserMessage(direction) {
+          const rows = loadedUserMessageRows();
+          updateChatNavButtons();
+          if (!rows.length) {
+            setToast("No loaded user messages");
+            return;
+          }
+          const threshold = chat.scrollTop + 24;
+          let target = null;
+          if (direction < 0) {
+            for (let i = rows.length - 1; i >= 0; i -= 1) {
+              if (rows[i].offsetTop < threshold) {
+                target = rows[i];
+                break;
+              }
+            }
+            if (!target) {
+              setToast("At first loaded user message");
+              return;
+            }
+          } else {
+            for (const row of rows) {
+              if (row.offsetTop > threshold) {
+                target = row;
+                break;
+              }
+            }
+            if (!target) {
+              setToast("At last loaded user message");
+              return;
+            }
+          }
+          target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+          pulseNavigatedRow(target);
+        }
+
+        prevUserBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          jumpToLoadedUserMessage(-1);
+        };
+        nextUserBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          jumpToLoadedUserMessage(1);
+        };
 
         function oldestRenderedHistoryCursor() {
           for (const row of renderedMessageRows()) {
@@ -3000,6 +3090,7 @@
             requestAnimationFrame(() => scrollToBottom());
           }
           syncJumpButton();
+          updateChatNavButtons();
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
@@ -4110,6 +4201,7 @@
           }
           fileBtn.disabled = !selected;
           copyConversationBtn.disabled = !selected;
+          updateChatNavButtons();
           diagBtn.disabled = !selected;
         }
            async function loadHarnessCfgForSelected() {

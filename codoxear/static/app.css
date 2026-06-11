@@ -737,6 +737,17 @@
       .msg-row.assistant {
         justify-content: flex-start;
       }
+      .msg-row.nav-pulse .msg {
+        animation: navPulse 1.4s ease-out;
+      }
+      @keyframes navPulse {
+        0% {
+          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.28), var(--shadow-sm);
+        }
+        100% {
+          box-shadow: var(--shadow-sm);
+        }
+      }
       .msg-shell {
         position: relative;
         display: inline-flex;
