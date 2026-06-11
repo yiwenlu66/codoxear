@@ -263,6 +263,7 @@ SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
+TRANSCRIPT_EXPORT_MAX_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES", str(50 * 1024 * 1024)))
 
 
 def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
@@ -2605,6 +2606,15 @@ def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, 
 
 def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
     return _rollout_log._read_chat_history_page(log_path, before_byte=before_byte, limit=limit)
+
+
+def _read_chat_export_events(log_path: Path, *, max_bytes: int = TRANSCRIPT_EXPORT_MAX_BYTES) -> list[dict[str, Any]]:
+    size = int(log_path.stat().st_size)
+    limit = max(1, int(max_bytes))
+    if size > limit:
+        raise ValueError(f"transcript log is too large to export ({size} bytes > {limit} bytes)")
+    records, _next_after = _read_jsonl_records_from_offset(log_path, 0, max_bytes=max(size, 1))
+    return _extract_positioned_chat_events(records)
 
 
 def _event_ts(obj: dict[str, Any]) -> float | None:
@@ -6285,6 +6295,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "base_text": base_text,
                     },
                 )
+                return
+
+            session_id = _match_session_route(path, "messages", "export")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                transcript = _message_transcript_identity(s)
+                if s.log_path is None or (not s.log_path.exists()):
+                    _json_response(self, 200, {**transcript, "events": [], "event_count": 0})
+                    return
+                try:
+                    events = _read_chat_export_events(s.log_path)
+                except ValueError as e:
+                    _json_response(self, 413, {"error": str(e), "max_bytes": int(TRANSCRIPT_EXPORT_MAX_BYTES)})
+                    return
+                events = MANAGER._attach_notification_texts(events)
+                _json_response(self, 200, {**transcript, "events": events, "event_count": len(events)})
                 return
 
             session_id = _match_session_route(path, "messages", "tail")

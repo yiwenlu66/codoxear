@@ -1694,6 +1694,15 @@
           html: iconSvg("info"),
         });
         diagBtn.disabled = true;
+        const copyConversationBtn = el("button", {
+          id: "copyConversationBtn",
+          class: "icon-btn",
+          title: "Copy conversation",
+          "aria-label": "Copy conversation",
+          type: "button",
+          html: iconSvg("copy"),
+        });
+        copyConversationBtn.disabled = true;
         const fileBtn = el("button", {
           id: "fileBtn",
           class: "icon-btn",
@@ -1733,6 +1742,7 @@
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
             fileBtn,
+            copyConversationBtn,
             diagBtn,
             interruptBtn,
             harnessBtn,
@@ -2462,6 +2472,48 @@
           }
           copyTextViaSelection(text);
         }
+
+        function formatConversationForCopy(events) {
+          const parts = [];
+          for (const ev of Array.isArray(events) ? events : []) {
+            if (!ev || (ev.role !== "user" && ev.role !== "assistant")) continue;
+            const text = String(ev.text || "").replace(/\s+$/g, "");
+            if (!text.trim()) continue;
+            const role = ev.role === "user" ? "User" : "Assistant";
+            const ts = Number(ev.ts);
+            const when = Number.isFinite(ts) ? ` (${new Date(ts * 1000).toLocaleString()})` : "";
+            parts.push(`## ${role}${when}\n\n${text}`);
+          }
+          return parts.join("\n\n---\n\n").trim();
+        }
+
+        async function copyConversation() {
+          if (!selected) return;
+          const sid = selected;
+          copyConversationBtn.disabled = true;
+          try {
+            const data = await api(`/api/sessions/${sid}/messages/export`);
+            if (selected !== sid) return;
+            const events = Array.isArray(data && data.events) ? data.events : [];
+            const text = formatConversationForCopy(events);
+            if (!text) {
+              setToast("No conversation to copy");
+              return;
+            }
+            await copyToClipboard(text);
+            setToast(`Copied ${events.length} messages`);
+          } catch (err) {
+            setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+          } finally {
+            copyConversationBtn.disabled = !selected;
+          }
+        }
+
+        copyConversationBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void copyConversation();
+        };
 
         let currentQueueLen = 0;
         function setStatus({ running, queueLen }) {
@@ -4054,6 +4106,7 @@
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
           fileBtn.disabled = !selected;
+          copyConversationBtn.disabled = !selected;
           diagBtn.disabled = !selected;
         }
            async function loadHarnessCfgForSelected() {

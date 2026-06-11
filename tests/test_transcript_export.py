@@ -1,0 +1,67 @@
+import json
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from codoxear.server import _read_chat_export_events
+
+
+APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
+
+
+def _write_assistant_rows(path: Path, count: int) -> None:
+    rows = []
+    for i in range(count):
+        rows.append(
+            {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": f"a{i}"}],
+                    "phase": "final_answer",
+                },
+                "ts": float(i),
+            }
+        )
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+
+class TestTranscriptExport(unittest.TestCase):
+    def test_export_reads_all_chat_events_in_order(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 205)
+
+            events = _read_chat_export_events(path, max_bytes=path.stat().st_size)
+
+        self.assertEqual(len(events), 205)
+        self.assertEqual(events[0].get("text"), "a0")
+        self.assertEqual(events[-1].get("text"), "a204")
+        self.assertIsInstance(events[0].get("_before_byte"), int)
+        self.assertLess(events[0].get("_before_byte"), events[-1].get("_before_byte"))
+
+    def test_export_rejects_oversized_logs_instead_of_truncating(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 2)
+            with self.assertRaisesRegex(ValueError, "too large to export"):
+                _read_chat_export_events(path, max_bytes=1)
+
+    def test_server_exposes_messages_export_route(self) -> None:
+        source = SERVER_PY.read_text(encoding="utf-8")
+        self.assertIn('_match_session_route(path, "messages", "export")', source)
+        self.assertIn('"event_count": len(events)', source)
+        self.assertIn('_json_response(self, 413', source)
+
+    def test_ui_has_copy_conversation_action(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('id: "copyConversationBtn"', source)
+        self.assertIn('function formatConversationForCopy(events)', source)
+        self.assertIn('api(`/api/sessions/${sid}/messages/export`)', source)
+        self.assertIn('title: "Copy conversation"', source)
+
+
+if __name__ == "__main__":
+    unittest.main()
