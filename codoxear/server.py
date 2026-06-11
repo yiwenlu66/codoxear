@@ -262,6 +262,19 @@ TEXTUAL_FILENAMES = frozenset({"dockerfile", "license", "makefile", "readme"})
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
+STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
+
+
+def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
+    if enabled:
+        return {"Cache-Control": "public, max-age=31536000, immutable"}
+    return {
+        "Cache-Control": "no-store",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+
+
 HARNESS_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
 
 - Maintain four internal sections:
@@ -5344,11 +5357,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
-        # UI is used for interactive debugging; serve assets without caching so changes
-        # (including inline JS) show up immediately on refresh.
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Pragma", "no-cache")
-        self.send_header("Expires", "0")
+        # UI is used for interactive debugging; serve assets without caching by
+        # default so changes (including inline JS) show up immediately on
+        # refresh. Packaged deployments may opt into immutable static caching
+        # with CODEX_WEB_STATIC_CACHE=1.
+        for name, value in _static_cache_control_headers().items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 

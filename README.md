@@ -178,6 +178,7 @@ Set these in `.env` (or in the process environment):
 - `PI_HOME` (default `~/.pi`)
 - `PI_BIN` (default `pi`)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
+- `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to serve static assets with long-lived immutable cache headers)
 - `CODEX_WEB_HARNESS_SWEEP_SECONDS` (default `2.5`)
 - `CODEX_WEB_QUEUE_SWEEP_SECONDS` (default `1.0`)
 - `CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS` (default `10.0`)
