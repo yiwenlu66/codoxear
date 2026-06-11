@@ -946,6 +946,17 @@
         border: 0;
         border-top: 1px solid rgba(15, 23, 42, 0.12);
       }
+      .md blockquote {
+        margin: 10px 0 12px 0;
+        padding: 10px 12px 10px 14px;
+        border-left: 3px solid rgba(15, 23, 42, 0.22);
+        border-radius: 0 12px 12px 0;
+        background: rgba(15, 23, 42, 0.045);
+        color: rgba(15, 23, 42, 0.82);
+      }
+      .md blockquote > :last-child {
+        margin-bottom: 0;
+      }
       .md li {
         margin: 4px 0;
       }

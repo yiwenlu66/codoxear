@@ -1134,6 +1134,35 @@
           return out.join("");
         };
 
+        const blockquoteInfo = (line) => {
+          const m = String(line ?? "").match(/^\s{0,3}>(?:[ \t]?)(.*)$/);
+          return m ? { text: m[1] || "" } : null;
+        };
+
+        const parseBlockquote = (lines, start) => {
+          const quoteLines = [];
+          let i = start;
+          while (i < lines.length) {
+            const line = lines[i] || "";
+            const info = blockquoteInfo(line);
+            if (info) {
+              quoteLines.push(info.text);
+              i += 1;
+              continue;
+            }
+            // CommonMark allows lazy continuation lines inside a block quote paragraph.
+            if (quoteLines.length && line.trim()) {
+              quoteLines.push(line);
+              i += 1;
+              continue;
+            }
+            break;
+          }
+          return { node: { type: "blockquote", value: quoteLines.join("\n") }, next: i };
+        };
+
+        const renderBlockquote = (node) => `<blockquote>${mdToHtml(node.value || "", options)}</blockquote>`;
+
         const splitTextBlocks = (input) => {
           const blocks = [];
           const lines = String(input ?? "").split("\n");
@@ -1227,6 +1256,13 @@
               if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(t.replace(/\s+/g, ""))) {
                 flushPara();
                 out.push("<hr />");
+                continue;
+              }
+              if (blockquoteInfo(l)) {
+                flushPara();
+                const parsed = parseBlockquote(lines, i);
+                out.push(renderBlockquote(parsed.node));
+                i = parsed.next - 1;
                 continue;
               }
               const info = listItemInfo(l);

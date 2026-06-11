@@ -110,6 +110,39 @@ class TestMarkdownRendererSource(unittest.TestCase):
         self.assertIn("</pre></li><li>Output:<pre>", html)
         self.assertNotIn("```", html)
 
+    def test_blockquote_renders_as_blockquote(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "So the best current mechanism is:",
+                    "",
+                    "> OCC does not recognize Pi/my locally-cloaked request as native Claude Code traffic and reads `12368`.",
+                    "",
+                    "This also explains why body-level fixes did not work.",
+                ]
+            )
+        )
+
+        self.assertIn("<blockquote><p>OCC does not recognize", html)
+        self.assertIn("<code>12368</code>", html)
+        self.assertIn("</p></blockquote>", html)
+        self.assertNotIn("&gt; OCC", html)
+
+    def test_blockquote_allows_lazy_continuation(self) -> None:
+        html = render_markdown(
+            "\n".join(
+                [
+                    "> first quoted line",
+                    "continued quoted line with **bold** text",
+                ]
+            )
+        )
+
+        self.assertEqual(
+            html,
+            "<blockquote><p>first quoted line<br />continued quoted line with <strong>bold</strong> text</p></blockquote>",
+        )
+
     def test_ordered_list_markers_are_literal_when_blank_separated(self) -> None:
         html = render_markdown(
             "\n".join(
