@@ -103,3 +103,7 @@ Commitments:
 - Observation: user explicitly expanded scope to thinking-level/reasoning-effort behavior.
 - Interpretation: provider/model controls cannot assume a universal reasoning-effort enum. Codex support may be partial, and Pi capability must be discovered per model/provider.
 - Commitment: future UI/API launch semantics should represent unsupported thinking efforts explicitly and avoid silent downgrades.
+
+## 2026-06-12 00:41
+- Observation: targeted tests show disconnect-like transport exceptions produce no traceback or JSON 500 attempt, while a RuntimeError still calls traceback and JSON 500 handling.
+- Scoped claim: Codoxear route handlers now treat common browser/client disconnects as transport noise at route and request-boundary layers; this does not prove every OS/socket close variant is covered.

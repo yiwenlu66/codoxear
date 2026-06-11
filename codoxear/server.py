@@ -994,6 +994,23 @@ def _validate_image(raw: bytes) -> None:
         raise ValueError(str(e)) from e
 
 
+_CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
+_CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
+
+def _is_client_disconnect(exc: BaseException) -> bool:
+    if isinstance(exc, _CLIENT_DISCONNECT_ERRORS):
+        return True
+    return isinstance(exc, OSError) and getattr(exc, "errno", None) in _CLIENT_DISCONNECT_ERRNOS
+
+
+def _handle_route_exception(handler: http.server.BaseHTTPRequestHandler, exc: BaseException) -> None:
+    if _is_client_disconnect(exc):
+        return
+    traceback.print_exc()
+    _json_response(handler, 500, {"error": str(exc), "trace": traceback.format_exc()})
+
+
 def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any) -> None:
     body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
@@ -5335,6 +5352,22 @@ def _message_runtime_snapshot(
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "codoxear/0.1"
 
+    def handle_one_request(self) -> None:
+        try:
+            super().handle_one_request()
+        except Exception as e:
+            if _is_client_disconnect(e):
+                return
+            raise
+
+    def finish(self) -> None:
+        try:
+            super().finish()
+        except Exception as e:
+            if _is_client_disconnect(e):
+                return
+            raise
+
     def _send_static(self, rel: str) -> None:
         path = (STATIC_DIR / rel.lstrip("/")).resolve()
         if not str(path).startswith(str(STATIC_DIR.resolve())):
@@ -6570,8 +6603,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
             self.send_error(404)
         except Exception as e:
-            traceback.print_exc()
-            _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
+            _handle_route_exception(self, e)
 
     def do_POST(self) -> None:
         try:
@@ -7529,8 +7561,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except KeyError:
             _json_response(self, 404, {"error": "unknown session"})
         except Exception as e:
-            traceback.print_exc()
-            _json_response(self, 500, {"error": str(e), "trace": traceback.format_exc()})
+            _handle_route_exception(self, e)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         # Quiet default logging to keep terminal usable.
