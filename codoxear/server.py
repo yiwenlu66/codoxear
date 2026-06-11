@@ -3098,6 +3098,14 @@ class SessionManager:
         self._save_sidebar_meta()
         return alias, {"priority_offset": offset, "snooze_until": snooze_until_clean, "dependency_session_id": dependency_clean}
 
+    def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
+        with self._lock:
+            self._sessions.pop(session_id, None)
+        self._unhide_session(session_id)
+        self._clear_deleted_session_state(session_id)
+        _unlink_quiet(sock)
+        _unlink_quiet(sock.with_suffix(".json"))
+
     def _clear_deleted_session_state(self, session_id: str) -> None:
         changed_sidebar = False
         changed_harness = False
@@ -3869,7 +3877,8 @@ class SessionManager:
             # Prefer metadata file written by sessiond.
             meta_path = sock.with_suffix(".json")
             if not meta_path.exists():
-                raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+                self._prune_stale_socket_without_metadata(session_id, sock)
+                continue
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if not isinstance(meta, dict):
                 raise ValueError(f"invalid metadata json for socket {sock}")
@@ -4478,7 +4487,8 @@ class SessionManager:
             current_log_path = s.log_path
         meta_path = sock.with_suffix(".json")
         if not meta_path.exists():
-            raise RuntimeError(f"missing metadata sidecar for socket {sock}")
+            self._prune_stale_socket_without_metadata(session_id, sock)
+            return
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if not isinstance(meta, dict):
             raise ValueError(f"invalid metadata json for socket {sock}")
