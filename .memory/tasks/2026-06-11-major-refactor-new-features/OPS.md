@@ -144,3 +144,11 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_cc_backend_registration.py -q` passed (`3 passed`).
 - Full Docker validation after follow-up: `scripts/codoxear-docker-sandbox test` passed (`416 passed, 2 skipped in 9.72s`).
 - JS parse validation after follow-up: direct Docker `node --check codoxear/static/app.js` passed.
+
+## 2026-06-12 01:39
+- Implemented file-picker ergonomics improvement from remaining PROMPT workstreams: typed file search now shows locally-known fuzzy matches immediately while the full project/server search is pending, and keeps local matches usable if server search fails.
+- Added honest footer copy (`Searching full project...`) so users can distinguish immediate local results from still-loading full-project results.
+- Added `tests/test_file_picker_search_source.py` with Node VM coverage for pending-search local results and local results after search error.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py -q` passed (`20 passed`).
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`419 passed, 2 skipped in 9.72s`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.

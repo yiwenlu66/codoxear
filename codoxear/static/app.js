@@ -7938,6 +7938,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }, 120);
         }
 
+        function localFilePickerSearchEntries(query) {
+          const out = [];
+          const seen = new Set();
+          for (const path of fileCandidateList) {
+            if (seen.has(path)) continue;
+            const score = fileSearchScore(path, query);
+            if (score < 0) continue;
+            seen.add(path);
+            out.push(pickerEntryForPath(path, { score }));
+          }
+          out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
+          return out.slice(0, 120);
+        }
+
+        function prependDraftFileEntry(entries, query) {
+          const draftPath = normalizeDraftFilePath(query);
+          if (draftPath && !entries.some((entry) => entry.path === draftPath)) {
+            return [draftFileEntry(draftPath), ...entries];
+          }
+          return entries;
+        }
+
         function visibleFilePickerEntries() {
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
           if (!query) {
@@ -7947,9 +7969,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             return entries;
           }
-          if (fileSearchPendingQuery === query) return null;
-          if (fileSearchErrorQuery === query) return [];
-          if (fileSearchLoadedQuery !== query) return null;
+          if (fileSearchPendingQuery === query) {
+            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            return localEntries.length ? localEntries : null;
+          }
+          if (fileSearchErrorQuery === query) {
+            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            return localEntries.length ? localEntries : [];
+          }
+          if (fileSearchLoadedQuery !== query) {
+            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            return localEntries.length ? localEntries : null;
+          }
           const out = [];
           const seen = new Set();
           for (const item of fileSearchResults) {
@@ -7967,11 +7998,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
           const limited = out.slice(0, 120);
-          const draftPath = normalizeDraftFilePath(query);
-          if (draftPath && !limited.some((entry) => entry.path === draftPath)) {
-            limited.unshift(draftFileEntry(draftPath));
-          }
-          return limited;
+          return prependDraftFileEntry(limited, query);
         }
 
         async function getKnownFileRefCandidates() {
@@ -8087,7 +8114,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             };
             filePickerMenu.appendChild(btn);
           }
-          if (query && fileSearchTruncatedQuery === query) {
+          if (query && fileSearchPendingQuery === query) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching full project..." }));
+          } else if (query && fileSearchErrorQuery === query) {
+            filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: fileSearchError || "Full project search unavailable." }));
+          } else if (query && fileSearchTruncatedQuery === query) {
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Search capped at top matches." }));
           }
           if (fileMenuFocus >= 0) filePickerInput.setAttribute("aria-activedescendant", `filePickerOption-${fileMenuFocus}`);
