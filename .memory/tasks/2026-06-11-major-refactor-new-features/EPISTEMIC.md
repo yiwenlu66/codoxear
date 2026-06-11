@@ -98,3 +98,8 @@ Commitments:
 - Preserve recon artifacts as evidence.
 - Implement accepted PR items selectively and atomically, then validate with the Docker sandbox.
 - Defer large Preact/workspace rewrite and whole Claude interactive prompt UI; implement `cc` support through the existing shared broker model.
+
+## 2026-06-12 00:38
+- Observation: user explicitly expanded scope to thinking-level/reasoning-effort behavior.
+- Interpretation: provider/model controls cannot assume a universal reasoning-effort enum. Codex support may be partial, and Pi capability must be discovered per model/provider.
+- Commitment: future UI/API launch semantics should represent unsupported thinking efforts explicitly and avoid silent downgrades.

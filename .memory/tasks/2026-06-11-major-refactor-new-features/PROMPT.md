@@ -30,6 +30,7 @@ Open blockers / unknowns:
 - Which historical bug reports are still reproducible.
 - The final accurate replacement name and compatibility strategy for the current `harness` feature/API/state keys.
 - Which long-chat navigation primitives best improve real use without turning the chat view into a detailed transcript/debug UI.
+- Backend/model-specific thinking-level semantics: Codex thinking-level support is currently incomplete, and Pi may not support all thinking efforts for all models.
 
 ## Context
 Required project context:
@@ -131,6 +132,13 @@ The workstreams below are interacting areas of investigation and implementation,
    - Optimize for mobile and keyboard ergonomics; controls should be discoverable without occupying excessive space.
    - Validate against synthetic or fixture long conversations in the standalone Docker/browser environment, including slow-device or slow-network conditions where feasible.
 
+11. Thinking-level / reasoning-effort capability semantics
+   - Treat Codex thinking-level support as incomplete until the actual launch/session semantics are inspected and validated.
+   - Pi may not support every thinking effort for every provider/model combination; capability constraints must be backend- and model-aware.
+   - Do not present thinking levels as universally valid if the backend/model cannot honor them. Prefer explicit capability-aware options, disabled/annotated choices, or backend-scoped defaults.
+   - Do not add silent downgrades from unsupported thinking efforts to some other value. Unsupported combinations should fail loudly, be blocked before launch, or be explained in UI/API response semantics.
+   - Validate representative supported and unsupported Codex/Pi thinking-effort combinations in the isolated Docker environment where feasible, using current provider/model config and upstream docs when needed.
+
 Cross-workstream verification criteria:
 - `python3 -m pip install -e .` succeeds in the isolated test environment where applicable.
 - Server starts in Docker with test-only app/session state and required password configuration.
@@ -138,6 +146,7 @@ Cross-workstream verification criteria:
 - Changed Python paths have targeted tests or equivalent scripted validation.
 - Changed UI behavior has browser-level evidence when feasible.
 - Long-conversation navigation changes are validated against large enough conversations to expose scroll/search/performance and orientation problems.
+- Thinking-level/provider/model changes are validated for both supported and unsupported combinations, and evidence shows whether the selected backend actually honors the requested effort.
 - Git status is reviewed before and after each workstream/integration step; only intended files are changed.
 - `develop` is the branch presented for user acceptance, with any temporary branches clearly identified as non-final scaffolding.
 
