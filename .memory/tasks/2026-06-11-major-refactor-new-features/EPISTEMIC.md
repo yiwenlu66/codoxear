@@ -194,3 +194,6 @@ Commitments:
 - Interpretation: the public rename is now backed by internal naming consistency, reducing future maintenance risk where implementation names could reintroduce old public compatibility or confuse the mechanism.
 - Browser observation: the renamed Unattended menu DOM/API path works in a real browser against isolated state, and the renamed sweep decremented the synthetic injection budget after enabling an idle session.
 - Scoped claim: this is a semantic cleanup with preserved behavior under tests and browser smoke; it does not add new live-backend lifecycle evidence.
+
+## 2026-06-12 02:10
+- Prompt-memory correction: the prior Workbench status was stale and would mislead a future agent into repeating completed setup/recon work. Updating it preserves the current epistemic boundary: deterministic and browser-synthetic evidence is complete enough for `develop`; live-like backend/device evidence remains a user-authorized extension.

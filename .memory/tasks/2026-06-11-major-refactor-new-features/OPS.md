@@ -199,3 +199,6 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`425 passed, 2 skipped in 10.66s`).
 - Browser smoke for renamed Unattended DOM/API: isolated Docker server on port 18793 with synthetic broker/log; browser login succeeded; Unattended button rendered and opened `#unattendedMenu`; default controls loaded; toggling enabled and editing fields saved through `/api/sessions/unattended/unattended`; persisted sandbox `unattended.json` contained enabled true, cooldown 7, request text. Remaining injections was observed as 2 rather than typed 3 because the isolated sweep immediately injected once into the idle synthetic session, which also exercises the renamed sweep path.
 - Cleanup: closed the ephemeral browser and stopped the Docker sandbox; port 18793 no longer accepted connections.
+
+## 2026-06-12 02:10
+- Refreshed `PROMPT.md` Workbench section because it still described the initial pre-implementation state. The prompt now states that `develop` is the acceptance candidate, summarizes the current evidence base, lists remaining optional next tasks requiring authorization, and preserves negative evidence/residual unknowns.

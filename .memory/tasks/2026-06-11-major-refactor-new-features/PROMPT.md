@@ -11,26 +11,33 @@ Done means:
 - The user receives evidence for what changed, what was tested, what remains uncertain, which PRs were accepted/rejected/deferred, and why.
 
 ## Workbench
-Current status: task memory initialized and corrected. No implementation branch work has started in this session.
+Current status: `develop` is the integrated acceptance candidate; `main` remains untouched. The branch contains the selected PR-compatible fixes, isolated Docker validation sandbox, responsiveness and long-chat navigation changes, clean public Unattended-mode rename, internal Unattended naming cleanup, Pi model-aware thinking-effort constraints, minimal shared-broker Claude Code support, file picker/search ergonomics, recent provider/model reuse, and deterministic pressure-test regressions.
 
-Selected next tasks:
-1. Inspect the current git branch topology, create or reset the `develop` acceptance branch from the approved base, and decide any temporary topic branches/worktrees needed for evidence-preserving implementation.
-2. Design or locate a standalone Docker test instance that can run the server/UI with isolated Codoxear app/session state and without touching live runtime state.
-3. Inventory open GitHub PRs and existing git-history bug signals before choosing interventions.
-4. Investigate the existing `harness`/"Harness mode" feature and rename it to a mechanism-accurate term. Current code evidence suggests it is an idle-triggered unattended prompt injector, not a generic harness; likely user-facing terminology should be closer to "Unattended mode" or "Idle follow-up", with final naming based on confirmed semantics.
-5. Investigate long-conversation chat navigation and design low-friction ergonomics such as in-chat search, jump to previous/next user message, and time-based navigation without bloating the chat view.
-6. For each workstream and any creative product improvement, record observations, hypotheses, expected behavior, interventions, and validation evidence in `OPS.md` / `EPISTEMIC.md`.
+Current evidence base:
+1. Full isolated Docker suite is green after the latest code changes: `425 passed, 2 skipped`.
+2. JS parse checks passed for `codoxear/static/app.js` in local and Docker contexts.
+3. Browser validation ran only against isolated Docker servers and synthetic state: Claude/new-session controls on port 18791, long-chat loaded search/navigation/history on port 18792, and renamed Unattended menu/API/sweep behavior on port 18793.
+4. Recon and plan artifacts are preserved in `recon/`; task observations and validation are in `OPS.md` / `EPISTEMIC.md`.
+5. Implementation/source files no longer contain Harness terminology; remaining Harness strings in tests are negative assertions guarding against old public compatibility.
 
-Observed failures: none yet; no code has been tested as part of this task setup.
+Selected next tasks, if the user asks to continue beyond this acceptance candidate:
+1. Run live-like backend session creation tests for Codex/Pi/Claude in isolated sandbox state, if the user authorizes use of required binaries/credentials and confirms no live sessions should be touched.
+2. Add deeper browser/device pressure tests for mobile network/performance, Monaco/file-viewer races, and full long-transcript interaction if the user wants more acceptance evidence.
+3. Pressure-test shell startup variants such as zsh/oh-my-zsh in an isolated environment if those environments are available.
+4. Otherwise, await the user's acceptance decision for `develop`; do not merge to `main` without explicit approval.
+
+Observed failures / negative evidence:
+- An initial Python 3.11 sandbox image could not collect tests using newer f-string syntax; switching the sandbox to Python 3.13 fixed the measurement artifact.
+- Two pre-existing baseline failures were fixed before feature work: stale cwd file-history deletion and voice summary prompt wording.
+- A first synthetic long-chat fixture omitted Codex `session_meta`; discovery failed loudly as designed, and the fixture was corrected.
+- Synthetic long-chat rows omitted `end_turn:true`, so that browser run is not idle-status evidence; existing idle tests cover the valid `end_turn:true` shape.
+- In the Unattended browser smoke, remaining injections dropped from 3 to 2 because the isolated sweep immediately injected once into the idle synthetic session; this was expected for that fixture and validates the renamed sweep path.
 
 Open blockers / unknowns:
-- Exact GitHub PR list and whether local credentials/`gh` access are available.
-- Current Docker setup for isolated Codoxear testing.
-- Current implementation details for Claude Code logs, process launch, session metadata, and resume semantics.
-- Which historical bug reports are still reproducible.
-- The final accurate replacement name and clean rename strategy for the current `harness` feature/API/state keys. User clarified that compatibility with old Harness API/fields is not required.
-- Which long-chat navigation primitives best improve real use without turning the chat view into a detailed transcript/debug UI.
-- Backend/model-specific thinking-level semantics: Codex thinking-level support is currently incomplete, and Pi may not support all thinking efforts for all models.
+- No user authorization yet to use real backend credentials/binaries for live-like Codex/Pi/Claude sandbox session creation.
+- Claude Code support is minimal and test/browser-plumbing validated, not proven against a long real Claude session.
+- Codex model-specific reasoning capability remains less constrained than Pi because no current authoritative per-model Codex capability source was established.
+- Real mobile-device performance, Monaco/file-viewer browser races, zsh/oh-my-zsh startup behavior, and full real long-transcript performance remain untested.
 
 ## Context
 Required project context:
@@ -39,7 +46,7 @@ Required project context:
 - Runtime app directory convention: `~/.local/share/codoxear` for real sessions; do not use it for this task's server/browser testing.
 - Existing git history and open GitHub PRs for regression signals and candidate changes.
 - Provider configs in `~/.pi/agent` may inform test workloads.
-- Existing `harness` code paths in `codoxear/server.py` and `codoxear/static/app.js`; these appear to schedule/send prompts after an idle assistant turn and should be renamed or recast with accurate terminology.
+- Unattended-mode code paths in `codoxear/server.py` and `codoxear/static/app.js`; these schedule/send prompts after an idle assistant turn with cooldown and remaining-injection limits.
 - Current chat view rendering, message normalization, scroll behavior, session message APIs, and any browser performance costs that affect long-conversation navigation.
 
 Testing preferences from user:
