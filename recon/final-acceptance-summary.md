@@ -74,7 +74,7 @@ The implementation avoided whole stale PR-branch merges. Accepted work was reimp
 
 Latest full code-validation evidence after the final runtime-affecting change:
 
-- `scripts/codoxear-docker-sandbox test` → `428 passed, 2 skipped`.
+- `scripts/codoxear-docker-sandbox test` → `429 passed, 2 skipped`.
 - `python3 -m py_compile codoxear/rollout_log.py` passed for the assistant chat-extraction change.
 - Local and Docker `node --check codoxear/static/app.js` passed for the client live-append dedupe change.
 

@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/codoxear-docker-sandbox [smoke|start|stop|logs|test]
+Usage: scripts/codoxear-docker-sandbox [build|smoke|start|stop|logs|test]
 
 Runs Codoxear in an isolated Docker validation sandbox.
 

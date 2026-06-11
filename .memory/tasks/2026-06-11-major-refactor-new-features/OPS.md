@@ -244,3 +244,9 @@
 - Added `codoxear/static/logos/cc.svg` to `tests/test_static_assets.py::test_wheel_includes_nested_logo_assets` assertions and updated `recon/final-acceptance-summary.md` to include packaged Claude logo coverage.
 - Targeted validation: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py -q` passed (`8 passed`).
 - Full validation: `scripts/codoxear-docker-sandbox test` passed (`428 passed, 2 skipped in 10.89s`).
+
+## 2026-06-12 02:45
+- Deterministic source mismatch found: `scripts/codoxear-docker-sandbox` supports a `build` command but its usage text omitted it. This affects the isolated validation tool's self-documenting contract, not runtime Codoxear behavior.
+- Updated the usage text and added `tests/test_docker_sandbox_source.py` to assert every supported top-level command, including `build`, appears in the usage/dispatch source.
+- Targeted validation: `scripts/codoxear-docker-sandbox test tests/test_docker_sandbox_source.py -q` passed (`1 passed`).
+- Full validation: `scripts/codoxear-docker-sandbox test` passed (`429 passed, 2 skipped in 10.86s`). Updated `PROMPT.md` and `recon/final-acceptance-summary.md` evidence counts.
