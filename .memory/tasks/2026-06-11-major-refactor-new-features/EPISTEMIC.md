@@ -184,3 +184,7 @@ Commitments:
 
 ## 2026-06-12 02:00
 - Follow-up interpretation: the synthetic long-chat rows used `phase:"final_answer"` without `end_turn:true`, so browser busy/Interrupt state from that run should not be interpreted as evidence about idle status. Existing `tests/test_idle_heuristics.py::test_response_item_end_turn_is_idle` constrains the valid Codex idle shape with `end_turn:true`.
+
+## 2026-06-12 02:01
+- Clean-room review after additional long-chat browser validation found no blocker to yielding the `develop` candidate.
+- Remaining uncertainty is no longer about unrun deterministic tests; it is about live-like backend lifecycle and device/performance conditions that require user authorization or broader sandbox setup.

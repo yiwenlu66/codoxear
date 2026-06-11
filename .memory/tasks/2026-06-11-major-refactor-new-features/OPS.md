@@ -185,3 +185,8 @@
 - API discovery after corrected fixture listed one synthetic Codex session with model `synthetic-model` and reasoning `low`.
 - Browser evidence via `agent-browser`: login succeeded; synthetic session auto-selected; initial loaded tail contained 61 rendered rows, 30 loaded user rows, and began at `User turn 131`; loaded-search overlay opened and querying `UNIQUE-needle` returned status `1/1 loaded` with current hit `Assistant answer 149... UNIQUE-needle`; previous/next user-message navigation pulsed loaded user rows; Load older history path expanded rendering to 321 rows / 160 user rows with first text `User turn 001`.
 - Cleanup: closed the ephemeral browser session, stopped the Docker sandbox, and verified port 18792 no longer accepted connections.
+
+## 2026-06-12 02:01
+- Ran clean-room final yield gate via `architect` subagent after the added long-chat browser validation.
+- Review result: no blockers under stated constraints. Risks are deferred live-like Codex/Pi/Claude creation, mobile/performance/network tracing and Monaco/file-viewer races, zsh/oh-my-zsh startup pressure, real-device long-transcript testing, and the scoped idle limitation of the synthetic long-chat fixture.
+- Verdict: yielding now is acceptable for `develop` as acceptance candidate; do not merge `main` without explicit approval.
