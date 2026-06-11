@@ -262,3 +262,7 @@
 - Corrected editable-install validation: copied the read-only repo into a writable `/tmp/src` inside `codoxear-sandbox:latest`, ran `python3 -m pip install -e .`, imported `codoxear.server` and `codoxear.broker`, and verified `codoxear-server`/`codoxear-broker` scripts exist under `/home/tester/.local/bin`.
 - Isolated server smoke: ran `scripts/codoxear-docker-sandbox smoke` with `CODOXEAR_DOCKER_PORT=18794`, `CODOXEAR_DOCKER_NAME=codoxear-sandbox-acceptance-18794`, and `CODOXEAR_DOCKER_ROOT=/tmp/codoxear-docker-sandbox-acceptance-18794`; result: pre-login `/api/me` `401`, post-login `/api/sessions` `200`, container `APP_DIR=/home/tester/.local/share/codoxear`. Stopped the sandbox container afterward.
 - Updated `PROMPT.md` and `recon/final-acceptance-summary.md` with the editable-install and server-smoke evidence.
+
+## 2026-06-12 02:56
+- Final-yield review attempt with `reviewer` timed out after 120s without returning a finding. To avoid repeating an overlong review, ran a smaller fresh `delegate` gate with the same deliverables, evidence, parked decisions, constraints, and latest changed artifacts.
+- Delegate gate result: no blockers; no actionable deterministic work before yield; risks to report are real mobile/perf/race/zsh/full-transcript/long-Claude validation, real backend credentials/binaries not validated, unavailable Codex per-model reasoning source, and complex non-adjacent/streaming assistant duplicates outside adjacent dedupe. Verdict: yield acceptable on `develop`; keep `main` untouched.

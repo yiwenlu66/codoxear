@@ -240,3 +240,6 @@ Commitments:
 - Observation: full tests and browser checks did not explicitly prove the packaging/editable-install criterion or a current isolated server-start smoke.
 - Negative observation: a first post-install script-location check failed because the sandbox installed console scripts in the user base outside `PATH`; direct inspection of `/home/tester/.local/bin` corrected the measurement.
 - Scoped claim: the current `develop` branch can be installed editably from a writable source copy in the sandbox image, exposes its server/broker console scripts in the expected user-install location, and starts an isolated password-gated server without touching live app state.
+
+## 2026-06-12 02:56
+- Clean-room review evidence is mixed operationally but not substantively: a broad reviewer timed out, while a narrower fresh gate found no blocker or deterministic pre-yield action. The remaining uncertainty remains user-decision-bound or explicitly scoped.
