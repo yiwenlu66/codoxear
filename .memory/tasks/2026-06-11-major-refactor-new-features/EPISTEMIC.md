@@ -197,3 +197,7 @@ Commitments:
 
 ## 2026-06-12 02:10
 - Prompt-memory correction: the prior Workbench status was stale and would mislead a future agent into repeating completed setup/recon work. Updating it preserves the current epistemic boundary: deterministic and browser-synthetic evidence is complete enough for `develop`; live-like backend/device evidence remains a user-authorized extension.
+
+## 2026-06-12 02:12
+- Observation: local Codex CLI help does not provide model-specific reasoning-effort capability metadata. The current Codex implementation can validate the known effort enum and pass config overrides, but cannot honestly claim Pi-style per-model capability enforcement.
+- Clean-room final gate found no blocker under the user's constraints. Remaining uncertainty is scoped to user-authorized live-like backend/device/performance checks and Codex capability metadata that was not available from the inspected source.

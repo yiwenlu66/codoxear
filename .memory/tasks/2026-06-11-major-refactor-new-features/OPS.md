@@ -202,3 +202,7 @@
 
 ## 2026-06-12 02:10
 - Refreshed `PROMPT.md` Workbench section because it still described the initial pre-implementation state. The prompt now states that `develop` is the acceptance candidate, summarizes the current evidence base, lists remaining optional next tasks requiring authorization, and preserves negative evidence/residual unknowns.
+
+## 2026-06-12 02:12
+- Bounded Codex reasoning-effort follow-up: ran local `codex --help` read-only. It exposes generic `-c key=value` config overrides but no authoritative per-model reasoning capability source. No live session was started.
+- Final clean-room gate: first `architect` review attempt timed out; reran concise read-only gate with `delegate`, which reported no blockers for `develop` acceptance and identified only the known deferred live-like/device/performance/Codex-capability risks.
