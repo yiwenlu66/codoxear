@@ -1,5 +1,7 @@
 # Unattended Mode — Naming & Semantics Analysis
 
+> Status after implementation: this is the original naming analysis. The final `develop` implementation follows the user's later correction: no `/harness` route alias, no `harness_*` public fields, no `harness.json` migration/compatibility layer, and internal Python/JS/CSS/test identifiers have also been renamed to Unattended terminology. See `recon/final-acceptance-summary.md` for the current acceptance evidence.
+
 ## 1. Problem in one sentence
 
 The feature internally called "harness" is a **periodic idle-triggered prompt injector** whose user-facing name ("Harness mode") communicates no part of its mechanism or purpose, while the *prompt it actually injects* already self-identifies as "Unattended-mode instructions."
@@ -108,7 +110,9 @@ Justification:
 
 ## 6. Internal API / state renaming strategy
 
-### Recommendation: **rename user-facing copy now; alias internal names with a deprecation path**
+### Historical recommendation: **rename user-facing copy now; alias internal names with a deprecation path**
+
+This compatibility recommendation was superseded before implementation by the user's explicit no-compatibility instruction. The final implementation hard-renames public and internal surfaces to Unattended terminology.
 
 The feature has the following internal surface area:
 

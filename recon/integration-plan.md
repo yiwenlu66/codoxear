@@ -3,6 +3,8 @@
 Date: 2026-06-12
 Acceptance branch: `develop`
 
+> Status after implementation: this plan has been executed into the `develop` acceptance branch. See `recon/final-acceptance-summary.md` for the current branch contents, validation evidence, deferred risks, and parked user decisions. Historical phase text below is retained as the original execution plan.
+
 ## Working claim
 
 The fastest safe path is not a framework rewrite or a whole-PR merge. It is a sequence of small, evidence-backed commits that:

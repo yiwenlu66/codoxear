@@ -201,3 +201,7 @@ Commitments:
 ## 2026-06-12 02:12
 - Observation: local Codex CLI help does not provide model-specific reasoning-effort capability metadata. The current Codex implementation can validate the known effort enum and pass config overrides, but cannot honestly claim Pi-style per-model capability enforcement.
 - Clean-room final gate found no blocker under the user's constraints. Remaining uncertainty is scoped to user-authorized live-like backend/device/performance checks and Codex capability metadata that was not available from the inspected source.
+
+## 2026-06-12 02:17
+- Observation: recon artifacts preserved useful historical evidence but could mislead future review because some pre-implementation Harness compatibility recommendations were superseded by the user's no-compatibility correction.
+- Intervention: add a final acceptance summary and explicit status notes instead of deleting historical recon. This preserves evidence while clarifying the current claim boundary for `develop`.

@@ -206,3 +206,8 @@
 ## 2026-06-12 02:12
 - Bounded Codex reasoning-effort follow-up: ran local `codex --help` read-only. It exposes generic `-c key=value` config overrides but no authoritative per-model reasoning capability source. No live session was started.
 - Final clean-room gate: first `architect` review attempt timed out; reran concise read-only gate with `delegate`, which reported no blockers for `develop` acceptance and identified only the known deferred live-like/device/performance/Codex-capability risks.
+
+## 2026-06-12 02:17
+- Added `recon/final-acceptance-summary.md` as a stable review artifact for the `develop` candidate. It summarizes integrated work, PR decisions, validation evidence, negative evidence, scoped limitations, and parked user decisions.
+- Added status notes to `recon/integration-plan.md` and `recon/unattended-mode-naming.md` so future readers do not mistake historical pre-implementation compatibility recommendations for the final accepted design.
+- Validation: `git diff --check` passed; this was documentation-only, so no runtime test was required.
