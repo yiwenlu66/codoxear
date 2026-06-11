@@ -1525,6 +1525,9 @@
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
+         let sessionsPollingEnabled = true;
+         const SESSION_POLL_VISIBLE_MS = 2500;
+         const SESSION_POLL_HIDDEN_MS = 15000;
          let currentRunning = false;
          let openSwipeContent = null;
          let openSwipeSessionId = null;
@@ -9397,6 +9400,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            if (pick) await selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {
+              sessionsPollingEnabled = false;
 	              renderLogin(renderApp);
 	              return;
 	            }
@@ -9406,35 +9410,58 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
 	            autoGrow();
 
-	            if (sessionsTimer) clearInterval(sessionsTimer);
-	            sessionsTimer = setInterval(async () => {
-	              try {
-	                await refreshSessions();
-                  await loadVoiceSettings();
-                  await syncNotificationState();
-                  if (notificationsEnabledLocally()) await pollNotificationFeed();
-	              } catch (e2) {
-	                if (e2 && e2.status === 401) {
-	                  if (sessionsTimer) clearInterval(sessionsTimer);
-	                  sessionsTimer = null;
-	                  renderLogin(renderApp);
-	                  return;
-	                }
-	                console.error("refreshSessions timer failed", e2);
-	              }
-	            }, 2500);
+	            function sessionsPollDelayMs() {
+              return document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS;
+            }
+            function stopSessionsPolling() {
+              if (sessionsTimer) clearTimeout(sessionsTimer);
+              sessionsTimer = null;
+            }
+            async function runSessionsPollTick() {
+              if (!sessionsPollingEnabled) return;
+              try {
+                await refreshSessions();
+                await loadVoiceSettings();
+                await syncNotificationState();
+                if (notificationsEnabledLocally()) await pollNotificationFeed();
+              } catch (e2) {
+                if (e2 && e2.status === 401) {
+                  sessionsPollingEnabled = false;
+                  stopSessionsPolling();
+                  renderLogin(renderApp);
+                  return;
+                }
+                console.error("refreshSessions timer failed", e2);
+              }
+              scheduleSessionsPoll();
+            }
+            function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
+              if (!sessionsPollingEnabled) return;
+              stopSessionsPolling();
+              sessionsTimer = setTimeout(() => {
+                sessionsTimer = null;
+                void runSessionsPollTick();
+              }, Math.max(0, Number(delayMs) || 0));
+            }
+            scheduleSessionsPoll();
               window.addEventListener("hashchange", async () => {
                 const sid = sessionIdFromHash();
                 if (!sid || sid === selected || !sessionIndex.has(sid)) return;
                 await selectSession(sid);
               });
               window.addEventListener("beforeunload", () => {
+                sessionsPollingEnabled = false;
+                stopSessionsPolling();
                 stopAnnouncementHeartbeat();
                 stopLiveAudioWatchdog();
               });
               document.addEventListener("visibilitychange", () => {
-                if (document.visibilityState !== "visible") return;
-                resumeAnnouncementRuntime({ resetSource: false });
+                if (document.visibilityState === "visible") {
+                  resumeAnnouncementRuntime({ resetSource: false });
+                  scheduleSessionsPoll(0);
+                  return;
+                }
+                scheduleSessionsPoll(sessionsPollDelayMs());
               });
               window.addEventListener("pageshow", () => {
                 resumeAnnouncementRuntime({ resetSource: false });
