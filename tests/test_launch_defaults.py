@@ -7,6 +7,7 @@ from codoxear.server import _normalize_requested_model_provider
 from codoxear.server import _normalize_requested_pi_reasoning_effort
 from codoxear.server import _normalize_requested_preferred_auth_method
 from codoxear.server import _normalize_requested_service_tier
+from codoxear.server import _read_cc_launch_defaults
 from codoxear.server import _read_codex_launch_defaults
 from codoxear.server import _read_new_session_defaults
 from codoxear.server import _read_pi_launch_defaults
@@ -192,18 +193,36 @@ base_url = "https://example.com/v1"
                     _normalize_requested_pi_reasoning_effort("high", model_provider="macaron", model="plain")
                 self.assertEqual(_normalize_requested_pi_reasoning_effort("off", model_provider="macaron", model="plain"), "off")
 
-    def test_read_new_session_defaults_includes_both_backends(self) -> None:
+    def test_read_cc_launch_defaults_reads_settings_model_and_effort(self) -> None:
+        with TemporaryDirectory() as td:
+            settings_path = Path(td) / "settings.json"
+            settings_path.write_text('{"model":"claude-haiku-4-5","effortLevel":"max"}\n', encoding="utf-8")
+            with patch("codoxear.server.CC_SETTINGS_PATH", settings_path):
+                defaults = _read_cc_launch_defaults()
+
+        self.assertEqual(defaults["agent_backend"], "cc")
+        self.assertEqual(defaults["model"], "claude-haiku-4-5")
+        self.assertEqual(defaults["reasoning_effort"], "max")
+        self.assertEqual(defaults["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(defaults["provider_choices"], [])
+        self.assertFalse(defaults["supports_fast"])
+
+    def test_read_new_session_defaults_includes_registered_backends(self) -> None:
         with TemporaryDirectory() as td:
             settings_path = Path(td) / "settings.json"
             models_path = Path(td) / "models.json"
+            cc_settings_path = Path(td) / "cc-settings.json"
             settings_path.write_text('{"defaultProvider":"macaron","defaultModel":"gpt-5.4","defaultThinkingLevel":"medium"}\n', encoding="utf-8")
             models_path.write_text('{"providers":{"macaron":{"models":[{"id":"gpt-5.4"}]}}}\n', encoding="utf-8")
-            with patch("codoxear.server.PI_SETTINGS_PATH", settings_path), patch("codoxear.server.PI_MODELS_PATH", models_path):
+            with patch("codoxear.server.PI_SETTINGS_PATH", settings_path), patch("codoxear.server.PI_MODELS_PATH", models_path), patch(
+                "codoxear.server.CC_SETTINGS_PATH", cc_settings_path
+            ):
                 defaults = _read_new_session_defaults()
 
         self.assertEqual(defaults["default_backend"], "codex")
         self.assertIn("codex", defaults["backends"])
         self.assertIn("pi", defaults["backends"])
+        self.assertIn("cc", defaults["backends"])
         self.assertEqual(defaults["backends"]["pi"]["provider_choice"], "macaron")
 
     def test_read_pi_launch_defaults_includes_logged_in_oauth_providers(self) -> None:

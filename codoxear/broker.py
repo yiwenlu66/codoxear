@@ -24,6 +24,13 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
+from codoxear.cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_final_turn_end
+from codoxear.cc_log import cc_assistant_text as _cc_assistant_text
+from codoxear.cc_log import cc_assistant_thinking_count as _cc_assistant_thinking_count
+from codoxear.cc_log import cc_assistant_tool_use_count as _cc_assistant_tool_use_count
+from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
+from codoxear.cc_log import cc_message_role as _cc_message_role
+from codoxear.cc_log import cc_user_text as _cc_user_text
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
@@ -194,7 +201,8 @@ def _resume_session_id_from_args(args: list[str]) -> str | None:
             return resume_id
         return None
     for idx, token in enumerate(args):
-        if token != "resume":
+        expected = "--resume" if AGENT_BACKEND == "cc" else "resume"
+        if token != expected:
             continue
         if (idx + 1) >= len(args):
             return None
@@ -753,6 +761,51 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_turn_activity_ts = now_ts
             return
 
+        return
+
+    if typ == "user":
+        user_text = _cc_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            st.pending_calls.clear()
+            st.busy = True
+            st.turn_open = True
+            st.turn_has_completion_candidate = False
+            st.last_interrupt_hint_ts = 0.0
+            st.last_turn_activity_ts = now_ts
+            return
+        if _cc_message_role(obj) == "toolResult":
+            _reopen_turn_on_activity(st)
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        return
+
+    if typ == "assistant":
+        has_text = bool(_cc_assistant_text(obj))
+        thinking_count = _cc_assistant_thinking_count(obj)
+        tool_count = _cc_assistant_tool_use_count(obj)
+        if has_text and _cc_assistant_is_final_turn_end(obj):
+            _close_turn_state(st)
+            return
+        if tool_count > 0 or thinking_count > 0:
+            _reopen_turn_on_activity(st)
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        if has_text:
+            if st.turn_open:
+                st.turn_has_completion_candidate = True
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
+        return
+
+    if typ == "system" and _cc_is_turn_end(obj):
+        _close_turn_state(st)
         return
 
     if typ != "response_item":

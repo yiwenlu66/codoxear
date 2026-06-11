@@ -12,10 +12,11 @@ Currently supported agent backends:
 
 - Codex
 - Pi
+- Claude Code (`cc` backend; launches the `claude` CLI)
 
 Name: "codoxear" = "codex dogear" (dog-ear a page so you can pick up where you left off), meaning you can seamlessly continue the same work from different devices.
 
-Not affiliated with OpenAI or the Pi Coding Agent project. "Codex" and "Pi" are referenced only for CLI compatibility.
+Not affiliated with OpenAI, the Pi Coding Agent project, or Anthropic. "Codex", "Pi", and "Claude" are referenced only for CLI compatibility.
 
 ## Platform support
 
@@ -62,11 +63,15 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    piox() {
      CODEX_WEB_AGENT_BACKEND=pi codoxear-broker -- "$@"
    }
+
+   ccox() {
+     CODEX_WEB_AGENT_BACKEND=cc codoxear-broker -- "$@"
+   }
    ```
 
    Restart your shell or `source` your rc file.
 
-4. Use `codox` for terminal-owned Codex sessions and `piox` for terminal-owned Pi sessions when you want them registered with Codoxear. Leave plain `codex` and `pi` unwrapped.
+4. Use `codox` for terminal-owned Codex sessions, `piox` for terminal-owned Pi sessions, and `ccox` for terminal-owned Claude Code sessions when you want them registered with Codoxear. Leave plain `codex`, `pi`, and `claude` unwrapped.
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
@@ -122,22 +127,22 @@ tailscale serve status
 
 ## User stories
 
-- Desktop Linux: start Codex or Pi in your GUI terminal emulator, then continue the same live session on your phone or a laptop browser.
-- Headless Linux: start Codex or Pi inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
-- Web-owned sessions: start a new Codex or Pi session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
-- Web-owned tmux sessions: start a new Codex or Pi session from the Codoxear UI with `Create in tmux` enabled to run it inside tmux session `codoxear` for shell-side observability.
+- Desktop Linux: start Codex, Pi, or Claude Code in your GUI terminal emulator, then continue the same live session on your phone or a laptop browser.
+- Headless Linux: start Codex, Pi, or Claude Code inside `tmux`, then attach from your phone or a laptop browser. This avoids using a mobile terminal emulator for TUI interaction (for example Termius).
+- Web-owned sessions: start a new Codex, Pi, or Claude Code session from the Codoxear UI, use it from mobile, and kill it from the UI when finished.
+- Web-owned tmux sessions: start a new Codex, Pi, or Claude Code session from the Codoxear UI with `Create in tmux` enabled to run it inside tmux session `codoxear` for shell-side observability.
 
 ## Session ownership
 
 Codoxear shows three kinds of sessions:
 
-- Terminal-owned: sessions started from your local terminal via `codox` or `piox` (the broker wrappers). They are marked `T` in the UI.
+- Terminal-owned: sessions started from your local terminal via `codox`, `piox`, or `ccox` (the broker wrappers). They are marked `T` in the UI.
 - Web-owned: sessions started from the Codoxear UI ("New session"). They are marked `W` in the UI.
 - Web-owned tmux: sessions started from the Codoxear UI with `Create in tmux` enabled. They are marked with the tmux split-pane icon in the UI and run under tmux session `codoxear`.
 
 The current UI offers Delete for all session kinds. Delete sends a shutdown request to the underlying broker, so deleting a terminal-owned session also stops the corresponding terminal session.
 
-If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly.
+If you start a web-owned session and later want to continue it in your terminal while keeping it registered with Codoxear, use the matching backend workflow: Codex sessions resume through `codox ...`, Pi sessions through `piox ...` or plain `pi --session <session-file>` if you want to continue the same Pi session file directly, and Claude Code sessions through `ccox --resume <session-id>`.
 
 ## Known limitations
 
@@ -177,6 +182,8 @@ Set these in `.env` (or in the process environment):
 - `CODEX_BIN` (default `codex`)
 - `PI_HOME` (default `~/.pi`)
 - `PI_BIN` (default `pi`)
+- `CLAUDE_CONFIG_DIR` (default `~/.claude`)
+- `CLAUDE_BIN` (default `claude`)
 - `CODEX_WEB_COOKIE_SECURE` (default `0`; set to `1` behind HTTPS)
 - `CODEX_WEB_STATIC_CACHE` (default `0`; set to `1` to serve static assets with long-lived immutable cache headers)
 - `CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES` (default `52428800`; maximum backend log size eligible for full-conversation copy/export)
@@ -198,6 +205,7 @@ Backend-specific session logs live under the backend home:
 
 - Codex: `~/.codex/sessions/rollout-*.jsonl`
 - Pi: `~/.pi/agent/sessions/*.jsonl`
+- Claude Code: `~/.claude/projects/**/*.jsonl` (main project logs; Codoxear ignores `subagents/` logs)
 
 ## License
 

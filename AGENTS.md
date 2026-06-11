@@ -6,6 +6,7 @@ Currently supported agent backends:
 
 - `codex`
 - `pi`
+- `cc` (Claude Code; launches `claude`)
 
 ## Components
 
@@ -15,7 +16,7 @@ Currently supported agent backends:
 - Auth: password gate using `CODEX_WEB_PASSWORD` (required). Cookie-based session (`codoxear_auth`).
 - Session discovery: scans `~/.local/share/codoxear/socks/*.sock` for broker control sockets and reads the adjacent `*.json` metadata.
 - Web-owned sessions: `/api/sessions` (POST) spawns a new broker process with `CODEX_WEB_OWNER=web` and a chosen `agent_backend`.
-- Terminal-owned sessions: created by running `codoxear-broker` with the desired backend environment (for example plain Codex broker wrappers or `CODEX_WEB_AGENT_BACKEND=pi` for Pi).
+- Terminal-owned sessions: created by running `codoxear-broker` with the desired backend environment (for example plain Codex broker wrappers, `CODEX_WEB_AGENT_BACKEND=pi` for Pi, or `CODEX_WEB_AGENT_BACKEND=cc` for Claude Code).
 - `GET /api/sessions` returns backend-aware launch defaults, including provider/model/reasoning choices per backend.
 - Runtime state directory: `~/.local/share/codoxear` (legacy `~/.local/share/codex-web` is no longer used).
 - Additional persisted UI state includes `session_sidebar.json`, `session_files.json`, `session_queues.json`, `harness.json`, and `session_aliases.json` under the same app dir.
@@ -23,9 +24,9 @@ Currently supported agent backends:
 ### `codoxear.broker`
 
 - Foreground PTY wrapper intended to be run from a real terminal.
-- Starts the selected backend CLI (`codex` or `pi`), preserves terminal UX, and creates a Unix socket control channel under `~/.local/share/codoxear/socks/`.
+- Starts the selected backend CLI (`codex`, `pi`, or `claude`), preserves terminal UX, and creates a Unix socket control channel under `~/.local/share/codoxear/socks/`.
 - Writes a `*.json` sidecar with: `agent_backend`, session/thread id, pid(s), cwd, log_path, sock_path, owner tag, and launch settings.
-- Detects the active session log and keeps `log_path` updated by scanning the process tree for open backend log files (`~/.codex/sessions/rollout-*.jsonl` for Codex, `~/.pi/agent/sessions/*.jsonl` for Pi) plus backend-specific resume/discovery fallbacks.
+- Detects the active session log and keeps `log_path` updated by scanning the process tree for open backend log files (`~/.codex/sessions/rollout-*.jsonl` for Codex, `~/.pi/agent/sessions/*.jsonl` for Pi, `~/.claude/projects/**/*.jsonl` for Claude Code) plus backend-specific resume/discovery fallbacks.
 - Ignores Codex sub-agent rollout logs (`session_meta.payload.source.subagent`) so the UI stays bound to the main session.
 - Linux and macOS.
 
@@ -71,6 +72,7 @@ Currently supported agent backends:
   - Run server: `codoxear-server` or `python3 -m codoxear.server`
   - Broker (Codex): `codoxear-broker -- <codex args>`
   - Broker (Pi): `CODEX_WEB_AGENT_BACKEND=pi codoxear-broker -- <pi args>`
+  - Broker (Claude Code): `CODEX_WEB_AGENT_BACKEND=cc codoxear-broker -- <claude args>`
 
 ## Ops notes
 

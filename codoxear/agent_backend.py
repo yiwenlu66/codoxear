@@ -48,9 +48,19 @@ PI_BACKEND = AgentBackend(
     sessions_relpath=("agent", "sessions"),
 )
 
+CC_BACKEND = AgentBackend(
+    name="cc",
+    bin_env_var="CLAUDE_BIN",
+    home_env_var="CLAUDE_CONFIG_DIR",
+    default_bin="claude",
+    default_home_dirname=".claude",
+    sessions_relpath=("projects",),
+)
+
 _BACKENDS: dict[str, AgentBackend] = {
     CODEX_BACKEND.name: CODEX_BACKEND,
     PI_BACKEND.name: PI_BACKEND,
+    CC_BACKEND.name: CC_BACKEND,
 }
 
 
@@ -75,5 +85,13 @@ def infer_agent_backend_from_log_path(path: Path) -> str | None:
     path_text = str(path).replace("\\", "/")
     if "/.pi/agent/sessions/" in path_text and name.endswith(".jsonl"):
         return "pi"
+    if name.endswith(".jsonl") and "/subagents/" not in path_text:
+        if "/.claude/projects/" in path_text:
+            return "cc"
+        try:
+            path.resolve(strict=False).relative_to(CC_BACKEND.sessions_dir().resolve(strict=False))
+            return "cc"
+        except Exception:
+            pass
     return None
 

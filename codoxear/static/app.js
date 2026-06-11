@@ -158,6 +158,7 @@
         backends: {
           codex: null,
           pi: null,
+          cc: null,
         },
       };
       let latestSessions = [];
@@ -323,12 +324,15 @@
       function normalizeAgentBackendName(value) {
         const raw = String(value || "").trim().toLowerCase();
         if (raw === "pi") return "pi";
+        if (raw === "cc" || raw === "claude" || raw === "claude-code") return "cc";
         return "codex";
       }
 
       function agentBackendDisplayName(value) {
         const backend = normalizeAgentBackendName(value);
-        return backend === "pi" ? "Pi" : "Codex";
+        if (backend === "pi") return "Pi";
+        if (backend === "cc") return "Claude";
+        return "Codex";
       }
 
       function agentBackendLogoPath(value) {
@@ -382,16 +386,38 @@
         };
       }
 
+      function emptyCcLaunchDefaults(seed = {}) {
+        const raw = seed && typeof seed === "object" ? seed : {};
+        const modelChoices = Array.isArray(raw.models) ? raw.models.slice() : [];
+        return {
+          agent_backend: "cc",
+          model_provider: null,
+          preferred_auth_method: null,
+          provider_choice: null,
+          provider_choices: [],
+          model: typeof raw.model === "string" ? raw.model : null,
+          models: modelChoices,
+          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "medium",
+          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["low", "medium", "high", "xhigh", "max"],
+          service_tier: null,
+          supports_fast: false,
+        };
+      }
+
       function defaultsForAgentBackend(backend) {
         const normalized = normalizeAgentBackendName(backend);
         const raw = newSessionDefaults && typeof newSessionDefaults === "object" ? newSessionDefaults : {};
         if (raw.backends && typeof raw.backends === "object") {
           const item = raw.backends[normalized];
           if (item && typeof item === "object") {
-            return normalized === "pi" ? emptyPiLaunchDefaults(item) : legacyCodexLaunchDefaults(item);
+            if (normalized === "pi") return emptyPiLaunchDefaults(item);
+            if (normalized === "cc") return emptyCcLaunchDefaults(item);
+            return legacyCodexLaunchDefaults(item);
           }
         }
-        return normalized === "pi" ? emptyPiLaunchDefaults() : legacyCodexLaunchDefaults(raw);
+        if (normalized === "pi") return emptyPiLaunchDefaults();
+        if (normalized === "cc") return emptyCcLaunchDefaults();
+        return legacyCodexLaunchDefaults(raw);
       }
 
       function providerChoicesForBackend(backend) {
@@ -446,6 +472,7 @@
         const backend = normalizeAgentBackendName(agentBackend);
         const value = String(choice || "").trim() || "chatgpt";
         if (backend === "pi") return { model_provider: value || null, preferred_auth_method: null };
+        if (backend === "cc") return { model_provider: null, preferred_auth_method: null };
         if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
         if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
         return { model_provider: value, preferred_auth_method: "apikey" };
@@ -1611,6 +1638,7 @@
           backends: {
             codex: legacyCodexLaunchDefaults(),
             pi: emptyPiLaunchDefaults(),
+            cc: emptyCcLaunchDefaults(),
           },
         };
         latestSessions = [];
@@ -3537,6 +3565,7 @@
                   backends: {
                     codex: legacyCodexLaunchDefaults(),
                     pi: emptyPiLaunchDefaults(),
+                    cc: emptyCcLaunchDefaults(),
                   },
                 };
           tmuxAvailable = !!data.tmux_available;
@@ -5530,7 +5559,7 @@
 
         function renderNewSessionBackendTabs() {
           newSessionBackendTabs.innerHTML = "";
-          for (const backend of ["codex", "pi"]) {
+          for (const backend of ["codex", "pi", "cc"]) {
             const active = newSessionBackend === backend;
             const btn = el("button", {
               class: `agentBackendTab${active ? " active" : ""}`,
@@ -5589,6 +5618,9 @@
         function syncNewSessionRunConfigUi() {
           const defaults = defaultsForAgentBackend(newSessionBackend);
           const supportsFast = !!defaults.supports_fast;
+          const hasProviders = providerChoicesForBackend(newSessionBackend).length > 0;
+          newSessionProviderField.style.display = hasProviders ? "" : "none";
+          if (!hasProviders) newSessionProviderMenuOpen = false;
           newSessionFastField.style.display = supportsFast ? "" : "none";
           if (!supportsFast) setNewSessionFast(false);
         }

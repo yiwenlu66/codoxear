@@ -128,3 +128,19 @@
 - Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_launch_defaults.py tests/test_reasoning_effort_source.py -q` passed (`15 passed`).
 - JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`392 passed, 2 skipped in 9.97s`).
+
+## 2026-06-12 01:30
+- Implemented Phase E minimal Claude Code backend support (`agent_backend=cc`): backend registry, Claude log parser, session log filtering/metadata, chat extraction, busy/idle heuristics, launch defaults, web-session spawn args, UI backend tab/defaults, docs/env examples, and logo asset.
+- Local CLI evidence: `claude --help` reports `--model`, `--effort low|medium|high|xhigh|max`, `--resume`, and `--dangerously-skip-permissions`; binary strings include `CLAUDE_CONFIG_DIR`, so Codoxear uses `CLAUDE_CONFIG_DIR` as Claude home isolation variable and `CLAUDE_BIN` for binary override.
+- Added tests: `test_cc_log.py`, `test_cc_backend_registration.py`, `test_cc_session_log.py`, `test_cc_chat_and_idle.py`, `test_cc_busy_state.py`, `test_claude_backend_source.py`; extended launch defaults and session resume/spawn tests.
+- Focused validation: `python3 -m py_compile codoxear/cc_log.py codoxear/rollout_log.py codoxear/server.py codoxear/broker.py codoxear/sessiond.py` passed.
+- Focused Docker validation: `scripts/codoxear-docker-sandbox test tests/test_cc_log.py tests/test_cc_backend_registration.py tests/test_cc_session_log.py tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_launch_defaults.py tests/test_session_resume.py tests/test_claude_backend_source.py -q` passed (`60 passed`).
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`415 passed, 2 skipped in 9.55s`).
+- JS parse validation: direct Docker `node --check codoxear/static/app.js` passed.
+
+## 2026-06-12 01:33
+- Follow-up before finalizing CC commit: patched `infer_agent_backend_from_log_path()` to recognize CC logs under a custom `CLAUDE_CONFIG_DIR`, not only literal `~/.claude/projects` paths.
+- Added regression in `tests/test_cc_backend_registration.py` for custom Claude config directory inference.
+- Targeted Docker validation: `scripts/codoxear-docker-sandbox test tests/test_cc_backend_registration.py -q` passed (`3 passed`).
+- Full Docker validation after follow-up: `scripts/codoxear-docker-sandbox test` passed (`416 passed, 2 skipped in 9.72s`).
+- JS parse validation after follow-up: direct Docker `node --check codoxear/static/app.js` passed.

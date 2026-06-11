@@ -34,6 +34,9 @@ from typing import Any
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from . import rollout_log as _rollout_log
+from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
+from .cc_log import cc_user_text as _cc_user_text
+from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .util import append_launch_attempt as _append_launch_attempt
@@ -168,9 +171,13 @@ PI_SESSIONS_DIR = get_agent_backend("pi").sessions_dir()
 PI_SETTINGS_PATH = PI_HOME / "agent" / "settings.json"
 PI_MODELS_PATH = PI_HOME / "agent" / "models.json"
 PI_AUTH_PATH = PI_HOME / "agent" / "auth.json"
+CC_HOME = get_agent_backend("cc").home()
+CC_SESSIONS_DIR = get_agent_backend("cc").sessions_dir()
+CC_SETTINGS_PATH = CC_HOME / "settings.json"
 DEFAULT_AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex")
 SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
 SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
+SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
 
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
@@ -2053,6 +2060,19 @@ def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str 
     return out
 
 
+def _normalize_requested_cc_reasoning_effort(value: Any) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("reasoning_effort must be a string")
+    out = value.strip().lower()
+    if not out:
+        return None
+    if out not in SUPPORTED_CC_REASONING_EFFORTS:
+        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_CC_REASONING_EFFORTS)}")
+    return out
+
+
 def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
     if elapsed_s <= 0:
         return 1.0
@@ -2186,16 +2206,25 @@ def _download_disposition(path_obj: Path) -> str:
     return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}"
 
 
+def _sessions_dir_for_backend(agent_backend: str) -> Path:
+    backend_name = normalize_agent_backend(agent_backend)
+    if backend_name == "codex":
+        return CODEX_SESSIONS_DIR
+    if backend_name == "pi":
+        return PI_SESSIONS_DIR
+    if backend_name == "cc":
+        return CC_SESSIONS_DIR
+    raise ValueError(f"unsupported agent_backend: {backend_name}")
+
+
 def _iter_session_logs(*, agent_backend: str = "codex") -> list[Path]:
     backend_name = normalize_agent_backend(agent_backend)
-    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
-    return _iter_session_logs_impl(sessions_dir, agent_backend=backend_name)
+    return _iter_session_logs_impl(_sessions_dir_for_backend(backend_name), agent_backend=backend_name)
 
 
 def _find_session_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
     backend_name = normalize_agent_backend(agent_backend)
-    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
-    return _find_session_log_for_session_id_impl(sessions_dir, session_id, agent_backend=backend_name)
+    return _find_session_log_for_session_id_impl(_sessions_dir_for_backend(backend_name), session_id, agent_backend=backend_name)
 
 
 def _find_new_session_log(
@@ -2206,7 +2235,7 @@ def _find_new_session_log(
     timeout_s: float = 15.0,
 ) -> tuple[str, Path] | None:
     backend_name = normalize_agent_backend(agent_backend)
-    sessions_dir = CODEX_SESSIONS_DIR if backend_name == "codex" else PI_SESSIONS_DIR
+    sessions_dir = _sessions_dir_for_backend(backend_name)
     return _find_new_session_log_impl(
         sessions_dir=sessions_dir,
         agent_backend=backend_name,
@@ -2235,7 +2264,11 @@ def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> d
             log_path.resolve().relative_to(PI_SESSIONS_DIR.resolve())
             inferred = "pi"
         except Exception:
-            inferred = "codex"
+            try:
+                log_path.resolve().relative_to(CC_SESSIONS_DIR.resolve())
+                inferred = "cc"
+            except Exception:
+                inferred = "codex"
         backend_name = inferred
     else:
         backend_name = normalize_agent_backend(agent_backend)
@@ -2258,6 +2291,8 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
     backend_name = normalize_agent_backend(agent_backend)
     if backend_name == "pi":
         return _read_pi_run_settings(log_path)
+    if backend_name == "cc":
+        return _read_cc_run_settings(log_path)
     meta = _read_session_meta(log_path, agent_backend="codex")
     model_provider = _clean_optional_text(meta.get("model_provider"))
     model = _clean_optional_text(meta.get("model"))
@@ -2522,6 +2557,32 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
     }
 
 
+def _read_cc_launch_defaults() -> dict[str, Any]:
+    configured_model: str | None = None
+    configured_effort: str | None = "medium"
+    if CC_SETTINGS_PATH.exists():
+        data = json.loads(CC_SETTINGS_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid Claude Code settings in {CC_SETTINGS_PATH}")
+        configured_model = _clean_optional_text(data.get("model")) or _clean_optional_text(data.get("defaultModel"))
+        configured_effort = _normalize_requested_cc_reasoning_effort(
+            data.get("effortLevel") or data.get("effort") or data.get("thinkingLevel")
+        ) or configured_effort
+    return {
+        "agent_backend": "cc",
+        "model_provider": None,
+        "preferred_auth_method": None,
+        "provider_choice": None,
+        "provider_choices": [],
+        "model": configured_model,
+        "models": [m for m in [configured_model, "sonnet", "opus", "fable"] if isinstance(m, str) and m],
+        "reasoning_effort": configured_effort,
+        "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
+        "service_tier": None,
+        "supports_fast": False,
+    }
+
+
 def _read_new_session_defaults() -> dict[str, Any]:
     codex = _read_codex_launch_defaults()
     codex["agent_backend"] = "codex"
@@ -2529,11 +2590,13 @@ def _read_new_session_defaults() -> dict[str, Any]:
     codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
     codex["supports_fast"] = True
     pi = _read_pi_launch_defaults()
+    cc = _read_cc_launch_defaults()
     return {
         "default_backend": DEFAULT_AGENT_BACKEND,
         "backends": {
             "codex": codex,
             "pi": pi,
+            "cc": cc,
         },
     }
 
@@ -2557,7 +2620,7 @@ def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") 
     except Exception:
         updated_ts = 0.0
     git_branch = ""
-    if backend_name == "codex":
+    if backend_name in {"codex", "cc"}:
         git_info = meta.get("git")
         if isinstance(git_info, dict):
             branch_raw = git_info.get("branch")
@@ -2652,6 +2715,8 @@ def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int 
                     continue
                 if obj.get("type") == "message":
                     text = _pi_user_text(obj) or ""
+                elif obj.get("type") == "user":
+                    text = _cc_user_text(obj) or ""
                 elif obj.get("type") == "response_item":
                     payload = obj.get("payload")
                     if not isinstance(payload, dict):
@@ -2905,7 +2970,12 @@ class SessionManager:
         model_provider = _clean_optional_text(meta.get("model_provider"))
         preferred_auth_method = _normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
         model = _clean_optional_text(meta.get("model"))
-        reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if backend_name == "codex" else _display_pi_reasoning_effort(meta.get("reasoning_effort"))
+        if backend_name == "codex":
+            reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
+        elif backend_name == "pi":
+            reasoning_effort = _display_pi_reasoning_effort(meta.get("reasoning_effort"))
+        else:
+            reasoning_effort = _normalize_requested_cc_reasoning_effort(meta.get("reasoning_effort"))
         if log_path is not None and log_path.exists():
             log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
             if log_provider is not None:
@@ -4005,7 +4075,7 @@ class SessionManager:
             if log_path is not None and not log_path.exists():
                 log_path = None
             ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
-            if log_path is None and agent_backend == "codex" and _pid_alive(codex_pid):
+            if log_path is None and agent_backend in {"codex", "cc"} and _pid_alive(codex_pid):
                 discovered_log_path = _proc_find_open_rollout_log(
                     proc_root=PROC_ROOT,
                     root_pid=codex_pid,
@@ -4611,7 +4681,7 @@ class SessionManager:
                 tail_state = {}
             if _broker_tail_has_session_detach_marker(agent_backend, tail_state.get("tail") if isinstance(tail_state, dict) else None):
                 ignored_rollout_paths.add(current_log_path)
-        if log_path is None and agent_backend == "codex" and _pid_alive(s.codex_pid):
+        if log_path is None and agent_backend in {"codex", "cc"} and _pid_alive(s.codex_pid):
             discovered_log_path = _proc_find_open_rollout_log(
                 proc_root=PROC_ROOT,
                 root_pid=s.codex_pid,
@@ -4879,7 +4949,7 @@ class SessionManager:
                 codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
             if service_tier is not None:
                 codex_args.extend(["-c", f'service_tier="{service_tier}"'])
-        else:
+        elif backend_name == "pi":
             if preferred_auth_method is not None:
                 raise ValueError("preferred_auth_method is not supported for pi")
             if service_tier is not None:
@@ -4890,6 +4960,20 @@ class SessionManager:
                 codex_args.extend(["--model", model])
             if reasoning_effort is not None:
                 codex_args.extend(["--thinking", reasoning_effort])
+        elif backend_name == "cc":
+            if model_provider is not None:
+                raise ValueError("model_provider is not supported for cc")
+            if preferred_auth_method is not None:
+                raise ValueError("preferred_auth_method is not supported for cc")
+            if service_tier is not None:
+                raise ValueError("service_tier is not supported for cc")
+            codex_args.extend(["--dangerously-skip-permissions"])
+            if model is not None:
+                codex_args.extend(["--model", model])
+            if reasoning_effort is not None:
+                codex_args.extend(["--effort", reasoning_effort])
+        else:
+            raise ValueError(f"unsupported agent_backend: {backend_name}")
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
@@ -4910,9 +4994,13 @@ class SessionManager:
                 )
             if backend_name == "codex":
                 codex_args.extend(["resume", resume_id])
-            else:
+            elif backend_name == "pi":
                 resume_target = str(resume_row.get("log_path") or "").strip() if isinstance(resume_row, dict) else ""
                 codex_args.extend(["--session", resume_target or resume_id])
+            elif backend_name == "cc":
+                codex_args.extend(["--resume", resume_id])
+            else:
+                raise ValueError(f"unsupported agent_backend: {backend_name}")
         codex_args.extend(args or [])
         argv.extend(codex_args)
 
@@ -4925,9 +5013,17 @@ class SessionManager:
         if backend_name == "codex":
             env.setdefault("CODEX_HOME", str(CODEX_HOME))
             env.pop("PI_HOME", None)
-        else:
+            env.pop("CLAUDE_CONFIG_DIR", None)
+        elif backend_name == "pi":
             env.setdefault("PI_HOME", str(PI_HOME))
             env.pop("CODEX_HOME", None)
+            env.pop("CLAUDE_CONFIG_DIR", None)
+        elif backend_name == "cc":
+            env.setdefault("CLAUDE_CONFIG_DIR", str(CC_HOME))
+            env.pop("CODEX_HOME", None)
+            env.pop("PI_HOME", None)
+        else:
+            raise ValueError(f"unsupported agent_backend: {backend_name}")
         env.pop("CODEX_WEB_MODEL_PROVIDER", None)
         env.pop("CODEX_WEB_PREFERRED_AUTH_METHOD", None)
         env.pop("CODEX_WEB_MODEL", None)
@@ -5029,8 +5125,12 @@ class SessionManager:
             }
             if backend_name == "codex":
                 inline_env["CODEX_HOME"] = str(env["CODEX_HOME"])
-            else:
+            elif backend_name == "pi":
                 inline_env["PI_HOME"] = str(env["PI_HOME"])
+            elif backend_name == "cc":
+                inline_env["CLAUDE_CONFIG_DIR"] = str(env["CLAUDE_CONFIG_DIR"])
+            else:
+                raise ValueError(f"unsupported agent_backend: {backend_name}")
             if resume_session_id is not None:
                 inline_env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
             if model_provider is not None:
@@ -5043,15 +5143,18 @@ class SessionManager:
                 inline_env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
             if service_tier is not None:
                 inline_env["CODEX_WEB_SERVICE_TIER"] = service_tier
-            codex_bin = _clean_optional_text(os.environ.get("CODEX_BIN"))
-            if codex_bin is not None:
-                inline_env["CODEX_BIN"] = codex_bin
+            backend_bin_env_var = get_agent_backend(backend_name).bin_env_var
+            backend_bin = _clean_optional_text(os.environ.get(backend_bin_env_var))
+            if backend_bin is not None:
+                inline_env[backend_bin_env_var] = backend_bin
             repo_root = Path(__file__).resolve().parent.parent
             tmux_unset_vars = [
                 "CODEX_HOME",
                 "PI_HOME",
+                "CLAUDE_CONFIG_DIR",
                 "CODEX_BIN",
                 "PI_BIN",
+                "CLAUDE_BIN",
                 "CODEX_WEB_OWNER",
                 "CODEX_WEB_AGENT_BACKEND",
                 "CODEX_WEB_MODEL_PROVIDER",
@@ -6880,7 +6983,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             obj.get("model_provider"),
                             allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
                         )
-                    else:
+                    elif agent_backend == "pi":
                         pi_provider_choices = {
                             str(value)
                             for value in (_read_pi_launch_defaults().get("provider_choices") or [])
@@ -6890,6 +6993,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             obj.get("model_provider"),
                             allowed=pi_provider_choices or None,
                         )
+                    elif agent_backend == "cc":
+                        if obj.get("model_provider") not in (None, ""):
+                            raise ValueError("model_provider is not supported for cc")
+                        model_provider = None
+                    else:
+                        raise ValueError(f"unsupported agent_backend: {agent_backend}")
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
@@ -6901,7 +7010,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return
                 else:
                     if obj.get("preferred_auth_method") not in (None, ""):
-                        _json_response(self, 400, {"error": "preferred_auth_method is not supported for pi"})
+                        _json_response(self, 400, {"error": f"preferred_auth_method is not supported for {agent_backend}"})
                         return
                     preferred_auth_method = None
                 try:
@@ -6920,7 +7029,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
-                else:
+                elif agent_backend == "pi":
                     try:
                         reasoning_effort = _normalize_requested_pi_reasoning_effort(
                             obj.get("reasoning_effort"),
@@ -6934,6 +7043,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         _json_response(self, 400, {"error": "service_tier is not supported for pi"})
                         return
                     service_tier = None
+                elif agent_backend == "cc":
+                    try:
+                        reasoning_effort = _normalize_requested_cc_reasoning_effort(obj.get("reasoning_effort"))
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
+                    if obj.get("service_tier") not in (None, ""):
+                        _json_response(self, 400, {"error": "service_tier is not supported for cc"})
+                        return
+                    service_tier = None
+                else:
+                    _json_response(self, 400, {"error": f"unsupported agent_backend: {agent_backend}"})
+                    return
                 create_in_tmux_raw = obj.get("create_in_tmux")
                 if create_in_tmux_raw is None:
                     create_in_tmux = False

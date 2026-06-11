@@ -106,6 +106,46 @@ class TestSessionResumeCandidates(unittest.TestCase):
             "Is it possible to extract something like the conversation title or at least the first user message?",
         )
 
+    def test_list_cc_resume_candidates_filters_same_cwd(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            same = root / "11111111-2222-3333-4444-555555555555.jsonl"
+            other = root / "22222222-2222-3333-4444-555555555555.jsonl"
+            _write_jsonl(
+                same,
+                [
+                    {
+                        "type": "user",
+                        "sessionId": "cc-a",
+                        "cwd": "/repo",
+                        "timestamp": "2026-03-08T01:00:00Z",
+                        "gitBranch": "feature/cc",
+                        "message": {"role": "user", "content": "hello from cc"},
+                    }
+                ],
+            )
+            _write_jsonl(
+                other,
+                [
+                    {
+                        "type": "user",
+                        "sessionId": "cc-b",
+                        "cwd": "/elsewhere",
+                        "timestamp": "2026-03-08T02:00:00Z",
+                        "message": {"role": "user", "content": "hello elsewhere"},
+                    }
+                ],
+            )
+
+            with patch("codoxear.server._iter_session_logs", return_value=[same, other]):
+                rows = _list_resume_candidates_for_cwd("/repo", agent_backend="cc", limit=10)
+
+            self.assertEqual([row["session_id"] for row in rows], ["cc-a"])
+            self.assertEqual(rows[0]["agent_backend"], "cc")
+            self.assertEqual(rows[0]["git_branch"], "feature/cc")
+            self.assertEqual(rows[0]["log_path"], str(same))
+            self.assertEqual(_first_user_message_preview_from_log(same), "hello from cc")
+
     def test_list_pi_resume_candidates_filters_same_cwd(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)
@@ -393,7 +433,7 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertIn("CODEX_WEB_TMUX_SESSION=codoxear", shell_cmd)
         self.assertIn("CODEX_WEB_TMUX_WINDOW=", shell_cmd)
         self.assertIn("CODEX_WEB_LAUNCH_ID=", shell_cmd)
-        self.assertIn("unset CODEX_HOME PI_HOME CODEX_BIN PI_BIN CODEX_WEB_OWNER", shell_cmd)
+        self.assertIn("unset CODEX_HOME PI_HOME CLAUDE_CONFIG_DIR CODEX_BIN PI_BIN CLAUDE_BIN CODEX_WEB_OWNER", shell_cmd)
         self.assertIn("CODEX_WEB_RESUME_SESSION_ID", shell_cmd)
         self.assertNotIn("CODEX_WEB_RESUME_SESSION_ID=", shell_cmd)
         self.assertIn("CODEX_WEB_MODEL_PROVIDER=crs", shell_cmd)
@@ -486,6 +526,94 @@ class TestSpawnWebSessionResume(unittest.TestCase):
         self.assertNotIn("--disable", argv)
         self.assertNotIn("goals", argv)
         self.assertEqual(result, {"broker_pid": 7654})
+        self.assertEqual(thread_calls, ["start"])
+
+    def test_spawn_web_session_passes_cc_backend_to_broker(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 8765
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._wait_or_raise", return_value=None), patch(
+            "codoxear.server.subprocess.Popen", return_value=_Proc()
+        ) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(
+                manager,
+                cwd=td,
+                agent_backend="cc",
+                model="claude-haiku-4-5",
+                reasoning_effort="max",
+            )
+
+        argv = popen_mock.call_args.args[0]
+        env = popen_mock.call_args.kwargs["env"]
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "--dangerously-skip-permissions",
+                "--model",
+                "claude-haiku-4-5",
+                "--effort",
+                "max",
+            ],
+        )
+        self.assertEqual(env["CODEX_WEB_AGENT_BACKEND"], "cc")
+        self.assertEqual(env["CLAUDE_CONFIG_DIR"], str(Path.home() / ".claude"))
+        self.assertEqual(env["CODEX_WEB_MODEL"], "claude-haiku-4-5")
+        self.assertEqual(env["CODEX_WEB_REASONING_EFFORT"], "max")
+        self.assertNotIn("CODEX_HOME", env)
+        self.assertNotIn("PI_HOME", env)
+        self.assertEqual(result, {"broker_pid": 8765})
+        self.assertEqual(thread_calls, ["start"])
+
+    def test_spawn_web_session_passes_cc_resume_id(self) -> None:
+        manager = SessionManager.__new__(SessionManager)
+        thread_calls: list[str] = []
+
+        class _Proc:
+            pid = 8766
+            stderr = None
+
+            def wait(self) -> int:
+                return 0
+
+        with TemporaryDirectory() as td, patch("codoxear.server._list_resume_candidates_for_cwd", return_value=[{"session_id": "resume-cc"}]), patch(
+            "codoxear.server._wait_or_raise", return_value=None
+        ), patch("codoxear.server.subprocess.Popen", return_value=_Proc()) as popen_mock, patch.object(threading.Thread, "start", lambda self: thread_calls.append("start")):
+            result = SessionManager.spawn_web_session(
+                manager,
+                cwd=td,
+                agent_backend="cc",
+                resume_session_id="resume-cc",
+            )
+
+        argv = popen_mock.call_args.args[0]
+        self.assertEqual(
+            argv,
+            [
+                ANY,
+                "-m",
+                "codoxear.broker",
+                "--cwd",
+                td,
+                "--",
+                "--dangerously-skip-permissions",
+                "--resume",
+                "resume-cc",
+            ],
+        )
+        self.assertEqual(result, {"broker_pid": 8766})
         self.assertEqual(thread_calls, ["start"])
 
     def test_spawn_web_session_uses_pi_session_arg_without_resume_log_env(self) -> None:

@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any
 from typing import Iterator
 
+from .cc_log import cc_assistant_is_final_turn_end
+from .cc_log import cc_assistant_text
+from .cc_log import cc_assistant_thinking_count
+from .cc_log import cc_assistant_tool_use_count
+from .cc_log import cc_is_turn_end
+from .cc_log import cc_message_role
+from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
@@ -120,6 +127,16 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
             return _event_ts(obj)
         return None
 
+    if typ == "user":
+        if cc_user_text(obj):
+            return _event_ts(obj)
+        return None
+
+    if typ == "assistant":
+        if cc_assistant_text(obj):
+            return _event_ts(obj)
+        return None
+
     if typ == "response_item":
         p = obj.get("payload")
         if not isinstance(p, dict):
@@ -149,6 +166,32 @@ def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
 
 def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
     typ = obj.get("type")
+    if typ == "user":
+        user_text = cc_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            ets = _event_ts(obj)
+            evcc: dict[str, Any] = {"role": "user", "text": user_text}
+            if ets is not None:
+                evcc["ts"] = ets
+            return evcc
+        return None
+
+    if typ == "assistant":
+        assistant_text = cc_assistant_text(obj)
+        if isinstance(assistant_text, str) and assistant_text:
+            ets = _event_ts(obj)
+            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
+            evcca: dict[str, Any] = {
+                "role": "assistant",
+                "text": assistant_text,
+                "message_class": message_class,
+                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+            }
+            if ets is not None:
+                evcca["ts"] = ets
+            return evcca
+        return None
+
     if typ == "message":
         user_text = pi_user_text(obj)
         if isinstance(user_text, str) and user_text:
@@ -283,6 +326,13 @@ def _pi_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
     if role == "toolResult":
         return True
     return (pi_assistant_thinking_count(obj) > 0) or (pi_assistant_tool_use_count(obj) > 0)
+
+
+def _cc_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
+    role = cc_message_role(obj)
+    if role == "toolResult":
+        return True
+    return (cc_assistant_thinking_count(obj) > 0) or (cc_assistant_tool_use_count(obj) > 0)
 
 
 def _parse_jsonl_line(raw_line: bytes | str) -> dict[str, Any] | None:
@@ -581,6 +631,56 @@ def _extract_chat_events(
 
     for obj in objs:
         typ = obj.get("type")
+        if typ == "user":
+            user_text = cc_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                turn_start = True
+                ets = event_ts(obj)
+                evcc: dict[str, Any] = {"role": "user", "text": user_text}
+                if ets is not None:
+                    evcc["ts"] = ets
+                events.append(evcc)
+                continue
+            if cc_message_role(obj) == "toolResult":
+                total_tools += 1
+                continue
+
+        if typ == "assistant":
+            assistant_text = cc_assistant_text(obj)
+            tool_count = cc_assistant_tool_use_count(obj)
+            thinking_count = cc_assistant_thinking_count(obj)
+            if thinking_count > 0:
+                total_thinking += thinking_count
+            if tool_count > 0:
+                total_tools += tool_count
+                message = obj.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                for part in content if isinstance(content, list) else []:
+                    if isinstance(part, dict) and part.get("type") == "tool_use":
+                        name = part.get("name")
+                        if isinstance(name, str) and name:
+                            tool_names.add(name)
+                            last_tool = name
+            if isinstance(assistant_text, str) and assistant_text:
+                ets = event_ts(obj)
+                message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
+                if message_class == "final_response":
+                    turn_end = True
+                evcca: dict[str, Any] = {
+                    "role": "assistant",
+                    "text": assistant_text,
+                    "message_class": message_class,
+                    "message_id": text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+                }
+                if ets is not None:
+                    evcca["ts"] = ets
+                events.append(evcca)
+            continue
+
+        if typ == "system" and cc_is_turn_end(obj):
+            turn_end = True
+            continue
+
         if typ == "message":
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
@@ -759,6 +859,11 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
             if not text.strip():
                 continue
             message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
+        elif typ == "assistant":
+            text = cc_assistant_text(obj) or ""
+            if not text.strip():
+                continue
+            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
         elif typ == "event_msg":
             payload = obj.get("payload")
             if not isinstance(payload, dict):
@@ -855,6 +960,8 @@ def _read_chat_events_from_tail(
 def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
     if obj.get("type") == "message":
         return bool(pi_assistant_text(obj))
+    if obj.get("type") == "assistant":
+        return bool(cc_assistant_text(obj))
     p = obj.get("payload")
     if not isinstance(p, dict):
         raise ValueError("invalid response_item payload")
@@ -892,6 +999,22 @@ def _analyze_log_chunk(
                 continue
             d_th += pi_assistant_thinking_count(obj)
             d_tools += pi_assistant_tool_use_count(obj)
+            continue
+        if typ == "user":
+            if cc_user_text(obj):
+                d_th = 0
+                d_tools = 0
+                d_sys = 0
+                continue
+            if cc_message_role(obj) == "toolResult":
+                d_tools += 1
+                continue
+        if typ == "assistant":
+            d_th += cc_assistant_thinking_count(obj)
+            d_tools += cc_assistant_tool_use_count(obj)
+            continue
+        if typ == "system" and cc_is_turn_end(obj):
+            d_sys += 1
             continue
         if typ == "event_msg":
             p = obj.get("payload")
@@ -974,6 +1097,28 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     saw_terminal_signal = True
                     idle = False
                     continue
+            if typ == "user":
+                if cc_user_text(obj):
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+                if _cc_message_keeps_turn_busy(obj):
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+            if typ == "assistant":
+                if cc_assistant_text(obj):
+                    saw_terminal_signal = True
+                    idle = cc_assistant_is_final_turn_end(obj)
+                    continue
+                if _cc_message_keeps_turn_busy(obj):
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+            if typ == "system" and cc_is_turn_end(obj):
+                saw_terminal_signal = True
+                idle = True
+                continue
             if typ == "event_msg":
                 p = obj.get("payload")
                 if not isinstance(p, dict):
@@ -1069,6 +1214,17 @@ def _last_chat_role_ts_from_tail(
                     last_user = (i, event_ts(obj))
                     continue
                 if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
+                    last_assistant = (i, event_ts(obj))
+                    continue
+            if typ == "user":
+                if cc_user_text(obj):
+                    last_user = (i, event_ts(obj))
+                    continue
+                if _cc_message_keeps_turn_busy(obj):
+                    last_assistant = (i, event_ts(obj))
+                    continue
+            if typ == "assistant":
+                if cc_assistant_text(obj) or _cc_message_keeps_turn_busy(obj):
                     last_assistant = (i, event_ts(obj))
                     continue
             if typ == "event_msg":

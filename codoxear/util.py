@@ -16,6 +16,8 @@ from typing import Any
 from .agent_backend import get_agent_backend
 from .agent_backend import infer_agent_backend_from_log_path
 from .agent_backend import normalize_agent_backend
+from .cc_log import read_cc_session_header
+from .cc_log import read_cc_session_id
 from .pi_log import read_pi_log_cwd
 from .pi_log import read_pi_session_header
 from .pi_log import read_pi_session_id
@@ -161,6 +163,23 @@ def _is_pi_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> 
     return True
 
 
+def _is_cc_session_log_path(path: Path, *, sessions_dir: Path | None = None) -> bool:
+    if path.suffix != ".jsonl":
+        return False
+    path_text = str(path).replace("\\", "/")
+    if "/subagents/" in path_text:
+        return False
+    if path.name == "history.jsonl":
+        return False
+    if sessions_dir is None:
+        return "/.claude/projects/" in path_text
+    try:
+        path.resolve().relative_to(sessions_dir.resolve())
+    except Exception:
+        return False
+    return True
+
+
 def _paths_match(a: Path, b: Path) -> bool:
     try:
         return a.resolve() == b.resolve()
@@ -220,6 +239,8 @@ def read_session_meta_payload(
     )
     if backend_name == "pi":
         return read_pi_session_header(log_path)
+    if backend_name == "cc":
+        return read_cc_session_header(log_path)
     deadline = now() + float(timeout_s)
     while True:
         payload = _read_session_meta_payload_once(log_path, max_bytes=max_bytes)
@@ -269,6 +290,8 @@ def iter_session_logs(sessions_dir: Path, *, agent_backend: str = "codex") -> li
             continue
         if backend_name == "pi" and not _is_pi_session_log_path(p, sessions_dir=sessions_dir):
             continue
+        if backend_name == "cc" and not _is_cc_session_log_path(p, sessions_dir=sessions_dir):
+            continue
         try:
             mt = float(p.stat().st_mtime)
         except FileNotFoundError:
@@ -290,7 +313,11 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str, *, agen
             if session_id in p.name:
                 return p
             continue
-        if read_pi_session_id(p) == session_id:
+        if backend_name == "pi":
+            if read_pi_session_id(p) == session_id:
+                return p
+            continue
+        if backend_name == "cc" and read_cc_session_id(p) == session_id:
             return p
     return None
 
@@ -333,6 +360,8 @@ def find_new_session_log(
                     continue
             if backend_name == "pi":
                 sid = read_pi_session_id(p)
+            elif backend_name == "cc":
+                sid = read_cc_session_id(p)
             else:
                 sid = payload.get("id")
             if isinstance(sid, str) and sid:
@@ -373,8 +402,10 @@ def _macos_descendants(root_pid: int) -> list[int]:
     return out
 
 
-def _macos_open_rollout_logs(root_pid: int) -> set[Path]:
+def _macos_open_rollout_logs(root_pid: int, *, agent_backend: str = "codex") -> set[Path]:
     import subprocess
+    backend_name = normalize_agent_backend(agent_backend)
+    sessions_dir = get_agent_backend(backend_name).sessions_dir()
     pids = _macos_descendants(root_pid)
     if not pids:
         return set()
@@ -393,9 +424,16 @@ def _macos_open_rollout_logs(root_pid: int) -> set[Path]:
         tgt = line[1:]
         if not tgt.startswith("/") or not tgt.endswith(".jsonl"):
             continue
-        if "/rollout-" not in tgt:
+        path = Path(tgt)
+        if backend_name == "codex":
+            if _is_codex_rollout_log_path(path):
+                out.add(path)
             continue
-        out.add(Path(tgt))
+        if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+            out.add(path)
+            continue
+        if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
+            out.add(path)
     return out
 
 
@@ -472,7 +510,7 @@ def proc_open_rollout_logs(proc_root: Path, root_pid: int, *, agent_backend: str
 def proc_open_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_backend: str) -> set[Path]:
     backend_name = normalize_agent_backend(agent_backend)
     if sys.platform == "darwin":
-        return _macos_open_rollout_logs(root_pid)
+        return _macos_open_rollout_logs(root_pid, agent_backend=backend_name)
     uid = int(os.getuid())
     sessions_dir = get_agent_backend(backend_name).sessions_dir()
     out: set[Path] = set()
@@ -502,7 +540,10 @@ def proc_open_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_
                     continue
                 out.add(path)
                 continue
-            if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+            if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+                out.add(path)
+                continue
+            if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
                 out.add(path)
     return out
 
@@ -514,7 +555,7 @@ def proc_open_writable_rollout_logs(proc_root: Path, root_pid: int, *, agent_bac
 def proc_open_writable_rollout_logs_for_backend(proc_root: Path, root_pid: int, *, agent_backend: str) -> set[Path]:
     backend_name = normalize_agent_backend(agent_backend)
     if sys.platform == "darwin":
-        return _macos_open_rollout_logs(root_pid)
+        return _macos_open_rollout_logs(root_pid, agent_backend=backend_name)
     uid = int(os.getuid())
     sessions_dir = get_agent_backend(backend_name).sessions_dir()
     out: set[Path] = set()
@@ -547,7 +588,10 @@ def proc_open_writable_rollout_logs_for_backend(proc_root: Path, root_pid: int, 
                     continue
                 out.add(path)
                 continue
-            if _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+            if backend_name == "pi" and _is_pi_session_log_path(path, sessions_dir=sessions_dir):
+                out.add(path)
+                continue
+            if backend_name == "cc" and _is_cc_session_log_path(path, sessions_dir=sessions_dir):
                 out.add(path)
     return out
 
