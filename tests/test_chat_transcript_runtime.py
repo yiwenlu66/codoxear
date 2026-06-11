@@ -149,6 +149,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               made: 0,
               consumePendingUserIfMatches: () => false,
               isDuplicateEvent: () => false,
+              isAdjacentAssistantDuplicateEvent: () => false,
               isNearBottom: () => false,
               markEventSeen: () => {{ ctx.seen += 1; }},
               syncJumpButton: () => {{ ctx.jumps += 1; }},
@@ -190,6 +191,61 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertFalse(out["trimmed"])
         self.assertFalse(out["rebuilt"])
         self.assertFalse(out["painted"])
+
+    def test_live_delta_dedupes_adjacent_assistant_text_across_polls(self) -> None:
+        helper_snippet = _source_between("function eventKey(ev) {", "function isTranscriptRenewalCommand(")
+        append_snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{
+              renderedAtLiveTail: true,
+              autoScroll: true,
+              recentEventKeys: [],
+              recentEventKeySet: new Set(),
+              RECENT_EVENT_KEYS_MAX: 320,
+              made: 0,
+              inserted: 0,
+              rows: [{{ dataset: {{ role: "assistant", assistantDedupeKey: "final_response|same final text" }} }}],
+              normalizeTextForPendingMatch: (s) => String(s || ""),
+              renderedMessageRows: () => ctx.rows,
+              consumePendingUserIfMatches: () => false,
+              isNearBottom: () => true,
+              safeMakeRow: () => {{
+                ctx.made += 1;
+                return {{ row: {{}}, bubble: {{}} }};
+              }},
+              typingRow: null,
+              bottomSentinel: {{}},
+              chatInner: {{ insertBefore: () => {{ ctx.inserted += 1; }} }},
+              trimRenderedRows: () => {{ ctx.trimmed = true; }},
+              rebuildDecorations: () => {{ ctx.rebuilt = true; }},
+              markClickFirstPaint: () => {{ ctx.painted = true; }},
+              requestAnimationFrame: (fn) => fn(),
+              scrollToBottom: () => {{ ctx.scrolled = true; }},
+              syncJumpButton: () => {{ ctx.jumped = true; }},
+            }};
+            vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(helper_snippet)}, ctx);
+            vm.runInContext({json.dumps(append_snippet)}, ctx);
+            ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 2.4 }});
+            const afterDuplicate = {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.recentEventKeys.slice() }};
+            ctx.rows = [{{ dataset: {{ role: "user" }} }}];
+            ctx.appendEvent({{ role: "assistant", text: "same final text", message_class: "final_response", ts: 3.0 }});
+            process.stdout.write(JSON.stringify({{
+              afterDuplicate,
+              final: {{ made: ctx.made, inserted: ctx.inserted, seen: ctx.recentEventKeys.slice() }},
+            }}));
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["afterDuplicate"]["made"], 0)
+        self.assertEqual(out["afterDuplicate"]["inserted"], 0)
+        self.assertEqual(out["afterDuplicate"]["seen"], ["assistant|2400|same final text"])
+        self.assertEqual(out["final"]["made"], 1)
+        self.assertEqual(out["final"]["inserted"], 1)
+        self.assertEqual(out["final"]["seen"], ["assistant|2400|same final text", "assistant|3000|same final text"])
 
     def test_new_command_send_failure_does_not_detach_current_transcript(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

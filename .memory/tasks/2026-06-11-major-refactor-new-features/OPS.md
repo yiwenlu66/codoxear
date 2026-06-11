@@ -226,3 +226,10 @@
 ## 2026-06-12 02:27
 - Final clean-room review after assistant chat-dedupe change used a concise read-only `delegate` gate.
 - Review result: no blockers; risks limited to deferred real backend/device/performance validation, unresolved Codex per-model reasoning source, and cross-poll duplicate suppression beyond batch/page extraction not being proven. Verdict: PASS/yield `develop`; do not merge `main` without approval.
+
+## 2026-06-12 02:35
+- Closed the previously scoped cross-poll assistant duplicate gap in the client live-append path. Rendered assistant rows now carry a normalized assistant dedupe key; `appendEvent()` suppresses a later live delta if it is an adjacent assistant duplicate with the same message class/text and marks the event seen. A user row resets the adjacency because the DOM tail is no longer assistant.
+- Added Node VM regression `test_live_delta_dedupes_adjacent_assistant_text_across_polls`, which distinguishes duplicate suppression after an assistant tail from preserving the same assistant text after a user row.
+- Targeted validation: local `node --check codoxear/static/app.js` passed; `scripts/codoxear-docker-sandbox test tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_message_index.py -q` passed (`27 passed`).
+- Full validation: `scripts/codoxear-docker-sandbox test` passed (`428 passed, 2 skipped in 10.91s`); Dockerized `node --check codoxear/static/app.js` passed.
+- Updated current acceptance evidence in `PROMPT.md` and `recon/final-acceptance-summary.md` from 427 to 428 tests and clarified the stronger assistant-dedupe scope.

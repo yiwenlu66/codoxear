@@ -3334,6 +3334,8 @@
           if (typeof ts === "number" && Number.isFinite(ts)) row.dataset.ts = String(ts);
           if (!pending && typeof ev.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
           const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
+          const assistantDedupeKey = role === "assistant" ? chatAssistantDedupeKey(ev) : "";
+          if (assistantDedupeKey) row.dataset.assistantDedupeKey = assistantDedupeKey;
 
           const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
           if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
@@ -3392,6 +3394,8 @@
             if (ts !== null) row.dataset.ts = String(ts);
             if (!pending && typeof ev?.history_cursor === "string" && ev.history_cursor) row.dataset.historyCursor = ev.history_cursor;
             const messageClass = typeof ev?.message_class === "string" ? ev.message_class : "";
+            const assistantDedupeKey = role === "assistant" ? chatAssistantDedupeKey(ev) : "";
+            if (assistantDedupeKey) row.dataset.assistantDedupeKey = assistantDedupeKey;
             const bubble = el("div", { class: role === "user" ? "msg user" : "msg assistant" });
             if (role === "assistant" && (messageClass === "error" || messageClass === "warning")) {
               bubble.classList.add(messageClass);
@@ -3442,6 +3446,24 @@
           const key = eventKey(ev);
           if (!key) return false;
           return recentEventKeySet.has(key);
+        }
+
+        function chatAssistantDedupeKey(ev) {
+          if (!ev || ev.role !== "assistant") return "";
+          const raw = typeof ev.text === "string" ? ev.text : "";
+          const text = pendingMatchKey(raw).replace(/\s+/g, " ").trim();
+          if (!text) return "";
+          const messageClass = typeof ev.message_class === "string" ? ev.message_class : "";
+          return `${messageClass}|${text}`;
+        }
+
+        function isAdjacentAssistantDuplicateEvent(ev) {
+          if (!renderedAtLiveTail || !ev || ev.pending || ev.role !== "assistant") return false;
+          const key = chatAssistantDedupeKey(ev);
+          if (!key) return false;
+          const rows = renderedMessageRows();
+          const last = rows.length ? rows[rows.length - 1] : null;
+          return Boolean(last && last.dataset.role === "assistant" && last.dataset.assistantDedupeKey === key);
         }
 
         function pendingMatchKey(s) {
@@ -3906,6 +3928,10 @@
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
           if (consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
+          if (isAdjacentAssistantDuplicateEvent(ev)) {
+            markEventSeen(ev);
+            return;
+          }
 
           const pending = Boolean(ev.pending);
           const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));

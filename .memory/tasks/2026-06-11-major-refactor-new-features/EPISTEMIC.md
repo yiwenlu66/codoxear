@@ -216,3 +216,8 @@ Commitments:
 
 ## 2026-06-12 02:27
 - Clean-room review after closing the deterministic assistant-dedupe gap found no blocker. The remaining uncertainties are either broader live-like validation or explicitly scoped behavior beyond the implemented batch/page dedupe.
+
+## 2026-06-12 02:35
+- Observation: the client previously deduped exact event keys only, so duplicate assistant text with a different timestamp could still render if it arrived in a later live poll after the previous assistant row had already rendered.
+- Mechanism: storing a normalized assistant dedupe key on rendered assistant rows lets `appendEvent()` compare the incoming assistant event to the actual rendered tail. Because the rendered tail changes to a user row after a user message, repeated assistant text in a later turn remains visible.
+- Revised claim: assistant duplicate suppression now covers both server batch/page extraction and the client live-append cross-poll path. Remaining duplicate uncertainty is limited to more complex non-adjacent/streaming patterns not represented by the adjacent duplicate mechanism.

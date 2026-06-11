@@ -33,7 +33,7 @@ The implementation avoided whole stale PR-branch merges. Accepted work was reimp
 - Loaded-scope long-chat navigation: previous/next loaded user turn and search over rendered/loaded messages.
 - File picker local-first fuzzy results while full-project search is pending or failed.
 - New-session recent provider/model reuse through the existing model combobox.
-- Adjacent duplicate assistant chat events are deduped within an assistant stretch while repeated answers after a new user turn remain visible.
+- Adjacent duplicate assistant chat events are deduped within an assistant stretch in server page/live extraction and in the client live-append path, while repeated answers after a new user turn remain visible.
 
 ### Unattended mode
 
@@ -74,9 +74,9 @@ The implementation avoided whole stale PR-branch merges. Accepted work was reimp
 
 Latest full code-validation evidence after the final runtime-affecting change:
 
-- `scripts/codoxear-docker-sandbox test` → `427 passed, 2 skipped`.
-- `python3 -m py_compile codoxear/rollout_log.py` passed for the final log-extraction change.
-- Previous local and Docker `node --check codoxear/static/app.js` checks passed; the final assistant-dedupe change did not modify JavaScript.
+- `scripts/codoxear-docker-sandbox test` → `428 passed, 2 skipped`.
+- `python3 -m py_compile codoxear/rollout_log.py` passed for the assistant chat-extraction change.
+- Local and Docker `node --check codoxear/static/app.js` passed for the client live-append dedupe change.
 
 Browser validation ran only against isolated Docker servers with isolated/synthetic state:
 

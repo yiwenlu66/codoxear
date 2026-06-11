@@ -14,7 +14,7 @@ Done means:
 Current status: `develop` is the integrated acceptance candidate; `main` remains untouched. The branch contains the selected PR-compatible fixes, isolated Docker validation sandbox, responsiveness and long-chat navigation changes, clean public Unattended-mode rename, internal Unattended naming cleanup, Pi model-aware thinking-effort constraints, minimal shared-broker Claude Code support, file picker/search ergonomics, recent provider/model reuse, and deterministic pressure-test regressions.
 
 Current evidence base:
-1. Full isolated Docker suite is green after the latest code changes: `427 passed, 2 skipped`.
+1. Full isolated Docker suite is green after the latest code changes: `428 passed, 2 skipped`.
 2. JS parse checks passed for `codoxear/static/app.js` in local and Docker contexts.
 3. Browser validation ran only against isolated Docker servers and synthetic state: Claude/new-session controls on port 18791, long-chat loaded search/navigation/history on port 18792, and renamed Unattended menu/API/sweep behavior on port 18793.
 4. Recon and plan artifacts are preserved in `recon/`; task observations and validation are in `OPS.md` / `EPISTEMIC.md`.
