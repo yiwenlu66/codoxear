@@ -176,3 +176,11 @@ Commitments:
 ## 2026-06-12 01:51
 - Clean-room review found no blocker to yielding the `develop` acceptance candidate under the stated constraints.
 - Residual uncertainty is scoped to live-like backend/browser pressure tests that were not run because the task constraints forbid touching live sessions and further sandbox-realistic backend tests require user-authorized credentials/binaries/time.
+
+## 2026-06-12 01:59
+- Observation: Codex log discovery requires `session_meta`; a synthetic log without it fails loudly instead of silently binding. This is consistent with the no-silent-fallback contract and was contained to the isolated sandbox.
+- Observation: in a real browser against an isolated server, the long-chat UI loaded a recent tail window from a 320-message synthetic transcript, found a loaded search marker exactly once, navigated among loaded user turns, and loaded older history back to the beginning.
+- Scoped claim: long-chat search/navigation/history loading has browser-level evidence for synthetic Codex logs and rendered loaded rows. This still does not prove performance on a real mobile device, real Monaco/file-viewer races, or live backend CLI lifecycle behavior.
+
+## 2026-06-12 02:00
+- Follow-up interpretation: the synthetic long-chat rows used `phase:"final_answer"` without `end_turn:true`, so browser busy/Interrupt state from that run should not be interpreted as evidence about idle status. Existing `tests/test_idle_heuristics.py::test_response_item_end_turn_is_idle` constrains the valid Codex idle shape with `end_turn:true`.

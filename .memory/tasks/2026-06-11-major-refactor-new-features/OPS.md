@@ -176,3 +176,12 @@
 ## 2026-06-12 01:51
 - Ran required clean-room adversarial review via `architect` subagent after two heavier review attempts timed out and one lightweight delegate returned no usable findings.
 - Review result: no blockers; residual risks limited to already-known unvalidated live-like backend/session paths (real Codex/Pi/Claude creation, Monaco browser race, zsh/oh-my-zsh startup, full long-transcript interaction). Verdict: yield acceptable on `develop`; do not merge `main`.
+
+## 2026-06-12 01:59
+- Continued after final candidate review to close a remaining feasible evidence gap: browser-level long-chat validation with synthetic state only.
+- Started a fresh isolated Docker server on port 18792 with root `/tmp/codoxear-docker-sandbox-longchat`; no live server/session/broker state was touched.
+- Created a synthetic mock broker inside the container with a Unix control socket under the sandbox Codoxear app dir and a synthetic Codex rollout log containing 1 `session_meta` row plus 320 chat rows (160 user + 160 assistant).
+- Negative evidence preserved: the first synthetic-log attempt omitted Codex `session_meta`; discovery failed loudly with `ValueError: missing session metadata`, so the fixture was invalid and the sandbox was restarted clean before browser measurement.
+- API discovery after corrected fixture listed one synthetic Codex session with model `synthetic-model` and reasoning `low`.
+- Browser evidence via `agent-browser`: login succeeded; synthetic session auto-selected; initial loaded tail contained 61 rendered rows, 30 loaded user rows, and began at `User turn 131`; loaded-search overlay opened and querying `UNIQUE-needle` returned status `1/1 loaded` with current hit `Assistant answer 149... UNIQUE-needle`; previous/next user-message navigation pulsed loaded user rows; Load older history path expanded rendering to 321 rows / 160 user rows with first text `User turn 001`.
+- Cleanup: closed the ephemeral browser session, stopped the Docker sandbox, and verified port 18792 no longer accepted connections.
