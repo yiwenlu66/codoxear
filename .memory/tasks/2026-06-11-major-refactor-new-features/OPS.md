@@ -172,3 +172,7 @@
 - New-session modal browser snapshot showed backend tabs `Codex`, `Pi`, and `Claude` plus model/reasoning/provider/tmux controls.
 - After clicking `Claude`, browser eval returned `providerVisible:false`, `fastVisible:false`, `reasoningText:"medium"`, and model placeholder `Model`.
 - Cleanup: closed ephemeral `agent-browser` session and stopped Docker sandbox; subsequent curl to `127.0.0.1:18791` failed to connect as expected.
+
+## 2026-06-12 01:51
+- Ran required clean-room adversarial review via `architect` subagent after two heavier review attempts timed out and one lightweight delegate returned no usable findings.
+- Review result: no blockers; residual risks limited to already-known unvalidated live-like backend/session paths (real Codex/Pi/Claude creation, Monaco browser race, zsh/oh-my-zsh startup, full long-transcript interaction). Verdict: yield acceptable on `develop`; do not merge `main`.

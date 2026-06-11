@@ -172,3 +172,7 @@ Commitments:
 - Observation: isolated browser validation loaded the real UI, authenticated successfully, exposed the new long-chat/Unattended controls, and rendered the Claude backend tab.
 - Observation: in Claude mode, provider and Fast controls were hidden while reasoning effort displayed `medium`, matching the intended backend capability contract.
 - Scoped claim: this validates UI wiring/rendering in a real browser for the changed controls, but not actual backend CLI session creation or long transcript interaction.
+
+## 2026-06-12 01:51
+- Clean-room review found no blocker to yielding the `develop` acceptance candidate under the stated constraints.
+- Residual uncertainty is scoped to live-like backend/browser pressure tests that were not run because the task constraints forbid touching live sessions and further sandbox-realistic backend tests require user-authorized credentials/binaries/time.
