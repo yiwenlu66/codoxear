@@ -3547,8 +3547,16 @@ class SessionManager:
     def files_clear(self, session_id: str) -> None:
         dirty = False
         with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            for lk in legacy_keys:
+            key, legacy_keys, s = self._files_key_for_session(session_id)
+            keys_to_clear = list(legacy_keys)
+            cwd = str(getattr(s, "cwd", "") or "").strip()
+            if cwd:
+                # `cwd:` buckets are legacy pre-session-scoping state. Do not
+                # migrate them into active sessions because they leak history
+                # across sessions with the same cwd, but do discard the matching
+                # legacy bucket when the owning session/cwd is deleted.
+                keys_to_clear.append(f"cwd:{cwd}")
+            for lk in keys_to_clear:
                 if lk in self._files:
                     self._files.pop(lk, None)
                     dirty = True

@@ -309,6 +309,7 @@ class OpenAICompatibleClient:
             system_content = (
                 "You compress assistant progress narration for spoken mobile notifications. "
                 "Return exactly one plain sentence with only the concrete progress fact. "
+                "Aim for about 15 words, roughly 12 to 18 words. "
                 "Use at most 15 words. If the source is already 15 words or fewer, do not expand it. "
                 "Compression only: never add filler, politeness, waiting language, stage directions, or meta-commentary. "
                 "No markdown, no quotes, no prefixes."
@@ -317,6 +318,7 @@ class OpenAICompatibleClient:
             system_content = (
                 "You compress assistant final responses for spoken mobile notifications. "
                 "Return exactly one plain sentence with only the main result. "
+                "Aim for about 30 words, roughly 24 to 36 words. "
                 "Use at most 30 words. Prefer compression over paraphrase. "
                 "Never add filler, politeness, stage directions, or meta-commentary, and never invent details not present in the source. "
                 "No markdown, no quotes, no prefixes."

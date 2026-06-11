@@ -65,3 +65,17 @@ Interpretations:
 Commitments:
 - Use the sandbox smoke test as the minimum server isolation check before browser/UI validation.
 - Treat the two baseline failures as live issues to fix or explicitly classify, rather than ignoring them during later changes.
+
+## 2026-06-12 00:11
+Observations:
+- The delete-session failure was caused by legacy `cwd:<cwd>` file-history state surviving session deletion even though session-scoped keys were cleared.
+- Existing file-history tests show cwd buckets are intentionally discarded on load rather than migrated, because cwd-based history leaks across sessions sharing the same project directory.
+- Voice summarization code had hard maximum wording (`Use at most 15/30 words`) but had lost approximate target-range wording expected by source tests.
+- After targeted fixes, the full Docker test suite passed with 357 passed and 2 skipped.
+
+Interpretations:
+- Deletion-time removal of the matching legacy cwd bucket repairs stale UI state without reintroducing cross-session file-history leakage.
+- Voice prompt target-range wording and hard maximum validation are complementary: the range guides useful summaries; the maximum constrains safety and notification length.
+
+Commitments:
+- Treat the Docker suite as green baseline evidence for subsequent product changes.
