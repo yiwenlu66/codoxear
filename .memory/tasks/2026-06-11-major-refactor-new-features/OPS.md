@@ -255,3 +255,10 @@
 - Final clean-room adversarial gate after the packaging and sandbox-usage regressions used fresh `critic` context.
 - Review result: no blockers and no deterministic actionable work before yield. It confirmed branch `develop`, clean worktree, latest commits present, and `main` not merged. Remaining risks are user-decision-bound or explicitly scoped: live-like backend session creation, long real Claude session, mobile/network/performance, Monaco/file-viewer races, zsh startup, full real long transcript, Codex per-model reasoning authority, and non-adjacent/streaming assistant duplicate patterns.
 - Verdict: acceptable to yield `develop`; do not merge to `main` without explicit approval.
+
+## 2026-06-12 02:53
+- Continued after user request by checking remaining cross-workstream verification criteria rather than adding product scope. Found that the latest acceptance summary did not explicitly record an editable install or isolated server-start smoke after the final branch state.
+- First editable-install command used a bad post-check: `pip install -e .` succeeded, but the assertion `shutil.which("codoxear-server")` failed because the container defaulted to a user install and `/home/tester/.local/bin` is not on `PATH`. This was a measurement artifact, not an install failure.
+- Corrected editable-install validation: copied the read-only repo into a writable `/tmp/src` inside `codoxear-sandbox:latest`, ran `python3 -m pip install -e .`, imported `codoxear.server` and `codoxear.broker`, and verified `codoxear-server`/`codoxear-broker` scripts exist under `/home/tester/.local/bin`.
+- Isolated server smoke: ran `scripts/codoxear-docker-sandbox smoke` with `CODOXEAR_DOCKER_PORT=18794`, `CODOXEAR_DOCKER_NAME=codoxear-sandbox-acceptance-18794`, and `CODOXEAR_DOCKER_ROOT=/tmp/codoxear-docker-sandbox-acceptance-18794`; result: pre-login `/api/me` `401`, post-login `/api/sessions` `200`, container `APP_DIR=/home/tester/.local/share/codoxear`. Stopped the sandbox container afterward.
+- Updated `PROMPT.md` and `recon/final-acceptance-summary.md` with the editable-install and server-smoke evidence.

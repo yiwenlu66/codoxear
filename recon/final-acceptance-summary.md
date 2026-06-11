@@ -77,6 +77,8 @@ Latest full code-validation evidence after the final runtime-affecting change:
 - `scripts/codoxear-docker-sandbox test` → `429 passed, 2 skipped`.
 - `python3 -m py_compile codoxear/rollout_log.py` passed for the assistant chat-extraction change.
 - Local and Docker `node --check codoxear/static/app.js` passed for the client live-append dedupe change.
+- Docker editable install from a writable source copy passed: `python3 -m pip install -e .`, imports of `codoxear.server`/`codoxear.broker`, and installed `codoxear-server`/`codoxear-broker` console scripts under the container user base.
+- Docker server smoke on non-live port `18794` passed: pre-login `/api/me` returned `401`, post-login `/api/sessions` returned `200`, and container `APP_DIR` was `/home/tester/.local/share/codoxear`.
 
 Browser validation ran only against isolated Docker servers with isolated/synthetic state:
 

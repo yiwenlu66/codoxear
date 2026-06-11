@@ -19,6 +19,7 @@ Current evidence base:
 3. Browser validation ran only against isolated Docker servers and synthetic state: Claude/new-session controls on port 18791, long-chat loaded search/navigation/history on port 18792, and renamed Unattended menu/API/sweep behavior on port 18793.
 4. Recon and plan artifacts are preserved in `recon/`; task observations and validation are in `OPS.md` / `EPISTEMIC.md`.
 5. Implementation/source files no longer contain Harness terminology; remaining Harness strings in tests are negative assertions guarding against old public compatibility.
+6. Isolated packaging/runtime smoke evidence now covers `python3 -m pip install -e .` from a writable source copy, console-script installation, and Docker server login/session API startup on non-live port 18794 with app state under `/home/tester/.local/share/codoxear` inside the container.
 
 Selected next tasks, if the user asks to continue beyond this acceptance candidate:
 1. Run live-like backend session creation tests for Codex/Pi/Claude in isolated sandbox state, if the user authorizes use of required binaries/credentials and confirms no live sessions should be touched.

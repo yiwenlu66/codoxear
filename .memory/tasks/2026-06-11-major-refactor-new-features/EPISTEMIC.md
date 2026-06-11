@@ -235,3 +235,8 @@ Commitments:
 
 ## 2026-06-12 02:48
 - Clean-room adversarial review after latest continuation found no remaining deterministic non-user-blocked gaps. The support for yielding is stronger because the review specifically checked whether the last changes introduced an acceptance blocker and found none.
+
+## 2026-06-12 02:53
+- Observation: full tests and browser checks did not explicitly prove the packaging/editable-install criterion or a current isolated server-start smoke.
+- Negative observation: a first post-install script-location check failed because the sandbox installed console scripts in the user base outside `PATH`; direct inspection of `/home/tester/.local/bin` corrected the measurement.
+- Scoped claim: the current `develop` branch can be installed editably from a writable source copy in the sandbox image, exposes its server/broker console scripts in the expected user-install location, and starts an isolated password-gated server without touching live app state.
