@@ -49,3 +49,19 @@ Interpretations:
 Commitments:
 - Long-conversation navigation is now an explicit workstream and should be validated against large synthetic or fixture conversations.
 - Creative latitude is bounded by standalone Docker testing, no live sessions/server, one `develop` acceptance branch, no `main` merge without approval, and the existing product philosophy.
+
+## 2026-06-12 00:09
+Observations:
+- Docker smoke test passed with the server bound to host `127.0.0.1:18790`, not the live default port, and with runtime state under container home `/home/tester/.local/share/codoxear`.
+- Initial full sandbox test run on `python:3.11-slim` failed at collection because several tests use PEP 701 f-string syntax valid only on Python 3.12+.
+- After switching the sandbox to `python:3.13-slim`, test collection succeeded and the baseline was 355 passed, 2 failed, 2 skipped.
+- One baseline failure shows delete-session cleanup does not remove cwd-keyed file history for the deleted session; another shows a source-text expectation mismatch in voice summary prompts.
+
+Interpretations:
+- The Docker sandbox now provides a valid isolation boundary for API/UI work that does not require live backend credentials.
+- The 3.11 failure was a measurement artifact caused by a too-old Python image, not a product regression.
+- The remaining two failures are pre-existing baseline problems and should be handled as product/test debt before relying on full-suite green as regression evidence.
+
+Commitments:
+- Use the sandbox smoke test as the minimum server isolation check before browser/UI validation.
+- Treat the two baseline failures as live issues to fix or explicitly classify, rather than ignoring them during later changes.
