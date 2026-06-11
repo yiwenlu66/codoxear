@@ -495,6 +495,39 @@ def _iter_jsonl_records_reverse(path: Path, *, before: int | None = None, block_
                 yield record
 
 
+def _chat_assistant_dedupe_key(event: dict[str, Any]) -> tuple[str, str] | None:
+    if event.get("role") != "assistant":
+        return None
+    text = event.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    message_class = event.get("message_class")
+    normalized_text = " ".join(_strip_oai_mem_citation_tail(text).split())
+    if not normalized_text:
+        return None
+    return (str(message_class or ""), normalized_text)
+
+
+def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    last_assistant_key: tuple[str, str] | None = None
+    for event in events:
+        role = event.get("role")
+        if role == "user":
+            last_assistant_key = None
+            out.append(event)
+            continue
+        if role == "assistant":
+            key = _chat_assistant_dedupe_key(event)
+            if key is not None and key == last_assistant_key:
+                continue
+            last_assistant_key = key
+            out.append(event)
+            continue
+        out.append(event)
+    return out
+
+
 def _read_chat_page_reverse(
     log_path: Path,
     *,
@@ -526,7 +559,7 @@ def _read_chat_page_reverse(
         break
 
     newest_first.reverse()
-    events = [_with_chat_position(item.event, before_byte=item.start) for item in newest_first]
+    events = _dedupe_assistant_chat_events([_with_chat_position(item.event, before_byte=item.start) for item in newest_first])
     next_before = newest_first[0].start if newest_first else 0
     return events, next_before, has_older, size
 
@@ -537,7 +570,7 @@ def _extract_positioned_chat_events(records: list[JsonlRecord]) -> list[dict[str
         record_events, _meta, _flags, _diag = _extract_chat_events([record.obj])
         for event in record_events:
             events.append(_with_chat_position(event, before_byte=record.start))
-    return events
+    return _dedupe_assistant_chat_events(events)
 
 
 def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:

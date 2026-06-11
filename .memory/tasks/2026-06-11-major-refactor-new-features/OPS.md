@@ -215,3 +215,10 @@
 ## 2026-06-12 02:19
 - Final clean-room review after adding the acceptance summary: `reviewer` timed out without findings; reran concise read-only `delegate` gate.
 - Delegate result: no blockers for `develop` acceptance under constraints; risks limited to deferred real backend/session creation, mobile/network/performance/Monaco/zsh/full real transcript validation, and unresolved Codex per-model reasoning capability source. Verdict: PASS/yield `develop`; do not merge `main` without approval.
+
+## 2026-06-12 02:25
+- Implemented a remaining deterministic git-history pressure-test gap for assistant message deduplication. Chat extraction now dedupes adjacent assistant events with the same normalized text/message class within an assistant stretch, including different timestamps, while resetting the dedupe key on user messages so the same text can appear in a later turn.
+- Added regressions in `tests/test_message_index.py` for tail-page and live-delta duplicate assistant text handling.
+- Targeted validation: `python3 -m py_compile codoxear/rollout_log.py` passed; `scripts/codoxear-docker-sandbox test tests/test_message_index.py tests/test_transcript_export.py tests/test_voice_push.py -q` passed (`36 passed`).
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed (`427 passed, 2 skipped in 11.53s`).
+- Updated `PROMPT.md` and `recon/final-acceptance-summary.md` validation evidence to the new 427-test count.

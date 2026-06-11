@@ -208,3 +208,8 @@ Commitments:
 
 ## 2026-06-12 02:19
 - Clean-room final gate after acceptance-summary documentation found no blocker. The remaining uncertainty is user-decision-bound: authorize broader live-like sandbox/device validation or accept `develop` as-is.
+
+## 2026-06-12 02:25
+- Observation: git-history mining identified assistant-message duplication as a medium-risk area, while delivery notifications already had adjacent duplicate suppression. Chat page/live extraction lacked equivalent direct coverage.
+- Mechanism: duplicate adjacent assistant rows in a single assistant stretch are more likely log/read artifacts than semantically distinct user-visible turns; resetting on user messages preserves repeated answers in separate turns.
+- Scoped claim: Codoxear now constrains duplicate assistant chat events within batch/page extraction. This does not prove cross-poll duplicate suppression if a duplicate arrives in a later live delta after the previous batch has already rendered.
