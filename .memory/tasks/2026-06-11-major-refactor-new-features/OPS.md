@@ -1291,3 +1291,10 @@
   - idless/malformed Claude tool-use tracking now uses one sentinel per malformed tool call, so one idless result cannot clear multiple pending malformed calls.
 - Commit: `fix: avoid empty Claude live context scans`.
 - Validation: targeted empty-delta/idless tests passed (`54 passed`); full local suite passed (`641 passed, 25 subtests passed in 16.41s`); isolated Docker suite passed (`640 passed, 1 skipped, 25 subtests passed in 12.71s`).
+
+
+## 2026-06-13 04:56
+- Applied blocker from `/tmp/codoxear-cc-hardening-review8.md`:
+  - malformed/idless Claude tool-use sentinels are now unique per parsed assistant row and part, so split-row idless tool calls do not collapse into one pending item.
+- Commit: `fix: avoid Claude unknown tool sentinel collisions`.
+- Validation: targeted split-row idless tests passed (`54 passed`); full local suite passed (`643 passed, 25 subtests passed in 13.35s`); isolated Docker suite passed (`642 passed, 1 skipped, 25 subtests passed in 14.12s`).

@@ -1098,3 +1098,10 @@ Commitments:
 - Intervention: seed prior Claude context only when a live delta contains records; represent each idless tool-use with a distinct unknown sentinel and consume one sentinel per idless result.
 - Evidence: regressions verify EOF live delta does not call the context scanner, and multiple idless tool-use calls remain pending after one idless result; full local/Docker suites passed.
 - Scoped claim: no-op live polling avoids the introduced unbounded scan while non-empty split deltas keep full current-turn correctness.
+
+
+## 2026-06-13 04:56
+- Review anomaly: idless Claude tool-use sentinels were unique only within one assistant row, so malformed calls split across rows collided and one idless result cleared both.
+- Intervention: include the parsed row identity in unknown sentinel IDs and add split-row regressions across chat/delivery/positioned/idle and broker paths.
+- Evidence: targeted regressions and full local/Docker suites passed.
+- Scoped claim: malformed idless tool-use tracking is count-like across the inspected per-scan/per-process state, not just within a single row.
