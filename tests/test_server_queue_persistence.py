@@ -555,6 +555,28 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.queue_delete(mgr, sid, "q1", allow_commit_unknown=True), {"ok": True, "queue_len": 1})
         self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q2"])
 
+    def test_orphan_commit_unknown_queue_is_skipped_by_sweep_and_reviewable(self) -> None:
+        mgr = self._mgr()
+        mgr._sessions["live"] = _make_session("live")
+        mgr._queues = {
+            "orphan": [dict(_queue_item("u", "maybe sent"), commit_unknown=True)],
+            "live": [_queue_item("q1", "live queued")],
+        }
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        called: list[str] = []
+        mgr._maybe_drain_session_queue = lambda sid: called.append(sid) or False  # type: ignore[method-assign]
+
+        SessionManager._queue_sweep(mgr)
+
+        self.assertEqual(called, ["live"])
+        self.assertIn("orphan", mgr._queues)
+        self.assertTrue(SessionManager.queue_list(mgr, "orphan")[0]["commit_unknown"])
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, "orphan", "u")
+        self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 0})
+        self.assertNotIn("orphan", mgr._queues)
+
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()

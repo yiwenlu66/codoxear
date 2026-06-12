@@ -2681,12 +2681,21 @@ class SessionManager:
                 return 0
             return self._queue_store_for_manager().queue_len(qmap, session_id)
 
+    def _queue_has_unknown_item_locked(self, session_id: str) -> bool:
+        qmap = getattr(self, "_queues", None)
+        if not isinstance(qmap, dict):
+            return False
+        q = qmap.get(session_id)
+        return isinstance(q, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q)
+
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
         with self._lock:
             qmap = getattr(self, "_queues", None)
             if not isinstance(qmap, dict):
                 return []
             s = self._sessions.get(session_id)
+            if s is None and not self._queue_has_unknown_item_locked(session_id):
+                raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             return self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
 
@@ -2710,9 +2719,9 @@ class SessionManager:
         if not item_id_clean:
             raise ValueError("id required")
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
             s = self._sessions.get(session_id)
+            if s is None and not self._queue_has_unknown_item_locked(session_id):
+                raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             ql = self._queue_store_for_manager().delete(
                 self._queues,
@@ -3233,9 +3242,10 @@ class SessionManager:
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         with self._lock:
-            # Drop queues for sessions that no longer exist.
-            dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, self._sessions.keys())
-            session_ids = self._queue_store_for_manager().nonempty_session_ids(self._queues)
+            # Drop queues for sessions that no longer exist unless they contain unresolved commit evidence.
+            active_ids = set(self._sessions.keys())
+            dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, active_ids)
+            session_ids = [sid for sid in self._queue_store_for_manager().nonempty_session_ids(self._queues) if sid in active_ids]
         if dropped:
             self._save_queues()
         for sid in session_ids:
@@ -4627,9 +4637,6 @@ class SessionManager:
         return {"queued": True, "queue_len": 1, "item": item}
 
     def queue_list(self, session_id: str) -> list[dict[str, Any]]:
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
         return self._queue_list_local(session_id)
 
     def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False) -> dict[str, Any]:
