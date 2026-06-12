@@ -2173,6 +2173,7 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can page older history when the transcript count shows more matches.</li>
+  <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages without opening another panel.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -3068,18 +3069,30 @@
           closeChatSearch();
         };
 
-        function chatSearchShortcutBlocked(target) {
+        function chatNavigationShortcutBlocked(target) {
           if (!selected) return true;
           if (isTextEntryElement(target)) return true;
           if (document.body.classList.contains("sidebar-open")) return true;
           return modalIsolationTargets.some(isModalTargetOpen);
         }
 
+        function chatSearchShortcutBlocked(target) {
+          return chatNavigationShortcutBlocked(target);
+        }
+
         document.addEventListener("keydown", (e) => {
-          if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-          if (chatSearchShortcutBlocked(e.target)) return;
-          e.preventDefault();
-          openChatSearch();
+          if (e.defaultPrevented) return;
+          if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (chatSearchShortcutBlocked(e.target)) return;
+            e.preventDefault();
+            openChatSearch();
+            return;
+          }
+          if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+            if (chatNavigationShortcutBlocked(e.target)) return;
+            e.preventDefault();
+            jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);
+          }
         });
 
         function oldestRenderedHistoryCursor() {
