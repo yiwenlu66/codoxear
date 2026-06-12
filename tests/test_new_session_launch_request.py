@@ -61,6 +61,17 @@ class TestNewSessionLaunchRequest(unittest.TestCase):
         self.assertEqual(str(ctx.exception), "cwd required")
         self.assertEqual(ctx.exception.field, "cwd")
 
+    def test_parser_uses_safe_defaults_when_backend_config_is_malformed(self) -> None:
+        with patch("codoxear.server._read_codex_launch_defaults", side_effect=RuntimeError("bad codex config")):
+            codex_req = _parse_new_session_launch_request({"agent_backend": "codex", "cwd": "/repo", "model_provider": "openai"})
+        with patch("codoxear.server._read_pi_launch_defaults", side_effect=RuntimeError("bad pi config")):
+            pi_req = _parse_new_session_launch_request({"agent_backend": "pi", "cwd": "/repo", "model_provider": "macaron"})
+
+        self.assertEqual(codex_req.model_provider, "openai")
+        self.assertEqual(codex_req.preferred_auth_method, None)
+        self.assertEqual(pi_req.model_provider, "macaron")
+        self.assertEqual(pi_req.agent_backend, "pi")
+
 
 if __name__ == "__main__":
     unittest.main()

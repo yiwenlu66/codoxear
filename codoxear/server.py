@@ -2590,6 +2590,20 @@ class NewSessionLaunchRequest:
     create_in_tmux: bool
 
 
+def _codex_launch_defaults_for_request() -> dict[str, Any]:
+    try:
+        return _read_codex_launch_defaults()
+    except Exception:
+        return _fallback_codex_launch_defaults()
+
+
+def _pi_launch_defaults_for_request() -> dict[str, Any]:
+    try:
+        return _read_pi_launch_defaults()
+    except Exception:
+        return _fallback_pi_launch_defaults()
+
+
 def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest:
     try:
         agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
@@ -2599,7 +2613,7 @@ def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRe
     if not isinstance(cwd, str) or not cwd.strip():
         raise LaunchRequestValidationError("cwd required", field="cwd")
     if agent_backend == "codex":
-        allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
+        allowed_providers = set(_codex_launch_defaults_for_request().get("model_providers") or ["openai"])
         model_provider = _normalize_requested_model_provider(
             obj.get("model_provider"),
             allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
@@ -2610,7 +2624,7 @@ def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRe
     elif agent_backend == "pi":
         pi_provider_choices = {
             str(value)
-            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
+            for value in (_pi_launch_defaults_for_request().get("provider_choices") or [])
             if isinstance(value, str) and value.strip()
         }
         model_provider = _normalize_requested_model_provider(
