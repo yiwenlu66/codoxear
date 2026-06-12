@@ -920,3 +920,9 @@
 - Clean-room rerun deadlock repair: `refresh_session_meta()` now accepts `drain_queue`; attachment readiness refreshes sidecar metadata with `drain_queue=False`, preventing queue-drain/send reentry while `inject_attachment_keys()` holds the per-session input lock.
 - Commit: `fix: avoid attachment readiness queue drain`.
 - Validation: targeted attachment/sessiond/send tests passed (`27 passed in 2.95s`). Plain full suite passed (`545 passed, 10 subtests passed in 9.14s`). Full isolated Docker suite passed (`543 passed, 2 skipped, 10 subtests passed in 11.33s`).
+
+
+## 2026-06-12 20:34
+- Clean-room rerun pending-attachment repair: successful attachment injection now marks `pending_attachment`; queue/enqueue and unflagged sends reject while pending; the intended web composer send includes `allow_pending_attachment` and clears the marker on successful send.
+- Commit: `fix: reserve pending attachments for explicit send`.
+- Validation: targeted attachment/chat/send tests passed (`52 passed in 3.13s`). Plain full suite passed (`547 passed, 10 subtests passed in 8.98s`). Full isolated Docker suite passed (`545 passed, 2 skipped, 10 subtests passed in 11.04s`).

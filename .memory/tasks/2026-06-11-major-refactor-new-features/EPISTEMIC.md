@@ -687,3 +687,10 @@ Commitments:
 - Intervention: made queue draining explicit in `refresh_session_meta(drain_queue=True)` and disabled it for attachment-readiness metadata refresh.
 - Evidence: targeted tests verify attachment metadata refresh uses `drain_queue=False` and does not drain queues; full local/Docker suites passed.
 - Scoped claim: attachment readiness metadata refresh is now side-effect-free with respect to queue promotion, closing the observed self-deadlock mechanism.
+
+
+## 2026-06-12 20:34
+- Observation: clean-room review identified a post-injection semantic gap: a pasted attachment line was unreserved PTY input, so queue/unattended/direct sends could consume it before the user's intended prompt.
+- Interventions: added session `pending_attachment` state, server-side queue/unflagged-send barriers, and an explicit UI send flag for intended attachment commit.
+- Evidence: targeted tests cover pending attachment blocking enqueue/unflagged send, queue promotion stop, explicit send clearing the marker, frontend send payload, and full local/Docker suites.
+- Scoped claim: web/server send and queue paths now preserve attachment ownership until an explicit attachment-commit send; physical terminal input remains outside server serialization.
