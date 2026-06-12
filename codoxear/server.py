@@ -223,6 +223,7 @@ HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
 FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 VIDEO_PREVIEW_DIR = APP_DIR / "video_previews"
 QUEUE_PATH = APP_DIR / "session_queues.json"
+PENDING_ATTACHMENTS_PATH = APP_DIR / "pending_attachments.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
 VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
 PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
@@ -1995,6 +1996,7 @@ class SessionManager:
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[dict[str, Any]]] = {}
         self._queue_store = QueueStore(QUEUE_PATH)
+        self._pending_attachment_ids: set[str] = set()
         self._input_locks: dict[str, threading.Lock] = {}
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
@@ -2006,6 +2008,7 @@ class SessionManager:
         self._load_hidden_sessions()
         self._load_files()
         self._load_queues()
+        self._load_pending_attachments()
         self._load_recent_cwds()
         self._backfill_recent_cwds_from_logs()
         self._voice_push = VoicePushCoordinator(
@@ -2338,6 +2341,10 @@ class SessionManager:
             input_locks = getattr(self, "_input_locks", None)
             if isinstance(input_locks, dict):
                 input_locks.pop(session_id, None)
+            pending_attachment_ids = getattr(self, "_pending_attachment_ids", None)
+            if isinstance(pending_attachment_ids, set):
+                pending_attachment_ids.discard(session_id)
+        self._save_pending_attachments()
         self._save_aliases()
         if changed_sidebar:
             self._save_sidebar_meta()
@@ -2411,6 +2418,36 @@ class SessionManager:
         with self._lock:
             obj = dict(self._queues)
         self._queue_store_for_manager().save(obj)
+
+    def _load_pending_attachments(self) -> None:
+        obj = _load_json_file(PENDING_ATTACHMENTS_PATH, default=None)
+        if obj is None:
+            return
+        if not isinstance(obj, list):
+            raise ValueError("invalid pending_attachments.json (expected array)")
+        cleaned = {str(item).strip() for item in obj if isinstance(item, str) and str(item).strip()}
+        with self._lock:
+            self._pending_attachment_ids = cleaned
+
+    def _save_pending_attachments(self) -> None:
+        with self._lock:
+            ids = sorted(str(item) for item in getattr(self, "_pending_attachment_ids", set()) if str(item).strip())
+        _atomic_write_json(PENDING_ATTACHMENTS_PATH, ids)
+
+    def _set_pending_attachment(self, session_id: str, value: bool) -> None:
+        with self._lock:
+            ids = getattr(self, "_pending_attachment_ids", None)
+            if not isinstance(ids, set):
+                self._pending_attachment_ids = set()
+                ids = self._pending_attachment_ids
+            s = self._sessions.get(session_id)
+            if s:
+                s.pending_attachment = bool(value)
+            if value:
+                ids.add(session_id)
+            else:
+                ids.discard(session_id)
+        self._save_pending_attachments()
 
     def _load_recent_cwds(self) -> None:
         obj = _load_json_file(RECENT_CWD_PATH, default=None)
@@ -3159,6 +3196,7 @@ class SessionManager:
                 launch_id=launch_id,
                 spawn_nonce=spawn_nonce,
                 resume_session_id=resume_session_id,
+                pending_attachment=session_id in getattr(self, "_pending_attachment_ids", set()),
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -3196,6 +3234,7 @@ class SessionManager:
                     prev.launch_id = launch_id
                     prev.spawn_nonce = spawn_nonce
                     prev.resume_session_id = resume_session_id
+                    prev.pending_attachment = bool(prev.pending_attachment or session_id in getattr(self, "_pending_attachment_ids", set()))
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -4250,36 +4289,36 @@ class SessionManager:
         _record_launch_attempt(base)
 
     def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if s.pending_attachment and not allow_pending_attachment:
-                raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
-            sock = s.sock_path
-        self._record_prelog_user_message(s, text, source="send")
         input_lock = self._input_lock_for_session(session_id)
-        try:
-            with input_lock:
+        with input_lock:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if not s:
+                    raise KeyError("unknown session")
+                if s.pending_attachment and not allow_pending_attachment:
+                    raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
+                sock = s.sock_path
+            self._record_prelog_user_message(s, text, source="send")
+            try:
                 resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
-        except Exception:
-            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                with self._lock:
-                    self._sessions.pop(session_id, None)
-                self._clear_deleted_session_state(session_id)
-                _unlink_quiet(sock)
-                _unlink_quiet(sock.with_suffix(".json"))
-                raise KeyError("unknown session")
-            raise
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if s2:
-                if "busy" in resp:
-                    s2.busy = bool(resp.get("busy"))
-                if "queue_len" not in resp:
-                    raise ValueError("invalid broker send response")
-                s2.queue_len = int(resp.get("queue_len"))
-                s2.pending_attachment = False
+            except Exception:
+                if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                    with self._lock:
+                        self._sessions.pop(session_id, None)
+                    self._clear_deleted_session_state(session_id)
+                    _unlink_quiet(sock)
+                    _unlink_quiet(sock.with_suffix(".json"))
+                    raise KeyError("unknown session")
+                raise
+            with self._lock:
+                s2 = self._sessions.get(session_id)
+                if s2:
+                    if "busy" in resp:
+                        s2.busy = bool(resp.get("busy"))
+                    if "queue_len" not in resp:
+                        raise ValueError("invalid broker send response")
+                    s2.queue_len = int(resp.get("queue_len"))
+            self._set_pending_attachment(session_id, False)
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
@@ -4415,10 +4454,7 @@ class SessionManager:
             if not self.attachment_injection_ready(session_id):
                 raise SessionNotReadyError("session is busy; wait before attaching a file")
             resp = self.inject_keys(session_id, seq)
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if s:
-                    s.pending_attachment = True
+            self._set_pending_attachment(session_id, True)
             return resp
 
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:

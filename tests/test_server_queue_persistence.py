@@ -36,7 +36,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._lock = threading.Lock()
         mgr._sessions = {}
         mgr._queues = {}
+        mgr._pending_attachment_ids = set()
         mgr._save_queues = lambda: None
+        mgr._save_pending_attachments = lambda: None
         return mgr
 
     def test_match_session_route_requires_exact_suffix(self) -> None:
@@ -188,6 +190,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertEqual(SessionManager.inject_attachment_keys(mgr, sid, "ATTACH"), {"ok": True})
         self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
         with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
             SessionManager.enqueue(mgr, sid, "queued prompt")
 
@@ -199,6 +202,25 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
         self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
+
+    def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: self.fail("send must not reach broker after pending appears")  # type: ignore[method-assign]
+        input_lock = SessionManager._input_lock_for_session(mgr, sid)
+        input_lock.acquire()
+        try:
+            mgr._sessions[sid].pending_attachment = True
+            with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
+                input_lock.release()
+                SessionManager.send(mgr, sid, "stale direct prompt")
+                input_lock.acquire()
+        finally:
+            if input_lock.acquire(blocking=False):
+                input_lock.release()
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"

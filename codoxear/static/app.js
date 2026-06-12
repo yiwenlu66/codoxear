@@ -10512,9 +10512,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             currentRunning = true;
           }
           try {
-            const sessionInfo = sessionIndex.get(sessionId) || null;
             const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;
-            const allowPendingAttachment = Boolean((renderHere && localAttachmentCount > 0) || (sessionInfo && sessionInfo.pending_attachment));
+            const allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);
             const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
             if (renderHere && renewsTranscript) {
               sessionTailCache.delete(sessionId);
