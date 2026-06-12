@@ -32,7 +32,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
         self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn("renderTranscriptLoadError(sessionId, e);", block)
+        self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", block)
         self.assertIn("if (e && e.status === 401) {", block)
         self.assertIn("handleAppAuthLoss();", block)
         self.assertIn("if (pollGen !== myGen || selected !== sessionId) return null;", block)
@@ -58,9 +58,13 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_transcript_load_error_row_is_non_transcript_feedback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
-        start = source.index("function renderTranscriptLoadError(sessionId, err)")
+        start = source.index("function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false } = {})")
         end = source.index("function applyCachedTail", start)
         block = source[start:end]
+        self.assertIn('chatInner.querySelectorAll(".transcript-error-row")', block)
+        self.assertIn("if (!preserveTranscript) {", block)
+        self.assertIn("clearTranscriptDom();", block)
+        self.assertIn("setOlderState({ hasMore: false, isLoading: false });", block)
         self.assertIn('class: "msg-row assistant typing-row transcript-error-row"', block)
         self.assertIn('role: "alert"', block)
         self.assertIn("Could not load transcript.", block)

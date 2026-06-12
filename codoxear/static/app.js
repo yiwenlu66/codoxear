@@ -4643,11 +4643,14 @@
           syncJumpButton();
         }
 
-        function renderTranscriptLoadError(sessionId, err) {
-          clearTranscriptDom();
-          setOlderState({ hasMore: false, isLoading: false });
-          renderedAtLiveTail = true;
-          restorePendingUserRowsForSession(sessionId);
+        function renderTranscriptLoadError(sessionId, err, { preserveTranscript = false } = {}) {
+          for (const row of Array.from(chatInner.querySelectorAll(".transcript-error-row"))) row.remove();
+          if (!preserveTranscript) {
+            clearTranscriptDom();
+            setOlderState({ hasMore: false, isLoading: false });
+            renderedAtLiveTail = true;
+            restorePendingUserRowsForSession(sessionId);
+          }
           const reason = err && err.message ? ` ${err.message}` : "";
           const row = el("div", { class: "msg-row assistant typing-row transcript-error-row" });
           row.dataset.role = "assistant";
@@ -4756,7 +4759,7 @@
               handleAppAuthLoss();
               return null;
             }
-            renderTranscriptLoadError(sessionId, e);
+            renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             return null;
           }
           if (pollGen !== myGen || selected !== sessionId) return null;
