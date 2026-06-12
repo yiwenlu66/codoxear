@@ -14,7 +14,7 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected;', source)
         self.assertIn('const queueLabel = selected ? "Queued messages" : "Select a session to view queued messages";', source)
         self.assertIn('queueControl.setAttribute("aria-label", queueLabel);', source)
-        self.assertIn('syncQueueSubmitState();\n          diagBtn.disabled = !selected;', source)
+        self.assertIn('syncQueueSubmitState();\n          syncSendButtonState();\n          diagBtn.disabled = !selected;', source)
 
 
 if __name__ == "__main__":

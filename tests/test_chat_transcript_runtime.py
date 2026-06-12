@@ -275,6 +275,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               chatInner: {{ querySelector: () => null }},
               api: async () => {{ throw new Error("broker down"); }},
               setAttachCount: () => {{}},
+              syncSendButtonState: () => {{}},
               kickPoll: () => {{}},
               refreshSessions: async () => {{}},
               console,

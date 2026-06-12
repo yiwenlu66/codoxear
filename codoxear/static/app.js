@@ -4642,6 +4642,7 @@
           if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
+          syncSendButtonState();
           diagBtn.disabled = !selected;
         }
            async function loadUnattendedCfgForSelected() {
@@ -9192,6 +9193,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueControl.setAttribute("aria-label", queueLabel);
         }
 
+        function syncSendButtonState() {
+          const sendControl = $("#sendBtn");
+          if (!sendControl) return;
+          sendControl.disabled = !!sending || !selected;
+          const sendLabel = selected ? "Send" : "Select a session to send";
+          sendControl.title = sendLabel;
+          sendControl.setAttribute("aria-label", sendLabel);
+        }
+
         async function enqueueComposerText(raw, { sid = null } = {}) {
           const sessionId = sid || selected;
           const text = String(raw || "");
@@ -9821,6 +9831,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
         updateQueueBadge();
         syncQueueSubmitState();
+        syncSendButtonState();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
 	          const maxPx = 180;
@@ -10015,7 +10026,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!raw || !raw.trim()) return false;
           if (sending) return false;
           sending = true;
-          $("#sendBtn").disabled = true;
+          syncSendButtonState();
           setToast("sending...");
 
           const localId = ++localEchoSeq;
@@ -10066,13 +10077,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return false;
           } finally {
             sending = false;
-            $("#sendBtn").disabled = false;
+            syncSendButtonState();
           }
         }
 
         form.onsubmit = async (e) => {
           e.preventDefault();
-          if (!selected) return;
+          if (!selected) {
+            setToast("select a session first");
+            return;
+          }
           if (sessionLaunchFailed(sessionIndex.get(selected))) {
             setToast("failed session cannot receive messages");
             return;
