@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import base64
 import errno
 import hashlib
 import heapq
-import hmac
 import http.server
 import io
 import json
@@ -33,6 +31,13 @@ from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .auth import CookieAuthSettings
+from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
+from .auth import parse_cookies as _parse_cookies_impl
+from .auth import require_auth as _require_auth_impl
+from .auth import set_auth_cookie as _set_auth_cookie_impl
+from .auth import sign_cookie as _sign_cookie_impl
+from .auth import verify_cookie as _verify_cookie_impl
 from . import rollout_log as _rollout_log
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 from .cc_log import cc_user_text as _cc_user_text
@@ -1053,50 +1058,28 @@ def _sha256_hex(data: bytes) -> str:
 
 
 def _load_or_create_hmac_secret() -> bytes:
-    APP_DIR.mkdir(parents=True, exist_ok=True)
-    if HMAC_SECRET_PATH.exists():
-        b = HMAC_SECRET_PATH.read_bytes()
-        if len(b) < 32:
-            raise ValueError(f"invalid hmac secret (too short): {HMAC_SECRET_PATH}")
-        return b[:64]
-    secret = os.urandom(64)
-    HMAC_SECRET_PATH.write_bytes(secret)
-    os.chmod(HMAC_SECRET_PATH, 0o600)
-    return secret
+    return _load_or_create_hmac_secret_impl(app_dir=APP_DIR, secret_path=HMAC_SECRET_PATH)
 
 
 HMAC_SECRET = _load_or_create_hmac_secret()
 
 
-def _b64u(b: bytes) -> str:
-    return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
-
-
-def _b64u_dec(s: str) -> bytes:
-    pad = "=" * (-len(s) % 4)
-    return base64.urlsafe_b64decode((s + pad).encode("ascii"))
+def _cookie_auth_settings() -> CookieAuthSettings:
+    return CookieAuthSettings(
+        cookie_name=COOKIE_NAME,
+        cookie_path=COOKIE_PATH,
+        cookie_expires=COOKIE_EXPIRES,
+        cookie_secure=COOKIE_SECURE,
+        secret=HMAC_SECRET,
+    )
 
 
 def _sign_cookie(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    sig = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
-    return f"{_b64u(raw)}.{_b64u(sig)}"
+    return _sign_cookie_impl(payload, secret=HMAC_SECRET)
 
 
 def _verify_cookie(value: str) -> dict[str, Any] | None:
-    try:
-        a, b = value.split(".", 1)
-        raw = _b64u_dec(a)
-        sig = _b64u_dec(b)
-        want = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
-        if not hmac.compare_digest(sig, want):
-            return None
-        payload = json.loads(raw.decode("utf-8"))
-        if not isinstance(payload, dict):
-            return None
-        return payload
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return None
+    return _verify_cookie_impl(value, secret=HMAC_SECRET)
 
 
 class SessionLaunchError(RuntimeError):
@@ -1127,45 +1110,15 @@ def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session")
 
 
 def _parse_cookies(header: str | None) -> dict[str, str]:
-    if not header:
-        return {}
-    out: dict[str, str] = {}
-    parts = header.split(";")
-    for p in parts:
-        if "=" not in p:
-            continue
-        k, v = p.split("=", 1)
-        out[k.strip()] = v.strip()
-    return out
+    return _parse_cookies_impl(header)
 
 
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
-    cookies = _parse_cookies(handler.headers.get("Cookie"))
-    token = cookies.get(COOKIE_NAME)
-    if not token:
-        return False
-    payload = _verify_cookie(token)
-    if payload is None:
-        return False
-    if payload.get("v") != 1:
-        setattr(handler, "_codoxear_refresh_auth_cookie", True)
-    return True
+    return _require_auth_impl(handler, settings=_cookie_auth_settings(), verify=_verify_cookie)
 
 
 def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
-    token = _sign_cookie({"v": 1})
-    attrs = [
-        f"{COOKIE_NAME}={token}",
-        f"Path={COOKIE_PATH}",
-        "HttpOnly",
-        "SameSite=Strict",
-        f"Expires={COOKIE_EXPIRES}",
-    ]
-    forwarded_proto_raw = handler.headers.get("X-Forwarded-Proto")
-    forwarded_proto = str(forwarded_proto_raw).lower() if forwarded_proto_raw is not None else ""
-    if COOKIE_SECURE or forwarded_proto == "https":
-        attrs.append("Secure")
-    handler.send_header("Set-Cookie", "; ".join(attrs))
+    _set_auth_cookie_impl(handler, settings=_cookie_auth_settings())
 
 _PASSWORD_CACHE: str | None = None
 
