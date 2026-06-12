@@ -33,7 +33,7 @@ Not supported:
 
 Requires Python 3.10+.
 
-Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
+Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-sessiond`):
 
 - `python3 -m pip install .`
 
@@ -72,6 +72,14 @@ Install Codoxear (installs `codoxear-server` and `codoxear-broker`):
    Restart your shell or `source` your rc file.
 
 4. Use `codox` for terminal-owned Codex sessions, `piox` for terminal-owned Pi sessions, and `ccox` for terminal-owned Claude Code sessions when you want them registered with Codoxear. Leave plain `codex`, `pi`, and `claude` unwrapped.
+
+   For a headless helper process without a foreground terminal wrapper, use `codoxear-sessiond` with the same backend environment convention, for example:
+
+   ```sh
+   codoxear-sessiond --cwd /path/to/repo -- codex
+   CODEX_WEB_AGENT_BACKEND=pi codoxear-sessiond --cwd /path/to/repo -- pi
+   CODEX_WEB_AGENT_BACKEND=cc codoxear-sessiond --cwd /path/to/repo -- claude
+   ```
 
 5. On your phone, open `http://<your-computer>:8743`, enter the password, and select the session.
 
