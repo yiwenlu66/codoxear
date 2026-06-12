@@ -812,3 +812,10 @@ Commitments:
 - Interventions: attachment key responses now require boolean `ok is True`; enqueue no longer calls `_record_prelog_user_message` before promotion/commit, relying on `send()` to record only after confirmed commit.
 - Evidence: targeted tests cover truthy malformed attachment replies and commit-unknown enqueue no-prelog behavior; full local/Docker suites passed.
 - Scoped claim: attachment success acknowledgement is schema-strict and enqueue no longer creates false transcript fallback evidence before a prompt is committed.
+
+
+## 2026-06-12 23:08
+- Observation: rerun found mixed responses like `{ok: true, commit_unknown: true}` or `{queue_len: 0, commit_unknown: true}` were accepted as success because unknown was only checked in error branches.
+- Intervention: send and attachment response classification now treats explicit `commit_unknown` as a semantic override before success validation.
+- Evidence: targeted tests cover direct send, attachment, and enqueue mixed success+unknown responses; full local/Docker suites passed.
+- Scoped claim: broker/control responses cannot downgrade an explicit unknown commit marker into confirmed success via success-looking fields.

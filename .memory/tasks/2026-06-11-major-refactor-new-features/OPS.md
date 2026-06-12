@@ -1028,3 +1028,9 @@
 - Bounded-send sixth rerun repair: attachment key acknowledgements now require `ok is True`; enqueue no longer records prompts as submitted before confirmed send commit.
 - Commit: `fix: tighten attachment ack validation`.
 - Validation: targeted tests passed (`86 passed, 11 subtests passed in 3.10s`). Plain full suite passed (`581 passed, 21 subtests passed in 9.36s`). Full isolated Docker suite passed (`579 passed, 2 skipped, 21 subtests passed in 11.06s`).
+
+
+## 2026-06-12 23:08
+- Bounded-send seventh rerun repair: `commit_unknown: true` now overrides success-looking send and attachment responses; enqueue preserves/reports unknown if broker returns success fields plus explicit unknown.
+- Commit: `fix: honor explicit commit unknown responses`.
+- Validation: targeted tests passed (`89 passed, 11 subtests passed in 2.93s`). Plain full suite passed (`584 passed, 21 subtests passed in 8.86s`). Full isolated Docker suite passed (`582 passed, 2 skipped, 21 subtests passed in 11.11s`).
