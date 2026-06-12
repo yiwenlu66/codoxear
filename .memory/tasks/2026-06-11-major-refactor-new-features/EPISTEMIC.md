@@ -836,3 +836,10 @@ Commitments:
 ## 2026-06-12 23:22
 - Observation: independent read-noncommit review found no remaining read endpoint that promotes queued prompts.
 - Scoped claim: passive session reads no longer hide prompt commits. Residual non-blocking risk: enqueue response may be stale if the background sweep commits between enqueue append and immediate-promotion response.
+
+
+## 2026-06-12 23:35
+- Observation: focused review identified direct-send commit uncertainty as toast-only; a user could retry and duplicate a prompt without any durable server-side memory of the maybe-sent text.
+- Intervention: direct-send unknown responses now create a persisted per-session `commit_unknown_send` record. The server blocks new sends, queues, and queue sweep promotion for that session until the user explicitly clears the marker after checking transcript/terminal evidence. Queue-item uncertainty remains owned by the queue item; attachment uncertainty remains owned by pending attachment state.
+- Evidence: tests cover explicit mixed success+unknown persistence, retry/queue/sweep blocking, and clear semantics. Browser validation in isolated Docker showed the warning badge and disabled controls before clear, then re-enabled controls and `commit_unknown_send: false` after clear.
+- Scoped claim: direct send commit uncertainty is no longer ephemeral UI state; it is durable server state with an explicit recovery action. It still cannot prove whether the underlying prompt committed; it preserves that uncertainty and prevents overtaking/duplication until human verification.

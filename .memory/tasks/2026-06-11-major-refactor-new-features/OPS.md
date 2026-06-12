@@ -1052,3 +1052,10 @@
 - Focused architecture review of read-noncommit tranche at HEAD `ea0a5ac` found no blockers.
 - Review artifact: `/tmp/codoxear-read-noncommit-review.md`.
 - Reviewer observation: queue commit paths are now explicit enqueue and background sweep only; read-side updates remain metadata/cache/counter writes, not prompt commits.
+
+
+## 2026-06-12 23:35
+- Product recovery tranche: direct `/send` commit-unknown states are now durable and recoverable. Added per-session `commit_unknown_sends.json` state, session row exposure, server-side input blocking until explicit clear, `/commit_unknown_send/clear`, sidebar warning badge, and disabled send/queue controls while unresolved.
+- Commit: `03fe3fa fix: persist unknown direct sends`.
+- Validation: targeted tests passed (`73 passed, 11 subtests passed in 2.93s`). Plain full suite passed (`586 passed, 21 subtests passed in 11.40s`). Full isolated Docker suite passed (`584 passed, 2 skipped, 21 subtests passed in 11.27s`).
+- Browser evidence: isolated Docker container with fake broker and seeded unknown direct send on `http://127.0.0.1:18912/`; after login, snapshot `/tmp/codoxear_unknown_ui_after_login.txt` showed the unknown-send badge plus disabled `Resolve the unknown send before queueing/sending` buttons. After accepting clear, snapshot `/tmp/codoxear_unknown_ui_after_clear.txt` and API dump showed `commit_unknown_send: false` and Send/Queued Messages controls re-enabled. Screenshot artifact: `/tmp/codoxear-unknown-ui-evidence/after-clear.png`.
