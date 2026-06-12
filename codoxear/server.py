@@ -4393,12 +4393,7 @@ class SessionManager:
                                 break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
-                if s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned):
-                    # Discovery seeds offsets at EOF, so recover preexisting chat history once.
-                    conv_ts = _last_conversation_ts_from_tail(s.log_path)
-                    s.last_chat_history_scanned = True
-                    if isinstance(conv_ts, (int, float)):
-                        s.last_chat_ts = float(conv_ts)
+                needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 cwd_recent = _clean_recent_cwd(s.cwd)
                 recent_map = getattr(self, "_recent_cwds", None)
@@ -4455,6 +4450,7 @@ class SessionManager:
                         "_log_path_obj": s.log_path,
                         "log_exists": log_exists,
                         "needs_run_settings": needs_run_settings,
+                        "needs_history_scan": needs_history_scan,
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
                         "token": s.token,
@@ -4496,6 +4492,38 @@ class SessionManager:
             sid = str(it["session_id"])
             log_exists = bool(it.get("log_exists"))
             log_path_obj = it.get("_log_path_obj")
+            if bool(it.get("needs_history_scan")) and isinstance(log_path_obj, Path):
+                # Discovery seeds offsets at EOF, so recover preexisting chat history once.
+                conv_ts: float | None
+                try:
+                    conv_ts = _last_conversation_ts_from_tail(log_path_obj)
+                except FileNotFoundError:
+                    conv_ts = None
+                with self._lock:
+                    s_cur = self._sessions.get(sid)
+                    if s_cur is not None and s_cur.log_path == log_path_obj and not s_cur.last_chat_history_scanned:
+                        s_cur.last_chat_history_scanned = True
+                        if isinstance(conv_ts, (int, float)):
+                            s_cur.last_chat_ts = float(conv_ts)
+                        updated_ts = float(s_cur.last_chat_ts) if isinstance(s_cur.last_chat_ts, (int, float)) else float(s_cur.start_ts)
+                        it["updated_ts"] = updated_ts
+                        cwd_recent = _clean_recent_cwd(s_cur.cwd)
+                        recent_map = getattr(self, "_recent_cwds", None)
+                        if cwd_recent is not None:
+                            if not isinstance(recent_map, dict):
+                                self._recent_cwds = {}
+                                recent_map = self._recent_cwds
+                            prev_recent_ts = recent_map.get(cwd_recent)
+                            if prev_recent_ts is None or prev_recent_ts < updated_ts:
+                                recent_map[cwd_recent] = updated_ts
+                                recent_cwd_dirty = True
+                        elapsed_s = max(0.0, now_ts - updated_ts)
+                        time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                        base_priority = _clip01(time_priority + float(it.get("priority_offset", 0.0)))
+                        final_priority = 0.0 if (it.get("snoozed") or it.get("blocked")) else base_priority
+                        it["time_priority"] = time_priority
+                        it["base_priority"] = base_priority
+                        it["final_priority"] = final_priority
             if bool(it.get("needs_run_settings")) and isinstance(log_path_obj, Path):
                 try:
                     log_provider, log_model, log_effort = _read_run_settings_from_log(log_path_obj, agent_backend=str(it.get("agent_backend") or "codex"))
@@ -4533,6 +4561,7 @@ class SessionManager:
             it2.pop("_cwd_path_obj", None)
             it2.pop("log_exists", None)
             it2.pop("needs_run_settings", None)
+            it2.pop("needs_history_scan", None)
             it2.pop("state_busy", None)
             it2["git_branch"] = git_branch
             it2["busy"] = bool(busy_out)

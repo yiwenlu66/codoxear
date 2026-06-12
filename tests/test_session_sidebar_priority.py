@@ -217,7 +217,12 @@ class TestSessionSidebarPriority(unittest.TestCase):
     def test_list_sessions_uses_start_ts_when_log_has_no_sidebar_relevant_message(self) -> None:
         mgr = _make_manager()
         mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
-        with unittest.mock.patch("codoxear.server._last_conversation_ts_from_tail", return_value=None):
+
+        def no_conversation_ts(_path: Path) -> None:
+            self.assertFalse(mgr._lock.locked())
+            return None
+
+        with unittest.mock.patch("codoxear.server._last_conversation_ts_from_tail", side_effect=no_conversation_ts):
             s = _session(sid="nologmsg", start_ts=123.0, last_chat_ts=None)
             s.log_path = Path("/tmp/fake-rollout.jsonl")
             mgr._sessions = {s.session_id: s}
