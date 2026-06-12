@@ -1466,28 +1466,41 @@
         cleanupActiveApp();
         const root = $("#root");
         root.innerHTML = "";
-        const err = el("div", { class: "err" });
+        const err = el("div", { class: "err", id: "loginError", role: "alert" });
+        const pwInput = el("input", {
+          type: "password",
+          id: "pw",
+          name: "password",
+          placeholder: "Password",
+          "aria-label": "Password",
+          autocomplete: "current-password",
+          "aria-describedby": "loginError",
+        });
+        const loginBtn = el("button", { class: "primary", id: "loginBtn", type: "submit", text: "Login" });
         const wrap = el("div", { class: "loginWrap" });
-        const box = el("div", { class: "login" }, [
+        const form = el("form", { class: "login", id: "loginForm" }, [
           el("h1", { text: "Codoxear login" }),
+          el("label", { class: "sr-only", for: "pw", text: "Password" }),
           el("div", { class: "row2" }, [
-            el("input", { type: "password", id: "pw", placeholder: "Password" }),
-            el("button", { class: "primary", id: "loginBtn", text: "Login" }),
+            pwInput,
+            loginBtn,
             err,
           ]),
         ]);
-        wrap.appendChild(box);
+        wrap.appendChild(form);
         root.appendChild(wrap);
-        $("#loginBtn").onclick = async () => {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
           err.textContent = "";
-          const pw = $("#pw").value;
+          const pw = pwInput.value;
           try {
             await api("/api/login", { method: "POST", body: { password: pw } });
             onAuthed();
-          } catch (e) {
-            err.textContent = e.obj?.error || e.message;
+          } catch (e2) {
+            err.textContent = e2.obj?.error || e2.message;
           }
         };
+        pwInput.focus();
       }
 
 	      function renderApp() {
