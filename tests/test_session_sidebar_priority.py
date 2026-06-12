@@ -68,6 +68,18 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["final_priority"], 0.45, delta=0.04)
         self.assertAlmostEqual(rows[1]["final_priority"], 0.19, delta=0.04)
 
+    def test_list_sessions_does_not_drain_queue(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 50)
+        mgr._sessions = {current.session_id: current}
+        mgr._queues = {current.session_id: [{"id": "q1", "text": "queued", "created_ts": now}]}
+        mgr._maybe_drain_session_queue = lambda _sid: self.fail("list_sessions must not promote queued prompts")  # type: ignore[method-assign]
+
+        rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["queue_len"], 1)
+
     def test_list_sessions_clears_expired_snooze_and_stale_dependency(self) -> None:
         mgr = _make_manager()
         now = time.time()

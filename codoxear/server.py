@@ -3773,10 +3773,6 @@ class SessionManager:
                 if isinstance(nonce, str) and nonce and nonce in active_spawn_nonces:
                     continue
                 out.append(row)
-        for item in out:
-            if item.get("busy") or int(item.get("queue_len", 0)) <= 0:
-                continue
-            self._maybe_drain_session_queue(str(item["session_id"]))
         if files_dirty:
             self._save_files()
         if sidebar_dirty:
@@ -3797,7 +3793,7 @@ class SessionManager:
         with self._lock:
             return self._sessions.get(session_id)
 
-    def refresh_session_meta(self, session_id: str, *, drain_queue: bool = True) -> None:
+    def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
         # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
         with self._lock:
@@ -4561,7 +4557,7 @@ class SessionManager:
             raise ValueError("invalid broker tail response")
         return tail
 
-    def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = True) -> None:
+    def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = False) -> None:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
