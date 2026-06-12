@@ -66,6 +66,11 @@ Open blockers / unknowns:
 - Codex model-specific reasoning capability remains less constrained than Pi because no current authoritative per-model Codex capability source was established.
 - Real mobile-device performance, Monaco/file-viewer browser races, zsh/oh-my-zsh startup behavior, and full real long-transcript performance remain untested.
 
+
+User-reported issue updates, 2026-06-13:
+- Video pipeline/product gap: ffmpeg video transcoding does not work and, per user report, has never worked. Treat this as a real product bug, not a regression assumption. Investigate the video preview/transcoding control flow, validate with isolated Docker/app state and representative video fixtures, and preserve the exact failure mechanism before repair.
+- Pi busy-state/product gap: Pi sessions can show/stay busy after interruption. Treat this as an agent-backend state/busy/idle synchronization bug around interrupt handling. Investigate Pi log normalization, broker/sessiond state, interrupt route semantics, and UI busy-state clearing with isolated fixtures before claiming fixed.
+
 ## Context
 Required project context:
 - `AGENTS.md` for architecture, design philosophy, development reminders, and safe restart constraints.
