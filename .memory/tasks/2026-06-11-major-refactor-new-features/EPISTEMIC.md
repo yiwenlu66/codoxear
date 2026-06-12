@@ -328,3 +328,6 @@ Commitments:
 
 ## 2026-06-12 13:25
 - Evidence update: another `list_sessions()` lock-held IO source was removed. Log run-settings scans now happen outside the manager lock, with a guarded re-lock to mutate the session only if it is still current. First-history timestamp recovery remains a smaller known lock-held log-read risk.
+
+## 2026-06-12 13:27
+- Evidence update: first-history timestamp recovery is no longer lock-held IO. Because the scan can affect recency, priority, and recent-cwd state, the refactor recomputes those row fields after the guarded update. `list_sessions()` still performs some filesystem existence checks under lock, but the larger log scans and git subprocess lookup have been moved out.
