@@ -654,9 +654,13 @@ class VoicePushCoordinator:
         self._keepalive = threading.Thread(target=self._keepalive_loop, name="voice-push-keepalive", daemon=True)
         self._keepalive.start()
 
-    def settings_snapshot(self) -> dict[str, Any]:
+    def settings_snapshot(self, *, redact_secrets: bool = False) -> dict[str, Any]:
         with self._lock:
             settings = dict(self._voice_settings)
+            has_tts_api_key = bool(settings.get("tts_api_key"))
+            if redact_secrets:
+                settings["tts_api_key"] = ""
+            settings["has_tts_api_key"] = has_tts_api_key
             queue_depth = len(self._queue)
             enabled_devices = sum(
                 1
@@ -716,13 +720,28 @@ class VoicePushCoordinator:
             self._hls.reset()
         return {"active_listener_count": count}
 
-    def set_settings(self, raw: Any) -> dict[str, Any]:
-        settings = _clean_voice_settings(raw)
+    def set_settings(
+        self,
+        raw: Any,
+        *,
+        preserve_blank_api_key: bool = False,
+        redact_response: bool = False,
+    ) -> dict[str, Any]:
+        obj = dict(raw) if isinstance(raw, dict) else {}
+        clear_api_key = bool(obj.get("tts_api_key_clear"))
+        if clear_api_key:
+            obj["tts_api_key"] = ""
+        elif preserve_blank_api_key:
+            candidate = str(obj.get("tts_api_key") or "").strip()
+            if not candidate:
+                with self._lock:
+                    obj["tts_api_key"] = str(self._voice_settings.get("tts_api_key") or "")
+        settings = _clean_voice_settings(obj)
         with self._lock:
             self._voice_settings = settings
             self._queue_ready.notify_all()
         self._save_settings()
-        return self.settings_snapshot()
+        return self.settings_snapshot(redact_secrets=redact_response)
 
     def subscriptions_snapshot(self) -> dict[str, Any]:
         with self._lock:

@@ -198,6 +198,59 @@ class TestOpenAICompatibleClient(unittest.TestCase):
 
 
 class TestVoicePushCoordinator(unittest.TestCase):
+    def test_settings_snapshot_redacts_api_key_for_browser_and_preserves_blank_save(self) -> None:
+        with TemporaryDirectory() as td:
+            stop_event = threading.Event()
+            stop_event.set()
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                stop_event=stop_event,
+                settings_path=Path(td) / "voice_settings.json",
+                subscriptions_path=Path(td) / "push_subscriptions.json",
+                delivery_ledger_path=Path(td) / "voice_delivery_ledger.json",
+                vapid_private_key_path=Path(td) / "vapid.pem",
+            )
+            coord.set_settings(
+                {
+                    "tts_enabled_for_narration": False,
+                    "tts_enabled_for_final_response": True,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "secret-key",
+                }
+            )
+            redacted = coord.settings_snapshot(redact_secrets=True)
+            self.assertEqual(redacted["tts_api_key"], "")
+            self.assertTrue(redacted["has_tts_api_key"])
+
+            post = coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": True,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "",
+                },
+                preserve_blank_api_key=True,
+                redact_response=True,
+            )
+            self.assertEqual(post["tts_api_key"], "")
+            self.assertTrue(post["has_tts_api_key"])
+            self.assertEqual(coord.settings_snapshot()["tts_api_key"], "secret-key")
+
+            cleared = coord.set_settings(
+                {
+                    "tts_enabled_for_narration": True,
+                    "tts_enabled_for_final_response": True,
+                    "tts_base_url": "https://api.openai.com/v1",
+                    "tts_api_key": "ignored",
+                    "tts_api_key_clear": True,
+                },
+                preserve_blank_api_key=True,
+                redact_response=True,
+            )
+            self.assertEqual(cleared["tts_api_key"], "")
+            self.assertFalse(cleared["has_tts_api_key"])
+            self.assertEqual(coord.settings_snapshot()["tts_api_key"], "")
+
     def test_final_response_summarizes_and_enqueues_audio(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()

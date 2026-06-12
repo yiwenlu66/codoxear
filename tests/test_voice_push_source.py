@@ -36,6 +36,25 @@ class TestVoicePushSource(unittest.TestCase):
         sw_source = SERVICE_WORKER.read_text(encoding="utf-8")
         self.assertIn("payload.notification_text", sw_source)
 
+    def test_voice_settings_redact_api_key_and_preserve_blank_save(self) -> None:
+        voice_source = VOICE_PUSH.read_text(encoding="utf-8")
+        server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
+        app_source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("def settings_snapshot(self, *, redact_secrets: bool = False)", voice_source)
+        self.assertIn('settings["tts_api_key"] = ""', voice_source)
+        self.assertIn('settings["has_tts_api_key"] = has_tts_api_key', voice_source)
+        self.assertIn("preserve_blank_api_key: bool = False", voice_source)
+        self.assertIn('obj["tts_api_key"] = str(self._voice_settings.get("tts_api_key") or "")', voice_source)
+        self.assertIn("settings_snapshot(redact_secrets=True)", server_source)
+        self.assertIn("set_settings(obj, preserve_blank_api_key=True, redact_response=True)", server_source)
+        self.assertIn('has_tts_api_key: false', app_source)
+        self.assertIn('id: "voiceClearApiKeyToggle"', app_source)
+        self.assertIn('voiceApiKeyInput.value = "";', app_source)
+        self.assertIn('voiceApiKeyInput.placeholder = voiceSettings.has_tts_api_key ? "Saved API key (leave blank to keep)" : "Enter API key";', app_source)
+        self.assertIn('tts_api_key: clearApiKey ? "" : String(voiceApiKeyInput.value || "").trim()', app_source)
+        self.assertIn('tts_api_key_clear: clearApiKey', app_source)
+        self.assertNotIn('voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "")', app_source)
+
     def test_notification_click_awaits_navigation_before_focus(self) -> None:
         sw_source = SERVICE_WORKER.read_text(encoding="utf-8")
         self.assertIn('clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {', sw_source)

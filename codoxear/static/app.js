@@ -1697,6 +1697,7 @@
           tts_api_key: "",
           audio: { queue_depth: 0, segment_count: 0, last_error: "", stream_url: "/api/audio/live.m3u8" },
           notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
+          has_tts_api_key: false,
         };
         let localAnnouncementEnabled = localStorage.getItem("codoxear.announcementEnabled") === "1";
         let localNotificationEnabled = localStorage.getItem("codoxear.notificationEnabled") === "1";
@@ -2509,6 +2510,7 @@
         const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
+        const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
         const narrationSettingToggle = el("input", { id: "narrationSettingToggle", type: "checkbox" });
         const voiceSettingsViewer = el("dialog", { class: "formViewer formDialog", id: "voiceSettingsViewer", "aria-label": "Settings" }, [
           el("div", { class: "queueHeader" }, [
@@ -2525,6 +2527,13 @@
             el("label", { class: "field" }, [
               el("span", { class: "fieldLabel", text: "OpenAI-compatible API key" }),
               voiceApiKeyInput,
+              el("span", { class: "fieldHint", text: "Leave blank to keep the saved key." }),
+            ]),
+            el("div", { class: "field" }, [
+              el("label", { class: "voiceToggleRow" }, [
+                voiceClearApiKeyToggle,
+                el("span", { text: "Clear saved API key" }),
+              ]),
             ]),
             el("div", { class: "field" }, [
               el("label", { class: "voiceToggleRow" }, [
@@ -5089,7 +5098,10 @@
         }
 
         function hasAnnouncementCredentials() {
-          return Boolean(String(voiceSettings.tts_base_url || "").trim() && String(voiceSettings.tts_api_key || "").trim());
+          return Boolean(
+            String(voiceSettings.tts_base_url || "").trim() &&
+              (String(voiceSettings.tts_api_key || "").trim() || voiceSettings.has_tts_api_key)
+          );
         }
 
         function browserSupportsNativeLiveAudioPlayback() {
@@ -5516,7 +5528,11 @@
             : "Notifications off";
           notificationBtn.setAttribute("aria-label", notificationBtn.title);
           if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
-          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) voiceApiKeyInput.value = String(voiceSettings.tts_api_key || "");
+          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) {
+            voiceApiKeyInput.value = "";
+            voiceApiKeyInput.placeholder = voiceSettings.has_tts_api_key ? "Saved API key (leave blank to keep)" : "Enter API key";
+          }
+          if (voiceClearApiKeyToggle) voiceClearApiKeyToggle.checked = false;
           if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
         }
@@ -5544,11 +5560,13 @@
         }
 
         async function saveVoiceSettings() {
+          const clearApiKey = !!(voiceClearApiKeyToggle && voiceClearApiKeyToggle.checked);
           const payload = {
             tts_enabled_for_narration: !!voiceSettings.tts_enabled_for_narration,
             tts_enabled_for_final_response: true,
             tts_base_url: String(voiceBaseUrlInput.value || voiceSettings.tts_base_url || "").trim(),
-            tts_api_key: String(voiceApiKeyInput.value || "").trim(),
+            tts_api_key: clearApiKey ? "" : String(voiceApiKeyInput.value || "").trim(),
+            tts_api_key_clear: clearApiKey,
           };
           const data = await api("/api/settings/voice", { method: "POST", body: payload });
           if (!data || typeof data !== "object") throw new Error("invalid voice settings response");

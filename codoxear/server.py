@@ -5189,7 +5189,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not _require_auth(self):
                 self._unauthorized()
                 return True
-            _json_response(self, 200, {"ok": True, **MANAGER._voice_push.settings_snapshot()})
+            _json_response(self, 200, {"ok": True, **MANAGER._voice_push.settings_snapshot(redact_secrets=True)})
             return True
 
         if path == "/api/notifications/subscription":
@@ -5296,7 +5296,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return True
             obj = self._read_json_body()
             try:
-                payload = MANAGER._voice_push.set_settings(obj)
+                payload = MANAGER._voice_push.set_settings(obj, preserve_blank_api_key=True, redact_response=True)
             except ValueError as e:
                 _json_response(self, 400, {"error": str(e)})
                 return True
