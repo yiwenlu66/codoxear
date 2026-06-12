@@ -905,3 +905,11 @@ Commitments:
 - Intervention: refresh now clears stale selected state, and orphan recovery queue review has precedence over draft enqueue behavior. Orphan `openSession()` avoids transcript-tail fetch.
 - Evidence: targeted/full/Docker tests passed; browser validation showed controls disabled after direct orphan clear and queue viewer opens despite draft text.
 - Scoped claim: resolving the last orphan evidence no longer leaves a phantom selected session, and queued orphan recovery remains reachable from the enabled queue/review button.
+
+
+## 2026-06-13 01:07
+- Observation: deleting the unknown item from an orphan queue could make later ordinary queued prompts unlistable and sweep-prunable.
+- Mechanism: orphan visibility was tied only to `commit_unknown`, so resolving that marker removed the recovery surface for other queued prompts in the same missing-session queue.
+- Intervention: remaining items in an orphan queue become persisted `orphan_recovery` items when an unknown item is explicitly deleted; missing-session cleanup/listing/API gates preserve queues with either `commit_unknown` or `orphan_recovery` markers.
+- Evidence: tests and browser validation show the later prompt remains visible/reviewable after deleting the unknown head, while generic stale queues without recovery markers are still pruned.
+- Scoped claim: resolving one orphan queue unknown no longer strands later queued prompts for that missing session.

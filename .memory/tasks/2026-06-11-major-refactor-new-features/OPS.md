@@ -1111,3 +1111,10 @@
 - Commit: `fix: stabilize orphan recovery selection`.
 - Validation: targeted tests passed (`73 passed, 11 subtests passed in 1.82s`, then `83 passed, 11 subtests passed in 2.14s` after local orphan handling). Plain full suite passed (`596 passed, 21 subtests passed in 12.14s`). Full isolated Docker suite passed (`594 passed, 2 skipped, 21 subtests passed in 11.02s`).
 - Browser evidence: isolated Docker `:18918`; after clearing selected direct orphan marker, `/tmp/codoxear-orphan-recovery-fix-evidence/codoxear_orphan_after_clear_controls.json` shows empty hash, title `No session selected`, and send/attach/queue disabled. With a composer draft on queued orphan, `/tmp/codoxear-orphan-recovery-fix-evidence/codoxear_orphan_queue_with_draft_rows.json` shows queue viewer open with `Commit unknown` row.
+
+
+## 2026-06-13 01:07
+- Repaired orphan queue leftover blocker: deleting a `commit_unknown` item from an orphan queue now marks remaining items as `orphan_recovery`, keeps the orphan row visible/listable, and continues to disable send while allowing review/deletion. Generic stale queues without recovery markers are still pruned.
+- Commit: `fix: preserve orphan queue leftovers`.
+- Validation: targeted tests passed (`85 passed, 11 subtests passed in 2.06s`, then `80 passed, 11 subtests passed in 1.78s` after marker narrowing). Plain full suite passed (`597 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`595 passed, 2 skipped, 21 subtests passed in 11.22s`).
+- Browser evidence: isolated Docker `:18919`; after confirming deletion of the orphan queue's unknown item, `/tmp/codoxear-orphan-leftover-evidence/codoxear_orphan_leftover_after_delete.json` shows row still selected with queue label `Review preserved queued recovery items`, remaining row `later orphan`, and send disabled as missing-session review-only.
