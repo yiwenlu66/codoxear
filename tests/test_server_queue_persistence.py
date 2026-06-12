@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from codoxear.server import Session
 from codoxear.server import SessionManager
+from codoxear.server import SessionNotReadyError
 from codoxear.server import _match_session_route
 
 
@@ -74,6 +75,29 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
         mgr._sessions[sid].queue_sending_item_id = None
         self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
+
+    def test_attachment_injection_ready_rejects_log_busy_session(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}\n", encoding="utf-8")
+            mgr._sessions[sid] = _make_session(sid)
+            mgr._sessions[sid].log_path = log_path
+            mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+
+    def test_inject_attachment_keys_rechecks_readiness_under_input_lock(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: False  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq: self.fail("inject_keys should not be called")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
+            SessionManager.inject_attachment_keys(mgr, sid, "abc")
 
     def test_enqueue_sends_immediately_when_idle(self) -> None:
         mgr = self._mgr()

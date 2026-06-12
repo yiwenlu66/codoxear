@@ -31,9 +31,12 @@ class TestFileUploadModuleSource(unittest.TestCase):
         end = source.index('if path == "/api/hooks/notify":', start)
         block = source[start:end]
         self.assertIn("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)", block)
+        self.assertIn("resp = MANAGER.inject_attachment_keys(session_id, seq)", block)
+        self.assertIn("except SessionNotReadyError as e:", block)
         self.assertIn('{"error": "session is busy; wait before attaching a file"}', block)
         self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("raw = base64.b64decode"))
         self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("out_path = _stage_uploaded_file"))
+        self.assertIn("with input_lock:\n                resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text}, timeout_s=3.0)", source)
 
 
 if __name__ == "__main__":

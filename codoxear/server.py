@@ -874,6 +874,10 @@ class SessionLaunchError(RuntimeError):
         self.record = record
 
 
+class SessionNotReadyError(RuntimeError):
+    pass
+
+
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
     return _sign_message_cursor_impl(payload, secret=HMAC_SECRET)
 
@@ -1990,6 +1994,7 @@ class SessionManager:
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[dict[str, Any]]] = {}
         self._queue_store = QueueStore(QUEUE_PATH)
+        self._input_locks: dict[str, threading.Lock] = {}
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
         self._unattended_last_injected: dict[str, float] = {}
@@ -2329,6 +2334,9 @@ class SessionManager:
             if isinstance(queues, dict) and session_id in queues:
                 queues.pop(session_id, None)
                 changed_queues = True
+            input_locks = getattr(self, "_input_locks", None)
+            if isinstance(input_locks, dict):
+                input_locks.pop(session_id, None)
         self._save_aliases()
         if changed_sidebar:
             self._save_sidebar_meta()
@@ -2380,6 +2388,18 @@ class SessionManager:
             store = QueueStore(QUEUE_PATH)
             self._queue_store = store
         return store
+
+    def _input_lock_for_session(self, session_id: str) -> threading.Lock:
+        with self._lock:
+            locks = getattr(self, "_input_locks", None)
+            if not isinstance(locks, dict):
+                self._input_locks = {}
+                locks = self._input_locks
+            lock = locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                locks[session_id] = lock
+            return lock
 
     def _load_queues(self) -> None:
         cleaned = self._queue_store_for_manager().load()
@@ -4228,8 +4248,10 @@ class SessionManager:
                 raise KeyError("unknown session")
             sock = s.sock_path
         self._record_prelog_user_message(s, text, source="send")
+        input_lock = self._input_lock_for_session(session_id)
         try:
-            resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
+            with input_lock:
+                resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:
@@ -4342,10 +4364,22 @@ class SessionManager:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
+            log_path = s.log_path
         st = self.get_state(session_id)
         if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
             raise ValueError("invalid broker state response")
-        return (not bool(st.get("busy"))) and int(st.get("queue_len")) <= 0
+        if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
+            return False
+        if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
+            return False
+        return True
+
+    def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
+        input_lock = self._input_lock_for_session(session_id)
+        with input_lock:
+            if not self.attachment_injection_ready(session_id):
+                raise SessionNotReadyError("session is busy; wait before attaching a file")
+            return self.inject_keys(session_id, seq)
 
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         with self._lock:
@@ -6452,9 +6486,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # Bracketed paste: inject the staged attachment line into the active broker input.
                 seq = f"\x1b[200~{inject_text}\x1b[201~"
                 try:
-                    resp = MANAGER.inject_keys(session_id, seq)
+                    resp = MANAGER.inject_attachment_keys(session_id, seq)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except SessionNotReadyError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
                 return
