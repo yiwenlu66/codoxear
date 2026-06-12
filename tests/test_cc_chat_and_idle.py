@@ -96,6 +96,29 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "narration")
         self.assertFalse(flags["turn_end"])
 
+    def test_cc_split_row_idless_tool_uses_need_multiple_idless_results(self) -> None:
+        rows = [
+            user("hello"),
+            assistant([{"type": "tool_use", "name": "A", "input": {}}], stop_reason="tool_use"),
+            assistant([{"type": "tool_use", "name": "B", "input": {}}], stop_reason="tool_use"),
+            {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "one result"}]}},
+            assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+        ]
+        events, _meta, flags, _diag = _extract_chat_events(rows)
+        self.assertEqual(events[-1]["message_class"], "narration")
+        self.assertFalse(flags["turn_end"])
+        delivery = _extract_delivery_messages(rows)
+        self.assertEqual(delivery[-1].message_class, "narration")
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            write_log(path, rows)
+            tail_events, _before, _after, _has_older = _read_chat_tail_page(path, limit=10)
+            self.assertEqual(tail_events[-1]["message_class"], "narration")
+            live_events, _next, _meta, live_flags, _diag, _token = _read_chat_live_delta(path, after_byte=0)
+            self.assertEqual(live_events[-1]["message_class"], "narration")
+            self.assertFalse(live_flags["turn_end"])
+            self.assertFalse(_compute_idle_from_log(path))
+
     def test_cc_positioned_tail_and_live_final_text_with_pending_tool_are_not_final_response(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "session.jsonl"

@@ -142,7 +142,7 @@ def cc_assistant_pending_tool_use_ids(obj: dict[str, Any]) -> set[str]:
         if isinstance(tool_id, str) and tool_id.strip():
             ids.add(tool_id)
         else:
-            ids.add(f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}{unknown_index}")
+            ids.add(f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}{id(obj)}:{unknown_index}")
             unknown_index += 1
     return ids
 
