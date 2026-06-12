@@ -1139,3 +1139,10 @@ Commitments:
 - Observation: focused adversarial review of Claude synthetic hardening at `089a485` found no blockers after many prior falsifications.
 - Supported claim: under inspected synthetic Claude log shapes, pending/active current-turn state now gates final/idle semantics across broker, log idle, chat helpers, positioned live/tail/history, actual live route, and delivery split deltas.
 - Scope limit: this is not live credentialed battle-testing. Real Claude `toolUseResult` schema and large-turn performance remain uncertain and need live-log or profiling evidence.
+
+
+## 2026-06-13 06:01
+- Observation: the backend already exposed GTD-like state (`blocked`, `snoozed`, recovery/unknown), but the sidebar rendered a flat list, so users had to infer action state from small badges.
+- Intervention: add client-only section headers/counts for Needs review, Now, Waiting, Later using existing session fields; do not add persistence, collapse behavior, or new priority semantics.
+- Evidence: isolated browser DOM showed four sections with one synthetic session each, including unknown-send recovery, normal, blocked, and snoozed rows. Full local and Docker validation passed after one non-reproducible unrelated Pi token mock anomaly was checked.
+- Scoped claim: the sidebar now visibly communicates GTD state for returned session rows without changing backend ordering semantics inside each group.

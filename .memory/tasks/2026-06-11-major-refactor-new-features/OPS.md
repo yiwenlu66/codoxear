@@ -1334,3 +1334,17 @@
 - Ran focused clean-room Claude hardening review at HEAD `089a485`: `/tmp/codoxear-cc-hardening-review13.md`.
 - Result: no demonstrated blocker in scoped synthetic Claude hardening paths. Reviewer independently ran targeted coverage `tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_broker_busy_state.py -q` with `65 passed`.
 - Remaining non-blocking risks require live/schema/performance evidence: unbounded current-turn scan cost on huge active Claude turns, real `toolUseResult` schema variants, and whether live Claude ever omits `tool_use_id` for explicit tool results.
+
+
+## 2026-06-13 06:01
+- Implemented GTD sidebar sectioning in the UI only:
+  - sections: Needs review, Now, Waiting, Later;
+  - grouping uses existing row fields (`launchFailed`, `orphan_recovery`, `queue_recovery`, `commit_unknown_send`, `blocked`, `snoozed`);
+  - no sessions are hidden/collapsed and the existing sort order is preserved inside each section.
+- Browser evidence captured against isolated Docker app/session state on port `18931`:
+  - `/tmp/codoxear-sidebar-gtd-evidence/dom.json`
+  - `/tmp/codoxear-sidebar-gtd-evidence/main-snapshot.txt`
+  - `/tmp/codoxear-sidebar-gtd-evidence/sidebar-gtd-desktop.png`
+  - `/tmp/codoxear-sidebar-gtd-evidence/mobile-dom.json`
+  - `/tmp/codoxear-sidebar-gtd-evidence/sidebar-gtd-mobile.png`
+- Validation: `node --check codoxear/static/app.js`; focused source/sidebar tests passed (`31 passed`); full local suite first exposed a non-reproducible Pi token mock call-count failure, but isolated/file reruns passed and subsequent full local suite passed (`653 passed, 25 subtests passed in 11.76s`); isolated Docker suite passed (`652 passed, 1 skipped, 25 subtests passed in 13.44s`).
