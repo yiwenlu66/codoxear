@@ -659,6 +659,23 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "blocks reordering"):
             SessionManager.queue_move(mgr, sid, "n", 0)
 
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
+        mgr._include_launch_attempts = False
+        mgr._unattended = {}
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._files = {}
+        mgr._recent_cwds = {}
+        mgr._save_files = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_recent_cwds = lambda: None
+        row = SessionManager.list_sessions(mgr)[0]
+        self.assertFalse(row.get("orphan_recovery", False))
+        self.assertTrue(row["queue_recovery"])
+        self.assertEqual(row["queue_len"], 2)
+
     def test_recovery_delete_marks_tail_even_before_session_prune(self) -> None:
         sid = "s1"
         mgr = self._mgr()

@@ -4052,6 +4052,7 @@
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
+             if (s.queue_recovery) badges.push(el("span", { class: "badge commitUnknown", text: "recovery", title: "Queued item is preserved for recovery; open the queue to resolve it" }));
              if (s.commit_unknown_send) {
                const unknownBadge = el("button", {
                  class: "badge commitUnknown",
@@ -9694,7 +9695,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function selectedSessionHasOrphanQueueRecovery() {
           const s = selected ? sessionIndex.get(selected) : null;
-          return Boolean(s && s.orphan_recovery && Number(s.queue_len || 0) > 0);
+          return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);
         }
 
         function syncQueueSubmitState() {
@@ -9719,8 +9720,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!sendControl) return;
           const unknownSend = selectedSessionHasUnknownSend();
           const orphanRecovery = selectedSessionIsOrphanRecovery();
-          sendControl.disabled = !!sending || !selected || unknownSend || orphanRecovery;
-          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : "Send";
+          const recoveryQueue = selectedSessionHasOrphanQueueRecovery();
+          sendControl.disabled = !!sending || !selected || unknownSend || orphanRecovery || recoveryQueue;
+          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : recoveryQueue ? "Review preserved queued recovery items before sending" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
         }
@@ -9732,6 +9734,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sessionInfo = sessionIndex.get(sessionId) || null;
           if (sessionInfo && sessionInfo.orphan_recovery) {
             setToast("missing session can only be reviewed");
+            return false;
+          }
+          if (sessionInfo && sessionInfo.queue_recovery) {
+            setToast("review preserved queue before queueing");
             return false;
           }
           if (sessionInfo && sessionInfo.commit_unknown_send) {
@@ -10107,7 +10113,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               setToast("failed session cannot receive messages");
               return;
             }
-            if (selectedInfo && selectedInfo.orphan_recovery && Number(selectedInfo.queue_len || 0) > 0) {
+            if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0) {
               showQueueViewer();
               return;
             }
@@ -10410,6 +10416,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } else if (selectedSessionIsOrphanRecovery()) {
             attachLabel = "Missing session can only be reviewed";
             disabled = true;
+          } else if (selectedSessionHasOrphanQueueRecovery()) {
+            attachLabel = "Review preserved queued recovery items before attaching a file";
+            disabled = true;
           } else if (currentRunning) {
             attachLabel = "Wait for the current response to finish before attaching a file";
             disabled = true;
@@ -10652,6 +10661,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sessionInfo = sessionIndex.get(sessionId) || null;
           if (sessionInfo && sessionInfo.orphan_recovery) {
             setToast("missing session can only be reviewed");
+            return false;
+          }
+          if (sessionInfo && sessionInfo.queue_recovery) {
+            setToast("review preserved queue before sending");
             return false;
           }
           if (sessionInfo && sessionInfo.commit_unknown_send) {

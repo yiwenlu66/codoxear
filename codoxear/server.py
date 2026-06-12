@@ -3786,10 +3786,15 @@ class SessionManager:
                         recent_map[cwd_recent] = updated_ts
                         recent_cwd_dirty = True
                 queue_len = 0
+                queue_recovery = False
                 if isinstance(qmap, dict):
                     q0 = qmap.get(s.session_id)
                     if isinstance(q0, list):
                         queue_len = len(q0)
+                        queue_recovery = any(
+                            isinstance(item, dict) and bool(item.get("orphan_recovery"))
+                            for item in q0
+                        )
                 meta0 = meta_map.get(s.session_id) if isinstance(meta_map, dict) else None
                 if not isinstance(meta0, dict):
                     meta0 = {}
@@ -3834,6 +3839,7 @@ class SessionManager:
                         "needs_history_scan": needs_history_scan,
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
+                        "queue_recovery": bool(queue_recovery),
                         "pending_attachment": bool(s.pending_attachment),
                         "commit_unknown_send": bool(s.commit_unknown_send),
                         "commit_unknown_send_text": (str(s.commit_unknown_send.get("text")) if isinstance(s.commit_unknown_send, dict) and isinstance(s.commit_unknown_send.get("text"), str) else None),
