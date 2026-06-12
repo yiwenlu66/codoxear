@@ -646,3 +646,8 @@
 - Full validation after `codoxear/file_upload.py` extraction.
 - HEAD: `aee36d1`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`484 passed, 2 skipped, 10 subtests passed in 15.87s`).
+
+## 2026-06-12 16:23
+- UI/UX fix: attach button now initializes and syncs as disabled when no session is selected, with title/aria-label `Select a session to attach a file`; selected sessions restore the max-size attach label.
+- Commit: `8f9b2a5 fix: disable attach without a selected session`.
+- Validation: `node --check codoxear/static/app.js` passed; focused source/static tests passed (`25 passed in 5.81s`). Browser validation on isolated Docker server `:18821` after login observed `#attachBtn.disabled === true`, title/aria-label `Select a session to attach a file`, `#threadTitle === No session selected`, and JS errors `[]`.
