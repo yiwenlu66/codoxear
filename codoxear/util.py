@@ -104,7 +104,7 @@ def atomic_write_json(path: Path, obj: Any, *, sort_keys: bool = True, indent: i
     finally:
         try:
             tmp.unlink()
-        except FileNotFoundError:
+        except OSError:
             pass
 
 
