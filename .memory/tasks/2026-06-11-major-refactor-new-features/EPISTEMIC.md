@@ -1083,3 +1083,11 @@ Commitments:
 - Intervention: seed actual live route extraction from prior Claude tool context; require the human user turn start, not merely assistant context, before trusting a terminal-looking Claude final/duration row without expanding.
 - Evidence: route source guard, split live/delivery regressions, large later-context idle regression, and full local/Docker suites passed.
 - Scoped claim: inspected server live route now participates in the Claude pending-tool invariant under synthetic split-window logs.
+
+
+## 2026-06-13 04:41
+- Review anomaly: a >8 MiB Claude tool-result row could hide an older unresolved sibling tool-use from context seeding and idle scanning.
+- Mechanism: the seeding helper used a fixed backward byte budget; idle returned the last visible terminal state when scan budget expired without a turn start.
+- Intervention: make current-turn context seeding scan back to the human user row by default; make idle fail closed if a terminal-looking row remains contextless at budget.
+- Evidence: regression with 9 MiB tool-result plus unresolved sibling tool passes for seeded live delta and idle; full local/Docker suites passed.
+- Scoped claim: the inspected split-delta chat/delivery paths no longer have an 8 MiB context-seeding limit for current Claude turns, though pathological full-log scans may be more expensive on enormous current turns.

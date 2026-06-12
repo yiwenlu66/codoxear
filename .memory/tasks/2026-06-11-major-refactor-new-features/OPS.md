@@ -1275,3 +1275,11 @@
   - `_compute_idle_from_log()` now expands terminal-looking Claude final/duration scans unless the current human user turn start is visible, so later assistant context alone cannot hide older pending tools.
 - Commit: `fix: seed Claude tool state in live route`.
 - Validation: targeted live-route/idle tests passed (`16 passed`); full local suite passed (`637 passed, 25 subtests passed in 8.96s`); isolated Docker suite passed (`636 passed, 1 skipped, 25 subtests passed in 11.81s`).
+
+
+## 2026-06-13 04:41
+- Applied blocker from `/tmp/codoxear-cc-hardening-review6.md`:
+  - Claude pending-tool context seeding now scans backward to the current human turn start by default instead of stopping at 8 MiB;
+  - `_compute_idle_from_log()` fails closed if a terminal-looking Claude row remains without visible turn start at the configured scan budget.
+- Commit: `fix: scan full Claude turn context for pending tools`.
+- Validation: targeted large-result/current-turn tests passed (`14 passed`), affected Claude/server suites passed (`57 passed`), full local suite passed (`638 passed, 25 subtests passed in 10.99s`), isolated Docker suite passed (`637 passed, 1 skipped, 25 subtests passed in 13.69s`).
