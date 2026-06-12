@@ -1179,3 +1179,10 @@ Commitments:
 - Observation: Final clean-room review found no blockers after the deferred-refresh flag lifecycle correction.
 - Scoped claim: Under the reviewed code paths, same-bucket unchanged `/api/sessions` responses avoid sidebar/default mutation, while mobile swipe-deferred cached payloads still render after close even when the follow-up fetch returns 304.
 - Remaining uncertainty: the guarantee is supported by source tests, full suites, isolated browser reproduction, and clean-room review, but not by a dedicated JS DOM unit-test harness or exhaustive refresh concurrency testing.
+
+## 2026-06-13 06:39 — Refresh serialization preserves cache/application ordering
+- Observation: Clean-room review of the fast path left a residual race risk: overlapping `refreshSessions()` calls could let `/api/sessions` responses and ETag cache updates apply in completion order unrelated to caller intent.
+- Mechanism: Trying to discard by request start order is unsafe because an older-started response can observe a newer server state than a later-started 304. Serializing the request stream is the lower-risk invariant: there is only one `/api/sessions` response allowed to update ETag/cache/sidebar state at a time, and any intervening caller is represented by a queued follow-up refresh.
+- Intervention: Split the body into `refreshSessionsOnce()` and make public `refreshSessions()` coalesce concurrent callers through `sessionsRefreshInFlight` / `sessionsRefreshQueued`.
+- Evidence: Focused source tests pin the wrapper, browser evidence preserves same-bucket 304/no-mutation behavior, and full local/Docker suites passed.
+- Scoped claim: Sidebar session refreshes no longer overlap at the client application layer; queued refreshes preserve final-state convergence without out-of-order response application.

@@ -1389,3 +1389,10 @@
 - Review command run by critic: `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `26 passed in 1.81s`.
 - Review artifact: `/tmp/codoxear-session-poll-fastpath-review.md`.
 - Residual risks noted: source-string JS tests are not full browser unit tests; overlapping manual `refreshSessions()` calls could theoretically race; a render exception after clearing the deferred flag would not automatically retry.
+
+## 2026-06-13 06:39 — Serialized session refreshes
+- Implemented a serialized/coalesced `refreshSessions()` wrapper around `refreshSessionsOnce()`: if a refresh is in flight, a new caller sets `sessionsRefreshQueued = true` and awaits the same promise; the wrapper runs one additional refresh before resolving. This prevents overlapping `/api/sessions` responses from applying out of order while preserving the 304/deferred-swipe behavior.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `27 passed`.
+- Browser evidence on `codoxear-sandbox-18932`: after serialization, a same-bucket `/api/sessions` poll returned 304 and `.sessions` MutationObserver stayed at `mutationCount: 0`. Artifact: `/tmp/codoxear-sidebar-gtd-evidence/serialized-etag2-after.json`.
+- Full local validation: `python3 -m pytest -q` → `658 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `657 passed, 1 skipped, 25 subtests passed`.
