@@ -1124,3 +1124,9 @@
 - Repaired orphan recovery blockers: queued `orphan_recovery` items now block queue promotion like commit-unknown items; sidebar delete clears direct/queued orphan recovery rows; orphan rows include `transcript_state: failed`; queue UI treats orphan recovery items as locked recovery evidence; mixed direct+queue orphan rows keep queue review available when `queue_len > 0`.
 - Commit: `fix: block orphan recovery prompts from auto-send`.
 - Validation: targeted tests passed (`82 passed, 11 subtests passed in 1.81s`). Plain full suite passed (`599 passed, 21 subtests passed in 8.61s`). Full isolated Docker suite passed (`597 passed, 2 skipped, 21 subtests passed in 14.10s`).
+
+
+## 2026-06-13 01:22
+- Repaired orphan recovery deletion/mutation blocker: `orphan_recovery` queue items now require explicit `allow_orphan_recovery` confirmation for deletion, block update/move/reorder barriers server-side, and show a Recovery tag/confirmation in the queue UI.
+- Commit: `fix: require explicit orphan recovery deletion`.
+- Validation: targeted tests passed (`68 passed, 11 subtests passed in 1.94s`). Plain full suite passed (`601 passed, 21 subtests passed in 9.22s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 11.53s`).

@@ -921,3 +921,11 @@ Commitments:
 - Intervention: treat `orphan_recovery` as non-promotable recovery evidence, make delete_session clear orphan recovery stores, and mark synthetic rows as failed/non-polling transcript state. Queue UI locks recovery rows while still allowing deletion.
 - Evidence: targeted/full/Docker suites passed.
 - Scoped claim: preserved orphan prompts remain review-only and cannot be injected automatically if a session id reappears.
+
+
+## 2026-06-13 01:22
+- Observation: adversarial review found `orphan_recovery` rows were visually locked but deletable without explicit confirmation, and API update/move could mutate them.
+- Mechanism: delete confirmation and server mutation barriers only checked `commit_unknown`, not the new `orphan_recovery` marker.
+- Intervention: added strict `allow_orphan_recovery` confirmation, server-side update/move/reorder barriers for recovery rows, and UI confirmation/tagging for recovery deletion.
+- Evidence: targeted/full/Docker suites passed.
+- Scoped claim: preserved orphan recovery prompts cannot be silently edited, moved, auto-sent, or deleted without explicit recovery confirmation.
