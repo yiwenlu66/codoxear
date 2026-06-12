@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from codoxear.sessiond import Sessiond
 from codoxear.sessiond import State
+from codoxear.sessiond import _read_jsonl_from_offset
 
 
 def _sessiond_state(*, codex_pid: int, sock_path: Path) -> State:
@@ -37,6 +38,15 @@ class _AcceptCrashSocket:
 
 
 class TestSessiondFailClosed(unittest.TestCase):
+    def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "codoxear-missing-sessiond-jsonl-for-test.jsonl"
+        try:
+            missing.unlink()
+        except FileNotFoundError:
+            pass
+
+        self.assertEqual(_read_jsonl_from_offset(missing, 17, max_bytes=4096), ([], 17))
+
     def test_teardown_managed_process_group_kills_real_process_group(self) -> None:
         proc = subprocess.Popen(["sh", "-c", "sleep 100"], start_new_session=True)
         try:

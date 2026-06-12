@@ -85,6 +85,8 @@ def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
+    if not path.exists():
+        return [], offset
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
