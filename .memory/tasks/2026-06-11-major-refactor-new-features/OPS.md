@@ -666,3 +666,8 @@
 - Full validation after no-session queue button UX fix.
 - HEAD: `606f6a5`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`486 passed, 2 skipped, 10 subtests passed in 12.61s`).
+
+## 2026-06-12 16:31
+- UI/UX fix: send button now disables when no session is selected, exposes title/aria-label `Select a session to send`, preserves disabled-while-sending via `syncSendButtonState()`, and keyboard submit with no session shows `select a session first` instead of silently returning.
+- Commit: `dced83d fix: disable send without a selected session`.
+- Validation: `node --check codoxear/static/app.js` passed; focused send/queue/attach/chat-transcript/file-viewer/static tests passed (`31 passed in 5.77s`). Browser validation on isolated Docker server `:18823` after login observed `#sendBtn.disabled === true`, title/aria-label `Select a session to send`, Ctrl+Enter toast `select a session first`, `#threadTitle === No session selected`, and JS errors `[]`.

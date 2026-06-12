@@ -447,3 +447,6 @@ Commitments:
 
 ## 2026-06-12 16:26
 - UX observation: queue is a per-session surface; leaving its composer button enabled without a selected session caused the same silent no-op class as attach. The session-dependent composer-control invariant now covers both attachment and queue controls.
+
+## 2026-06-12 16:31
+- UX observation: composer submit had the same enabled-looking/no-selected no-op behavior as attach and queue. The session-dependent composer-control invariant now covers attach, queue, and send, with explicit disabled state and keyboard-submit feedback.
