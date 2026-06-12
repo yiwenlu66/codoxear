@@ -1348,3 +1348,9 @@
   - `/tmp/codoxear-sidebar-gtd-evidence/mobile-dom.json`
   - `/tmp/codoxear-sidebar-gtd-evidence/sidebar-gtd-mobile.png`
 - Validation: `node --check codoxear/static/app.js`; focused source/sidebar tests passed (`31 passed`); full local suite first exposed a non-reproducible Pi token mock call-count failure, but isolated/file reruns passed and subsequent full local suite passed (`653 passed, 25 subtests passed in 11.76s`); isolated Docker suite passed (`652 passed, 1 skipped, 25 subtests passed in 13.44s`).
+
+
+## 2026-06-13 06:06
+- Applied non-blocking sidebar review follow-up from `/tmp/codoxear-sidebar-gtd-review.md`: section headers now have `role="heading"`, `aria-level="2"`, and count-aware `aria-label`; numeric visual counts are `aria-hidden`.
+- Commit: `fix: label sidebar section headers accessibly`.
+- Validation after follow-up: focused sidebar checks passed (`22 passed`); full local suite passed (`653 passed, 25 subtests passed in 15.01s`); isolated Docker suite passed (`652 passed, 1 skipped, 25 subtests passed in 16.90s`).

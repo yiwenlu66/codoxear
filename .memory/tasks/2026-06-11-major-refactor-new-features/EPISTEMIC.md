@@ -1146,3 +1146,9 @@ Commitments:
 - Intervention: add client-only section headers/counts for Needs review, Now, Waiting, Later using existing session fields; do not add persistence, collapse behavior, or new priority semantics.
 - Evidence: isolated browser DOM showed four sections with one synthetic session each, including unknown-send recovery, normal, blocked, and snoozed rows. Full local and Docker validation passed after one non-reproducible unrelated Pi token mock anomaly was checked.
 - Scoped claim: the sidebar now visibly communicates GTD state for returned session rows without changing backend ordering semantics inside each group.
+
+
+## 2026-06-13 06:06
+- Review result: focused sidebar review found no blockers. It identified weak header accessibility as a non-blocking gap.
+- Intervention: add semantic heading role/level and count-aware ARIA labels to group headers while keeping visual UI unchanged.
+- Evidence: focused checks and full local/Docker validation passed.
