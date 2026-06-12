@@ -2182,6 +2182,15 @@ def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> d
     return payload
 
 
+def _read_session_meta_or_none(log_path: Path, *, agent_backend: str | None = None, context: str) -> dict[str, Any] | None:
+    try:
+        return _read_session_meta(log_path, agent_backend=agent_backend)
+    except (FileNotFoundError, ValueError) as e:
+        sys.stderr.write(f"warning: {context}: ignoring invalid session metadata in {log_path}: {type(e).__name__}: {e}\n")
+        sys.stderr.flush()
+        return None
+
+
 def _turn_context_run_settings(payload: Any) -> tuple[str | None, str | None]:
     if not isinstance(payload, dict):
         return None, None
@@ -2197,10 +2206,10 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
         return _read_pi_run_settings(log_path)
     if backend_name == "cc":
         return _read_cc_run_settings(log_path)
-    meta = _read_session_meta(log_path, agent_backend="codex")
-    model_provider = _clean_optional_text(meta.get("model_provider"))
-    model = _clean_optional_text(meta.get("model"))
-    reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
+    meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="run settings")
+    model_provider = _clean_optional_text(meta.get("model_provider")) if meta is not None else None
+    model = _clean_optional_text(meta.get("model")) if meta is not None else None
+    reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
     if model is None or reasoning_effort is None:
         ctx_model, ctx_effort = _turn_context_run_settings(_rollout_log._find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024))
         if model is None:
@@ -2846,7 +2855,7 @@ def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int 
 
 
 def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Path]:
-    sm = _read_session_meta(log_path)
+    sm = _read_session_meta_or_none(log_path, agent_backend="codex", context="main-thread coercion")
     if not sm:
         return thread_id, log_path
     if not _is_subagent_session_meta(sm):
@@ -4181,7 +4190,7 @@ class SessionManager:
                 if discovered_log_path is not None and discovered_log_path.exists():
                     log_path = discovered_log_path
             if log_path is not None and agent_backend == "codex":
-                session_meta = _read_session_meta(log_path)
+                session_meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="session discovery")
                 meta_session_id = session_meta.get("id") if session_meta else None
                 if isinstance(meta_session_id, str) and meta_session_id:
                     thread_id = meta_session_id
@@ -4837,7 +4846,7 @@ class SessionManager:
             if discovered_log_path is not None and discovered_log_path.exists():
                 log_path = discovered_log_path
         if log_path is not None and agent_backend == "codex":
-            session_meta = _read_session_meta(log_path)
+            session_meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="session refresh")
             meta_session_id = session_meta.get("id") if session_meta else None
             if isinstance(meta_session_id, str) and meta_session_id:
                 thread_id = meta_session_id

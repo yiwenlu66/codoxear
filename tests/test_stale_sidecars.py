@@ -1,3 +1,4 @@
+import json
 import threading
 import time
 import unittest
@@ -82,6 +83,75 @@ class TestStaleSidecars(unittest.TestCase):
 
             self.assertFalse(sock.exists())
             self.assertNotIn("gone", mgr._sessions)
+
+    def test_discovery_keeps_sidecar_log_without_codex_session_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock = sock_dir / "fixture.sock"
+            sock.touch()
+            log_path = root / "rollout-no-session-meta.jsonl"
+            log_path.write_text(
+                json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n",
+                encoding="utf-8",
+            )
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "sidecar-thread",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(log_path),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+
+            with patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertIn("fixture", mgr._sessions)
+            self.assertEqual(mgr._sessions["fixture"].thread_id, "sidecar-thread")
+            self.assertEqual(mgr._sessions["fixture"].log_path, log_path)
+
+    def test_refresh_keeps_sidecar_log_without_codex_session_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            log_path = root / "rollout-no-session-meta.jsonl"
+            log_path.write_text(
+                json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n",
+                encoding="utf-8",
+            )
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "sidecar-thread",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(log_path),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sessions["fixture"] = _session("fixture", sock)
+
+            SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertIn("fixture", mgr._sessions)
+            self.assertEqual(mgr._sessions["fixture"].thread_id, "sidecar-thread")
+            self.assertEqual(mgr._sessions["fixture"].log_path, log_path)
 
 
 if __name__ == "__main__":
