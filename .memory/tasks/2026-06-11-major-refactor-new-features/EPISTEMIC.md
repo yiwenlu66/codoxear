@@ -750,3 +750,8 @@ Commitments:
 - Intervention: removed the short socket timeout for server-managed sync sends so the HTTP commit boundary is the broker/sessiond reply after `_inject` returns.
 - Evidence: targeted source test asserts `timeout_s=None`; full local/Docker suites passed.
 - Scoped claim: server-managed sends no longer false-timeout at 3s after committed PTY writes; a genuinely hung broker sync commit can still hang the HTTP request until external cancellation.
+
+
+## 2026-06-12 21:40
+- Observation: final clean-room rerun found no demonstrated blockers at `adcfd37` after synchronous send timeout boundary fix.
+- Scoped claim: the reviewed server-managed attachment/send/queue commit-boundary blockers are closed under source inspection and test evidence. Residual risks: sync send can hang if broker/PTY never replies; real credentialed Codex/Pi/Claude startup and mobile/slow-network behavior remain unproven.
