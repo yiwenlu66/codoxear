@@ -1365,3 +1365,13 @@
 ## 2026-06-13 06:17 — No-op refresh full validation
 - Full local validation after no-op refresh/priority-bucket changes: `python3 -m pytest -q` → `655 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `654 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 06:26 — Deferred mobile-swipe refresh repair
+- Clean-room critic found a blocker in the no-op sessions poll fast path: a real 200 `/api/sessions` update can be cached and intentionally deferred while a mobile swipe row is open; closing the swipe then calls `refreshSessions()`, which may receive 304 and previously returned before applying the deferred 200 data to the sidebar DOM.
+- Fixed `refreshSessions()` so 304 only early-returns when no `swipeRefreshDeferred` rebuild is pending. If a deferred refresh exists, it renders from `latestSessions` populated by the prior 200 response without mutating defaults/cache state again.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `25 passed`.
+- Postfix isolated browser evidence: after a real bucket-boundary 200, the next same-bucket poll window produced two `/api/sessions` 304 responses and `.sessions` MutationObserver `mutationCount: 0`. Artifact: `/tmp/codoxear-sidebar-gtd-evidence/etag-browser-postfix2-after.json`.
+
+## 2026-06-13 06:28 — Deferred-refresh full validation
+- Full local validation after deferred-refresh repair: `python3 -m pytest -q` → `656 passed, 25 subtests passed`.
+- Full isolated Docker validation after deferred-refresh repair: `scripts/codoxear-docker-sandbox test` → `655 passed, 1 skipped, 25 subtests passed`.

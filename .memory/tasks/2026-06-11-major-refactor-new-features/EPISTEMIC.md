@@ -1160,3 +1160,10 @@ Commitments:
 - Intervention: Mark 304 cached responses with a private `Symbol` and early-return from `refreshSessions()` before DOM/defaults mutation; bucket sidebar priority elapsed time by default 10 seconds before emitting priority floats.
 - Evidence: Focused source/runtime checks passed; isolated raw API returned 304 inside a bucket; browser evidence showed one `/api/sessions` 304 and zero `.sessions` child-list mutations during the no-change poll window.
 - Scoped claim: Unchanged session polls can now avoid sidebar rebuilds within the priority bucket. Priority ordering still decays over time, but ETags may legitimately change at bucket boundaries or when any session/log/sidebar state changes.
+
+## 2026-06-13 06:26 — 304 fast path must respect deferred renders
+- Observation: A fresh-context critic identified a lost-update path: mobile swipe deferral can consume a real 200 `/api/sessions` response, update the in-memory cache/ETag, defer the DOM rebuild, and then receive 304 on the close-triggered refresh. A naive 304 early return leaves the sidebar stale until an unrelated later 200.
+- Revised mechanism: 304 means the server payload matches the client cache, not that the DOM already reflects the cache. `swipeRefreshDeferred` is evidence that DOM application is still pending.
+- Intervention: Restrict the 304 no-op early return to `!swipeRefreshDeferred`; when deferred rendering is pending, render from `latestSessions` instead of fetching/mutating default state again.
+- Evidence: Focused source tests now pin this path, and postfix browser evidence still shows ordinary same-bucket 304 polls perform zero sidebar mutations.
+- Scoped claim: The no-op fast path is safe for already-applied session payloads; deferred mobile-swipe payloads are treated as not yet applied and can still render after a 304.
