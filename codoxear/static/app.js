@@ -9830,7 +9830,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             ta.style.height = "0px";
             ta.style.height = `${Math.max(58, Math.min(220, ta.scrollHeight))}px`;
           };
-          const firstBarrierIndex = q.findIndex((item) => item && (item.sending || item.commitUnknown));
+          const queueMoveCrossesBarrier = (fromIdx, toIdx) => {
+            const lo = Math.min(fromIdx, toIdx);
+            const hi = Math.max(fromIdx, toIdx);
+            for (let i = lo; i <= hi; i += 1) {
+              if (i === fromIdx) continue;
+              const candidate = q[i];
+              if (candidate && (candidate.sending || candidate.commitUnknown)) return true;
+            }
+            return false;
+          };
           q.forEach((item, idx) => {
             const itemId = String(item.id || "");
             const sending = !!item.sending;
@@ -9854,15 +9863,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
             if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));
             const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
-            const blockedByPriorBarrier = firstBarrierIndex >= 0 && idx > firstBarrierIndex && idx - 1 <= firstBarrierIndex;
-            up.disabled = locked || idx <= 0 || blockedByPriorBarrier;
+            up.disabled = locked || idx <= 0 || queueMoveCrossesBarrier(idx, idx - 1);
             up.onclick = (e) => {
               e.preventDefault();
               e.stopPropagation();
               void moveQueueItem(sid, itemId, idx - 1);
             };
             const down = el("button", { class: "icon-btn queueIconBtn", title: "Move down", "aria-label": "Move down", type: "button", html: iconSvg("down") });
-            down.disabled = locked || idx >= q.length - 1;
+            down.disabled = locked || idx >= q.length - 1 || queueMoveCrossesBarrier(idx, idx + 1);
             down.onclick = (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -10631,6 +10639,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
             if (commitUnknown) {
               setToast("send status unknown; check transcript before retrying");
+              const currentSessionInfo = sessionIndex.get(sessionId) || sessionInfo;
+              if (currentSessionInfo) {
+                currentSessionInfo.commit_unknown_send = true;
+                currentSessionInfo.commit_unknown_send_text = raw;
+                currentSessionInfo.commit_unknown_send_ts = Date.now() / 1000;
+                sessionIndex.set(sessionId, currentSessionInfo);
+              }
+              syncSendButtonState();
+              syncQueueSubmitState();
+              syncAttachButtonState();
               pollFastUntilMs = Date.now() + 4000;
               kickPoll(0);
               void refreshSessions().catch((e) => console.error("refreshSessions failed", e));

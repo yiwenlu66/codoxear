@@ -47,6 +47,21 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
+    def test_prune_missing_commit_unknown_sends_drops_inactive_records(self) -> None:
+        mgr = self._mgr()
+        mgr._sessions["live"] = _make_session("live")
+        mgr._commit_unknown_sends = {
+            "live": {"text": "maybe live", "created_ts": 1.0},
+            "gone": {"text": "maybe gone", "created_ts": 2.0},
+        }
+        saved = []
+        mgr._save_commit_unknown_sends = lambda: saved.append(dict(mgr._commit_unknown_sends))  # type: ignore[method-assign]
+
+        self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr))
+
+        self.assertEqual(set(mgr._commit_unknown_sends), {"live"})
+        self.assertEqual(saved, [{"live": {"text": "maybe live", "created_ts": 1.0}}])
+
     def test_match_session_route_requires_exact_suffix(self) -> None:
         self.assertEqual(_match_session_route("/api/sessions/s1/delete", "delete"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s%201/queue/delete", "queue", "delete"), "s%201")

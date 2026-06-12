@@ -71,6 +71,24 @@ class TestQueueStore(unittest.TestCase):
         self.assertEqual(store.delete(queues, "s1", "a", allow_commit_unknown=True), 1)
         self.assertEqual([item["id"] for item in queues["s1"]], ["b"])
 
+    def test_commit_unknown_middle_item_blocks_crossing_from_either_side(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {
+            "s1": [
+                {"id": "a", "text": "before", "created_ts": 1},
+                {"id": "u", "text": "maybe", "created_ts": 2, "commit_unknown": True},
+                {"id": "b", "text": "after", "created_ts": 3},
+                {"id": "c", "text": "after 2", "created_ts": 4},
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "a", 2)
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "b", 0)
+        self.assertEqual(store.move(queues, "s1", "c", 2), 4)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["a", "u", "c", "b"])
+
     def test_drop_missing_sessions_and_save_omit_empty_queues(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"

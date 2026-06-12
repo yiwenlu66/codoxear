@@ -2051,6 +2051,7 @@ class SessionManager:
             vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
         )
         self._discover_existing(force=True)
+        self._prune_missing_commit_unknown_sends()
         self._unattended_thr = threading.Thread(target=self._unattended_loop, name="unattended", daemon=True)
         self._unattended_thr.start()
         self._queue_thr = threading.Thread(target=self._queue_loop, name="queue", daemon=True)
@@ -2556,6 +2557,22 @@ class SessionManager:
                 raise KeyError("unknown session")
         self._set_commit_unknown_send(session_id, None)
         return {"ok": True, "commit_unknown_send": False}
+
+    def _prune_missing_commit_unknown_sends(self) -> bool:
+        changed = False
+        with self._lock:
+            unknown_sends = getattr(self, "_commit_unknown_sends", None)
+            if not isinstance(unknown_sends, dict):
+                self._commit_unknown_sends = {}
+                return False
+            active_ids = set(getattr(self, "_sessions", {}).keys())
+            for sid in list(unknown_sends.keys()):
+                if sid not in active_ids:
+                    unknown_sends.pop(sid, None)
+                    changed = True
+        if changed:
+            self._save_commit_unknown_sends()
+        return changed
 
     def _load_recent_cwds(self) -> None:
         obj = _load_json_file(RECENT_CWD_PATH, default=None)
