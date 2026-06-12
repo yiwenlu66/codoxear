@@ -1167,3 +1167,10 @@ Commitments:
 - Intervention: Restrict the 304 no-op early return to `!swipeRefreshDeferred`; when deferred rendering is pending, render from `latestSessions` instead of fetching/mutating default state again.
 - Evidence: Focused source tests now pin this path, and postfix browser evidence still shows ordinary same-bucket 304 polls perform zero sidebar mutations.
 - Scoped claim: The no-op fast path is safe for already-applied session payloads; deferred mobile-swipe payloads are treated as not yet applied and can still render after a 304.
+
+## 2026-06-13 06:32 — Deferred state is an application-state invariant, not a fetch-state invariant
+- Observation: The first deferred-refresh fix still cleared `swipeRefreshDeferred` before the close-triggered fetch. This confused transport freshness (304) with DOM application state and left the original stale-DOM mechanism alive.
+- Revised mechanism: `swipeRefreshDeferred` must remain true until a render path has actually begun applying the cached payload. It is not merely a signal to schedule a refetch.
+- Intervention: Preserve the flag through `closeOpenSwipe()`; let `refreshSessions()` bypass the 304 early return while the flag is true and clear it only after `sessionsWrap.innerHTML = ""` on the deferred render path.
+- Evidence: Focused tests now pin the close-path lifecycle; isolated mobile-browser reproduction showed old alias during open swipe after a real 200, then the new alias after closing the swipe with 304 resources present.
+- Scoped claim: The session-list fast path now distinguishes three states: server payload unchanged and DOM already applied (safe no-op), server payload changed (200 apply/defer), and server payload unchanged but DOM application still deferred (render cached payload).

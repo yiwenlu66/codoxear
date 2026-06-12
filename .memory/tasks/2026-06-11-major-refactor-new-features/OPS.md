@@ -1375,3 +1375,11 @@
 ## 2026-06-13 06:28 — Deferred-refresh full validation
 - Full local validation after deferred-refresh repair: `python3 -m pytest -q` → `656 passed, 25 subtests passed`.
 - Full isolated Docker validation after deferred-refresh repair: `scripts/codoxear-docker-sandbox test` → `655 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 06:32 — Deferred-refresh flag lifecycle correction
+- Second critic pass found the previous repair still cleared `swipeRefreshDeferred` inside `closeOpenSwipe()` before the follow-up `refreshSessions()`, so a 304 could still early-return without applying the deferred cached payload.
+- Corrected the lifecycle: `closeOpenSwipe()` leaves `swipeRefreshDeferred` set while it calls `refreshSessions()`; `refreshSessions()` computes `applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId`, renders from `latestSessions`, and clears the flag only after the sidebar DOM rebuild begins.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `26 passed`.
+- Isolated mobile browser reproduction on `codoxear-sandbox-18932`: opened a mobile swipe on the `review` row, edited its alias via API, observed the polling 200 while the DOM still showed the old alias, closed the swipe, then observed the new alias rendered while subsequent `/api/sessions` resources were 304. Artifacts: `/tmp/codoxear-sidebar-gtd-evidence/deferred-swipe-open.json`, `deferred-before-close.json`, `deferred-after-close.json`, `deferred-new-name.txt`.
+- Final full local validation: `python3 -m pytest -q` → `657 passed, 25 subtests passed`.
+- Final full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `656 passed, 1 skipped, 25 subtests passed`.
