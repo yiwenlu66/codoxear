@@ -30,6 +30,9 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('up.disabled = locked || idx <= 0 || blockedByPriorBarrier;', source)
         self.assertIn('del.disabled = sending || queueMutationLocks.has(itemId);', source)
         self.assertIn('if (res && res.commit_unknown) setToast("send status unknown; queued item needs review");', source)
+        self.assertIn('const commitUnknown = Boolean(item && item.commitUnknown);', source)
+        self.assertIn('Delete this queued item only after checking the transcript or terminal.', source)
+        self.assertIn('body: { id: key, allow_commit_unknown: commitUnknown }', source)
 
 
 if __name__ == "__main__":

@@ -148,7 +148,7 @@ class QueueStore:
         q.append(item)
         return copy_queue_item(item), len(q)
 
-    def delete(self, queues: QueueMap, session_id: str, item_id: str, *, sending_item_id: str | None = None) -> int:
+    def delete(self, queues: QueueMap, session_id: str, item_id: str, *, sending_item_id: str | None = None, allow_commit_unknown: bool = False) -> int:
         item_id_clean = str(item_id).strip()
         if not item_id_clean:
             raise ValueError("id required")
@@ -161,6 +161,8 @@ class QueueStore:
         idx = next((i for i, item in enumerate(q) if item.get("id") == item_id_clean), -1)
         if idx < 0:
             raise ValueError("item not found")
+        if bool(q[idx].get("commit_unknown")) and not allow_commit_unknown:
+            raise ValueError("commit-unknown item requires explicit confirmation")
         q.pop(idx)
         ql = len(q)
         if not q:
@@ -183,6 +185,8 @@ class QueueStore:
         idx = next((i for i, item in enumerate(q) if item.get("id") == item_id_clean), -1)
         if idx < 0:
             raise ValueError("item not found")
+        if bool(q[idx].get("commit_unknown")):
+            raise ValueError("item commit status is unknown")
         q[idx]["text"] = value
         return copy_queue_item(q[idx]), len(q)
 

@@ -2672,7 +2672,7 @@ class SessionManager:
         item, ql = self._queue_append_item_local(session_id, text)
         return {"queued": True, "queue_len": int(ql), "item": item}
 
-    def _queue_delete_local(self, session_id: str, item_id: str) -> dict[str, Any]:
+    def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False) -> dict[str, Any]:
         item_id_clean = str(item_id).strip()
         if not item_id_clean:
             raise ValueError("id required")
@@ -2681,7 +2681,13 @@ class SessionManager:
                 raise KeyError("unknown session")
             s = self._sessions.get(session_id)
             sending_id = s.queue_sending_item_id if s else None
-            ql = self._queue_store_for_manager().delete(self._queues, session_id, item_id_clean, sending_item_id=sending_id)
+            ql = self._queue_store_for_manager().delete(
+                self._queues,
+                session_id,
+                item_id_clean,
+                sending_item_id=sending_id,
+                allow_commit_unknown=allow_commit_unknown,
+            )
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -4593,8 +4599,8 @@ class SessionManager:
                 raise KeyError("unknown session")
         return self._queue_list_local(session_id)
 
-    def queue_delete(self, session_id: str, item_id: str) -> dict[str, Any]:
-        return self._queue_delete_local(session_id, item_id)
+    def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False) -> dict[str, Any]:
+        return self._queue_delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown)
 
     def queue_update(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
         return self._queue_update_local(session_id, item_id, text)
@@ -6700,13 +6706,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(item_id, str) or not item_id.strip():
                     _json_response(self, 400, {"error": "id required"})
                     return
+                allow_commit_unknown = bool(obj.get("allow_commit_unknown"))
                 try:
-                    res = MANAGER.queue_delete(session_id, item_id)
+                    res = MANAGER.queue_delete(session_id, item_id, allow_commit_unknown=allow_commit_unknown)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    _json_response(self, 502, {"error": str(e)})
+                    status = 409 if "commit" in str(e).lower() else 502
+                    _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
                 return
@@ -6731,7 +6739,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    _json_response(self, 502, {"error": str(e)})
+                    status = 409 if "commit" in str(e).lower() else 502
+                    _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
                 return
@@ -6756,7 +6765,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    _json_response(self, 502, {"error": str(e)})
+                    status = 409 if "commit" in str(e).lower() else 502
+                    _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
                 return

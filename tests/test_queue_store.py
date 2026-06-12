@@ -62,7 +62,14 @@ class TestQueueStore(unittest.TestCase):
             store.move(queues, "s1", "b", 0)
         with self.assertRaisesRegex(ValueError, "commit status is unknown"):
             store.move(queues, "s1", "a", 1)
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            store.delete(queues, "s1", "a")
+        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+            store.update(queues, "s1", "a", "changed")
         self.assertEqual([item["id"] for item in queues["s1"]], ["a", "b"])
+
+        self.assertEqual(store.delete(queues, "s1", "a", allow_commit_unknown=True), 1)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["b"])
 
     def test_drop_missing_sessions_and_save_omit_empty_queues(self) -> None:
         with TemporaryDirectory() as td:

@@ -497,6 +497,21 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
 
+    def test_commit_unknown_queue_delete_requires_explicit_confirmation(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [dict(_queue_item("q1", "maybe sent"), commit_unknown=True), _queue_item("q2", "later")]
+
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, sid, "q1")
+        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+            SessionManager.queue_update(mgr, sid, "q1", "edited maybe sent")
+        self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q1", "q2"])
+
+        self.assertEqual(SessionManager.queue_delete(mgr, sid, "q1", allow_commit_unknown=True), {"ok": True, "queue_len": 1})
+        self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q2"])
+
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()
