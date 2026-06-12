@@ -359,3 +359,7 @@
 - Architecture/refactor follow-up: moved `_current_git_branch(cwd)` execution out of `SessionManager.list_sessions()`'s manager lock. The lock now snapshots the resolved cwd path; git branch lookup occurs in the existing outside-lock pass that already computes log idle state.
 - Commit: `44b7a0d refactor: read git branches outside manager lock`.
 - Validation: targeted sidebar/provenance/session tests passed (`53 passed in 1.74s`); full isolated Docker suite passed (`451 passed, 2 skipped in 10.21s`).
+
+## 2026-06-12 13:05
+- Restarted isolated browser sandbox at current head on port 18812 (`codoxear-sandbox-recovery-18812`) after transcript search and list-lock refactors.
+- Browser smoke: logged in, opened New Session, waited past a poll interval, switched to Pi tab. Observed captured JS errors `[]`, backend tabs `Codex/Pi/Claude`, provider-only DOM count `0`, modal still open, and topbar actions `['interruptBtn']`.
