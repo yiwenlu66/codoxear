@@ -1585,9 +1585,11 @@
         let chatSearchQuery = "";
         let chatSearchMatches = [];
         let chatSearchIndex = -1;
+        const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
         let chatSearchAllCount = null;
         let chatSearchAllRequestId = 0;
         let chatSearchAllAbort = null;
+        let chatSearchAllTimer = null;
         let chatSearchLoadingOlder = false;
         let hasOlder = false;
         let renderedAtLiveTail = true;
@@ -1763,6 +1765,8 @@
           iosViewportGuardTimer = null;
           desktopNotificationTimers.forEach((timer) => clearTimeout(timer));
           desktopNotificationTimers.clear();
+          if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
+          chatSearchAllTimer = null;
           abortController(chatSearchAllAbort);
           chatSearchAllAbort = null;
           abortController(olderLoadController);
@@ -3047,8 +3051,26 @@
         function resetAllChatSearchCount() {
           chatSearchAllCount = null;
           chatSearchAllRequestId += 1;
+          if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
+          chatSearchAllTimer = null;
           if (chatSearchAllAbort) chatSearchAllAbort.abort();
           chatSearchAllAbort = null;
+        }
+
+        function scheduleAllChatSearchCount(query) {
+          const cleanQuery = String(query || "").trim();
+          resetAllChatSearchCount();
+          if (!selected || !cleanQuery) {
+            syncChatSearchStatus();
+            return;
+          }
+          const reqId = chatSearchAllRequestId;
+          chatSearchAllTimer = setTimeout(() => {
+            chatSearchAllTimer = null;
+            if (reqId !== chatSearchAllRequestId) return;
+            void refreshAllChatSearchCount(cleanQuery);
+          }, CHAT_SEARCH_ALL_DEBOUNCE_MS);
+          syncChatSearchStatus();
         }
 
         async function refreshAllChatSearchCount(query) {
@@ -3109,7 +3131,7 @@
             syncChatSearchStatus();
             return;
           }
-          void refreshAllChatSearchCount(query);
+          scheduleAllChatSearchCount(query);
           const previous = preserveCurrent && chatSearchIndex >= 0 ? chatSearchMatches[chatSearchIndex] : null;
           chatSearchMatches = renderedMessageRows().filter((row) => rowSearchText(row).toLowerCase().includes(query));
           if (!chatSearchMatches.length) {

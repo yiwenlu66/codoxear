@@ -45,6 +45,7 @@ class TestAuthCleanupSource(unittest.TestCase):
             "unattendedSaveTimer",
             "liveAudioRetryTimer",
             "fileSearchTimer",
+            "chatSearchAllTimer",
             "iosViewportGuardTimer",
         ]:
             self.assertIn(f"if ({name}) clearTimeout({name});", cleanup)
