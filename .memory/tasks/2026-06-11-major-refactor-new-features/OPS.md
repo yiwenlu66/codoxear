@@ -368,3 +368,8 @@
 - UX follow-up: extended loaded chat search so when server-backed all-transcript count shows matches outside the loaded DOM, pressing Next can page older history contiguously until a loaded match appears. The loop is bounded to 12 older pages and uses the existing `/messages/history` path to avoid creating gaps in rendered transcript state.
 - Commit: `20122bf feat: page older chat search matches`.
 - Validation: `node --check codoxear/static/app.js` passed; targeted chat/search tests passed (`30 passed in 1.74s`); full isolated Docker suite passed (`451 passed, 2 skipped in 10.37s`).
+
+## 2026-06-12 13:21
+- Architecture/refactor follow-up: extracted `load_json_file()` and `atomic_write_json()` in `codoxear/util.py`; migrated server app-dir stores (aliases/sidebar/hidden sessions/files/queues/recent cwd) and `UnattendedStore` to use the shared file IO helpers while preserving per-store schema cleaners.
+- Commit: `72e062b refactor: share json state file helpers`.
+- Validation: `python3 -m py_compile codoxear/util.py codoxear/unattended.py codoxear/server.py` passed; targeted persistence/session tests passed (`35 passed in 2.07s`); full isolated Docker suite passed (`453 passed, 2 skipped in 10.63s`).
