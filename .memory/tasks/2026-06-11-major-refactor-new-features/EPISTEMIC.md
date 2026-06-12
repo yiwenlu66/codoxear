@@ -819,3 +819,8 @@ Commitments:
 - Intervention: send and attachment response classification now treats explicit `commit_unknown` as a semantic override before success validation.
 - Evidence: targeted tests cover direct send, attachment, and enqueue mixed success+unknown responses; full local/Docker suites passed.
 - Scoped claim: broker/control responses cannot downgrade an explicit unknown commit marker into confirmed success via success-looking fields.
+
+
+## 2026-06-12 23:13
+- Observation: focused adversarial rerun found no demonstrated blockers after explicit `commit_unknown` override handling.
+- Scoped claim: bounded send/attachment/enqueue commit-unknown paths are internally consistent under reviewed source/tests. Non-blocking residual: direct-send unknown has toast-only recovery, and queue pre-dispatch unknown is conservative if a crash occurs before broker request.

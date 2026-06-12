@@ -1034,3 +1034,9 @@
 - Bounded-send seventh rerun repair: `commit_unknown: true` now overrides success-looking send and attachment responses; enqueue preserves/reports unknown if broker returns success fields plus explicit unknown.
 - Commit: `fix: honor explicit commit unknown responses`.
 - Validation: targeted tests passed (`89 passed, 11 subtests passed in 2.93s`). Plain full suite passed (`584 passed, 21 subtests passed in 8.86s`). Full isolated Docker suite passed (`582 passed, 2 skipped, 21 subtests passed in 11.11s`).
+
+
+## 2026-06-12 23:13
+- Focused bounded-send clean-room rerun at HEAD `8c89b9e` found no blockers in bounded send/attachment/enqueue commit-unknown paths.
+- Review artifact: `/tmp/codoxear-bounded-send-critic-rerun8.md`.
+- Reviewer targeted validation: `tests/test_server_queue_persistence.py` passed (`44 passed, 11 subtests passed`).
