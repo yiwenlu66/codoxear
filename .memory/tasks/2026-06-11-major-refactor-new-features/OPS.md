@@ -1488,3 +1488,11 @@
 - Isolated evidence on `codoxear-sandbox-18935`: direct API stale-version write returned HTTP 409 with `{ "conflict": true, "version": <current_version> }`. Browser end-to-end edit/save conflict evidence was attempted, but Monaco timed out in the sandbox and the viewer fell back to read-only plain text, so UI validation for the actions is source-level. Artifacts: `/tmp/codoxear-file-conflict-evidence/api-conflict-headers.txt`, `api-conflict-body.json`, `file-mode-opened-wait.json`.
 - Full local validation: `python3 -m pytest -q` → `663 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `662 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:57 — File conflict ownership repairs
+- Clean-room critic found two blockers in the first file conflict UI: conflict buttons were bound only to path, not the save session, and stale save `finally` cleanup could mutate the currently active file/save UI after the viewer moved or a newer save started.
+- Repaired by passing `saveSessionId` into `renderFileSaveConflict()` and guarding Reload/Keep with both `fileViewerSessionId === saveSessionId` and `activeFilePath === savePath`.
+- Added `fileSaveSeq` / `activeFileSaveToken`; `saveStillCurrent()` now includes the token, `resetActiveFileBufferState()` clears it, and `finally` only clears pending/read-only/edit-button state if the completing save token is still active.
+- Focused validation after repairs: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `41 passed`.
+- Full local validation after repairs: `python3 -m pytest -q` → `663 passed, 25 subtests passed`.
+- Full isolated Docker validation after repairs: `scripts/codoxear-docker-sandbox test` → `662 passed, 1 skipped, 25 subtests passed`.

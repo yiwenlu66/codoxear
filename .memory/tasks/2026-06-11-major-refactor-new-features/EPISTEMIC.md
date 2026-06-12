@@ -1262,3 +1262,10 @@ Commitments:
 - Intervention: Conflict status now renders explicit Reload/Keep actions; reload goes through the existing file-read path after confirmation, and keep-editing leaves dirty draft/version state unchanged.
 - Evidence: Source tests pin action wiring and absence of overwrite; isolated API evidence confirms the server conflict shape; full local/Docker validations passed. Browser UI evidence is limited because Monaco timed out in the sandbox and forced read-only fallback.
 - Scoped claim: File save conflicts are no longer a dead-end stale-version loop in the client UI; users get explicit safe recovery choices.
+
+## 2026-06-13 07:57 — File save conflict actions and cleanup must be operation-owned
+- Observation: Clean-room review falsified the first file conflict UI: buttons captured only path, and save `finally` unconditionally touched global file UI state. Both allowed an old save/conflict to act on a different active file/session or a newer save.
+- Revised mechanism: A save operation is identified by session, path, and a client operation token. Conflict recovery actions are valid only while that same session/path is active, and pending-state cleanup is valid only for the active save token.
+- Intervention: Bound conflict actions to `saveSessionId` + `savePath`, and added `fileSaveSeq` / `activeFileSaveToken` ownership to save completion cleanup.
+- Evidence: Source tests pin session/path guards and token cleanup; focused/full local/Docker validations passed.
+- Scoped claim: File conflict recovery no longer lets stale conflict buttons or stale save completions mutate a different active file/session or newer save operation.
