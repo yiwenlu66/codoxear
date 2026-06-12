@@ -285,6 +285,7 @@ class Sessiond:
                 st = self.state
                 if not st:
                     return {"error": "no state"}, None
+                st.busy = True
                 fd = st.pty_master_fd
             def after_reply() -> None:
                 if fd is None:

@@ -4276,8 +4276,10 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-        self._record_prelog_user_message(s, text, source="enqueue")
-        item, ql = self._queue_append_item_local(session_id, text)
+        input_lock = self._input_lock_for_session(session_id)
+        with input_lock:
+            self._record_prelog_user_message(s, text, source="enqueue")
+            item, ql = self._queue_append_item_local(session_id, text)
         if ql != 1:
             return {"queued": True, "queue_len": int(ql), "item": item}
         resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=False, expected_item_id=str(item["id"]))
@@ -4370,6 +4372,15 @@ class SessionManager:
             raise ValueError("invalid broker state response")
         if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
             return False
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.queue_sending_item_id is not None:
+                return False
+            if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
+                return False
+            log_path = s.log_path
         if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
             return False
         return True

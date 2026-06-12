@@ -132,6 +132,7 @@ class TestSendAck(unittest.TestCase):
                 dt = time.monotonic() - t0
                 self.assertLess(dt, 0.2)
                 self.assertEqual(json.loads(line.decode("utf-8")), {"queued": False, "queue_len": 0})
+                self.assertTrue(sessiond.state.busy)
                 self.assertTrue(thread.is_alive())
                 thread.join(1.0)
                 self.assertFalse(thread.is_alive())

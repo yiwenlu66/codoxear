@@ -89,6 +89,36 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
 
+    def test_attachment_readiness_rechecks_local_queue_after_broker_state(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+
+        def get_state(_sid: str) -> dict[str, int | bool]:
+            mgr._queues[sid] = [_queue_item("q1", "queued")]
+            return {"busy": False, "queue_len": 0}
+
+        mgr.get_state = get_state  # type: ignore[method-assign]
+
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+
+    def test_attachment_readiness_uses_log_path_bound_during_state_refresh(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text("{}\n", encoding="utf-8")
+
+            def get_state(_sid: str) -> dict[str, int | bool]:
+                mgr._sessions[sid].log_path = log_path
+                return {"busy": False, "queue_len": 0}
+
+            mgr.get_state = get_state  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: False  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+
     def test_inject_attachment_keys_rechecks_readiness_under_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()
