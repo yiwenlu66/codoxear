@@ -1152,3 +1152,11 @@ Commitments:
 - Review result: focused sidebar review found no blockers. It identified weak header accessibility as a non-blocking gap.
 - Intervention: add semantic heading role/level and count-aware ARIA labels to group headers while keeping visual UI unchanged.
 - Evidence: focused checks and full local/Docker validation passed.
+
+## 2026-06-13 06:15 — 304 fast path required stable priority payloads
+- Observation: Client `api()` already sent `If-None-Match` for `GET /api/sessions`, but `refreshSessions()` could not distinguish a cached 304 response from a fresh 200 body and therefore rebuilt the sidebar even when unchanged.
+- Additional anomaly: isolated raw API evidence initially showed repeated 200 responses despite `If-None-Match`. Payload diff localized churn to continuously decaying `time_priority`, `base_priority`, and `final_priority` floats.
+- Interpretation: A client-only fast path would be mostly inert while priority floats changed every poll. Stabilizing priority payloads in short buckets is necessary for server ETags to represent meaningful session-list changes.
+- Intervention: Mark 304 cached responses with a private `Symbol` and early-return from `refreshSessions()` before DOM/defaults mutation; bucket sidebar priority elapsed time by default 10 seconds before emitting priority floats.
+- Evidence: Focused source/runtime checks passed; isolated raw API returned 304 inside a bucket; browser evidence showed one `/api/sessions` 304 and zero `.sessions` child-list mutations during the no-change poll window.
+- Scoped claim: Unchanged session polls can now avoid sidebar rebuilds within the priority bucket. Priority ordering still decays over time, but ETags may legitimately change at bucket boundaries or when any session/log/sidebar state changes.

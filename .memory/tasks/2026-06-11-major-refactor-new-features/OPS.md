@@ -1354,3 +1354,14 @@
 - Applied non-blocking sidebar review follow-up from `/tmp/codoxear-sidebar-gtd-review.md`: section headers now have `role="heading"`, `aria-level="2"`, and count-aware `aria-label`; numeric visual counts are `aria-hidden`.
 - Commit: `fix: label sidebar section headers accessibly`.
 - Validation after follow-up: focused sidebar checks passed (`22 passed`); full local suite passed (`653 passed, 25 subtests passed in 15.01s`); isolated Docker suite passed (`652 passed, 1 skipped, 25 subtests passed in 16.90s`).
+
+## 2026-06-13 06:15 — Sidebar sessions no-op refresh fast path
+- Implemented client-side 304 marker for cached `/api/sessions` responses in `codoxear/static/app.js` and made `refreshSessions()` return existing `latestSessions` before sidebar/defaults mutation when the sessions API reports unchanged data.
+- During browser evidence capture, observed raw `/api/sessions` still returned 200 on unchanged polls because `time_priority`, `base_priority`, and `final_priority` changed every second. Added server-side sidebar-priority elapsed bucketing (`SIDEBAR_PRIORITY_BUCKET_SECONDS`, default 10s) so ETags are stable within short human-invisible windows while still advancing priority over time.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py tests/test_auth_cleanup_source.py tests/test_static_assets.py -q` → `38 passed`.
+- Isolated Docker/browser evidence on `codoxear-sandbox-18932`: raw API returned 200 then 304 for `/api/sessions` with `If-None-Match`; browser PerformanceResourceTiming showed `/api/sessions` `responseStatus: 304` and MutationObserver over `.sessions` reported `mutationCount: 0` in the no-change poll window.
+- Evidence artifacts: `/tmp/codoxear-sidebar-gtd-evidence/etag2-h1.txt`, `/tmp/codoxear-sidebar-gtd-evidence/etag2-h2.txt` (raw API copied separately if needed), `/tmp/codoxear-sidebar-gtd-evidence/etag-browser-start.json`, `/tmp/codoxear-sidebar-gtd-evidence/etag-browser-after.json`.
+
+## 2026-06-13 06:17 — No-op refresh full validation
+- Full local validation after no-op refresh/priority-bucket changes: `python3 -m pytest -q` → `655 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `654 passed, 1 skipped, 25 subtests passed`.
