@@ -475,3 +475,11 @@ Commitments:
 - Intervention: introduced `BadRequestError` and `RequestPayloadTooLargeError`, routed `_read_json_body()` through them, replaced duplicate inline JSON parsing in POST routes, and hid generic 500 traces unless `CODEX_WEB_DEBUG_ERRORS=1`.
 - Evidence: focused tests passed (`25 passed in 2.11s`); isolated Docker curl showed malformed `/api/login` and authenticated malformed `/api/sessions/fake/inject_file` return 400 with no `trace`.
 - Scoped claim: representative malformed JSON and object-body errors now fail as client errors instead of internal server errors; this does not prove every semantic validation path returns an ideal status, only the centralized parse/object-shape boundary and checked attach filename path.
+
+
+## 2026-06-12 17:14
+- Observation: `saveActiveFileEdits()` previously built its write URL/body from mutable file-viewer globals and then applied the response to the current active file after `await`. A user opening another file/session while the save was in flight could let an old response rewrite the new viewer state.
+- Mechanism supported: file-open requests already have ownership guards, but save requests lacked an equivalent session/path ownership boundary.
+- Intervention: bound save request target and post-await mutation to the captured session/path snapshot. Success and error responses from stale saves no longer update the visible file state.
+- Evidence: source regression asserts captured `saveSessionId`/`savePath`/draft/version, captured write URL/body, and `saveStillCurrent()` guards on success/error; targeted tests and full Docker suite passed.
+- Scoped claim: stale file-save responses are prevented from mutating a different active file/session. This does not simulate Monaco in-browser interleavings; it constrains the JS ownership boundary by source and suite evidence.

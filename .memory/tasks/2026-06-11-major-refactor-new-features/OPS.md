@@ -746,3 +746,9 @@
 - Full validation after malformed JSON hardening.
 - HEAD: `875e87d`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`495 passed, 2 skipped, 10 subtests passed in 12.00s`).
+
+
+## 2026-06-12 17:14
+- UI race fix: file saves now capture `saveSessionId`, `savePath`, draft/version state, and use those captured values for the write request; stale success/error responses are ignored if the active file/session changed while the request was in flight.
+- Commit: `832f893 fix: ignore stale file save responses`.
+- Validation: `node --check codoxear/static/app.js` passed; focused file-viewer/upload/list/session-state tests passed (`32 passed in 2.28s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`496 passed, 2 skipped, 10 subtests passed in 10.84s`).
