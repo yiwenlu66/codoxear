@@ -1010,3 +1010,9 @@
 - Bounded-send third rerun repair: `_sock_call(..., track_request_sent=True)` now reports whether a send request crossed the socket boundary; post-request socket failures remain `SessionCommitUnknownError` even if PIDs are dead, while pre-request dead sockets can still prune stale sessions.
 - Commit: `fix: track dispatched send uncertainty`.
 - Validation: targeted tests passed (`78 passed, 7 subtests passed in 3.03s`). Plain full suite passed (`576 passed, 17 subtests passed in 9.06s`). Full isolated Docker suite passed (`574 passed, 2 skipped, 17 subtests passed in 11.80s`).
+
+
+## 2026-06-12 22:44
+- Bounded-send fourth rerun repair: attachment key injection now tracks request-sent response loss and conservatively marks pending on attachment commit-unknown; immediate enqueue promotion returns `commit_unknown` in the API response; enqueue rejects unsupported old brokers before appending undrainable items.
+- Commit: `fix: surface attachment and enqueue uncertainty`.
+- Validation: targeted tests passed (`81 passed, 7 subtests passed in 2.94s`). Plain full suite passed (`579 passed, 17 subtests passed in 9.05s`). Full isolated Docker suite passed (`577 passed, 2 skipped, 17 subtests passed in 11.30s`).

@@ -791,3 +791,10 @@ Commitments:
 - Intervention: control socket send now tracks whether the request was sent before failure; `send()` maps post-request failure to commit-unknown regardless of PID liveness and only prunes dead sessions for pre-request failures.
 - Evidence: targeted tests cover post-request failure with dead PIDs preserving the session/unknown state and pre-request dead socket pruning; full local/Docker suites passed.
 - Scoped claim: response loss after a dispatched send no longer destroys queue evidence or returns ordinary unknown-session semantics.
+
+
+## 2026-06-12 22:44
+- Observation: rerun found attachment key injection had the same post-request empty-response ambiguity, immediate enqueue hid commit-unknown, and old brokers could accumulate undrainable queued prompts.
+- Interventions: attachment keys now use request-sent tracking and mark pending on unknown; queue promotion returns commit-unknown response; enqueue rejects brokers without sync-send support before append.
+- Evidence: targeted tests cover attachment empty response pending+unknown, enqueue commit-unknown response, unsupported enqueue rejection, and full local/Docker suites.
+- Scoped claim: ambiguity at attachment/enqueue boundaries is now surfaced immediately and preserved conservatively rather than hidden as ordinary failure/queued success.
