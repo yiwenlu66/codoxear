@@ -5487,47 +5487,59 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _unauthorized(self) -> None:
         _json_response(self, 401, {"error": "unauthorized"})
 
+    def _parse_prefixed_request_path(self) -> tuple[urllib.parse.ParseResult, str] | None:
+        u = urllib.parse.urlparse(self.path)
+        path = u.path
+        if URL_PREFIX:
+            if path == URL_PREFIX:
+                loc = URL_PREFIX + "/"
+                if u.query:
+                    loc = loc + "?" + u.query
+                self.send_response(308)
+                self.send_header("Location", loc)
+                self.end_headers()
+                return None
+            stripped = _strip_url_prefix(URL_PREFIX, path)
+            if stripped is None:
+                self.send_error(404)
+                return None
+            path = stripped
+        return u, path
+
+    def _handle_static_get(self, path: str) -> bool:
+        if path == "/favicon.ico":
+            self._send_static("favicon.png")
+            return True
+        if path == "/manifest.webmanifest":
+            self._send_static("manifest.webmanifest")
+            return True
+        if path == "/service-worker.js":
+            self._send_static("service-worker.js")
+            return True
+        if path == "/app.js":
+            self._send_static("app.js")
+            return True
+        if path == "/app.css":
+            self._send_static("app.css")
+            return True
+        if path == "/favicon.png":
+            self._send_static("favicon.png")
+            return True
+        if path == "/":
+            self._send_static("index.html")
+            return True
+        if path.startswith("/static/"):
+            self._send_static(path[len("/static/") :])
+            return True
+        return False
+
     def do_GET(self) -> None:
         try:
-            u = urllib.parse.urlparse(self.path)
-            path = u.path
-            if URL_PREFIX:
-                if path == URL_PREFIX:
-                    loc = URL_PREFIX + "/"
-                    if u.query:
-                        loc = loc + "?" + u.query
-                    self.send_response(308)
-                    self.send_header("Location", loc)
-                    self.end_headers()
-                    return
-                stripped = _strip_url_prefix(URL_PREFIX, path)
-                if stripped is None:
-                    self.send_error(404)
-                    return
-                path = stripped
-            if path == "/favicon.ico":
-                self._send_static("favicon.png")
+            parsed = self._parse_prefixed_request_path()
+            if parsed is None:
                 return
-            if path == "/manifest.webmanifest":
-                self._send_static("manifest.webmanifest")
-                return
-            if path == "/service-worker.js":
-                self._send_static("service-worker.js")
-                return
-            if path == "/app.js":
-                self._send_static("app.js")
-                return
-            if path == "/app.css":
-                self._send_static("app.css")
-                return
-            if path == "/favicon.png":
-                self._send_static("favicon.png")
-                return
-            if path == "/":
-                self._send_static("index.html")
-                return
-            if path.startswith("/static/"):
-                self._send_static(path[len("/static/") :])
+            u, path = parsed
+            if self._handle_static_get(path):
                 return
 
             if path == "/api/me":
@@ -6682,22 +6694,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            u = urllib.parse.urlparse(self.path)
-            path = u.path
-            if URL_PREFIX:
-                if path == URL_PREFIX:
-                    loc = URL_PREFIX + "/"
-                    if u.query:
-                        loc = loc + "?" + u.query
-                    self.send_response(308)
-                    self.send_header("Location", loc)
-                    self.end_headers()
-                    return
-                stripped = _strip_url_prefix(URL_PREFIX, path)
-                if stripped is None:
-                    self.send_error(404)
-                    return
-                path = stripped
+            parsed = self._parse_prefixed_request_path()
+            if parsed is None:
+                return
+            u, path = parsed
 
             if path == "/api/login":
                 body = _read_body(self)
