@@ -1073,3 +1073,9 @@
 - Commit: `fix: require explicit queued unknown resolution`.
 - Validation: targeted tests passed (`64 passed, 11 subtests passed in 1.80s`). Plain full suite passed (`589 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`587 passed, 2 skipped, 21 subtests passed in 12.88s`).
 - Browser/API evidence: isolated fake-broker Docker `:18914`; direct API delete without flag returned `409 {"error":"commit-unknown item requires explicit confirmation"}`; browser delete cancel preserved both rows and confirmation prompt; browser delete confirm removed only the unknown row and left the later prompt. Artifacts under `/tmp/codoxear-queue-delete-evidence/`.
+
+
+## 2026-06-13 00:12
+- Hardened non-blocking unknown recovery edges from clean-room review: queue move now blocks crossing any persisted `commit_unknown` item in either direction; queue UI one-step moves mirror that barrier; direct send `commit_unknown` immediately patches local session metadata so Send/Queue/Attach disable before the next `/api/sessions` refresh; stale `commit_unknown_sends.json` records are pruned after startup discovery when no active session exists.
+- Commit: `fix: harden unknown queue recovery edges`.
+- Validation: targeted tests passed (`80 passed, 11 subtests passed in 1.90s`). Plain full suite passed (`591 passed, 21 subtests passed in 8.76s`). Full isolated Docker suite passed (`589 passed, 2 skipped, 21 subtests passed in 10.85s`).

@@ -859,3 +859,10 @@ Commitments:
 - Intervention: queue delete now requires explicit `allow_commit_unknown` for unknown items; queue update rejects unknown items; UI deletion of unknown items requires a transcript/terminal confirmation before passing the flag.
 - Evidence: tests cover store and manager behavior; API/browser validation showed 409 without flag, cancel preserving the barrier, and confirmed deletion as explicit resolution.
 - Scoped claim: queued unknown barriers cannot be bypassed by normal delete/update/move/sweep paths. Confirmed delete is now the explicit user resolution action for queued unknown items.
+
+
+## 2026-06-13 00:12
+- Observation: post-fix review found no blockers but identified residual uncertainty: off-head persisted queue unknowns could still be crossed, fresh direct unknown UI disablement depended on async refresh, and orphaned direct-unknown records were not self-pruned.
+- Intervention: generalized queue move barrier to any crossed unknown item, locally marked direct unknown state in the browser immediately after a 504, and pruned commit-unknown direct-send records without active sessions after discovery.
+- Evidence: targeted, full local, and isolated Docker suites passed.
+- Scoped claim: unknown recovery barriers are now stronger against corrupted/recovered queue order, stale browser metadata during immediate retry windows, and stale disk records after restart.
