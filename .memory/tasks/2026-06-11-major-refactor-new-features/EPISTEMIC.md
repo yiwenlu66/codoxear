@@ -507,3 +507,11 @@ Commitments:
 - Intervention: replaced the buffering download helper with size/permission inspection and added a shared attachment response streamer that preserves `Content-Length`, `Content-Disposition`, and no-store headers while copying chunks to `wfile`.
 - Evidence: tests poison `Path.read_bytes` for both metadata inspection and attachment response streaming; targeted tests and full Docker suite passed.
 - Scoped claim: the session file-download response no longer buffers the complete file in Python before sending. It still uses a precomputed `Content-Length`, so concurrent file mutation during a download remains outside this tranche.
+
+
+## 2026-06-12 17:36
+- Observation: fresh reviewer found that service-worker notification clicks called `client.navigate(target)` without awaiting it, then focused the old client; app hashchange ignored target sessions absent from the current `sessionIndex` snapshot.
+- Mechanism supported: an existing tab with a stale session list could receive a notification hash for a newly visible session, ignore it, and never replay the target after later session polling refreshed state.
+- Intervention: await navigation before focus in the service worker; route hash changes through `selectSessionFromHash({ refreshIfMissing: true })`, which refreshes sessions once and selects the target only if it becomes selectable.
+- Evidence: source regressions assert awaited navigation/focus fallback and the hash refresh/select flow; targeted tests and full Docker suite passed.
+- Scoped claim: notification target hashes are no longer dropped solely because the open tab had a stale session snapshot. Browser-level push-click behavior was not simulated in Docker for this tranche.

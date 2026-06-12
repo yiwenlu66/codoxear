@@ -770,3 +770,9 @@
 - Reviewer finding #2 fix: session file downloads now validate metadata with `inspect_downloadable_file()` and stream bytes through `send_attachment_file_response()` instead of `Path.read_bytes()` buffering the entire file before response.
 - Commit: `b8c58e3 fix: stream downloaded files instead of buffering`.
 - Validation: `python3 -m py_compile codoxear/file_response.py codoxear/file_view.py codoxear/server.py` passed; focused file-response/file-view/file-inspect/file-viewer/file-list tests passed (`46 passed in 3.12s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`503 passed, 2 skipped, 10 subtests passed in 10.90s`).
+
+
+## 2026-06-12 17:36
+- Reviewer finding #3 fix: notification clicks now await `client.navigate(target)` before focusing the window, and the app hashchange path refreshes `/api/sessions` once when the hash target is absent from the current snapshot before deciding whether the session is selectable.
+- Commit: `f181a71 fix: preserve notification target after stale session lists`.
+- Validation: `node --check codoxear/static/app.js` and `node --check codoxear/static/service-worker.js` passed; focused voice-push/voice-playback/auth-cleanup/session-polling tests passed (`19 passed in 0.68s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`505 passed, 2 skipped, 10 subtests passed in 14.11s`).
