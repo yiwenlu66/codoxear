@@ -429,3 +429,6 @@ Commitments:
 
 ## 2026-06-12 16:02
 - Observation: existing video preview runtime tests mutate `server.VIDEO_PREVIEW_DIR`; a direct imported helper would have changed the override mechanism. The accepted extraction keeps server wrappers that inject the server global into the implementation module, so the observable preview cache authority remains unchanged.
+
+## 2026-06-12 16:06
+- Observation: image validation/PNG CRC helpers were not called by file preview or attachment upload paths. Treating them as active protection would overstate behavior; removing them makes the server surface better match the real invariant, where client-side image compression is best-effort and server attachment staging is byte-preserving with size limits.

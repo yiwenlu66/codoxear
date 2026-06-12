@@ -606,3 +606,8 @@
 - Full validation after `codoxear/video_preview.py` extraction.
 - HEAD: `f96fe9d`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`481 passed, 2 skipped, 10 subtests passed in 12.17s`).
+
+## 2026-06-12 16:06
+- Backend cleanup tranche: removed unused `_repair_png_crc` and `_validate_image` helpers plus now-unused imports from `server.py`; adjusted file-type source boundary test to assert live imports only.
+- Commit: `a77f0a8 refactor: remove unused image validation helpers`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; focused file type/viewer/inspect/upload/static tests passed (`53 passed in 6.69s`).
