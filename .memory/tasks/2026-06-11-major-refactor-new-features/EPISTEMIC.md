@@ -873,3 +873,11 @@ Commitments:
 - Intervention: boolean queue move indices now fail at route validation; out-of-range queue moves report range before unknown barriers; startup/direct-unknown pruning uses an age threshold so recent missing-session markers survive transient sidecar absence.
 - Evidence: targeted, full local, and isolated Docker suites passed.
 - Scoped claim: unknown recovery behavior now preserves safety markers more conservatively and reports malformed queue move requests as client errors.
+
+
+## 2026-06-13 00:24
+- Observation: adversarial review showed cleanup paths could erase fresh direct or queued unknown markers without explicit user resolution, and truthy non-boolean JSON could confirm queued unknown deletion.
+- Mechanism: generic deleted-session cleanup and queue missing-session sweep were not recovery-aware; route parsing used `bool(...)` on client input.
+- Intervention: separated explicit user deletion from runtime cleanup via `clear_recovery`; preserved unknown queues for missing sessions; required strict boolean confirmation for unknown queue deletion.
+- Evidence: tests cover state cleanup preservation, queue-store missing-session preservation, and strict route source; full local and Docker suites passed.
+- Scoped claim: unknown recovery markers are no longer silently removed by stale/dead cleanup or truthy non-boolean delete confirmation.

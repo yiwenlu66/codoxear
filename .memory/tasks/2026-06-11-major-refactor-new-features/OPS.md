@@ -1085,3 +1085,9 @@
 - Repaired non-blocking findings from unknown-hardening review: `queue/move` rejects boolean `to_index` as a 400 client error; queue move validates out-of-range before barrier checks; missing-session direct unknown pruning now keeps recent orphan markers and only prunes old records, preserving safety through transient discovery gaps.
 - Commit: `fix: refine unknown recovery edge handling`.
 - Validation: targeted tests passed (`74 passed, 11 subtests passed in 1.81s`). Plain full suite passed (`591 passed, 21 subtests passed in 8.86s`). Full isolated Docker suite passed (`589 passed, 2 skipped, 21 subtests passed in 10.99s`).
+
+
+## 2026-06-13 00:24
+- Repaired cleanup/confirmation blockers from unknown-refinement review: runtime deleted-state cleanup preserves direct and queued unknown recovery markers unless explicit user deletion passes `clear_recovery`; queue sweep missing-session cleanup preserves queues containing `commit_unknown`; queue delete confirmation now requires a JSON boolean `allow_commit_unknown: true` rather than arbitrary truthy values.
+- Commit: `fix: preserve unknown recovery markers during cleanup`.
+- Validation: targeted tests passed (`60 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`592 passed, 21 subtests passed in 9.01s`). Full isolated Docker suite passed (`590 passed, 2 skipped, 21 subtests passed in 10.95s`).
