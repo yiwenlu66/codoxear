@@ -444,3 +444,6 @@ Commitments:
 
 ## 2026-06-12 16:23
 - UX observation: before this fix, the attachment action was guarded but visually enabled with no selected session, producing a silent no-op. The corrected invariant is that session-dependent composer controls should advertise unavailable state before click, not after an ignored action.
+
+## 2026-06-12 16:26
+- UX observation: queue is a per-session surface; leaving its composer button enabled without a selected session caused the same silent no-op class as attach. The session-dependent composer-control invariant now covers both attachment and queue controls.

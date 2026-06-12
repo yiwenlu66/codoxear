@@ -656,3 +656,8 @@
 - Full validation after no-session attach button UX fix.
 - HEAD: `e174c31`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`485 passed, 2 skipped, 10 subtests passed in 12.56s`).
+
+## 2026-06-12 16:26
+- UI/UX fix: queued-messages button now disables when no session is selected and exposes title/aria-label `Select a session to view queued messages`; selected sessions restore `Queued messages`.
+- Commit: `67c82e2 fix: disable queue without a selected session`.
+- Validation: `node --check codoxear/static/app.js` passed; focused queue/attach/file-viewer/static source tests passed (`25 passed in 8.84s`). Browser validation on isolated Docker server `:18822` after login observed attach disabled/title/aria-label, queue disabled/title/aria-label, `#threadTitle === No session selected`, and JS errors `[]`.
