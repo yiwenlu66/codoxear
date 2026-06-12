@@ -1306,3 +1306,11 @@
   - log idle now reconstructs the exact current Claude turn instead of relying only on an 8 MiB tail, so large resolved tool outputs can become idle while unresolved sibling tools remain busy.
 - Commit: `fix: seed Claude broker and exact idle state`.
 - Validation: targeted broker/large-idle tests passed (`57 passed`); full local suite passed (`645 passed, 25 subtests passed in 10.88s`); isolated Docker suite passed (`644 passed, 1 skipped, 25 subtests passed in 12.92s`).
+
+
+## 2026-06-13 05:17
+- Applied contract-hole fix from `/tmp/codoxear-cc-hardening-review10.md`:
+  - broker log-bind seeding now reconstructs full Claude current-turn busy/idle state, not only pending tool IDs;
+  - shared `cc_log.cc_current_turn_state_before()` now backs both broker seeding and rollout log idle reconstruction, reducing duplicate pending-state implementations.
+- Commit: `fix: seed full Claude broker turn state`.
+- Validation: targeted broker bind/large idle tests passed (`4 passed`), affected suites passed (`58 passed`), full local suite passed (`646 passed, 25 subtests passed in 11.14s`), isolated Docker suite passed (`645 passed, 1 skipped, 25 subtests passed in 12.90s`).

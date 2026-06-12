@@ -1112,3 +1112,10 @@ Commitments:
 - Intervention: move a lightweight Claude current-turn scanner into `cc_log`, seed broker pending state at log bind, and make `_compute_idle_from_log()` use exact current-turn reconstruction for Claude-shaped logs.
 - Evidence: broker bind regression remains busy after a pre-bind unresolved tool; 9 MiB resolved output is idle, while 9 MiB output with unresolved sibling remains busy; full local/Docker suites passed.
 - Scoped claim: inspected synthetic broker/log-idle Claude paths now reconstruct current-turn tool state from logs rather than depending only on in-memory observation or small tails.
+
+
+## 2026-06-13 05:17
+- Review residual: broker log bind seeded pending tools but not active non-tool Claude turns such as user/thinking rows, leaving broker `/state` idle while log idle was busy.
+- Intervention: create shared current-turn state reconstruction in `cc_log`; broker sets busy/turn_open when reconstructed idle is false even with no pending tools; rollout idle uses the same helper.
+- Evidence: broker bind regressions cover thinking-only and pending-tool active turns; large resolved/unresolved idle regressions still pass; full local/Docker suites passed.
+- Scoped claim: inspected broker bind state now agrees with log-derived Claude current-turn busy state for synthetic active turns.
