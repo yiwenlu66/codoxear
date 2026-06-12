@@ -2155,7 +2155,7 @@
   <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
   <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
   <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
-  <li>Codoxear remembers the last backend you used and the last provider choice for each backend.</li>
+  <li>Codoxear remembers the last backend you used and the last provider/model pair for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
 <ul class="md">

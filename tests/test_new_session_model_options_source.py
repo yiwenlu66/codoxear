@@ -96,6 +96,7 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("rememberProviderModelChoice(agentBackend, providerChoice, model);", source)
         self.assertIn("function rememberedNewSessionProviderModelChoice()", source)
         self.assertIn("const rememberedPair = rememberedNewSessionProviderModelChoice();", source)
+        self.assertIn("last provider/model pair for each backend", source)
 
 
 if __name__ == "__main__":
