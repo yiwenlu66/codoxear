@@ -989,3 +989,11 @@ Commitments:
 - Intervention: `_queue_append_item_local(..., reject_recovery_barrier=True)` now performs the authoritative recovery check under the same `self._lock` critical section as append.
 - Evidence: regression simulates a barrier appearing between the first enqueue check and append; full local/Docker suites passed.
 - Scoped claim: enqueue cannot append after a recovery barrier has become visible in the queue state before the append lock is acquired.
+
+
+## 2026-06-13 02:33
+- Observation: review showed a persisted queue ordered `[normal, recovery]` could still auto-promote the normal head, even though the session row was marked recovery-locked.
+- Mechanism: promotion only inspected the head; the product invariant is queue-level once any recovery evidence exists.
+- Intervention: promotion freezes on any queued recovery/unknown item; direct unknown plus queued tail is reported as `queue_recovery`; internal enqueue helper uses the same protected append path.
+- Evidence: regressions cover recovery tails for both flags and direct-unknown queue visibility; full local/Docker suites passed.
+- Scoped claim: active recovery queues no longer mutate backend sessions via queue promotion while any queued recovery evidence remains unresolved.

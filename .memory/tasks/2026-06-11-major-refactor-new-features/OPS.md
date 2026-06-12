@@ -1179,3 +1179,9 @@
 - Repaired atomicity blocker: enqueue now rechecks recovery/unknown queue barriers inside the append lock, closing the interleaving where a queue sweep could mark a head `commit_unknown` after enqueue's first check but before append.
 - Commit: `fix: recheck recovery barrier before enqueue append`.
 - Validation: targeted `tests/test_server_queue_persistence.py` passed (`64 passed, 13 subtests passed in 1.80s`). Plain full suite passed (`609 passed, 23 subtests passed in 9.20s`). Full isolated Docker suite passed (`607 passed, 2 skipped, 23 subtests passed in 11.09s`).
+
+
+## 2026-06-13 02:33
+- Repaired queue-wide recovery blocker: queue promotion now freezes when any queued item has `commit_unknown` or `orphan_recovery`, not only when the head is marked; active `queue_recovery` also reports direct-unknown plus queued-tail state, and internal `_queue_enqueue_local()` uses the protected append path.
+- Commit: `fix: freeze promotion for recovery queues`.
+- Validation: targeted tests passed (`69 passed, 15 subtests passed in 1.87s`). Plain full suite passed (`611 passed, 25 subtests passed in 9.20s`). Full isolated Docker suite passed (`609 passed, 2 skipped, 25 subtests passed in 11.06s`).
