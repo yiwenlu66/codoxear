@@ -337,9 +337,16 @@
       }
 
       function renderSessionGroupHeader(entry) {
-        return el("div", { class: "sessionGroupHeader", "data-session-group": entry.key }, [
+        const count = Number(entry.count) || 0;
+        return el("div", {
+          class: "sessionGroupHeader",
+          "data-session-group": entry.key,
+          role: "heading",
+          "aria-level": "2",
+          "aria-label": `${entry.label}: ${count} session${count === 1 ? "" : "s"}`,
+        }, [
           el("span", { class: "sessionGroupLabel", text: entry.label }),
-          el("span", { class: "sessionGroupCount", text: String(entry.count) }),
+          el("span", { class: "sessionGroupCount", "aria-hidden": "true", text: String(count) }),
         ]);
       }
 
