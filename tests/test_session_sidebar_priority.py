@@ -104,6 +104,33 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(rows[0]["git_branch"], "feature/outside-lock")
 
+    def test_list_sessions_reads_log_run_settings_outside_manager_lock(self) -> None:
+        mgr = _make_manager()
+        mgr.idle_from_log_path = lambda _sid, _path: True  # type: ignore[method-assign]
+        now = time.time()
+        with tempfile.TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            log_path.write_text('{"type":"session_meta","payload":{"id":"current","source":"cli"}}\n', encoding="utf-8")
+            current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 50)
+            current.log_path = log_path
+            current.model_provider = None
+            current.model = None
+            current.reasoning_effort = None
+            mgr._sessions = {current.session_id: current}
+
+            def read_settings(_path: Path, *, agent_backend: str = "codex") -> tuple[str, str, str]:
+                self.assertFalse(mgr._lock.locked())
+                self.assertEqual(agent_backend, "codex")
+                return "openai", "gpt-5.4", "high"
+
+            with patch("codoxear.server._read_run_settings_from_log", side_effect=read_settings):
+                rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["model_provider"], "openai")
+        self.assertEqual(rows[0]["model"], "gpt-5.4")
+        self.assertEqual(rows[0]["reasoning_effort"], "high")
+        self.assertEqual(current.model, "gpt-5.4")
+
     def test_delete_session_kills_terminal_owned_and_clears_dependents(self) -> None:
         mgr = _make_manager()
         now = time.time()

@@ -4392,17 +4392,7 @@ class SessionManager:
                                     files_dirty = True
                                 break
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
-                if log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None):
-                    try:
-                        log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path, agent_backend=s.agent_backend)
-                    except (FileNotFoundError, ValueError):
-                        log_provider = log_model = log_effort = None
-                    if s.model_provider is None:
-                        s.model_provider = log_provider
-                    if s.model is None:
-                        s.model = log_model
-                    if s.reasoning_effort is None:
-                        s.reasoning_effort = log_effort
+                needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
                 if s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned):
                     # Discovery seeds offsets at EOF, so recover preexisting chat history once.
                     conv_ts = _last_conversation_ts_from_tail(s.log_path)
@@ -4464,6 +4454,7 @@ class SessionManager:
                         "log_path": (str(s.log_path) if s.log_path is not None else None),
                         "_log_path_obj": s.log_path,
                         "log_exists": log_exists,
+                        "needs_run_settings": needs_run_settings,
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
                         "token": s.token,
@@ -4505,6 +4496,28 @@ class SessionManager:
             sid = str(it["session_id"])
             log_exists = bool(it.get("log_exists"))
             log_path_obj = it.get("_log_path_obj")
+            if bool(it.get("needs_run_settings")) and isinstance(log_path_obj, Path):
+                try:
+                    log_provider, log_model, log_effort = _read_run_settings_from_log(log_path_obj, agent_backend=str(it.get("agent_backend") or "codex"))
+                except (FileNotFoundError, ValueError):
+                    log_provider = log_model = log_effort = None
+                with self._lock:
+                    s_cur = self._sessions.get(sid)
+                    if s_cur is not None and s_cur.log_path == log_path_obj:
+                        if s_cur.model_provider is None:
+                            s_cur.model_provider = log_provider
+                        if s_cur.model is None:
+                            s_cur.model = log_model
+                        if s_cur.reasoning_effort is None:
+                            s_cur.reasoning_effort = log_effort
+                        it["model_provider"] = s_cur.model_provider
+                        it["preferred_auth_method"] = s_cur.preferred_auth_method
+                        it["model"] = s_cur.model
+                        it["reasoning_effort"] = s_cur.reasoning_effort
+                        it["provider_choice"] = _provider_choice_for_settings(
+                            model_provider=s_cur.model_provider,
+                            preferred_auth_method=s_cur.preferred_auth_method,
+                        )
             if (not log_exists) or not isinstance(log_path_obj, Path):
                 busy_out = False
             else:
@@ -4519,6 +4532,7 @@ class SessionManager:
             it2.pop("_log_path_obj", None)
             it2.pop("_cwd_path_obj", None)
             it2.pop("log_exists", None)
+            it2.pop("needs_run_settings", None)
             it2.pop("state_busy", None)
             it2["git_branch"] = git_branch
             it2["busy"] = bool(busy_out)
