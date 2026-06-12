@@ -29,7 +29,8 @@ class TestReasoningEffortSource(unittest.TestCase):
         self.assertIn('if reasoning is False:\n        return ["off"]', source)
         self.assertIn("def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str | None = None, model: str | None = None)", source)
         self.assertIn("reasoning_effort must be one of {', '.join(allowed)} for Pi model", source)
-        self.assertIn("model_provider=model_provider,\n                            model=model,", source)
+        self.assertIn("def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest", source)
+        self.assertIn("model_provider=model_provider,\n            model=model,", source)
 
 
 if __name__ == "__main__":

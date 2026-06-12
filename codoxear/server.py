@@ -2567,6 +2567,128 @@ def _read_new_session_defaults() -> dict[str, Any]:
     return out
 
 
+
+
+class LaunchRequestValidationError(ValueError):
+    def __init__(self, message: str, *, field: str | None = None) -> None:
+        super().__init__(message)
+        self.field = field
+
+
+@dataclass(frozen=True)
+class NewSessionLaunchRequest:
+    cwd: str
+    args: list[str] | None
+    agent_backend: str
+    resume_session_id: str | None
+    worktree_branch: str | None
+    model_provider: str | None
+    preferred_auth_method: str | None
+    model: str | None
+    reasoning_effort: str | None
+    service_tier: str | None
+    create_in_tmux: bool
+
+
+def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest:
+    try:
+        agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
+    except ValueError as e:
+        raise LaunchRequestValidationError(str(e)) from e
+    cwd = obj.get("cwd")
+    if not isinstance(cwd, str) or not cwd.strip():
+        raise LaunchRequestValidationError("cwd required", field="cwd")
+    if agent_backend == "codex":
+        allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
+        model_provider = _normalize_requested_model_provider(
+            obj.get("model_provider"),
+            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
+        )
+        preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
+        reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
+        service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
+    elif agent_backend == "pi":
+        pi_provider_choices = {
+            str(value)
+            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
+            if isinstance(value, str) and value.strip()
+        }
+        model_provider = _normalize_requested_model_provider(
+            obj.get("model_provider"),
+            allowed=pi_provider_choices or None,
+        )
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
+        preferred_auth_method = None
+        service_tier = None
+    elif agent_backend == "cc":
+        if obj.get("model_provider") not in (None, ""):
+            raise LaunchRequestValidationError("model_provider is not supported for cc")
+        if obj.get("preferred_auth_method") not in (None, ""):
+            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
+        model_provider = None
+        preferred_auth_method = None
+        service_tier = None
+    else:
+        raise LaunchRequestValidationError(f"unsupported agent_backend: {agent_backend}")
+
+    model = _normalize_requested_model(obj.get("model"))
+    if agent_backend == "pi":
+        reasoning_effort = _normalize_requested_pi_reasoning_effort(
+            obj.get("reasoning_effort"),
+            model_provider=model_provider,
+            model=model,
+        )
+        if obj.get("service_tier") not in (None, ""):
+            raise LaunchRequestValidationError("service_tier is not supported for pi")
+    elif agent_backend == "cc":
+        reasoning_effort = _normalize_requested_cc_reasoning_effort(obj.get("reasoning_effort"))
+        if obj.get("service_tier") not in (None, ""):
+            raise LaunchRequestValidationError("service_tier is not supported for cc")
+
+    create_in_tmux_raw = obj.get("create_in_tmux")
+    if create_in_tmux_raw is None:
+        create_in_tmux = False
+    elif isinstance(create_in_tmux_raw, bool):
+        create_in_tmux = create_in_tmux_raw
+    else:
+        raise LaunchRequestValidationError("create_in_tmux must be a boolean")
+    resume_session_id_raw = obj.get("resume_session_id")
+    if resume_session_id_raw is None:
+        resume_session_id = None
+    elif isinstance(resume_session_id_raw, str):
+        resume_session_id = resume_session_id_raw.strip() or None
+    else:
+        raise LaunchRequestValidationError("resume_session_id must be a string")
+    worktree_branch_raw = obj.get("worktree_branch")
+    if worktree_branch_raw is None:
+        worktree_branch = None
+    elif isinstance(worktree_branch_raw, str):
+        worktree_branch = worktree_branch_raw.strip() or None
+    else:
+        raise LaunchRequestValidationError("worktree_branch must be a string")
+    args = obj.get("args")
+    if args is None:
+        args_list = None
+    elif isinstance(args, list) and all(isinstance(x, str) for x in args):
+        args_list = [x for x in args if x]
+    else:
+        raise LaunchRequestValidationError("args must be a list of strings")
+    return NewSessionLaunchRequest(
+        cwd=cwd,
+        args=args_list,
+        agent_backend=agent_backend,
+        resume_session_id=resume_session_id,
+        worktree_branch=worktree_branch,
+        model_provider=model_provider,
+        preferred_auth_method=preferred_auth_method,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        service_tier=service_tier,
+        create_in_tmux=create_in_tmux,
+    )
+
+
 def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") -> dict[str, Any] | None:
     backend_name = normalize_agent_backend(agent_backend)
     meta = _read_session_meta(log_path, agent_backend=backend_name)
@@ -6928,139 +7050,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(obj, dict):
                     raise ValueError("invalid json body (expected object)")
                 try:
-                    agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
+                    launch_req = _parse_new_session_launch_request(obj)
+                except LaunchRequestValidationError as e:
+                    payload: dict[str, Any] = {"error": str(e)}
+                    if e.field:
+                        payload["field"] = e.field
+                    _json_response(self, 400, payload)
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
-                    return
-                cwd = obj.get("cwd")
-                if not isinstance(cwd, str) or not cwd.strip():
-                    _json_response(self, 400, {"error": "cwd required", "field": "cwd"})
-                    return
-                try:
-                    if agent_backend == "codex":
-                        allowed_providers = set(_read_codex_launch_defaults().get("model_providers") or ["openai"])
-                        model_provider = _normalize_requested_model_provider(
-                            obj.get("model_provider"),
-                            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
-                        )
-                    elif agent_backend == "pi":
-                        pi_provider_choices = {
-                            str(value)
-                            for value in (_read_pi_launch_defaults().get("provider_choices") or [])
-                            if isinstance(value, str) and value.strip()
-                        }
-                        model_provider = _normalize_requested_model_provider(
-                            obj.get("model_provider"),
-                            allowed=pi_provider_choices or None,
-                        )
-                    elif agent_backend == "cc":
-                        if obj.get("model_provider") not in (None, ""):
-                            raise ValueError("model_provider is not supported for cc")
-                        model_provider = None
-                    else:
-                        raise ValueError(f"unsupported agent_backend: {agent_backend}")
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                if agent_backend == "codex":
-                    try:
-                        preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    if obj.get("preferred_auth_method") not in (None, ""):
-                        _json_response(self, 400, {"error": f"preferred_auth_method is not supported for {agent_backend}"})
-                        return
-                    preferred_auth_method = None
-                try:
-                    model = _normalize_requested_model(obj.get("model"))
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                if agent_backend == "codex":
-                    try:
-                        reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    try:
-                        service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                elif agent_backend == "pi":
-                    try:
-                        reasoning_effort = _normalize_requested_pi_reasoning_effort(
-                            obj.get("reasoning_effort"),
-                            model_provider=model_provider,
-                            model=model,
-                        )
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    if obj.get("service_tier") not in (None, ""):
-                        _json_response(self, 400, {"error": "service_tier is not supported for pi"})
-                        return
-                    service_tier = None
-                elif agent_backend == "cc":
-                    try:
-                        reasoning_effort = _normalize_requested_cc_reasoning_effort(obj.get("reasoning_effort"))
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    if obj.get("service_tier") not in (None, ""):
-                        _json_response(self, 400, {"error": "service_tier is not supported for cc"})
-                        return
-                    service_tier = None
-                else:
-                    _json_response(self, 400, {"error": f"unsupported agent_backend: {agent_backend}"})
-                    return
-                create_in_tmux_raw = obj.get("create_in_tmux")
-                if create_in_tmux_raw is None:
-                    create_in_tmux = False
-                elif isinstance(create_in_tmux_raw, bool):
-                    create_in_tmux = create_in_tmux_raw
-                else:
-                    _json_response(self, 400, {"error": "create_in_tmux must be a boolean"})
-                    return
-                resume_session_id_raw = obj.get("resume_session_id")
-                if resume_session_id_raw is None:
-                    resume_session_id = None
-                elif isinstance(resume_session_id_raw, str):
-                    resume_session_id = resume_session_id_raw.strip() or None
-                else:
-                    _json_response(self, 400, {"error": "resume_session_id must be a string"})
-                    return
-                worktree_branch_raw = obj.get("worktree_branch")
-                if worktree_branch_raw is None:
-                    worktree_branch = None
-                elif isinstance(worktree_branch_raw, str):
-                    worktree_branch = worktree_branch_raw.strip() or None
-                else:
-                    _json_response(self, 400, {"error": "worktree_branch must be a string"})
-                    return
-                args = obj.get("args")
-                if args is None:
-                    args_list = None
-                elif isinstance(args, list) and all(isinstance(x, str) for x in args):
-                    args_list = [x for x in args if x]
-                else:
-                    _json_response(self, 400, {"error": "args must be a list of strings"})
                     return
                 try:
                     res = MANAGER.spawn_web_session(
-                        cwd=cwd,
-                        args=args_list,
-                        agent_backend=agent_backend,
-                        resume_session_id=resume_session_id,
-                        worktree_branch=worktree_branch,
-                        model_provider=model_provider,
-                        preferred_auth_method=preferred_auth_method,
-                        model=model,
-                        reasoning_effort=reasoning_effort,
-                        service_tier=service_tier,
-                        create_in_tmux=create_in_tmux,
+                        cwd=launch_req.cwd,
+                        args=launch_req.args,
+                        agent_backend=launch_req.agent_backend,
+                        resume_session_id=launch_req.resume_session_id,
+                        worktree_branch=launch_req.worktree_branch,
+                        model_provider=launch_req.model_provider,
+                        preferred_auth_method=launch_req.preferred_auth_method,
+                        model=launch_req.model,
+                        reasoning_effort=launch_req.reasoning_effort,
+                        service_tier=launch_req.service_tier,
+                        create_in_tmux=launch_req.create_in_tmux,
                     )
                 except ValueError as e:
                     payload: dict[str, Any] = {"error": str(e)}
