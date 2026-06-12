@@ -701,3 +701,10 @@ Commitments:
 - Interventions: moved pending-send authorization inside the input lock, persisted pending session ids, restored flags during discovery, and restricted web `allow_pending_attachment` to local attached-file state.
 - Evidence: targeted tests cover pending-state persistence set/clear, locked send rejection, queue blocking, and frontend no-auto-consent; full local/Docker suites passed.
 - Scoped claim: server-managed send/queue paths now preserve pending attachment ownership across concurrent sends and server restarts, unless the user explicitly sends from a local attachment-owning composer.
+
+
+## 2026-06-12 20:52
+- Observation: clean-room review found persisted pending attachments could be unsendable after UI reload, and send ACK-before-PTY-commit let a second direct send pass after pending was cleared but before Enter was written.
+- Interventions: UI now requires explicit confirmation to send restored pending attachments; server `send()` checks remote/log readiness under the input lock before calling broker/sessiond.
+- Evidence: targeted tests cover remote-busy send rejection before broker call and frontend confirmation flow; full local/Docker suites passed.
+- Scoped claim: recovered pending attachments have an explicit UI consent path, and server-managed sends fail closed while broker/sessiond report the previous send as busy during post-ACK PTY commit.

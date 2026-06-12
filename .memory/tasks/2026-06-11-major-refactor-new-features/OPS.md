@@ -932,3 +932,9 @@
 - Clean-room rerun pending-barrier repair: `/send` now checks pending attachment under the per-session input lock; pending attachments persist in `pending_attachments.json`; discovery restores pending flags; web composer only sets `allow_pending_attachment` from local attached-file state.
 - Commit: `fix: persist pending attachment ownership`.
 - Validation: targeted attachment/chat/send tests passed (`53 passed in 3.03s`). Plain full suite passed (`548 passed, 10 subtests passed in 9.04s`). Full isolated Docker suite passed (`546 passed, 2 skipped, 10 subtests passed in 11.17s`).
+
+
+## 2026-06-12 20:52
+- Clean-room rerun repair: pending-attachment UI recovery now asks explicit confirmation when server metadata says an attachment is pending; `send()` now checks live broker/log readiness under the input lock before socket send so a second send cannot pass during post-ACK PTY commit.
+- Commit: `fix: gate pending sends on live readiness`.
+- Validation: targeted attachment/chat/send tests passed (`54 passed in 3.09s`). Plain full suite passed (`549 passed, 10 subtests passed in 10.42s`). Full isolated Docker suite passed (`547 passed, 2 skipped, 10 subtests passed in 11.34s`).
