@@ -1118,3 +1118,9 @@
 - Commit: `fix: preserve orphan queue leftovers`.
 - Validation: targeted tests passed (`85 passed, 11 subtests passed in 2.06s`, then `80 passed, 11 subtests passed in 1.78s` after marker narrowing). Plain full suite passed (`597 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`595 passed, 2 skipped, 21 subtests passed in 11.22s`).
 - Browser evidence: isolated Docker `:18919`; after confirming deletion of the orphan queue's unknown item, `/tmp/codoxear-orphan-leftover-evidence/codoxear_orphan_leftover_after_delete.json` shows row still selected with queue label `Review preserved queued recovery items`, remaining row `later orphan`, and send disabled as missing-session review-only.
+
+
+## 2026-06-13 01:14
+- Repaired orphan recovery blockers: queued `orphan_recovery` items now block queue promotion like commit-unknown items; sidebar delete clears direct/queued orphan recovery rows; orphan rows include `transcript_state: failed`; queue UI treats orphan recovery items as locked recovery evidence; mixed direct+queue orphan rows keep queue review available when `queue_len > 0`.
+- Commit: `fix: block orphan recovery prompts from auto-send`.
+- Validation: targeted tests passed (`82 passed, 11 subtests passed in 1.81s`). Plain full suite passed (`599 passed, 21 subtests passed in 8.61s`). Full isolated Docker suite passed (`597 passed, 2 skipped, 21 subtests passed in 14.10s`).

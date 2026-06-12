@@ -913,3 +913,11 @@ Commitments:
 - Intervention: remaining items in an orphan queue become persisted `orphan_recovery` items when an unknown item is explicitly deleted; missing-session cleanup/listing/API gates preserve queues with either `commit_unknown` or `orphan_recovery` markers.
 - Evidence: tests and browser validation show the later prompt remains visible/reviewable after deleting the unknown head, while generic stale queues without recovery markers are still pruned.
 - Scoped claim: resolving one orphan queue unknown no longer strands later queued prompts for that missing session.
+
+
+## 2026-06-13 01:14
+- Observation: orphan recovery leftovers could auto-send if the session id became active again; orphan recovery rows had a dead sidebar delete affordance and could be reclassified to pending transcript state.
+- Mechanism: queue promotion only checked `commit_unknown`, delete_session did not recognize recovery rows, and synthetic rows lacked transcript state.
+- Intervention: treat `orphan_recovery` as non-promotable recovery evidence, make delete_session clear orphan recovery stores, and mark synthetic rows as failed/non-polling transcript state. Queue UI locks recovery rows while still allowing deletion.
+- Evidence: targeted/full/Docker suites passed.
+- Scoped claim: preserved orphan prompts remain review-only and cannot be injected automatically if a session id reappears.
