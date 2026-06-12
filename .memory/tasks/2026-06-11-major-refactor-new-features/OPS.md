@@ -1465,3 +1465,11 @@
 - Browser evidence on isolated `codoxear-sandbox-18934` after gating: Jump-to-latest forced tail failure still preserves one cached transcript row and appends one non-transcript error row. Artifact: `/tmp/codoxear-forced-refresh-evidence/gated-after-jump-fail.json`.
 - Full local validation: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:31 — Authoritative tail-cache identity repair
+- Clean-room critic found a blocker in cached fallback identity: tail cache snapshots stored `threadId`/`logPath` from `sessionIndex` sidebar metadata rather than authoritative `/messages/tail` or live response payloads. If sidebar metadata lagged, a cache could appear to match stale sidebar state rather than the real transcript identity.
+- Added `transcriptIdentityFromData(data, fallback)` and changed `rememberTailSnapshot()` to store identity from tail response payload first, falling back to session metadata only when the payload lacks a field. `appendTailSnapshotEvents()` now accepts `identityData` and live polling passes the live response as identity data.
+- Added source tests to pin authoritative tail/live identity use for cache snapshots.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`.
+- Full local validation: `python3 -m pytest -q` → `662 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `661 passed, 1 skipped, 25 subtests passed`.

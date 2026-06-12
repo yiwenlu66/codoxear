@@ -1243,3 +1243,10 @@ Commitments:
 - Intervention: Added `fallbackToCacheOnFailure`, default false; only Jump to latest opts in.
 - Evidence: Source tests pin the option and automatic no-fallback paths; browser evidence confirms the opt-in Jump path still degrades to cached transcript plus error; full validations passed.
 - Scoped claim: Forced refresh fallback now applies only where the caller explicitly accepts last-known transcript evidence after a failed freshness attempt.
+
+## 2026-06-13 07:31 — Tail cache identity must come from transcript payloads
+- Observation: The gated fallback still depended on `tailCacheMatchesSession(cache, sessionIndexEntry)`, but cache identity itself had been recorded from sidebar metadata. If sidebar metadata lagged behind the authoritative transcript response, the cache identity could encode stale UI knowledge rather than the transcript's actual source.
+- Revised mechanism: The strongest identity evidence for a cached transcript is the `/messages/tail` or `/messages/live` response that produced those events. Sidebar metadata is only a fallback when the payload lacks identity fields.
+- Intervention: Tail snapshot creation now stores identity from response payload fields first; live append updates pass the live response as `identityData`.
+- Evidence: Source tests pin data-first identity use and full validations passed.
+- Scoped claim: Tail cache identity now follows the transcript payload that produced cached events, reducing stale-sidebar false matches for cache fallback.
