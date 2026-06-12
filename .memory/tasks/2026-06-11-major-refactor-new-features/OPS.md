@@ -641,3 +641,8 @@
 - Backend refactor tranche: extracted attachment filename/staging/inject-text helpers into `codoxear/file_upload.py`; server wrapper injects `UPLOAD_DIR` and `_now` so existing runtime override semantics remain intact.
 - Commit: `abdbcb5 refactor: extract upload staging helpers`.
 - Validation: `python3 -m py_compile codoxear/file_upload.py codoxear/server.py` passed; focused upload/module/file-viewer/static/send-ack tests passed (`38 passed in 7.21s`).
+
+## 2026-06-12 16:20
+- Full validation after `codoxear/file_upload.py` extraction.
+- HEAD: `aee36d1`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`484 passed, 2 skipped, 10 subtests passed in 15.87s`).
