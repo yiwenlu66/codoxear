@@ -2753,7 +2753,7 @@ class SessionManager:
                 allow_commit_unknown=allow_commit_unknown,
                 allow_orphan_recovery=allow_orphan_recovery,
             )
-            if s is None and allow_commit_unknown:
+            if s is None and (allow_commit_unknown or allow_orphan_recovery):
                 q_after = self._queues.get(session_id)
                 if isinstance(q_after, list):
                     for item in q_after:

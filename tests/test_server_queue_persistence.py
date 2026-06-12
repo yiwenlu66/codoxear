@@ -659,6 +659,16 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "blocks reordering"):
             SessionManager.queue_move(mgr, sid, "n", 0)
 
+    def test_orphan_queue_remains_reviewable_after_recovery_item_delete(self) -> None:
+        mgr = self._mgr()
+        mgr._queues["orphan"] = [dict(_queue_item("r", "recover"), orphan_recovery=True), _queue_item("n", "plain tail")]
+
+        self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "r", allow_orphan_recovery=True), {"ok": True, "queue_len": 1})
+
+        remaining = SessionManager.queue_list(mgr, "orphan")
+        self.assertEqual([item["id"] for item in remaining], ["n"])
+        self.assertTrue(remaining[0]["orphan_recovery"])
+
     def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
         mgr = self._mgr()
         mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
