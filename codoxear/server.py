@@ -712,6 +712,14 @@ _CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
 _CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 
 
+class BadRequestError(Exception):
+    """Client request body or shape was invalid."""
+
+
+class RequestPayloadTooLargeError(Exception):
+    """Client request body exceeded the configured size limit."""
+
+
 def _is_client_disconnect(exc: BaseException) -> bool:
     if isinstance(exc, _CLIENT_DISCONNECT_ERRORS):
         return True
@@ -721,8 +729,17 @@ def _is_client_disconnect(exc: BaseException) -> bool:
 def _handle_route_exception(handler: http.server.BaseHTTPRequestHandler, exc: BaseException) -> None:
     if _is_client_disconnect(exc):
         return
+    if isinstance(exc, BadRequestError):
+        _json_response(handler, 400, {"error": str(exc)})
+        return
+    if isinstance(exc, RequestPayloadTooLargeError):
+        _json_response(handler, 413, {"error": str(exc)})
+        return
     traceback.print_exc()
-    _json_response(handler, 500, {"error": str(exc), "trace": traceback.format_exc()})
+    payload = {"error": str(exc)}
+    if os.environ.get("CODEX_WEB_DEBUG_ERRORS") == "1":
+        payload["trace"] = traceback.format_exc()
+    _json_response(handler, 500, payload)
 
 
 def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any) -> None:
@@ -773,9 +790,14 @@ def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 102
     cl2 = str(cl).strip()
     if not cl2:
         cl2 = "0"
-    n = int(cl2)
-    if n < 0 or n > limit:
-        raise ValueError(f"invalid content-length: {n}")
+    try:
+        n = int(cl2)
+    except (TypeError, ValueError) as e:
+        raise BadRequestError("invalid content-length") from e
+    if n < 0:
+        raise BadRequestError(f"invalid content-length: {n}")
+    if n > limit:
+        raise RequestPayloadTooLargeError(f"request body too large (max {limit} bytes)")
     return handler.rfile.read(n)
 
 
@@ -5245,14 +5267,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         return False
 
-    def _read_json_body(self) -> dict[str, Any]:
-        body = _read_body(self)
-        body_text = body.decode("utf-8")
+    def _read_json_body(self, *, limit: int = 2 * 1024 * 1024, too_large_error: str | None = None) -> dict[str, Any]:
+        try:
+            body = _read_body(self, limit=limit)
+        except RequestPayloadTooLargeError as e:
+            if too_large_error:
+                raise RequestPayloadTooLargeError(too_large_error) from e
+            raise
+        try:
+            body_text = body.decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise BadRequestError("request body must be utf-8") from e
         if not body_text.strip():
-            raise ValueError("empty request body")
-        obj = json.loads(body_text)
+            raise BadRequestError("empty request body")
+        try:
+            obj = json.loads(body_text)
+        except json.JSONDecodeError as e:
+            raise BadRequestError("invalid json body") from e
         if not isinstance(obj, dict):
-            raise ValueError("invalid json body (expected object)")
+            raise BadRequestError("invalid json body (expected object)")
         return obj
 
     def _handle_voice_post(self, path: str) -> bool:
@@ -6399,13 +6432,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             u, path = parsed
 
             if path == "/api/login":
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 pw = obj.get("password")
                 if not isinstance(pw, str) or not _is_same_password(pw):
                     _json_response(self, 403, {"error": "bad password"})
@@ -6438,13 +6465,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 try:
                     launch_req = _parse_new_session_launch_request(obj)
                 except LaunchRequestValidationError as e:
@@ -6491,13 +6512,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 path_raw = obj.get("path")
                 if not isinstance(path_raw, str) or not path_raw.strip():
                     _json_response(self, 400, {"error": "path required"})
@@ -6595,13 +6610,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 path_raw = obj.get("path")
                 if not isinstance(path_raw, str) or not path_raw.strip():
                     _json_response(self, 400, {"error": "path required"})
@@ -6700,13 +6709,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 path_raw = obj.get("path")
                 if not isinstance(path_raw, str) or not path_raw.strip():
                     _json_response(self, 400, {"error": "path required"})
@@ -6816,13 +6819,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 name = obj.get("name")
                 if not isinstance(name, str):
                     _json_response(self, 400, {"error": "name required"})
@@ -6849,13 +6846,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 name = obj.get("name")
                 if not isinstance(name, str):
                     _json_response(self, 400, {"error": "name required"})
@@ -6873,13 +6864,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 text = obj.get("text")
                 if not isinstance(text, str) or not text.strip():
                     _json_response(self, 400, {"error": "text required"})
@@ -6893,13 +6878,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 text = obj.get("text")
                 if not isinstance(text, str) or not text.strip():
                     _json_response(self, 400, {"error": "text required"})
@@ -6920,13 +6899,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 item_id = obj.get("id")
                 if not isinstance(item_id, str) or not item_id.strip():
                     _json_response(self, 400, {"error": "id required"})
@@ -6947,13 +6920,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 item_id = obj.get("id")
                 text = obj.get("text")
                 if not isinstance(item_id, str) or not item_id.strip():
@@ -6978,13 +6945,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 item_id = obj.get("id")
                 to_index = obj.get("to_index")
                 if not isinstance(item_id, str) or not item_id.strip():
@@ -7009,13 +6970,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                body = _read_body(self)
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body()
                 enabled_raw = obj.get("enabled", None)
                 request_raw = obj.get("request", None)
                 cooldown_minutes_raw = obj.get("cooldown_minutes", None)
@@ -7089,22 +7044,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                try:
-                    body = _read_body(self, limit=ATTACH_UPLOAD_BODY_MAX_BYTES)
-                except ValueError:
-                    _json_response(self, 413, {"error": f"file too large (max {ATTACH_UPLOAD_MAX_BYTES} bytes)"})
-                    return
-                body_text = body.decode("utf-8")
-                if not body_text.strip():
-                    raise ValueError("empty request body")
-                obj = json.loads(body_text)
-                if not isinstance(obj, dict):
-                    raise ValueError("invalid json body (expected object)")
+                obj = self._read_json_body(
+                    limit=ATTACH_UPLOAD_BODY_MAX_BYTES,
+                    too_large_error=f"file too large (max {ATTACH_UPLOAD_MAX_BYTES} bytes)",
+                )
                 data_b64 = obj.get("data_b64")
                 filename = obj.get("filename")
                 attachment_index = obj.get("attachment_index")
                 if not isinstance(filename, str) or (not filename.strip()):
-                    raise ValueError("filename required")
+                    _json_response(self, 400, {"error": "filename required"})
+                    return
                 if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
                     _json_response(self, 400, {"error": "attachment_index must be an integer"})
                     return
