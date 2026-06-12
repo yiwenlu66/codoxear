@@ -471,3 +471,7 @@
 - Rollout-log cleanup: removed local duplicate timestamp/message-id helper definitions from chat-event extraction and delivery-message extraction; both now use the module-level helpers.
 - Commit: `a16c762 refactor: reuse rollout chat helper functions`.
 - Validation: `python3 -m py_compile codoxear/rollout_log.py` passed; targeted rollout helper, server chat flags, Claude chat/idle, message index, idle heuristic, and voice push tests passed (`68 passed in 2.08s`).
+
+## 2026-06-12 14:39
+- Shortcut guard follow-up: `/` search shortcut now also no-ops while the mobile sidebar overlay is open, so it cannot open chat search behind the sidebar.
+- Validation: `node --check codoxear/static/app.js` passed; chat navigation source tests passed (`8 passed in 0.47s`).
