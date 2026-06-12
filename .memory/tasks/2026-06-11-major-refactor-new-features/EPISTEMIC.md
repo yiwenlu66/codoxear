@@ -619,3 +619,11 @@ Commitments:
 - Intervention: added bounded loader timeouts with retry, read-only plain-text fallback for Monaco file/diff views, and PDF open/download fallback for pdf.js/IntersectionObserver failure.
 - Evidence: source tests constrain timeout constants, fallback renderers, PDF fallback path, and CSS; full local and isolated Docker suites passed.
 - Scoped claim: CDN failure no longer leaves the file viewer with an unbounded loading state for text/diff/PDF paths. Monaco/pdf.js are still CDN-hosted; full vendoring is a separate larger change.
+
+
+## 2026-06-12 19:18
+- Observation: current-head critic found two blockers: third-party CDN scripts/fonts executed in the authenticated origin, and existing secret files were not chmod-repaired on load.
+- Mechanisms: remote scripts in the app origin can call authenticated `/api/*` and exfiltrate private session/file state; permissive pre-existing `voice_settings.json`/`hmac_secret` files preserve local secret exposure after upgrade.
+- Interventions: app shell now uses only self assets with CSP; Monaco/PDF loaders no longer reference jsDelivr and fall back locally; existing voice settings and HMAC secret files are chmodded `0600` during load.
+- Evidence: targeted tests, full local suite, full isolated Docker suite, and static no-third-party URL assertions passed.
+- Scoped claim: authenticated app execution no longer depends on third-party script/font assets in the committed shell. Rich Monaco/PDF functionality now requires future self-hosted assets or falls back; HLS.js is no longer loaded from CDN, so non-native HLS live audio support is reduced until vendored locally.

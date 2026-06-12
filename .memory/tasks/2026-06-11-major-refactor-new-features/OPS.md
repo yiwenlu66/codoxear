@@ -862,3 +862,9 @@
 - Offline/local UX tranche: Monaco and pdf.js CDN loaders now have bounded timeouts/retry behavior; text/diff file views fall back to a read-only plain-text renderer, and PDF preview failures fall back to an authenticated open/download link.
 - Commit: `49bd595 fix: add offline file viewer fallbacks`.
 - Validation: targeted file-viewer/static tests passed (`24 passed in 5.04s`). Plain full suite passed (`531 passed, 10 subtests passed in 10.64s`). Full isolated Docker suite passed (`529 passed, 2 skipped, 10 subtests passed in 11.45s`).
+
+
+## 2026-06-12 19:18
+- Clean-room blocker repair: removed third-party font/script execution from `index.html`, added restrictive CSP, changed Monaco/PDF loaders to use self-hosted/local paths or fallback, and chmod-repaired existing `voice_settings.json`/`hmac_secret` on load.
+- Commit: `81c2f89 fix: remove third-party app scripts and repair secret modes`.
+- Validation: targeted static/file-viewer/auth/voice tests passed (`72 passed in 4.90s`). Plain full suite passed (`534 passed, 10 subtests passed in 9.27s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 11.39s`). Static grep/test confirms no `fonts.googleapis.com`, `fonts.gstatic.com`, `cdn.jsdelivr.net`, third-party script `src`, or third-party stylesheet `href` remains in the app shell/static loaders.
