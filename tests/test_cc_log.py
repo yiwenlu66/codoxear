@@ -43,6 +43,7 @@ class TestCcLog(unittest.TestCase):
     def test_user_text_extracts_string_and_text_parts(self) -> None:
         self.assertEqual(cc_user_text(cc_user("hello")), "hello")
         self.assertEqual(cc_user_text(cc_user([{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}])), "hello world")
+        self.assertEqual(cc_user_text(cc_user("<div>hello</div>")), "<div>hello</div>")
 
     def test_user_text_skips_tool_results_and_meta_records(self) -> None:
         self.assertIsNone(cc_user_text(cc_user([{"type": "tool_result", "content": "ok", "tool_use_id": "toolu_1"}])))

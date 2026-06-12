@@ -14,9 +14,11 @@ from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
+from .cc_log import cc_assistant_tool_use_ids
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
 from .cc_log import cc_user_text
+from .cc_log import cc_user_tool_result_ids
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
@@ -1097,6 +1099,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         objs = _read_jsonl_tail(path, scan)
         saw_terminal_signal = False
         idle = True
+        cc_pending_tool_ids: set[str] = set()
         for obj in objs:
             typ = obj.get("type")
             if typ == "message":
@@ -1122,6 +1125,17 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
             if typ == "user":
                 if cc_user_text(obj):
+                    cc_pending_tool_ids.clear()
+                    saw_terminal_signal = True
+                    idle = False
+                    continue
+                if cc_message_role(obj) == "toolResult":
+                    result_ids = cc_user_tool_result_ids(obj)
+                    if result_ids:
+                        for tool_id in result_ids:
+                            cc_pending_tool_ids.discard(tool_id)
+                    else:
+                        cc_pending_tool_ids.clear()
                     saw_terminal_signal = True
                     idle = False
                     continue
@@ -1130,9 +1144,21 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = False
                     continue
             if typ == "assistant":
+                tool_use_ids = cc_assistant_tool_use_ids(obj)
+                tool_use_count = cc_assistant_tool_use_count(obj)
+                if tool_use_count > 0:
+                    cc_pending_tool_ids.update(tool_use_ids or {"__codoxear_cc_unknown_tool_use__"})
                 if cc_assistant_text(obj):
                     saw_terminal_signal = True
-                    idle = cc_assistant_is_final_turn_end(obj)
+                    if cc_assistant_is_final_turn_end(obj):
+                        cc_pending_tool_ids.clear()
+                        idle = True
+                    else:
+                        idle = False
+                    continue
+                if tool_use_count > 0 or cc_assistant_thinking_count(obj) > 0:
+                    saw_terminal_signal = True
+                    idle = False
                     continue
                 if _cc_message_keeps_turn_busy(obj):
                     saw_terminal_signal = True
@@ -1140,7 +1166,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
             if typ == "system" and cc_is_turn_end(obj):
                 saw_terminal_signal = True
-                idle = True
+                idle = not cc_pending_tool_ids
                 continue
             if typ == "event_msg":
                 p = obj.get("payload")

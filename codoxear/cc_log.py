@@ -73,8 +73,6 @@ def cc_user_text(obj: dict[str, Any]) -> str | None:
     text = "".join(parts).strip()
     if not text:
         return None
-    if text.startswith("<") and text.endswith(">") and "</" in text:
-        return None
     return text
 
 
@@ -101,6 +99,36 @@ def cc_assistant_text(obj: dict[str, Any]) -> str | None:
     if not out:
         return None
     return "".join(out)
+
+
+def cc_assistant_tool_use_ids(obj: dict[str, Any]) -> list[str]:
+    ids: list[str] = []
+    for part in cc_assistant_content_parts(obj):
+        if part.get("type") != "tool_use":
+            continue
+        tool_id = part.get("id")
+        if isinstance(tool_id, str) and tool_id.strip():
+            ids.append(tool_id)
+    return ids
+
+
+def cc_user_tool_result_ids(obj: dict[str, Any]) -> list[str]:
+    if obj.get("type") != "user":
+        return []
+    msg = _message(obj, role="user")
+    if msg is None:
+        return []
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return []
+    ids: list[str] = []
+    for part in content:
+        if not isinstance(part, dict) or part.get("type") != "tool_result":
+            continue
+        tool_id = part.get("tool_use_id")
+        if isinstance(tool_id, str) and tool_id.strip():
+            ids.append(tool_id)
+    return ids
 
 
 def cc_assistant_tool_use_count(obj: dict[str, Any]) -> int:

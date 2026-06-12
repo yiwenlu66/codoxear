@@ -41,6 +41,13 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertTrue(flags["turn_start"])
         self.assertTrue(flags["turn_end"])
 
+    def test_xml_looking_cc_user_prompt_remains_visible(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events([user("<task>summarize</task>")])
+        self.assertEqual(events[0]["role"], "user")
+        self.assertEqual(events[0]["text"], "<task>summarize</task>")
+        self.assertTrue(flags["turn_start"])
+        self.assertFalse(flags["turn_end"])
+
     def test_final_cc_assistant_text_is_final_response(self) -> None:
         events, _meta, flags, _diag = _extract_chat_events([user("hello"), assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")])
         self.assertEqual(events[-1]["message_class"], "final_response")
@@ -54,6 +61,15 @@ class TestCcChatAndIdle(unittest.TestCase):
             write_log(path, [user("hello"), assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")])
             self.assertTrue(_compute_idle_from_log(path))
             write_log(path, [user("hello"), assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use")])
+            self.assertFalse(_compute_idle_from_log(path))
+            write_log(
+                path,
+                [
+                    user("hello"),
+                    assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                    {"type": "system", "subtype": "turn_duration", "durationMs": 10},
+                ],
+            )
             self.assertFalse(_compute_idle_from_log(path))
 
     def test_tail_reader_returns_cc_events(self) -> None:

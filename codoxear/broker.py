@@ -28,9 +28,11 @@ from codoxear.cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_f
 from codoxear.cc_log import cc_assistant_text as _cc_assistant_text
 from codoxear.cc_log import cc_assistant_thinking_count as _cc_assistant_thinking_count
 from codoxear.cc_log import cc_assistant_tool_use_count as _cc_assistant_tool_use_count
+from codoxear.cc_log import cc_assistant_tool_use_ids as _cc_assistant_tool_use_ids
 from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
 from codoxear.cc_log import cc_message_role as _cc_message_role
 from codoxear.cc_log import cc_user_text as _cc_user_text
+from codoxear.cc_log import cc_user_tool_result_ids as _cc_user_tool_result_ids
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
@@ -721,6 +723,12 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_turn_activity_ts = now_ts
             return
         if _cc_message_role(obj) == "toolResult":
+            result_ids = _cc_user_tool_result_ids(obj)
+            if result_ids:
+                for tool_id in result_ids:
+                    st.pending_calls.discard(tool_id)
+            else:
+                st.pending_calls.clear()
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
@@ -737,6 +745,8 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             _close_turn_state(st)
             return
         if tool_count > 0 or thinking_count > 0:
+            if tool_count > 0:
+                st.pending_calls.update(_cc_assistant_tool_use_ids(obj) or {"__codoxear_cc_unknown_tool_use__"})
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False
@@ -752,6 +762,13 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         return
 
     if typ == "system" and _cc_is_turn_end(obj):
+        if st.pending_calls:
+            _reopen_turn_on_activity(st)
+            if st.turn_open:
+                st.turn_has_completion_candidate = False
+            st.busy = True
+            st.last_turn_activity_ts = now_ts
+            return
         _close_turn_state(st)
         return
 

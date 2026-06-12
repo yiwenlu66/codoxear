@@ -413,6 +413,78 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
 
+    def test_cc_turn_duration_does_not_close_unmatched_tool_use(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "user", "message": {"role": "user", "content": "run pwd"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                    "stop_reason": "tool_use",
+                },
+            },
+            now_ts=11.0,
+        )
+        self.assertEqual(st.pending_calls, {"toolu_1"})
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "system", "subtype": "turn_duration", "durationMs": 10},
+            now_ts=12.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.turn_open)
+        self.assertEqual(st.pending_calls, {"toolu_1"})
+
+    def test_cc_tool_result_and_final_message_clear_busy(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "user", "message": {"role": "user", "content": "run pwd"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                    "stop_reason": "tool_use",
+                },
+            },
+            now_ts=11.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}],
+                },
+            },
+            now_ts=12.0,
+        )
+        self.assertEqual(st.pending_calls, set())
+        self.assertTrue(st.busy)
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"},
+            },
+            now_ts=13.0,
+        )
+        self.assertFalse(st.busy)
+        self.assertFalse(st.turn_open)
+
     def test_pi_tool_use_message_keeps_turn_busy(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(
