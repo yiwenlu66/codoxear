@@ -998,3 +998,9 @@
 - Bounded-send rerun blocker repair: malformed parseable broker send responses now map to `SessionCommitUnknownError` before submitted-message bookkeeping; attachment injection now requires both sync-send and key-write-error capabilities so old brokers cannot create unsendable pending attachments.
 - Commit: `fix: close remaining commit-unknown gaps`.
 - Validation: targeted tests passed (`73 passed, 3 subtests passed in 2.97s`). Plain full suite passed (`571 passed, 13 subtests passed in 9.24s`). Full isolated Docker suite passed (`569 passed, 2 skipped, 13 subtests passed in 11.44s`).
+
+
+## 2026-06-12 22:25
+- Bounded-send second rerun repair: known broker send failures clear pre-dispatch queue unknown markers; broker-declared partial/unknown write failures include `commit_unknown`; send responses now require strict non-negative integer `queue_len`; stale pending attachments on unsupported brokers can be explicitly cleared via `/pending_attachment/clear` with UI confirmation.
+- Commit: `fix: recover stale pending attachments`.
+- Validation: targeted tests passed (`76 passed, 7 subtests passed in 2.93s`). Plain full suite passed (`574 passed, 17 subtests passed in 9.21s`). Full isolated Docker suite passed (`572 passed, 2 skipped, 17 subtests passed in 11.23s`).

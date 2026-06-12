@@ -777,3 +777,10 @@ Commitments:
 - Interventions: validate send response schema before local submitted bookkeeping and classify malformed/incomplete responses as commit-unknown; require sync-send plus key-write-error capability before attachment injection.
 - Evidence: targeted tests cover malformed responses, unsupported send brokers, unsupported attachment brokers, and full local/Docker suites.
 - Scoped claim: post-dispatch response corruption no longer creates false ordinary failure or submitted bookkeeping, and old live brokers cannot create browser-managed pending attachment state without the confirmed-send/key-error protocol.
+
+
+## 2026-06-12 22:25
+- Observation: rerun found three remaining commit-unknown gaps: confirmed non-commit queue failures stayed frozen as unknown, coercible invalid `queue_len` values were accepted as success, and persisted pending attachments on unsupported old brokers had no recovery path.
+- Interventions: broker/sessiond distinguish declared commit-unknown errors; queue promotion clears unknown markers for known `SessionInjectionError`; send response schema requires a non-negative integer queue length; added explicit pending-attachment clear endpoint and UI recovery confirmation.
+- Evidence: targeted tests cover known vs unknown queue failure, strict queue_len schema, pending clear, UI recovery prompt, and full local/Docker suites.
+- Scoped claim: commit-unknown state is now reserved for actual uncertainty, strict malformed responses are not accepted as confirmed sends, and stale pending-attachment state can be cleared explicitly after user confirmation.
