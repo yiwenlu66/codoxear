@@ -974,3 +974,10 @@ Commitments:
 - Intervention: expose active `queue_recovery`, render a recovery badge, and redirect send/attach/queue affordances toward queue review.
 - Evidence: server/source tests, full local/Docker validation, and browser evidence on isolated Docker fake session.
 - Scoped claim: active recovery queue barriers are now visible and review-oriented in the UI without marking the active transcript as missing.
+
+
+## 2026-06-13 02:18
+- Observation: clean-room review found that active recovery queues were only UI-blocked; direct `/enqueue` could append behind `orphan_recovery`/`commit_unknown` queue barriers, and active `commit_unknown` queue items were not surfaced as `queue_recovery`.
+- Intervention: server enqueue path now rejects when queue recovery evidence is present; active `queue_recovery` reports both `commit_unknown` and `orphan_recovery` queue items.
+- Evidence: regressions cover both flags and full local/Docker suites passed.
+- Scoped claim: queue recovery barriers are authoritative for enqueue, not merely a browser affordance.

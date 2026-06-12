@@ -1167,3 +1167,9 @@
 - Commit: `fix: surface active recovery queues`.
 - Validation: targeted source/server tests passed (`64 passed, 11 subtests passed in 1.84s`). Plain full suite passed (`606 passed, 21 subtests passed in 9.22s`). Full isolated Docker suite passed (`604 passed, 2 skipped, 21 subtests passed in 11.23s`).
 - Browser evidence on isolated Docker `:18922` with fake active session `active-recovery`: API row showed `queue_len: 2`, `queue_recovery: true`; UI snapshot showed attach/send disabled as recovery actions and queue button labeled `Review preserved queued recovery items`; queue viewer showed both queued messages locked with Recovery tags. Artifacts: `/tmp/codoxear-active-recovery-evidence/main-snapshot.txt`, `/tmp/codoxear-active-recovery-evidence/queue-snapshot.txt`, `/tmp/codoxear-active-recovery-evidence/dom.json`, `/tmp/codoxear-active-recovery-evidence/active-recovery-queue.png`.
+
+
+## 2026-06-13 02:18
+- Repaired active recovery visibility review blockers: `/enqueue` now rejects active queues containing recovery/commit-unknown barriers before appending; active `queue_recovery` now includes queued `commit_unknown` items as well as `orphan_recovery` items.
+- Commit: `fix: block enqueue behind recovery queues`.
+- Validation: targeted tests passed (`66 passed, 13 subtests passed in 1.85s`). Plain full suite passed (`608 passed, 23 subtests passed in 9.31s`). Full isolated Docker suite passed (`606 passed, 2 skipped, 23 subtests passed in 11.21s`).
