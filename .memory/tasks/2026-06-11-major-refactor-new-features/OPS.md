@@ -454,3 +454,8 @@
 - Architecture cleanup: removed broker-local duplicate path matching and centralized rollout filename session-id extraction in `codoxear.util`; server and broker now import the shared helpers.
 - Commit: `d819926 refactor: share path helper utilities`.
 - Validation: `python3 -m py_compile codoxear/util.py codoxear/server.py codoxear/broker.py` passed; targeted path-helper, session-log, session-resume, broker-proc-rollout, and broker fail-closed tests passed (`68 passed in 2.69s`).
+
+## 2026-06-12 14:32
+- Long-chat UX follow-up: added a sparse `/` keyboard shortcut for the existing loaded/all-transcript chat search. Guarded against text-entry targets, no selected session, modifier keys, and open modal surfaces.
+- Commit: `a45456e feat: add chat search keyboard shortcut`.
+- Validation: `node --check codoxear/static/app.js` passed; chat navigation source tests passed (`8 passed in 0.49s`). Browser validation in isolated Docker: pressing `/` with a session selected changed search bar display from `none` to `flex` and focused `#chatSearchInput` with JS errors `[]`; pressing `/` while `#msg` was focused typed a slash into the composer and kept search closed.

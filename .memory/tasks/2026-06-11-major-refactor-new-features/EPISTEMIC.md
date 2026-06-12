@@ -380,3 +380,7 @@ Commitments:
 ## 2026-06-12 14:30
 - Observation: path comparison and rollout filename session-id extraction still had duplicate implementations after the larger helper cleanups.
 - Intervention/evidence: broker now imports util's path matcher, and server/broker share util's rollout session-id extractor. Source guard asserts a single definition for each helper family.
+
+## 2026-06-12 14:32
+- Observation: long-chat search existed but required pointer discovery. A global Ctrl/Cmd+F override would conflict with browser semantics, so it was rejected.
+- Intervention/evidence: added an app-specific `/` shortcut with explicit text-entry and modal guards. Browser evidence confirms it opens search from chat context and does not steal typing from the composer.
