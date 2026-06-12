@@ -170,23 +170,48 @@ def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
+def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
     typ = obj.get("type")
     if typ == "user":
         user_text = cc_user_text(obj)
         if isinstance(user_text, str) and user_text:
+            pending.clear()
+            return
+        if cc_message_role(obj) == "toolResult":
+            result_ids = cc_user_tool_result_ids(obj)
+            if result_ids:
+                for tool_id in result_ids:
+                    pending.discard(tool_id)
+            else:
+                pending.discard(CC_UNKNOWN_TOOL_USE_ID)
+            return
+    if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
+        pending.update(cc_assistant_pending_tool_use_ids(obj))
+
+
+def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
+    typ = obj.get("type")
+    if typ == "user":
+        user_text = cc_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            if cc_pending_tool_ids is not None:
+                cc_pending_tool_ids.clear()
             ets = _event_ts(obj)
             evcc: dict[str, Any] = {"role": "user", "text": user_text}
             if ets is not None:
                 evcc["ts"] = ets
             return evcc
+        if cc_pending_tool_ids is not None:
+            _update_cc_pending_tool_ids(obj, cc_pending_tool_ids)
         return None
 
     if typ == "assistant":
+        if cc_pending_tool_ids is not None and cc_assistant_tool_use_count(obj) > 0:
+            cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
         assistant_text = cc_assistant_text(obj)
         if isinstance(assistant_text, str) and assistant_text:
             ets = _event_ts(obj)
-            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
+            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids else "narration"
             evcca: dict[str, Any] = {
                 "role": "assistant",
                 "text": assistant_text,
@@ -540,6 +565,24 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
+def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: int = 8 * 1024 * 1024) -> set[str]:
+    before = max(0, int(before))
+    if before <= 0 or max_scan_bytes <= 0:
+        return set()
+    lower_bound = max(0, before - int(max_scan_bytes))
+    newest_first: list[JsonlRecord] = []
+    for record in _iter_jsonl_records_reverse(log_path, before=before):
+        if record.end <= lower_bound:
+            break
+        newest_first.append(record)
+        if record.obj.get("type") == "user" and cc_user_text(record.obj):
+            break
+    pending: set[str] = set()
+    for record in reversed(newest_first):
+        _update_cc_pending_tool_ids(record.obj, pending)
+    return pending
+
+
 def _read_chat_page_reverse(
     log_path: Path,
     *,
@@ -554,33 +597,40 @@ def _read_chat_page_reverse(
     if page_limit <= 0 or end <= 0:
         return [], 0, False, size
 
-    newest_first: list[PositionedChatEvent] = []
+    newest_first_records: list[JsonlRecord] = []
     skipped = 0
+    kept_events = 0
     has_older = False
     for record in _iter_jsonl_records_reverse(log_path, before=end):
         event = _single_chat_event(record.obj)
-        if event is None:
-            continue
-        if skipped < skip:
-            skipped += 1
-            continue
-        if len(newest_first) < page_limit:
-            newest_first.append(PositionedChatEvent(event=event, start=record.start, end=record.end))
-            continue
-        has_older = True
-        break
+        if event is not None:
+            if skipped < skip:
+                skipped += 1
+                continue
+            if kept_events >= page_limit:
+                has_older = True
+                break
+            kept_events += 1
+        if skipped >= skip:
+            newest_first_records.append(record)
 
-    newest_first.reverse()
-    events = _dedupe_assistant_chat_events([_with_chat_position(item.event, before_byte=item.start) for item in newest_first])
-    next_before = newest_first[0].start if newest_first else 0
+    records = list(reversed(newest_first_records))
+    initial_pending = _cc_pending_tool_ids_before(log_path, records[0].start) if records else set()
+    events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_pending)
+    next_before = records[0].start if records else 0
     return events, next_before, has_older, size
 
 
-def _extract_positioned_chat_events(records: list[JsonlRecord]) -> list[dict[str, Any]]:
+def _extract_positioned_chat_events(
+    records: list[JsonlRecord],
+    *,
+    initial_cc_pending_tool_ids: set[str] | None = None,
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
+    cc_pending_tool_ids = set(initial_cc_pending_tool_ids or set())
     for record in records:
-        record_events, _meta, _flags, _diag = _extract_chat_events([record.obj])
-        for event in record_events:
+        event = _single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
+        if event is not None:
             events.append(_with_chat_position(event, before_byte=record.start))
     return _dedupe_assistant_chat_events(events)
 
@@ -607,9 +657,10 @@ def _read_chat_live_delta(
     max_bytes: int = 2 * 1024 * 1024,
 ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
-    events = _extract_positioned_chat_events(records)
+    initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if after_byte > 0 else set()
+    events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_pending)
     objs = [record.obj for record in records]
-    _events, meta, flags, diag = _extract_chat_events(objs)
+    _events, meta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_pending)
     token_update = _extract_token_update(objs)
     return events, next_after, meta, flags, diag, token_update
 
@@ -646,6 +697,8 @@ def _find_latest_turn_context(log_path: Path, max_scan_bytes: int = 8 * 1024 * 1
 
 def _extract_chat_events(
     objs: list[dict[str, Any]],
+    *,
+    initial_cc_pending_tool_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
     events: list[dict[str, Any]] = []
     total_thinking = 0
@@ -656,7 +709,7 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
-    cc_pending_tool_ids: set[str] = set()
+    cc_pending_tool_ids: set[str] = set(initial_cc_pending_tool_ids or set())
     for obj in objs:
         typ = obj.get("type")
         if typ == "user":
@@ -877,11 +930,15 @@ def _extract_chat_events(
     )
 
 
-def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAssistantMessage]:
+def _extract_delivery_messages(
+    objs: list[dict[str, Any]],
+    *,
+    initial_cc_pending_tool_ids: set[str] | None = None,
+) -> list[ClassifiedAssistantMessage]:
     out: list[ClassifiedAssistantMessage] = []
     seen: set[str] = set()
     last_text_key: tuple[str, str] | None = None
-    cc_pending_tool_ids: set[str] = set()
+    cc_pending_tool_ids: set[str] = set(initial_cc_pending_tool_ids or set())
 
     for obj in objs:
         if not isinstance(obj, dict):

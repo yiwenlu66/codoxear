@@ -1809,8 +1809,8 @@ def _extract_positioned_chat_events(records: list[Any]) -> list[dict[str, Any]]:
     return _rollout_log._extract_positioned_chat_events(records)
 
 
-def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[Any]:
-    return _rollout_log._extract_delivery_messages(objs)
+def _extract_delivery_messages(objs: list[dict[str, Any]], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[Any]:
+    return _rollout_log._extract_delivery_messages(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
 
 
 def _read_jsonl_records_from_offset(
@@ -3156,7 +3156,7 @@ class SessionManager:
             cwd_name = Path(s.cwd).expanduser().name.strip()
             return cwd_name or "Session"
 
-    def _observe_rollout_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
+    def _observe_rollout_delta(self, session_id: str, *, log_path: Path | None = None, old_off: int = 0, objs: list[dict[str, Any]], new_off: int) -> None:
         voice_push = getattr(self, "_voice_push", None)
         if voice_push is None:
             with self._lock:
@@ -3167,7 +3167,8 @@ class SessionManager:
         with self._lock:
             s0 = self._sessions.get(session_id)
             resume_muted = bool(s0 and s0.resume_session_id)
-        messages = _extract_delivery_messages(objs)
+        initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(log_path, old_off) if log_path is not None and old_off > 0 else set()
+        messages = _extract_delivery_messages(objs, initial_cc_pending_tool_ids=initial_cc_pending)
         if (not messages) or resume_muted:
             with self._lock:
                 s = self._sessions.get(session_id)
@@ -3219,7 +3220,7 @@ class SessionManager:
                 objs, new_off = _read_jsonl_from_offset(log_path, off, max_bytes=256 * 1024)
                 if new_off <= off:
                     break
-                self._observe_rollout_delta(sid, objs=objs, new_off=new_off)
+                self._observe_rollout_delta(sid, log_path=log_path, old_off=off, objs=objs, new_off=new_off)
                 off = new_off
                 loops += 1
 

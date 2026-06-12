@@ -3,10 +3,13 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from codoxear.rollout_log import _cc_pending_tool_ids_before
 from codoxear.rollout_log import _compute_idle_from_log
 from codoxear.rollout_log import _extract_chat_events
 from codoxear.rollout_log import _extract_delivery_messages
 from codoxear.rollout_log import _read_chat_events_from_tail
+from codoxear.rollout_log import _read_chat_live_delta
+from codoxear.rollout_log import _read_chat_tail_page
 
 
 SESSION_ID = "11111111-2222-3333-4444-555555555555"
@@ -64,6 +67,25 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "narration")
         self.assertFalse(flags["turn_end"])
 
+    def test_cc_positioned_tail_and_live_final_text_with_pending_tool_are_not_final_response(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                user("hello"),
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+            ]
+            write_log(path, rows)
+            tail_events, _before, _after, _has_older = _read_chat_tail_page(path, limit=10)
+            self.assertEqual(tail_events[-1]["message_class"], "narration")
+            live_events, _next, _meta, flags, _diag, _token = _read_chat_live_delta(path, after_byte=0)
+            self.assertEqual(live_events[-1]["message_class"], "narration")
+            self.assertFalse(flags["turn_end"])
+            first_two_bytes = len(json.dumps(rows[0]) + "\n" + json.dumps(rows[1]) + "\n")
+            split_events, _next, _meta, split_flags, _diag, _token = _read_chat_live_delta(path, after_byte=first_two_bytes)
+            self.assertEqual(split_events[-1]["message_class"], "narration")
+            self.assertFalse(split_flags["turn_end"])
+
     def test_cc_delivery_final_text_with_pending_tool_is_narration(self) -> None:
         messages = _extract_delivery_messages(
             [
@@ -71,6 +93,17 @@ class TestCcChatAndIdle(unittest.TestCase):
                 assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
             ]
         )
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].message_class, "narration")
+
+    def test_cc_delivery_split_delta_uses_seeded_pending_tool_state(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            first = json.dumps(assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use")) + "\n"
+            second_obj = assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")
+            path.write_text(first + json.dumps(second_obj) + "\n", encoding="utf-8")
+            pending = _cc_pending_tool_ids_before(path, len(first))
+        messages = _extract_delivery_messages([second_obj], initial_cc_pending_tool_ids=pending)
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0].message_class, "narration")
 

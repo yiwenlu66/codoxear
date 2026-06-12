@@ -864,6 +864,60 @@ class TestSpawnWebSessionResume(unittest.TestCase):
             self.assertEqual(len(messages), 1)
             self.assertEqual(messages[0].text, "fresh reply after resume")
 
+    def test_claude_split_tool_delta_delivery_keeps_final_as_narration(self) -> None:
+        class _FakeVoicePush:
+            def __init__(self) -> None:
+                self.calls: list[dict[str, object]] = []
+
+            def observe_messages(self, *, session_id: str, session_display_name: str, messages: list[object]) -> None:
+                self.calls.append({"session_id": session_id, "session_display_name": session_display_name, "messages": messages})
+
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "claude.jsonl"
+            tool_row = {
+                "type": "assistant",
+                "sessionId": "cc-thread",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                    "stop_reason": "tool_use",
+                },
+            }
+            final_row = {
+                "type": "assistant",
+                "sessionId": "cc-thread",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"},
+            }
+            first = json.dumps(tool_row) + "\n"
+            log_path.write_text(first + json.dumps(final_row) + "\n", encoding="utf-8")
+
+            manager = SessionManager.__new__(SessionManager)
+            manager._lock = threading.Lock()
+            manager._sessions = {}
+            manager._aliases = {}
+            manager._queues = {}
+            manager._voice_push = _FakeVoicePush()
+            session = Session(
+                session_id="broker-cc",
+                thread_id="cc-thread",
+                broker_pid=1,
+                codex_pid=2,
+                agent_backend="cc",
+                owned=True,
+                start_ts=100.0,
+                cwd=str(root),
+                log_path=log_path,
+                sock_path=root / "broker.sock",
+            )
+            manager._sessions[session.session_id] = session
+
+            manager._observe_rollout_delta(session.session_id, log_path=log_path, old_off=len(first), objs=[final_row], new_off=log_path.stat().st_size)
+            self.assertEqual(len(manager._voice_push.calls), 1)
+            messages = manager._voice_push.calls[0]["messages"]
+            self.assertEqual(len(messages), 1)
+            self.assertEqual(messages[0].message_class, "narration")
+
     def test_discover_existing_binds_open_rollout_when_sidecar_has_no_log(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)
