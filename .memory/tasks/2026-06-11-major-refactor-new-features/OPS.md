@@ -726,3 +726,8 @@
 - Full validation after diagnostics stale-render guard.
 - HEAD: `57b8388`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`491 passed, 2 skipped, 10 subtests passed in 10.97s`).
+
+## 2026-06-12 16:58
+- Backend correctness fix from reviewer finding: `sessiond._discover_log()` now allows Pi through backend-aware open-log discovery, so headless Pi sessions can bind to real Pi session logs instead of staying on placeholder metadata.
+- Commit: `476b0dd fix: let sessiond bind Pi logs from open process files`.
+- Validation: `python3 -m py_compile codoxear/sessiond.py` passed; focused sessiond fail-closed and process-open rollout discovery tests passed (`10 passed in 0.72s`).

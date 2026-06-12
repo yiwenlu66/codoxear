@@ -465,3 +465,6 @@ Commitments:
 
 ## 2026-06-12 16:54
 - Race mechanism fixed: diagnostics previously read `selected` at request time but rendered after await without checking whether selection changed. Rendering is now scoped to the captured session id.
+
+## 2026-06-12 16:58
+- Mechanism fixed: `sessiond` previously called `_proc_find_open_rollout_log` only for Codex/Claude, even though the util discovery function already supports Pi session paths and headers. Pi headless sessions could therefore remain bound to pending placeholder logs. Allowing Pi through the same backend-aware discovery path binds the real Pi log and removes the pending placeholder.
