@@ -496,3 +496,8 @@
 - Numeric query hardening: introduced shared bounded integer parsing for session message routes and applied it to `messages/search`, `messages/tail`, and `messages/history`. Malformed `limit` now returns `400 {\"error\": \"limit must be an integer\"}` on all three routes.
 - Commit: `f86c67b fix: share message limit validation`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; transcript export/search, chat transcript runtime, scrollback source, and chat navigation source tests passed (`37 passed, 3 subtests passed in 1.94s`). Runtime route regression covers malformed limits for search, tail, and history.
+
+## 2026-06-12 14:58
+- Browser-fixture anomaly follow-up: malformed/synthetic Codex logs without session metadata no longer crash session discovery or refresh when a broker sidecar already supplies authoritative session identity and log path.
+- Commit: `128eb42 fix: tolerate codex logs without session metadata`.
+- Validation: reproduced failure first in `tests/test_stale_sidecars.py`; after fix, `python3 -m py_compile codoxear/server.py` passed and stale-sidecar/sidebar/session-polling/launch-provenance tests passed (`32 passed in 1.84s`).

@@ -395,3 +395,7 @@ Commitments:
 
 ## 2026-06-12 14:51
 - Mechanism generalized: the malformed-search-limit bug was not isolated to search; tail/history had the same raw `int(limit)` parsing pattern. A shared bounded parser reduces future divergence and makes malformed numeric query behavior explicit across message routes.
+
+## 2026-06-12 14:58
+- Anomaly: isolated browser fixture setup produced repeated background sweep errors from a Codex log lacking `session_meta`. Mechanism: discovery/refresh treated log-embedded Codex session metadata as mandatory even when the broker sidecar already held session identity/log binding.
+- Revised commitment: sidecar-bound sessions should fail closed on malformed log metadata by preserving sidecar identity/log path and emitting diagnostics, not by crashing discovery/listing.
