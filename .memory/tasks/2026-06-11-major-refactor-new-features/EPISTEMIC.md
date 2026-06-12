@@ -1210,3 +1210,10 @@ Commitments:
 - Intervention: `openSession()` now classifies tail-load failures: stale generation/session changes are ignored, 401 runs `handleAppAuthLoss()`, and other errors render a non-transcript alert row. Reselecting the conversation retries through the existing `openSession()` path.
 - Evidence: Focused tests pin the non-transcript row and failure handling; browser evidence demonstrates synthetic tail failure -> explicit error -> successful retry; full local/Docker suites passed.
 - Scoped claim: Initial transcript tail failures no longer leave an indefinite loading state; they are visible, non-authoritative UI feedback with a manual retry path.
+
+## 2026-06-13 07:04 — Error feedback must not destroy valid cached evidence
+- Observation: Clean-room review falsified the first tail-error implementation. The row itself was non-transcript, but rendering it by clearing the DOM destroyed valid cached transcript rows, which are the current evidence available to the user when the authoritative refresh fails.
+- Revised mechanism: Tail-load failure has two distinct states: no prior transcript UI exists, where an error row may replace the loading row; and cached transcript UI exists, where the failure should be additive feedback that the refresh failed while preserving the last valid transcript evidence/search/history rows.
+- Intervention: `renderTranscriptLoadError()` now accepts `preserveTranscript`; `openSession()` passes the flag based on whether `applyCachedTail()` ran. Preserve mode appends an excluded error row without clearing transcript DOM or older-state.
+- Evidence: Browser reproduction of cached-success -> failed-refresh now preserves one non-typing transcript row and appends exactly one non-transcript error row; focused/full local/Docker tests passed.
+- Scoped claim: Initial tail failures are explicit without hiding already-rendered cached transcript evidence.

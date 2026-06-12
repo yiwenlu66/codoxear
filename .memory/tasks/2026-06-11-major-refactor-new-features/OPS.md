@@ -1426,3 +1426,11 @@
 - Browser evidence on isolated `codoxear-sandbox-18933`: monkeypatched browser `fetch` to return a synthetic 503 for `/messages/tail`, selected a session, observed one `.transcript-error-row`, zero loading rows, and text `Could not load transcript. synthetic tail failure Select the conversation again to retry.` Then restored fetch, reselected the conversation, and observed real transcript content with zero error/loading rows. Artifacts: `/tmp/codoxear-tail-error-evidence/error-visible.json`, `retry-after.json`, `error-visible.png`.
 - Full local validation: `python3 -m pytest -q` → `660 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `659 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:04 — Cached-tail failure preservation repair
+- Clean-room critic found a blocker in the initial transcript error implementation: if a valid cached tail had rendered and the authoritative `/messages/tail` refresh then failed, `renderTranscriptLoadError()` cleared the cached transcript rows and older-history affordance. The error row was non-transcript, but its renderer destructively removed transcript UI state.
+- Repaired `renderTranscriptLoadError(sessionId, err, { preserveTranscript })`: it removes prior error rows, but only clears transcript DOM/older state when no cached transcript was displayed. `openSession()` now passes `{ preserveTranscript: displayedCachedTail }` on tail-load failure.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `30 passed`.
+- Browser reproduction of the critic path on isolated `codoxear-sandbox-18933`: populated cache with a successful tail load, forced the next `/messages/tail` to synthetic 503, reselected the session, and observed the original non-typing transcript row remained (`nonTypingRows: 1`) while one `.transcript-error-row` was appended and no loading rows remained. Artifacts: `/tmp/codoxear-tail-error-evidence/cache-before-fail.json`, `cache-fail-after.json`, `cache-fail-after.png`.
+- Full local validation after repair: `python3 -m pytest -q` → `660 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `659 passed, 1 skipped, 25 subtests passed`.
