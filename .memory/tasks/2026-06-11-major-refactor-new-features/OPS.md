@@ -880,3 +880,9 @@
 - Post-critic blocker repair: CSP is now emitted as an HTTP `Content-Security-Policy` header for HTML static responses with `X-Frame-Options: DENY`; `_send_static` path containment now uses `Path.relative_to()` instead of a string-prefix check; duplicate server-local launch helper definitions were removed so wrappers delegate consistently to `launch_config`.
 - Commit: `1747e2f fix: enforce static CSP headers`.
 - Validation: targeted static/launch tests passed (`35 passed in 4.64s`). Plain full suite passed (`534 passed, 10 subtests passed in 9.57s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 11.02s`).
+
+
+## 2026-06-12 19:40
+- Architecture tranche: extracted queue item cleaning, persistence, local list/append/update/delete/move, stale-session pruning, and successful-send removal into `codoxear/queue_store.py`; `SessionManager` still owns broker readiness, idle grace, sending transient fields, and scheduler orchestration.
+- Commit: `57e25dd refactor: extract queue store ownership`.
+- Validation: direct/integration queue tests passed (`21 passed in 2.40s`). Plain full suite passed (`537 passed, 10 subtests passed in 12.14s`). Full isolated Docker suite passed (`535 passed, 2 skipped, 10 subtests passed in 11.27s`).

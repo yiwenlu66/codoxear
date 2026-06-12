@@ -641,3 +641,10 @@ Commitments:
 - Intervention: HTML static responses now carry an enforced CSP header and `X-Frame-Options: DENY`; static path containment uses `relative_to`; shadowing launch helper definitions were removed.
 - Evidence: targeted tests assert server header emission and launch wrapper behavior; full local/Docker suites passed.
 - Scoped claim: anti-framing policy is now delivered as an HTTP header for served HTML. CSP still allows inline scripts/styles because current shell uses inline bootstrapping; this removes third-party execution and framing, not all possible XSS impact.
+
+
+## 2026-06-12 19:40
+- Observation: queue persistence and item mutation logic lived inside `SessionManager`, interleaved with live broker readiness and idle scheduling.
+- Intervention: introduced `QueueStore` for durable item ownership and local mutation semantics, preserving `SessionManager._queues` as compatibility map and leaving drain/send orchestration in `SessionManager`.
+- Evidence: new QueueStore tests cover legacy string migration, duplicate id repair, sending-item mutation rejection, successful-send removal by id (not duplicate text), and stale-session pruning; existing queue/unattended tests and full suites pass.
+- Scoped claim: queue item storage/mutation has a dedicated owner. Live scheduling, idle gating, and send failure handling remain SessionManager responsibilities.
