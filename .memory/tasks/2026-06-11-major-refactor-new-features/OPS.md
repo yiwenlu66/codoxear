@@ -536,3 +536,8 @@
 - Browser/network validation for secondary polling decoupling, isolated Docker server on port 18814 and headless Chromium/CDP.
 - Observation over 6.6s after authenticated app load: API requests were `/api/me`, `/api/settings/voice`, `/api/notifications/subscription`, and three `/api/sessions` requests. Counts: `sessions=3`, `voiceSettings=1`, `notificationSubscription=1`, `notificationFeed=0`, JS errors `[]`.
 - Interpretation: session-list freshness remains on the fast visible loop, while secondary voice/notification fetches no longer run on every session tick.
+
+## 2026-06-12 15:19
+- Full validation after secondary UI polling decoupling and browser network-cadence evidence.
+- HEAD: `66194c1`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`475 passed, 2 skipped, 10 subtests passed in 14.62s`).
