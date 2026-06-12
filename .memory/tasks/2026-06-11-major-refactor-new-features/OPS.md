@@ -340,3 +340,12 @@
   - Intercepted Pi new-session POST body omitted `model_provider` for providerless Pi: `{'agent_backend':'pi','cwd':'/tmp/codoxear-pi-provider-null-current','model':'default','reasoning_effort':'high','create_in_tmux':true}`.
   - With isolated container `/home/tester/.pi/agent/settings.json` malformed, authenticated `/api/sessions` still returned 200 with all backends and `warnings.pi`; New Session status showed `Launch defaults degraded for Pi; using safe defaults.`.
 - Validation: local targeted checks passed (`35 passed in 1.76s` before full Docker). First full Docker surfaced a stale test expecting `renderNewSessionProviderMenu`; after updating that invariant, full isolated Docker passed (`449 passed, 2 skipped in 10.15s`).
+
+## 2026-06-12 12:56
+- Architecture/refactor follow-up: migrated session API route parsing from prefix+suffix checks to `_match_session_route()` for all `/api/sessions/<id>/...` route families.
+- Commits:
+  - `cf8e46e refactor: exact-match simple session routes`: queue/tail/unattended/send/enqueue/queue mutations/interrupt.
+  - `d6b9bbe refactor: exact-match utility session routes`: diagnostics/edit/rename/inject_file/inject_image.
+  - `0987933 refactor: exact-match file and git routes`: file read/search/list/blob/video_preview/download and git changed_files/diff/file_versions.
+- Evidence: `rg 'path\.startswith\("/api/sessions/"\).*path\.endswith' codoxear/server.py` produced no matches. `_match_session_route` tests now reject extra path segments for queue, send, unattended, interrupt, diagnostics, edit, rename, inject, file, and git routes.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; targeted route/file/git tests passed (`36 passed in 1.87s`); full isolated Docker suite passed (`449 passed, 2 skipped in 10.44s`).
