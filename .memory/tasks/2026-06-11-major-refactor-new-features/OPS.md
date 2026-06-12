@@ -506,3 +506,8 @@
 - Malformed-log diagnostic cleanup: warning for invalid session metadata is now emitted once per context/path instead of on every poll/sweep.
 - Commit: `77365c8 fix: rate limit invalid session metadata warnings`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; stale-sidecar/sidebar/session-polling/launch-provenance tests passed (`33 passed in 1.85s`).
+
+## 2026-06-12 15:05
+- Browser validation after malformed-log discovery fix and warning rate-limit, isolated Docker server on port 18813 with a live fixture Unix control socket and Codex log intentionally missing session metadata.
+- API evidence: `/api/sessions` listed the fixture session instead of failing; browser/CDP evidence at 390px viewport: before slash `sessionCount=1`, `selected=sidebar-shortcut-fixture`, `sidebarOpen=false`, `searchDisplay=none`; after opening sidebar and pressing `/`: `sidebarOpen=true`, `searchDisplay=none`, `searchValue=\"\"`, `chatRows=2`, JS errors `[]`.
+- Sandbox log observation: malformed log metadata produced bounded warnings, not traceback/sweep crash loops.

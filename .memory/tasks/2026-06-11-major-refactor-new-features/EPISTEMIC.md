@@ -399,3 +399,6 @@ Commitments:
 ## 2026-06-12 14:58
 - Anomaly: isolated browser fixture setup produced repeated background sweep errors from a Codex log lacking `session_meta`. Mechanism: discovery/refresh treated log-embedded Codex session metadata as mandatory even when the broker sidecar already held session identity/log binding.
 - Revised commitment: sidecar-bound sessions should fail closed on malformed log metadata by preserving sidecar identity/log path and emitting diagnostics, not by crashing discovery/listing.
+
+## 2026-06-12 15:05
+- Observation: real-browser validation now discriminates two mechanisms. The `/` shortcut guard works under the mobile sidebar overlay (search remains closed), and sidecar-bound malformed Codex logs no longer take down discovery/listing. Remaining uncertainty: this fixture simulates a broker control socket and does not validate real Codex/Pi/Claude binaries or credentials.
