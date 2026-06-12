@@ -417,3 +417,6 @@ Commitments:
 
 ## 2026-06-12 15:37
 - Evidence update: conditional sessions polling works in a live browser against the isolated server. The observation constrains unchanged-payload transfer behavior for `/api/sessions`; it does not prove performance on real slow mobile networks, but it removes repeated JSON body transfer when session state is unchanged.
+
+## 2026-06-12 15:44
+- Refactor mechanism: file search was a contained server hotspot with pure scoring/search behavior and existing tests. Extracting it reduces `server.py` responsibility without changing HTTP route semantics; the injected `_git_repo_root` callback preserves current git detection behavior.

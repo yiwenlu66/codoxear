@@ -566,3 +566,8 @@
 - Full validation after conditional `/api/sessions` polling / ETag support.
 - HEAD: `7f3b1c0`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`478 passed, 2 skipped, 10 subtests passed in 12.79s`).
+
+## 2026-06-12 15:44
+- Backend refactor tranche: extracted fuzzy file search scoring and git/walk search implementation from `server.py` into `codoxear/file_search.py`. Server keeps a thin wrapper that injects its existing git-root detector, preserving route behavior.
+- Commit: `ea96786 refactor: extract file search helpers`.
+- Validation: `python3 -m py_compile codoxear/file_search.py codoxear/server.py` passed; file list/search, file-search module boundary, file picker search source, file viewer source, and file inspect tests passed (`46 passed in 2.86s`).
