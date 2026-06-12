@@ -415,3 +415,8 @@
 - Commit: `c79d925 fix: page older search matches at boundaries`.
 - Validation: `node --check codoxear/static/app.js` passed; targeted chat navigation/scrollback/runtime tests passed (`30 passed in 1.18s`); full isolated Docker suite passed (`460 passed, 2 skipped in 16.34s`).
 - Browser evidence in isolated Docker on port 18812 with synthetic `ux-search-boundary` session: initial search `1/1 loaded · 3 all` at turn 149; first Next loaded older turn 080 and showed `1/2 loaded · 3 all`; second Next selected turn 149 as `2/2 loaded · 3 all`; third Next loaded through a nonmatching older page to turn 020 and showed `1/3 loaded · 3 all`, 301 rendered rows, 3 highlighted hits, and captured JS errors `[]`.
+
+## 2026-06-12 14:10
+- Refactor follow-up from architecture review: `list_sessions()` updated in-memory recent cwd state but did not persist it after the lock-scope refactor; the out-of-lock history path also had a dead dirty assignment.
+- Commit: `6e32194 fix: persist recent cwd updates from session list`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; targeted recent-cwd/sidebar/json-state tests passed (`19 passed in 1.77s`).

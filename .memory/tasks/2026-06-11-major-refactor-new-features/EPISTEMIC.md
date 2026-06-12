@@ -353,3 +353,7 @@ Commitments:
 - Mechanism: search-driven history loads were aborted by the scroll-cancel invariant intended for user/auto scrollback loading. The current search hit is usually far below the top, so the scroll handler saw `loadingOlder && scrollTop > OLDER_CANCEL_PX` and aborted the request.
 - Intervention/evidence: older loads now default to scroll-cancellable, but search paging passes `cancelOnScroll: false`. Browser evidence shows the third all-transcript match is loaded and focused after crossing the loaded-match boundary.
 - Scoped claim: all-transcript search counts are now actionable across loaded-match boundaries in the validated synthetic long Codex transcript. This does not prove performance on very large real logs or slow networks.
+
+## 2026-06-12 14:10
+- Observation: `list_sessions()` had a dead `recent_cwd_dirty = True` assignment and active-session recent cwd updates were memory-only. This did not affect immediate sidebar rows but could lose recent cwd learning across server restarts.
+- Intervention/evidence: `list_sessions()` now tracks recent-cwd dirtiness for both active-session and history-backfill updates and persists after lock-held row construction. Regression test confirms a new active cwd triggers exactly one save across repeated list calls.
