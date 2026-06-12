@@ -459,3 +459,6 @@ Commitments:
 
 ## 2026-06-12 16:45
 - Race mechanism fixed: prior attachment upload read `selected` after asynchronous image compression/arrayBuffer work, so switching sessions mid-upload could target the wrong session. The target session and attachment index are now captured before async work; UI updates are conditional on still viewing that session.
+
+## 2026-06-12 16:50
+- Race mechanism fixed: repeated taps on New Session could reach multiple awaited `spawnSessionWithCwd` calls because no in-flight guard existed. The guard starts after local validation and before the network launch request, so invalid forms remain editable while valid launches are single-flight.

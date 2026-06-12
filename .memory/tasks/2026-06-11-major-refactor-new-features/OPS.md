@@ -706,3 +706,8 @@
 - Full validation after attachment session-race fix.
 - HEAD: `b1e6424`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`489 passed, 2 skipped, 10 subtests passed in 10.76s`).
+
+## 2026-06-12 16:50
+- UI/UX correctness fix from reviewer finding: New Session start handler now uses `newSessionStartBusy` and disables the start button while `spawnSessionWithCwd` is pending, resetting the guard in `finally`.
+- Commit: `f81dc90 fix: guard new session start against duplicate clicks`.
+- Validation: `node --check codoxear/static/app.js` passed; focused new-session launch/static tests passed (`20 passed in 7.66s`).
