@@ -603,3 +603,11 @@ Commitments:
 - Intervention: keep loaded message marking synchronous but schedule the expensive all-transcript count through a 300ms debounce; reset/abort old requests and clear the timer on cleanup.
 - Evidence: source tests constrain debounce scheduling and cleanup; full isolated Docker suite passed.
 - Scoped claim: rapid typing no longer starts one full-transcript count request per input event from the client. Server-side caching for repeated final queries is not implemented.
+
+
+## 2026-06-12 19:00
+- Observation: fresh review found plain pytest could import stale modules from `/home/yiwen/codex-web` unless `PYTHONPATH` was forced.
+- Mechanism: unattended reviewers/workers using default pytest could validate the wrong code, making green tests non-evidence for the active branch.
+- Intervention: pyproject now sets pytest `pythonpath = ["."]` and a source test locks the contract.
+- Evidence: targeted and full plain-pytest runs passed without manually exporting `PYTHONPATH`.
+- Scoped claim: local pytest now resolves the active checkout by default. Docker sandbox still sets `PYTHONPATH=/workspace`, which remains compatible.

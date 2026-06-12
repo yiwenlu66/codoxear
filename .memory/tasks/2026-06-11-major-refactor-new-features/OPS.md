@@ -850,3 +850,9 @@
 - Performance/UX tranche: all-transcript chat-search count requests are now debounced (`300ms`) while loaded-DOM highlighting remains immediate; cleanup clears the debounce timer and aborts in-flight count requests.
 - Commit: `d808f3d fix: debounce full transcript search counts`.
 - Validation: targeted chat navigation/auth cleanup source tests passed (`14 passed in 0.93s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`528 passed, 2 skipped, 10 subtests passed in 13.92s`).
+
+
+## 2026-06-12 19:00
+- Validation ownership fix: added `[tool.pytest.ini_options] pythonpath = ["."]` so plain pytest imports the active checkout instead of a stale installed `codoxear` package.
+- Commit: `test: make pytest import current checkout`.
+- Validation: `python3 -m pytest tests/test_pytest_config.py tests/test_backend_launch_adapter.py -q` passed (`5 passed in 0.48s`); plain full suite `python3 -m pytest -q` passed (`531 passed, 10 subtests passed in 8.98s`).
