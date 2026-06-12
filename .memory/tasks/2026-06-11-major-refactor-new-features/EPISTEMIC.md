@@ -729,3 +729,10 @@ Commitments:
 - Interventions: restored broker/sessiond pre-send busy/turn state on synchronous `_inject` failure; frontend now removes the closest `.msg-row` for failed local echoes.
 - Evidence: targeted tests assert busy rollback and row-level cleanup; full local/Docker suites passed.
 - Scoped claim: failed synchronous attachment-commit sends leave the session retryable and do not leave durable optimistic transcript rows.
+
+
+## 2026-06-12 21:22
+- Observation: clean-room review found the non-attachment async send path shared the failed-inject busy-stuck mechanism after ACK.
+- Intervention: broker/sessiond async `after_reply()` now restores pre-send busy/turn state if `_inject` fails or no PTY fd is available.
+- Evidence: targeted tests assert async send failure returns fast success but leaves broker/sessiond idle/retryable; full local/Docker suites passed.
+- Scoped claim: both sync and async server-visible send paths now roll back broker/sessiond busy state on local PTY injection failure; async callers still cannot be told the already-ACKed send failed.

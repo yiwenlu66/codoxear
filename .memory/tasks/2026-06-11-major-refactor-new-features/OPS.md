@@ -956,3 +956,9 @@
 - Clean-room rerun repair: broker/sessiond synchronous send failures restore previous busy/turn state, enabling retry of preserved pending attachments; failed optimistic sends remove the entire local message row rather than only its bubble.
 - Commit: `fix: rollback failed sync input commits`.
 - Validation: targeted sync-commit/UI tests passed (`55 passed in 3.71s`). Plain full suite passed (`556 passed, 10 subtests passed in 8.81s`). Full isolated Docker suite passed (`554 passed, 2 skipped, 10 subtests passed in 11.17s`).
+
+
+## 2026-06-12 21:22
+- Clean-room rerun repair: default async broker/sessiond send failures now restore previous busy/turn state after deferred `_inject` failure while preserving fast ACK behavior.
+- Commit: `fix: rollback failed async input commits`.
+- Validation: targeted send/attachment/source tests passed (`52 passed in 3.12s`). Plain full suite passed (`558 passed, 10 subtests passed in 8.87s`). Full isolated Docker suite passed (`556 passed, 2 skipped, 10 subtests passed in 11.07s`).
