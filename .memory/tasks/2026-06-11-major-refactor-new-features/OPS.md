@@ -526,3 +526,8 @@
 - Exact-current-head full validation after direct route matcher tests/docs.
 - HEAD: `bdc82b6`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`474 passed, 2 skipped, 10 subtests passed in 12.98s`).
+
+## 2026-06-12 15:16
+- UX/network tranche: decoupled secondary voice/notification polling from the core session-list poll. `refreshSessions()` remains on the 2.5s visible / 15s hidden loop; voice settings, notification subscription state, and notification feed now use a slower 10s visible / 60s hidden loop with immediate refresh on visibility wake. Auth loss and unload stop both timers.
+- Commit: `9f06978 feat: decouple secondary UI polling`.
+- Validation: `node --check codoxear/static/app.js` passed; session polling, voice push source, and static asset tests passed (`16 passed in 4.67s`).

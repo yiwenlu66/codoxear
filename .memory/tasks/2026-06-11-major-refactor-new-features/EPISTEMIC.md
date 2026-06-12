@@ -402,3 +402,6 @@ Commitments:
 
 ## 2026-06-12 15:05
 - Observation: real-browser validation now discriminates two mechanisms. The `/` shortcut guard works under the mobile sidebar overlay (search remains closed), and sidecar-bound malformed Codex logs no longer take down discovery/listing. Remaining uncertainty: this fixture simulates a broker control socket and does not validate real Codex/Pi/Claude binaries or credentials.
+
+## 2026-06-12 15:16
+- Mechanism: prior visibility-aware session polling still fetched low-priority voice/notification state every session tick. Decoupling those requests should reduce foreground/background network work while preserving immediate session-list freshness. Remaining uncertainty until browser/network validation: actual request cadence under a live page.
