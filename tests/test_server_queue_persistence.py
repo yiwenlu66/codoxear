@@ -44,6 +44,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertIsNone(_match_session_route("/api/sessions/s1/queue/delete", "delete"))
         for suffix in ["queue", "send", "unattended", "interrupt", "diagnostics", "edit", "rename", "inject_file", "inject_image"]:
             self.assertIsNone(_match_session_route(f"/api/sessions/s1/extra/{suffix}", suffix))
+        for family, suffix in [("file", "read"), ("file", "search"), ("file", "list"), ("file", "blob"), ("file", "video_preview"), ("file", "download"), ("git", "changed_files"), ("git", "diff"), ("git", "file_versions")]:
+            self.assertIsNone(_match_session_route(f"/api/sessions/s1/extra/{family}/{suffix}", family, suffix))
+            self.assertEqual(_match_session_route(f"/api/sessions/s1/{family}/{suffix}", family, suffix), "s1")
         self.assertIsNone(_match_session_route("/api/sessions/s1/queue/extra/delete", "queue", "delete"))
         self.assertEqual(_match_session_route("/api/sessions/s1/queue/delete", "queue", "delete"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/diagnostics", "diagnostics"), "s1")

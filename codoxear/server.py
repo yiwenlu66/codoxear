@@ -5956,14 +5956,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "items": q, "queue": [str(item.get("text") or "") for item in q]})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/read"):
+            session_id = _match_session_route(path, "file", "read")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6073,14 +6069,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/search"):
+            session_id = _match_session_route(path, "file", "search")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6130,14 +6122,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/list"):
+            session_id = _match_session_route(path, "file", "list")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6161,14 +6149,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "cwd": str(base), "files": files})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/blob"):
+            session_id = _match_session_route(path, "file", "blob")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6203,14 +6187,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _send_inline_file_response(self, p, ctype)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/video_preview"):
+            session_id = _match_session_route(path, "file", "video_preview")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6305,14 +6285,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _send_inline_file_response(self, preview, "video/mp4")
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/file/download"):
+            session_id = _match_session_route(path, "file", "download")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6351,14 +6327,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(raw)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/git/changed_files"):
+            session_id = _match_session_route(path, "git", "changed_files")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6446,14 +6418,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/git/diff"):
+            session_id = _match_session_route(path, "git", "diff")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -6494,14 +6462,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/git/file_versions"):
+            session_id = _match_session_route(path, "git", "file_versions")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
