@@ -463,3 +463,6 @@
 ## 2026-06-12 14:34
 - Discoverability follow-up: Help now mentions the `/` loaded-chat search shortcut and that Previous/Next can page older history when all-transcript counts show more matches.
 - Validation: `node --check codoxear/static/app.js` passed; chat navigation and overlay/help source tests passed (`11 passed in 0.49s`).
+
+## 2026-06-12 14:35
+- Current-head full validation after path-helper refactor and chat-search shortcut/help changes: isolated Docker suite passed (`467 passed, 2 skipped in 14.24s`).
