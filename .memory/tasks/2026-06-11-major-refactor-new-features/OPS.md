@@ -950,3 +950,9 @@
 - Clean-room rerun repair: broker `keys` now returns errors on PTY write failure; broker/sessiond support synchronous `send` commits for pending-attachment sends; server sends `sync=true` when clearing pending attachments; failed sends roll back optimistic local echo/running state.
 - Commit: `fix: report input commit failures`.
 - Validation: targeted broker/sessiond/attachment/chat tests passed (`65 passed in 3.05s`). Plain full suite passed (`556 passed, 10 subtests passed in 9.35s`). Full isolated Docker suite passed (`554 passed, 2 skipped, 10 subtests passed in 14.37s`).
+
+
+## 2026-06-12 21:16
+- Clean-room rerun repair: broker/sessiond synchronous send failures restore previous busy/turn state, enabling retry of preserved pending attachments; failed optimistic sends remove the entire local message row rather than only its bubble.
+- Commit: `fix: rollback failed sync input commits`.
+- Validation: targeted sync-commit/UI tests passed (`55 passed in 3.71s`). Plain full suite passed (`556 passed, 10 subtests passed in 8.81s`). Full isolated Docker suite passed (`554 passed, 2 skipped, 10 subtests passed in 11.17s`).

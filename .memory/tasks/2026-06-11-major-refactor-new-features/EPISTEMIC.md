@@ -722,3 +722,10 @@ Commitments:
 - Interventions: key writes now return error responses, pending-attachment sends use synchronous broker/sessiond commit ACKs, server preserves pending state on commit error, and frontend removes optimistic rows on send failure.
 - Evidence: targeted tests cover broker/sessiond sync send failures, broker key-write failures, pending-send error preservation, and UI rollback; full local/Docker suites passed.
 - Scoped claim: attachment pending state now tracks successful server-visible PTY writes for broker/sessiond paths; non-pending sends still intentionally ACK before after-reply injection for latency and do not mutate pending state.
+
+
+## 2026-06-12 21:16
+- Observation: clean-room review found sync send failure left broker/sessiond busy, preventing retry, and optimistic send cleanup removed only the bubble not the row.
+- Interventions: restored broker/sessiond pre-send busy/turn state on synchronous `_inject` failure; frontend now removes the closest `.msg-row` for failed local echoes.
+- Evidence: targeted tests assert busy rollback and row-level cleanup; full local/Docker suites passed.
+- Scoped claim: failed synchronous attachment-commit sends leave the session retryable and do not leave durable optimistic transcript rows.
