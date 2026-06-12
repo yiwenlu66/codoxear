@@ -87,6 +87,27 @@ def _jsonable(value: Any) -> Any:
     return str(value)
 
 
+def load_json_file(path: Path, default: Any = None) -> Any:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return default
+    return json.loads(raw)
+
+
+def atomic_write_json(path: Path, obj: Any, *, sort_keys: bool = True, indent: int | None = 2) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=sort_keys, indent=indent) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def append_launch_attempt(record: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
     if not isinstance(record, dict):
         raise TypeError("launch attempt record must be a dict")

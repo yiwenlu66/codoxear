@@ -52,6 +52,7 @@ from .message_cursor import verify_message_cursor as _verify_message_cursor_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .util import append_launch_attempt as _append_launch_attempt
+from .util import atomic_write_json as _atomic_write_json
 from .util import default_app_dir as _default_app_dir
 from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
@@ -62,6 +63,7 @@ from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
+from .util import load_json_file as _load_json_file
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -3007,11 +3009,9 @@ class SessionManager:
         self._unattended_store.save(obj)
 
     def _load_aliases(self) -> None:
-        try:
-            raw = ALIAS_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(ALIAS_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, dict):
             raise ValueError("invalid session_aliases.json (expected object)")
         cleaned: dict[str, str] = {}
@@ -3029,17 +3029,12 @@ class SessionManager:
     def _save_aliases(self) -> None:
         with self._lock:
             obj = dict(self._aliases)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = ALIAS_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, ALIAS_PATH)
+        _atomic_write_json(ALIAS_PATH, obj)
 
     def _load_sidebar_meta(self) -> None:
-        try:
-            raw = SIDEBAR_META_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(SIDEBAR_META_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, dict):
             raise ValueError("invalid session_sidebar.json (expected object)")
         cleaned: dict[str, dict[str, Any]] = {}
@@ -3063,17 +3058,12 @@ class SessionManager:
     def _save_sidebar_meta(self) -> None:
         with self._lock:
             obj = dict(self._sidebar_meta)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = SIDEBAR_META_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, SIDEBAR_META_PATH)
+        _atomic_write_json(SIDEBAR_META_PATH, obj)
 
     def _load_hidden_sessions(self) -> None:
-        try:
-            raw = HIDDEN_SESSIONS_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(HIDDEN_SESSIONS_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, list):
             raise ValueError("invalid hidden_sessions.json (expected list)")
         cleaned = {sid.strip() for sid in obj if isinstance(sid, str) and sid.strip()}
@@ -3083,10 +3073,7 @@ class SessionManager:
     def _save_hidden_sessions(self) -> None:
         with self._lock:
             obj = sorted(getattr(self, "_hidden_sessions", set()))
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = HIDDEN_SESSIONS_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, HIDDEN_SESSIONS_PATH)
+        _atomic_write_json(HIDDEN_SESSIONS_PATH, obj, sort_keys=True)
 
     def _hide_session(self, session_id: str) -> None:
         with self._lock:
@@ -3272,11 +3259,9 @@ class SessionManager:
             self._save_queues()
 
     def _load_files(self) -> None:
-        try:
-            raw = FILE_HISTORY_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(FILE_HISTORY_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, dict):
             raise ValueError("invalid session_files.json (expected object)")
         cleaned: dict[str, list[str]] = {}
@@ -3306,17 +3291,12 @@ class SessionManager:
     def _save_files(self) -> None:
         with self._lock:
             obj = dict(self._files)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = FILE_HISTORY_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, FILE_HISTORY_PATH)
+        _atomic_write_json(FILE_HISTORY_PATH, obj)
 
     def _load_queues(self) -> None:
-        try:
-            raw = QUEUE_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(QUEUE_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, dict):
             raise ValueError("invalid session_queues.json (expected object)")
         cleaned: dict[str, list[dict[str, Any]]] = {}
@@ -3349,17 +3329,12 @@ class SessionManager:
                 for sid, items in self._queues.items()
                 if isinstance(items, list) and items
             }
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = QUEUE_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, QUEUE_PATH)
+        _atomic_write_json(QUEUE_PATH, obj)
 
     def _load_recent_cwds(self) -> None:
-        try:
-            raw = RECENT_CWD_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
+        obj = _load_json_file(RECENT_CWD_PATH, default=None)
+        if obj is None:
             return
-        obj = json.loads(raw)
         if not isinstance(obj, dict):
             raise ValueError("invalid recent_cwds.json (expected object)")
         cleaned: dict[str, float] = {}
@@ -3384,10 +3359,7 @@ class SessionManager:
         with self._lock:
             items = sorted(getattr(self, "_recent_cwds", {}).items(), key=lambda item: (-float(item[1]), item[0]))[:RECENT_CWD_MAX]
         obj = {cwd: ts for cwd, ts in items}
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = RECENT_CWD_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, RECENT_CWD_PATH)
+        _atomic_write_json(RECENT_CWD_PATH, obj)
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         cleaned = _clean_recent_cwd(cwd)

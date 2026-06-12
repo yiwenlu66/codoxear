@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 from typing import Any
+
+from .util import atomic_write_json
+from .util import load_json_file
 
 
 class UnattendedStore:
@@ -19,11 +20,7 @@ class UnattendedStore:
         return clean_unattended_remaining_injections(raw, default_max_injections=self.default_max_injections, allow_zero=allow_zero)
 
     def load(self) -> dict[str, dict[str, Any]]:
-        try:
-            raw = self.path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return {}
-        obj = json.loads(raw)
+        obj = load_json_file(self.path, default={})
         if not isinstance(obj, dict):
             raise ValueError("invalid unattended.json (expected object)")
         cleaned: dict[str, dict[str, Any]] = {}
@@ -51,10 +48,7 @@ class UnattendedStore:
         return cleaned
 
     def save(self, obj: dict[str, dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, self.path)
+        atomic_write_json(self.path, obj)
 
 
 def render_unattended_prompt(request: str | None, *, prompt_prefix: str) -> str:
