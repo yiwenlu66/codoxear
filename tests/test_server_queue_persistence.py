@@ -542,16 +542,18 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertIn(sid, mgr._pending_attachment_ids)
 
     def test_attachment_malformed_response_sets_pending_and_reports_unknown(self) -> None:
-        sid = "s1"
-        mgr = self._mgr()
-        mgr._sessions[sid] = _make_session(sid)
-        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq, **_kwargs: None  # type: ignore[method-assign]
+        for response in [None, {"ok": "false"}, {"ok": 1}, {"ok": {"x": 1}}]:
+            with self.subTest(response=response):
+                sid = "s1"
+                mgr = self._mgr()
+                mgr._sessions[sid] = _make_session(sid)
+                mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+                mgr.inject_keys = lambda _sid, _seq, _response=response, **_kwargs: _response  # type: ignore[method-assign]
 
-        with self.assertRaisesRegex(SessionCommitUnknownError, "malformed"):
-            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
-        self.assertTrue(mgr._sessions[sid].pending_attachment)
-        self.assertIn(sid, mgr._pending_attachment_ids)
+                with self.assertRaisesRegex(SessionCommitUnknownError, "attachment commit status unknown"):
+                    SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+                self.assertTrue(mgr._sessions[sid].pending_attachment)
+                self.assertIn(sid, mgr._pending_attachment_ids)
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"
@@ -582,6 +584,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         sid = "s1"
         mgr._sessions[sid] = _make_session(sid)
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("commit-unknown enqueue should not be recorded as submitted")  # type: ignore[method-assign]
         mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
 
         with patch("codoxear.server.time.time", return_value=777.0):
