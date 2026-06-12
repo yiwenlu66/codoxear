@@ -5626,6 +5626,7 @@
           applyDialogMenus();
         };
         newSessionStartBtn.onclick = async () => {
+          if (newSessionStartBtn.disabled) return;
           const cwd = String(newSessionCwdInput.value || "").trim();
           const agentBackend = newSessionBackend;
           setNewSessionCwdError("");
@@ -5634,6 +5635,7 @@
             setNewSessionCwdError("Working directory is required.");
             return;
           }
+          newSessionStartBtn.disabled = true;
           const sessionName = String(newSessionNameInput.value || "").trim();
           const providerChoice = String(newSessionProvider || "").trim();
           const model = String(newSessionModelInput.value || "").trim() || "default";
@@ -5657,6 +5659,7 @@
             const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
             startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
           }, agentBackend);
+          newSessionStartBtn.disabled = false;
           if (brokerPid) hideNewSessionDialog();
           else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
         };
