@@ -48,6 +48,8 @@ from codoxear.util import find_session_log_for_session_id as _find_session_log_f
 from codoxear.util import is_subagent_session_meta as _is_subagent_session_meta
 from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import launch_attempts_path as _launch_attempts_path
+from codoxear.util import pid_alive as _pid_alive
+from codoxear.util import process_group_alive as _process_group_alive
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
@@ -355,33 +357,6 @@ def _set_pdeathsig(sig: int) -> None:
         libc.prctl(PR_SET_PDEATHSIG, sig, 0, 0, 0)
     except Exception:
         return
-
-
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except Exception:
-        return False
-    return True
-
-
-
-def _process_group_alive(root_pid: int) -> bool:
-    if root_pid <= 0:
-        return False
-    try:
-        os.killpg(root_pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
 
 
 def _require_proc() -> None:

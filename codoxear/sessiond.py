@@ -23,6 +23,7 @@ from .agent_backend import normalize_agent_backend
 from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
+from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload
@@ -88,18 +89,6 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024
     if not path.exists():
         return [], offset
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
-
-
-def _process_group_alive(root_pid: int) -> bool:
-    if root_pid <= 0:
-        return False
-    try:
-        os.killpg(root_pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
 
 
 @dataclass

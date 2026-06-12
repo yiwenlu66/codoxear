@@ -56,6 +56,35 @@ def _send_socket_json_line(conn: socket.socket, payload: dict[str, Any]) -> None
     conn.sendall((json.dumps(payload) + "\n").encode("utf-8"))
 
 
+def pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # The PID exists but is owned by another user.
+        return True
+    except Exception:
+        return False
+    return True
+
+
+def process_group_alive(root_pid: int) -> bool:
+    if root_pid <= 0:
+        return False
+    try:
+        os.killpg(root_pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+    return True
+
+
 def default_app_dir() -> Path:
     base = Path.home() / ".local" / "share"
     new = base / "codoxear"

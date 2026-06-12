@@ -61,6 +61,8 @@ from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
+from .util import pid_alive as _pid_alive
+from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
 from .util import load_json_file as _load_json_file
@@ -659,31 +661,6 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         "launch_stage": _clean_optional_text(record.get("stage")),
         "submitted_user_message_count": len(_submitted_user_messages(record)),
     }
-
-
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        # The PID exists but is owned by another user.
-        return True
-
-
-def _process_group_alive(root_pid: int) -> bool:
-    if root_pid <= 0:
-        return False
-    try:
-        os.killpg(root_pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
 
 
 def _terminate_process_group(root_pid: int, *, wait_seconds: float = 1.0) -> bool:
