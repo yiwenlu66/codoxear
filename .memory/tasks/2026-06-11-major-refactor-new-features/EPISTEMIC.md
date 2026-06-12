@@ -1224,3 +1224,8 @@ Commitments:
 - Intervention: In initial tail loading and live polling catches, handle `e.status === 401` before checking `pollGen`/selected staleness.
 - Evidence: Browser reproduction with delayed stale 401 reached the login screen; focused/full local/Docker validation passed.
 - Scoped claim: Tail and live-message polling no longer suppress auth-loss cleanup merely because the request became stale by UI generation.
+
+## 2026-06-13 07:14 — No-blocker scoped claim for transcript tail failure handling
+- Observation: Final clean-room review found no blockers after cached-tail preservation and stale-401 ordering repairs.
+- Scoped claim: Initial tail failures now have three separated outcomes: auth loss triggers global login cleanup; stale non-auth failures are ignored; active non-auth failures render explicit non-transcript error feedback, preserving cached transcript evidence when present.
+- Remaining uncertainty: Jump-to-latest/no-cache refreshes intentionally do not preserve current visible transcript on failure; if that becomes a UX issue it should be treated as a separate tranche.

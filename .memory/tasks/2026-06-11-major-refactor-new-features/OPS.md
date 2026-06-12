@@ -1443,3 +1443,9 @@
 - Browser evidence on isolated `codoxear-sandbox-18933`: monkeypatched first `/messages/tail` request to return delayed 401, clicked the same session again before it resolved so the first request became stale, and observed `handleAppAuthLoss()` cleanup to the login screen. Artifact: `/tmp/codoxear-tail-error-evidence/stale-401-after.json`.
 - Full local validation after auth-order repair: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
 - Full isolated Docker validation after auth-order repair: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:14 — Transcript tail failure final review
+- Final clean-room critic review of the transcript tail failure/auth tranche found no blockers.
+- Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `31 passed`; `node --check codoxear/static/app.js` → passed.
+- Review artifact: `/tmp/codoxear-transcript-tail-failure-review.md`.
+- Residual risks noted: tests are source-structure rather than a full async browser race harness; `openSession(..., { useCache: false })` paths such as jump-to-latest can still clear visible transcript before a failed tail fetch; tail cache is not a durable full scrollback/search snapshot.
