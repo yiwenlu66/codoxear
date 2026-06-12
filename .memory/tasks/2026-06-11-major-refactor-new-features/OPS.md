@@ -1396,3 +1396,9 @@
 - Browser evidence on `codoxear-sandbox-18932`: after serialization, a same-bucket `/api/sessions` poll returned 304 and `.sessions` MutationObserver stayed at `mutationCount: 0`. Artifact: `/tmp/codoxear-sidebar-gtd-evidence/serialized-etag2-after.json`.
 - Full local validation: `python3 -m pytest -q` → `658 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `657 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 06:43 — Session refresh serialization review
+- Clean-room critic review of commit `5afd630 fix: serialize session list refreshes` found no blockers.
+- Critic validation: `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `27 passed`; `node --check codoxear/static/app.js` → syntax OK.
+- Review artifact: `/tmp/codoxear-session-refresh-serialization-review.md`.
+- Residual risks noted: tests are source-shape rather than runtime async-race tests; a transient active-refresh failure does not immediately retry a queued refresh in the same loop; future direct `api("/api/sessions")` GET calls would bypass the guard, though none exist now.

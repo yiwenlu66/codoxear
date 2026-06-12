@@ -1186,3 +1186,8 @@ Commitments:
 - Intervention: Split the body into `refreshSessionsOnce()` and make public `refreshSessions()` coalesce concurrent callers through `sessionsRefreshInFlight` / `sessionsRefreshQueued`.
 - Evidence: Focused source tests pin the wrapper, browser evidence preserves same-bucket 304/no-mutation behavior, and full local/Docker suites passed.
 - Scoped claim: Sidebar session refreshes no longer overlap at the client application layer; queued refreshes preserve final-state convergence without out-of-order response application.
+
+## 2026-06-13 06:43 — No-blocker scoped claim for refresh serialization
+- Observation: Clean-room review found no blockers in the serialized `refreshSessions()` wrapper and confirmed auth failures still propagate to all concurrent waiters.
+- Scoped claim: Current session-list GET callers go through the serialization wrapper, so `/api/sessions` ETag/cache/sidebar updates are applied in a single client-side sequence with queued follow-up refreshes for concurrent demand.
+- Remaining uncertainty: There is no dedicated JS async race harness; if a refresh fails transiently while queued demand exists, recovery depends on the next timer/manual caller rather than an immediate retry.
