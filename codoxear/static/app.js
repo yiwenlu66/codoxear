@@ -7277,6 +7277,8 @@
         let fileEditMode = false;
         let fileDirty = false;
         let fileSavePending = false;
+        let fileSaveSeq = 0;
+        let activeFileSaveToken = 0;
         let fileEditorProgrammaticChange = false;
         let fileUnsavedResolver = null;
         let fileOpenRequestId = 0;
@@ -7898,6 +7900,7 @@
           activeFileDraft = false;
           fileEditMode = false;
           fileSavePending = false;
+          activeFileSaveToken = 0;
           resetFileTouchSelectionState();
           setFileDirty(false);
         }
@@ -8425,7 +8428,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           });
         }
 
-        function renderFileSaveConflict(savePath, message = "conflict") {
+        function renderFileSaveConflict(saveSessionId, savePath, message = "conflict") {
           const label = el("span", { class: "fileConflictText", text: `${savePath} - save conflict: ${message}` });
           const reloadBtn = el("button", {
             class: "icon-btn text-btn fileConflictReload",
@@ -8442,7 +8445,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           reloadBtn.onclick = async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (activeFilePath !== savePath || !fileViewerSessionId) return;
+            if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;
             const ok = window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
             if (!ok) return;
             fileStatus.textContent = `Reloading ${savePath}...`;
@@ -8452,7 +8455,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           keepBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (activeFilePath !== savePath) return;
+            if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;
             fileStatus.textContent = `${savePath} - editing unsaved conflict`;
             const editor = getActiveFileCodeEditor();
             if (editor && typeof editor.focus === "function") editor.focus();
@@ -8472,7 +8475,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const saveDraft = Boolean(activeFileDraft);
           const saveVersion = activeFileVersion;
           const text = getFileEditorText();
-          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath;
+          const saveToken = ++fileSaveSeq;
+          activeFileSaveToken = saveToken;
+          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken;
           fileSavePending = true;
           updateFileEditButton();
           syncFileEditorReadOnly();
@@ -8501,15 +8506,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             if (!saveStillCurrent()) return false;
             if (e && e.status === 409) {
-              renderFileSaveConflict(savePath, e && e.message ? e.message : "conflict");
+              renderFileSaveConflict(saveSessionId, savePath, e && e.message ? e.message : "conflict");
             } else {
               fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
             }
             return false;
           } finally {
-            fileSavePending = false;
-            syncFileEditorReadOnly();
-            updateFileEditButton();
+            if (activeFileSaveToken === saveToken) {
+              fileSavePending = false;
+              activeFileSaveToken = 0;
+              syncFileEditorReadOnly();
+              updateFileEditButton();
+            }
           }
         }
 
