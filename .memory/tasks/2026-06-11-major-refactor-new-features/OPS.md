@@ -1258,3 +1258,12 @@
   - Mixed known/malformed tool-use parts now retain the unknown pending sentinel after the known result arrives.
 - Commit: `fix: align Claude final extraction with tool state`.
 - Validation: targeted Claude suites passed (`50 passed`); full local suite passed (`633 passed, 25 subtests passed in 9.10s`); isolated Docker suite passed (`632 passed, 1 skipped, 25 subtests passed in 11.86s`).
+
+
+## 2026-06-13 04:26
+- Applied blockers from `/tmp/codoxear-cc-hardening-review4.md`:
+  - positioned chat tail/history/live extraction now carries Claude pending tool state instead of classifying each record independently;
+  - live chat deltas seed pending state from preceding log context, so split tool-use/final windows keep final-looking text as narration and keep `turn_end` false;
+  - voice delivery extraction accepts seeded pending state, and server voice scans seed it from the log before each delta.
+- Commit: `fix: carry Claude tool state through chat deltas`.
+- Validation: targeted positioned/delivery/server tests passed (`54 passed`); full local suite passed (`636 passed, 25 subtests passed in 8.90s`); isolated Docker suite passed (`635 passed, 1 skipped, 25 subtests passed in 15.33s`).

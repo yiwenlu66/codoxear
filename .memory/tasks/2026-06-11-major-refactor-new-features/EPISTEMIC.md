@@ -1069,3 +1069,10 @@ Commitments:
 - Intervention: treat final text without prior tail context as an ambiguous terminal requiring scan expansion; carry Claude pending tool IDs through chat and delivery extraction; classify final-looking text as narration and keep `turn_end` false while pending IDs remain.
 - Evidence: regressions cover large-gap final text, chat final classification, delivery classification, and mixed malformed tool-use; full local and Docker suites passed.
 - Scoped claim: inspected synthetic Claude log consumers now agree that known pending tool-use state blocks final/idle semantics.
+
+
+## 2026-06-13 04:26
+- Review anomaly: the stateful Claude pending-tool invariant was not actually applied to positioned chat pages/live deltas; `_single_chat_event()` and one-record extraction paths still emitted `final_response` for unresolved tool turns. Voice delivery had the same problem across offset deltas.
+- Intervention: statefully classify positioned records, seed live/chat and voice delivery deltas from prior log context, and keep split-window final text as narration while pending tool IDs remain.
+- Evidence: regressions cover tail page, live full and split deltas, delivery split deltas, and server voice observer behavior; full local and Docker suites passed.
+- Scoped claim: inspected chat API and voice delivery paths now share the Claude pending-tool invariant under synthetic logs.
