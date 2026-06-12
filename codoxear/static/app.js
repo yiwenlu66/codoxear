@@ -4033,34 +4033,37 @@
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
-          if (apiResponseNotModified(data)) return latestSessions;
-          latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
-          newSessionDefaults =
-            data && typeof data.new_session_defaults === "object" && data.new_session_defaults
-              ? data.new_session_defaults
-              : {
-                  default_backend: "codex",
-                  backends: {
-                    codex: legacyCodexLaunchDefaults(),
-                    pi: emptyPiLaunchDefaults(),
-                    cc: emptyCcLaunchDefaults(),
-                  },
-                };
-          tmuxAvailable = !!data.tmux_available;
-          recentCwds = Array.isArray(data.recent_cwds)
-            ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
-            : [];
-          if (newSessionViewer.style.display === "flex") {
-            const statusText = String(newSessionStatus.textContent || "").trim();
-            syncNewSessionTmuxUi();
-            renderNewSessionModelMenu();
-            renderNewSessionReasoningMenu();
-            syncNewSessionRunConfigUi();
-            if (!statusText || statusText.startsWith("Launch defaults degraded for ")) newSessionStatus.textContent = newSessionDefaultsWarningText();
+          const notModified = apiResponseNotModified(data);
+          if (notModified && !swipeRefreshDeferred) return latestSessions;
+          if (!notModified) {
+            latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
+            newSessionDefaults =
+              data && typeof data.new_session_defaults === "object" && data.new_session_defaults
+                ? data.new_session_defaults
+                : {
+                    default_backend: "codex",
+                    backends: {
+                      codex: legacyCodexLaunchDefaults(),
+                      pi: emptyPiLaunchDefaults(),
+                      cc: emptyCcLaunchDefaults(),
+                    },
+                  };
+            tmuxAvailable = !!data.tmux_available;
+            recentCwds = Array.isArray(data.recent_cwds)
+              ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
+              : [];
+            if (newSessionViewer.style.display === "flex") {
+              const statusText = String(newSessionStatus.textContent || "").trim();
+              syncNewSessionTmuxUi();
+              renderNewSessionModelMenu();
+              renderNewSessionReasoningMenu();
+              syncNewSessionRunConfigUi();
+              if (!statusText || statusText.startsWith("Launch defaults degraded for ")) newSessionStatus.textContent = newSessionDefaultsWarningText();
+            }
+            fileRefCandidateCache.clear();
           }
-          fileRefCandidateCache.clear();
           const swipeActions = !useDesktopSessionActions();
-            const sessions = (data.sessions || [])
+            const sessions = latestSessions
                .slice()
                .sort((a, b) => {
                  const p = Number(b.final_priority || 0) - Number(a.final_priority || 0);

@@ -24,15 +24,24 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("function apiResponseNotModified(obj) {", source)
         self.assertIn("if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {", source)
         self.assertIn("Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });", source)
-        self.assertIn("if (apiResponseNotModified(data)) return latestSessions;", source)
+        self.assertIn("const notModified = apiResponseNotModified(data);", source)
+        self.assertIn("if (notModified && !swipeRefreshDeferred) return latestSessions;", source)
         self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', source)
         self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", source)
 
     def test_sessions_304_fast_path_precedes_sidebar_rebuild(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
-        self.assertLess(block.index("if (apiResponseNotModified(data)) return latestSessions;"), block.index('sessionsWrap.innerHTML = "";'))
-        self.assertLess(block.index("if (apiResponseNotModified(data)) return latestSessions;"), block.index("newSessionDefaults ="))
+        self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index('sessionsWrap.innerHTML = "";'))
+        self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index("newSessionDefaults ="))
+
+    def test_sessions_304_preserves_deferred_swipe_refresh(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
+        self.assertIn("if (notModified && !swipeRefreshDeferred) return latestSessions;", block)
+        self.assertIn("if (!notModified) {", block)
+        self.assertIn("const sessions = latestSessions", block)
+        self.assertLess(block.index("const sessions = latestSessions"), block.index("if (swipeActions && openSwipeSessionId"))
 
     def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
