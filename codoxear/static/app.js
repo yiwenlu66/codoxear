@@ -155,6 +155,11 @@
       }
 
       const apiEtags = new Map();
+      const API_NOT_MODIFIED = Symbol("api.notModified");
+
+      function apiResponseNotModified(obj) {
+        return !!(obj && obj[API_NOT_MODIFIED]);
+      }
 
       async function api(path, { method = "GET", body, signal } = {}) {
         const t0 = performance.now();
@@ -177,7 +182,9 @@
           else pushPerfSample("api_messages_poll_ms", dt);
         }
         if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {
-          return JSON.parse(apiEtags.get(rawPath).text);
+          const cached = JSON.parse(apiEtags.get(rawPath).text);
+          Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });
+          return cached;
         }
         const txt = await res.text();
         let obj;
@@ -4026,6 +4033,7 @@
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
+          if (apiResponseNotModified(data)) return latestSessions;
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
           newSessionDefaults =
             data && typeof data.new_session_defaults === "object" && data.new_session_defaults

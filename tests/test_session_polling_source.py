@@ -20,10 +20,19 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("const apiEtags = new Map();", source)
         self.assertIn('const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";', source)
         self.assertIn('opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;', source)
+        self.assertIn("const API_NOT_MODIFIED = Symbol(\"api.notModified\");", source)
+        self.assertIn("function apiResponseNotModified(obj) {", source)
         self.assertIn("if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {", source)
-        self.assertIn("return JSON.parse(apiEtags.get(rawPath).text);", source)
+        self.assertIn("Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });", source)
+        self.assertIn("if (apiResponseNotModified(data)) return latestSessions;", source)
         self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', source)
         self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", source)
+
+    def test_sessions_304_fast_path_precedes_sidebar_rebuild(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
+        self.assertLess(block.index("if (apiResponseNotModified(data)) return latestSessions;"), block.index('sessionsWrap.innerHTML = "";'))
+        self.assertLess(block.index("if (apiResponseNotModified(data)) return latestSessions;"), block.index("newSessionDefaults ="))
 
     def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

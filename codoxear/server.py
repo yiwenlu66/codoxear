@@ -288,6 +288,7 @@ SEND_COMMIT_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_SEND_COMMIT_TIMEOU
 COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS = float(os.environ.get("CODEX_WEB_COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS", str(7 * 24 * 3600)))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
+SIDEBAR_PRIORITY_BUCKET_SECONDS = float(os.environ.get("CODEX_WEB_SIDEBAR_PRIORITY_BUCKET_SECONDS", "10.0"))
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
 TRANSCRIPT_EXPORT_MAX_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES", str(50 * 1024 * 1024)))
@@ -1426,6 +1427,18 @@ def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
     if elapsed_s <= 0:
         return 1.0
     return _clip01(math.exp(-SIDEBAR_PRIORITY_LAMBDA * float(elapsed_s)))
+
+
+def _sidebar_priority_elapsed_seconds(elapsed_s: float) -> float:
+    elapsed = max(0.0, float(elapsed_s))
+    bucket = float(SIDEBAR_PRIORITY_BUCKET_SECONDS)
+    if bucket <= 0:
+        return elapsed
+    return math.floor(elapsed / bucket) * bucket
+
+
+def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
+    return _priority_from_elapsed_seconds(_sidebar_priority_elapsed_seconds(elapsed_s))
 
 
 def _current_git_branch(cwd: Path) -> str | None:
@@ -3840,7 +3853,7 @@ class SessionManager:
                         meta0.pop("snooze_until", None)
                         sidebar_dirty = True
                 elapsed_s = max(0.0, now_ts - updated_ts)
-                time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
                 base_priority = _clip01(time_priority + priority_offset)
                 blocked = dependency_session_id is not None
                 snoozed = snooze_until is not None and snooze_until > now_ts
@@ -3937,7 +3950,7 @@ class SessionManager:
                                 recent_map[cwd_recent] = updated_ts
                                 recent_cwd_dirty = True
                         elapsed_s = max(0.0, now_ts - updated_ts)
-                        time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                        time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
                         base_priority = _clip01(time_priority + float(it.get("priority_offset", 0.0)))
                         final_priority = 0.0 if (it.get("snoozed") or it.get("blocked")) else base_priority
                         it["time_priority"] = time_priority
@@ -5490,7 +5503,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 git_branch = _current_git_branch(cwd_path)
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 elapsed_s = max(0.0, time.time() - updated_ts)
-                time_priority = _priority_from_elapsed_seconds(elapsed_s)
+                time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
                 base_priority = _clip01(time_priority + float(sidebar_meta["priority_offset"]))
                 blocked = sidebar_meta["dependency_session_id"] is not None
                 snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()

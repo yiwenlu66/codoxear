@@ -68,6 +68,21 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertAlmostEqual(rows[0]["final_priority"], 0.45, delta=0.04)
         self.assertAlmostEqual(rows[1]["final_priority"], 0.19, delta=0.04)
 
+    def test_list_sessions_priority_payload_is_bucketed_for_etag_stability(self) -> None:
+        mgr = _make_manager()
+        s = _session(sid="bucket", start_ts=1000.0, last_chat_ts=1000.0)
+        mgr._sessions = {s.session_id: s}
+        with patch("codoxear.server.SIDEBAR_PRIORITY_BUCKET_SECONDS", 10.0):
+            with patch("codoxear.server.time.time", return_value=1005.0):
+                first = mgr.list_sessions()[0]
+            with patch("codoxear.server.time.time", return_value=1009.0):
+                same_bucket = mgr.list_sessions()[0]
+            with patch("codoxear.server.time.time", return_value=1011.0):
+                next_bucket = mgr.list_sessions()[0]
+        self.assertEqual(first["time_priority"], same_bucket["time_priority"])
+        self.assertEqual(first["base_priority"], same_bucket["base_priority"])
+        self.assertLess(next_bucket["time_priority"], same_bucket["time_priority"])
+
     def test_list_sessions_does_not_drain_queue(self) -> None:
         mgr = _make_manager()
         now = time.time()
