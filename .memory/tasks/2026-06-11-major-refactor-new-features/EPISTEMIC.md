@@ -1091,3 +1091,10 @@ Commitments:
 - Intervention: make current-turn context seeding scan back to the human user row by default; make idle fail closed if a terminal-looking row remains contextless at budget.
 - Evidence: regression with 9 MiB tool-result plus unresolved sibling tool passes for seeded live delta and idle; full local/Docker suites passed.
 - Scoped claim: the inspected split-delta chat/delivery paths no longer have an 8 MiB context-seeding limit for current Claude turns, though pathological full-log scans may be more expensive on enormous current turns.
+
+
+## 2026-06-13 04:50
+- Review anomaly: unbounded current-turn scanning fixed split-delta correctness but made no-op live polls scan large current turns; malformed idless tool-use state was also boolean rather than count-like.
+- Intervention: seed prior Claude context only when a live delta contains records; represent each idless tool-use with a distinct unknown sentinel and consume one sentinel per idless result.
+- Evidence: regressions verify EOF live delta does not call the context scanner, and multiple idless tool-use calls remain pending after one idless result; full local/Docker suites passed.
+- Scoped claim: no-op live polling avoids the introduced unbounded scan while non-empty split deltas keep full current-turn correctness.

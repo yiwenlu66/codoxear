@@ -1283,3 +1283,11 @@
   - `_compute_idle_from_log()` fails closed if a terminal-looking Claude row remains without visible turn start at the configured scan budget.
 - Commit: `fix: scan full Claude turn context for pending tools`.
 - Validation: targeted large-result/current-turn tests passed (`14 passed`), affected Claude/server suites passed (`57 passed`), full local suite passed (`638 passed, 25 subtests passed in 10.99s`), isolated Docker suite passed (`637 passed, 1 skipped, 25 subtests passed in 13.69s`).
+
+
+## 2026-06-13 04:50
+- Applied blockers from `/tmp/codoxear-cc-hardening-review7.md`:
+  - empty `/messages/live` deltas no longer scan backward through the current Claude turn, avoiding large no-op polling costs;
+  - idless/malformed Claude tool-use tracking now uses one sentinel per malformed tool call, so one idless result cannot clear multiple pending malformed calls.
+- Commit: `fix: avoid empty Claude live context scans`.
+- Validation: targeted empty-delta/idless tests passed (`54 passed`); full local suite passed (`641 passed, 25 subtests passed in 16.41s`); isolated Docker suite passed (`640 passed, 1 skipped, 25 subtests passed in 12.71s`).
