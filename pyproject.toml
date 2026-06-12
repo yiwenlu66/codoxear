@@ -16,6 +16,9 @@ codoxear-server = "codoxear.server:main"
 codoxear-broker = "codoxear.broker:main"
 codoxear-sessiond = "codoxear.sessiond:main"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [tool.setuptools]
 packages = ["codoxear"]
 include-package-data = true
