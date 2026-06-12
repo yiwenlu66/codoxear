@@ -72,12 +72,17 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("newSessionProviderModelDisplay(item.model || \"default\", selectedProvider)", source)
         self.assertIn("item.recent ? \"Recent\" : item.configured ? \"Configured\"", source)
 
-    def test_provider_only_selector_is_not_rendered(self) -> None:
+    def test_provider_only_selector_is_not_rendered_or_called(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model"', source)
         self.assertNotIn('id: "newSessionProviderBtn"', source)
         self.assertNotIn('id: "newSessionProviderMenu"', source)
         self.assertNotIn('text: "Provider"', source)
+        self.assertNotIn("renderNewSessionProviderMenu", source)
+        refresh_open_start = source.index('if (newSessionViewer.style.display === "flex") {')
+        refresh_open_end = source.index("          }", refresh_open_start)
+        refresh_open_block = source[refresh_open_start:refresh_open_end]
+        self.assertIn("renderNewSessionModelMenu();", refresh_open_block)
 
     def test_provider_model_error_clears_when_backend_or_input_changes(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
