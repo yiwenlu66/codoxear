@@ -7827,19 +7827,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (exitEditMode) setFileEditMode(false);
             return true;
           }
+          const saveSessionId = fileViewerSessionId;
+          const savePath = activeFilePath;
+          const saveDraft = Boolean(activeFileDraft);
+          const saveVersion = activeFileVersion;
           const text = getFileEditorText();
+          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath;
           fileSavePending = true;
           updateFileEditButton();
           syncFileEditorReadOnly();
-          fileStatus.textContent = `Saving ${activeFilePath}...`;
+          fileStatus.textContent = `Saving ${savePath}...`;
           try {
-            const saveBody = activeFileDraft
-              ? { path: activeFilePath, text, create: true }
-              : { path: activeFilePath, text, version: activeFileVersion };
-            const res = await api(`/api/sessions/${fileViewerSessionId}/file/write`, {
+            const saveBody = saveDraft
+              ? { path: savePath, text, create: true }
+              : { path: savePath, text, version: saveVersion };
+            const res = await api(`/api/sessions/${saveSessionId}/file/write`, {
               method: "POST",
               body: saveBody,
             });
+            if (!saveStillCurrent()) return true;
             activeFileText = text;
             if (res && typeof res.version === "string") activeFileVersion = res.version;
             if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
@@ -7848,13 +7854,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setFileDirty(false);
             if (exitEditMode) setFileEditMode(false);
             const size = res && typeof res.size === "number" ? res.size : text.length;
-            fileStatus.textContent = `${activeFilePath} - ${fmtBytes(size)}`;
-            rememberOpenedFile(activeFilePath, res && typeof res.path === "string" ? res.path : null);
+            fileStatus.textContent = `${savePath} - ${fmtBytes(size)}`;
+            rememberOpenedFile(savePath, res && typeof res.path === "string" ? res.path : null);
             renderFilePickerMenu();
             return true;
           } catch (e) {
+            if (!saveStillCurrent()) return false;
             if (e && e.status === 409) {
-              fileStatus.textContent = `${activeFilePath} - save conflict: ${e && e.message ? e.message : "conflict"}`;
+              fileStatus.textContent = `${savePath} - save conflict: ${e && e.message ? e.message : "conflict"}`;
             } else {
               fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
             }

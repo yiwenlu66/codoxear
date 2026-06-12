@@ -217,6 +217,24 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("cancelPendingFileOpen();\n          prepareModalOpen();\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
+    def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function saveActiveFileEdits")
+        end = source.index("async function maybeHandleUnsavedFileChanges", start)
+        block = source[start:end]
+        self.assertIn("const saveSessionId = fileViewerSessionId;", block)
+        self.assertIn("const savePath = activeFilePath;", block)
+        self.assertIn("const saveDraft = Boolean(activeFileDraft);", block)
+        self.assertIn("const saveVersion = activeFileVersion;", block)
+        self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath;", block)
+        self.assertIn("? { path: savePath, text, create: true }", block)
+        self.assertIn(": { path: savePath, text, version: saveVersion };", block)
+        self.assertIn("await api(`/api/sessions/${saveSessionId}/file/write`", block)
+        self.assertIn("if (!saveStillCurrent()) return true;", block)
+        self.assertIn("if (!saveStillCurrent()) return false;", block)
+        self.assertIn("fileStatus.textContent = `${savePath} - ${fmtBytes(size)}`;", block)
+        self.assertIn("rememberOpenedFile(savePath,", block)
+
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
