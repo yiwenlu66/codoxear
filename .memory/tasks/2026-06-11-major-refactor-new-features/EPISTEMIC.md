@@ -306,3 +306,7 @@ Commitments:
 - Observation: session routes still had many prefix+suffix checks that could accept unintended aliases with extra path segments. This was not a user-visible bug in normal UI paths, but it weakened the API invariant that each endpoint has one documented shape.
 - Mechanism: handlers extracted `parts[3]` as the session id after only checking path prefix and suffix, so paths such as `/api/sessions/s1/extra/file/read` could be interpreted as session `s1` file-read requests.
 - Intervention/evidence: all session route families now use `_match_session_route()`, and the old suffix-match pattern is absent from `server.py`. Tests reject extra segments while preserving intended route shapes. Full Docker passing scopes the claim to existing unit/source/runtime coverage, not external clients using undocumented aliases.
+
+## 2026-06-12 13:02
+- Observation/interpretation: loaded-only search was honest but weak for long unattended sessions because relevant text could exist outside the rendered DOM window. A full cursor-jump search would require careful byte-boundary paging semantics; a lower-risk intervention is to surface all-transcript match counts using the export pipeline while leaving loaded-row navigation unchanged.
+- Scoped claim: the UI can now tell users when matches exist beyond loaded rows (`loaded` count plus `all` count). It does not yet automatically load/jump to an older all-transcript match; that remains a possible future enhancement requiring cursor-target validation.

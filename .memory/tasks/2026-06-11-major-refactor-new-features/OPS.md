@@ -349,3 +349,8 @@
   - `0987933 refactor: exact-match file and git routes`: file read/search/list/blob/video_preview/download and git changed_files/diff/file_versions.
 - Evidence: `rg 'path\.startswith\("/api/sessions/"\).*path\.endswith' codoxear/server.py` produced no matches. `_match_session_route` tests now reject extra path segments for queue, send, unattended, interrupt, diagnostics, edit, rename, inject, file, and git routes.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; targeted route/file/git tests passed (`36 passed in 1.87s`); full isolated Docker suite passed (`449 passed, 2 skipped in 10.44s`).
+
+## 2026-06-12 13:02
+- UX feature follow-up: added bounded server-backed all-transcript search counts while preserving the existing fast loaded-DOM search. Route: `/api/sessions/<id>/messages/search?q=...&limit=...` reuses export event extraction and transcript size limit; UI search status now shows loaded matches plus total transcript matches, e.g. `0/0 loaded · 3 all`.
+- Commit: `8eeca75 feat: show all-transcript search counts`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; targeted transcript/search tests passed (`20 passed in 1.69s`); full isolated Docker suite passed (`450 passed, 2 skipped in 10.17s`).
