@@ -40,7 +40,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("with input_lock:\n            with self._lock:\n                s = self._sessions.get(session_id)", source)
         self.assertIn("if s.pending_attachment and not allow_pending_attachment:\n                    raise SessionNotReadyError", source)
         self.assertIn("if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise SessionNotReadyError(\"session is busy; wait before sending\")", source)
-        self.assertIn("resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text, \"sync\": bool(allow_pending_attachment)}, timeout_s=3.0)", source)
+        self.assertIn("resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text, \"sync\": True}, timeout_s=3.0)", source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertIn("self._record_prelog_user_message(s, text, source=\"enqueue\")\n            item, ql = self._queue_append_item_local(session_id, text)", source)
         self.assertIn("if isinstance(resp, dict) and resp.get(\"error\"):", source)

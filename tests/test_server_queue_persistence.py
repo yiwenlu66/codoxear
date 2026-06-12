@@ -229,6 +229,23 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(mgr._sessions[sid].pending_attachment)
         self.assertIn(sid, mgr._pending_attachment_ids)
 
+    def test_normal_server_send_uses_sync_commit(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0) -> dict[str, object]:
+            seen.append(req)
+            return {"queued": False, "queue_len": 0}
+
+        mgr._sock_call = sock_call  # type: ignore[method-assign]
+
+        self.assertEqual(SessionManager.send(mgr, sid, "normal prompt"), {"queued": False, "queue_len": 0})
+        self.assertEqual(seen, [{"cmd": "send", "text": "normal prompt", "sync": True}])
+
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()
