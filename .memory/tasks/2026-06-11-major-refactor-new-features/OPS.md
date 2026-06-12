@@ -890,3 +890,9 @@
 
 ## 2026-06-12 19:41
 - Runtime CSP header evidence: isolated Docker server on `:18882` returned `HTTP/1.0 200 OK`, `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, and `X-Frame-Options: DENY` for `GET /`. Initial `HEAD /` returned `501` and was discarded as invalid evidence because the handler does not implement HEAD.
+
+
+## 2026-06-12 19:51
+- Final-review blocker repair: `/inject_file` now checks `MANAGER.attachment_injection_ready(session_id)` before base64 decode/staging/injecting; readiness requires no local queue/sending item and broker state `busy=false`, `queue_len=0`.
+- Commit: `fix: reject attachment injection while busy`.
+- Validation: targeted server attachment/queue tests passed (`15 passed in 1.82s`). Plain full suite passed (`539 passed, 10 subtests passed in 9.01s`). Full isolated Docker suite passed (`537 passed, 2 skipped, 10 subtests passed in 15.48s`).

@@ -652,3 +652,10 @@ Commitments:
 
 ## 2026-06-12 19:41
 - Observation: runtime GET evidence confirms CSP/X-Frame-Options are delivered as HTTP headers for `/`, satisfying the critic's enforcement concern. The failed HEAD probe was invalid because the handler does not implement HEAD.
+
+
+## 2026-06-12 19:51
+- Observation: final clean-room review found attachment split prevention was client-only; direct/stale `/inject_file` could still bracket-paste into a busy PTY.
+- Intervention: added server-side attachment readiness guard before staging uploaded bytes or calling `inject_keys`; guard checks local queue/sending state plus broker busy/queue state.
+- Evidence: targeted tests assert busy/remote-queue/local-queue/sending rejection and route guard before staging; full local/Docker suites passed.
+- Scoped claim: attachment injection is now fail-closed at the server API boundary for known busy/local-queue states. It still relies on broker `state` accuracy for remote busy reporting.
