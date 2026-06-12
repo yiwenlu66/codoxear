@@ -1136,3 +1136,9 @@
 - Repaired orphan later-item blocker: when a missing-session queue has recovery evidence, all listed items are exposed as recovery-protected; deleting any later item requires `allow_orphan_recovery`; queue route recovery errors now map to 409; after deleting the last recovery row the queue viewer hides instead of surfacing a false 404 error.
 - Commit: `fix: protect all orphan recovery queue items`.
 - Validation: targeted tests passed (`68 passed, 11 subtests passed in 2.43s`). Plain full suite passed (`601 passed, 21 subtests passed in 11.22s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 15.22s`).
+
+
+## 2026-06-13 01:36
+- Repaired non-blocking orphan recovery issues: missing-session recovery queue update/move now return recovery conflict semantics instead of 404, and deleting the last queue item hides the queue modal even if a direct orphan marker remains for the same row.
+- Commit: `fix: smooth orphan recovery queue conflicts`.
+- Validation: targeted tests passed (`58 passed, 11 subtests passed in 1.84s`). Plain full suite passed (`601 passed, 21 subtests passed in 8.93s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 11.05s`).

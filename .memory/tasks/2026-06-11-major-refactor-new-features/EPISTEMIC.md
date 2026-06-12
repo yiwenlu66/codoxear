@@ -937,3 +937,10 @@ Commitments:
 - Intervention: queue listing marks all items in a missing-session recovery queue as recovery-protected; delete requires explicit orphan recovery confirmation for those later items too; recovery conflict errors map to 409.
 - Evidence: tests cover later-item protection before and after unknown deletion; full local/Docker suites passed.
 - Scoped claim: every prompt in a missing-session recovery queue is protected from silent deletion/mutation while the queue remains in recovery state.
+
+
+## 2026-06-13 01:36
+- Observation: final orphan review found no data-loss/auto-send blocker after later-item protection, but API/UI conflicts were still confusing.
+- Intervention: missing-session recovery queue update/move now fail as recovery conflicts, and queue modal hides after the last queue row deletion regardless of remaining direct orphan evidence.
+- Evidence: targeted/full/Docker suites passed.
+- Scoped claim: orphan queue recovery now has consistent conflict semantics and does not show a false queue-unavailable error after successful final row deletion.
