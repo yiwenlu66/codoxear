@@ -3792,7 +3792,7 @@ class SessionManager:
                     if isinstance(q0, list):
                         queue_len = len(q0)
                         queue_recovery = any(
-                            isinstance(item, dict) and bool(item.get("orphan_recovery"))
+                            isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
                             for item in q0
                         )
                 meta0 = meta_map.get(s.session_id) if isinstance(meta_map, dict) else None
@@ -4796,6 +4796,8 @@ class SessionManager:
                     raise SessionNotReadyError("resolve the unknown send before queueing another prompt")
                 if s.pending_attachment:
                     raise SessionNotReadyError("send the pending attachment before queueing another prompt")
+                if self._queue_has_recovery_items_locked(session_id):
+                    raise SessionNotReadyError("resolve the recovery queue before queueing another prompt")
                 if not s.sync_send_supported:
                     raise SessionNotReadyError("broker must be restarted before queueing prompts")
             item, ql = self._queue_append_item_local(session_id, text)

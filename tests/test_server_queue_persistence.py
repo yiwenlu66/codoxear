@@ -676,6 +676,41 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(row["queue_recovery"])
         self.assertEqual(row["queue_len"], 2)
 
+    def test_active_commit_unknown_queue_item_is_queue_recovery(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [dict(_queue_item("u", "maybe sent"), commit_unknown=True)]
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
+        mgr._include_launch_attempts = False
+        mgr._unattended = {}
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._files = {}
+        mgr._recent_cwds = {}
+        mgr._save_files = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_recent_cwds = lambda: None
+
+        row = SessionManager.list_sessions(mgr)[0]
+
+        self.assertTrue(row["queue_recovery"])
+        self.assertEqual(row["queue_len"], 1)
+
+    def test_enqueue_rejects_active_recovery_queue_barriers(self) -> None:
+        for flag in ["orphan_recovery", "commit_unknown"]:
+            with self.subTest(flag=flag):
+                sid = "s1"
+                mgr = self._mgr()
+                mgr._sessions[sid] = _make_session(sid)
+                mgr._queues[sid] = [dict(_queue_item("r", "recover"), **{flag: True})]
+
+                with self.assertRaisesRegex(SessionNotReadyError, "recovery queue"):
+                    SessionManager.enqueue(mgr, sid, "new prompt")
+                self.assertEqual(len(mgr._queues[sid]), 1)
+
     def test_recovery_delete_marks_tail_even_before_session_prune(self) -> None:
         sid = "s1"
         mgr = self._mgr()
