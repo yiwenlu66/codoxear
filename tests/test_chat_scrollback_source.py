@@ -205,6 +205,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);", block)
         self.assertIn("sessionInfo && sessionInfo.pending_attachment", block)
         self.assertIn("window.confirm(\"This session has a pending file attachment. Send it with this message?\")", block)
+        self.assertLess(block.index("window.confirm"), block.index("pendingUser.push"))
         self.assertIn("const res = await api(`/api/sessions/${sessionId}/send`, { method: \"POST\", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });", block)
         self.assertIn("if (renderHere && renewsTranscript) {", block)
         self.assertIn("beginTranscriptRenewal(sessionId);", block)

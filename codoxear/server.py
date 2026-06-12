@@ -879,6 +879,10 @@ class SessionNotReadyError(RuntimeError):
     pass
 
 
+class SessionInjectionError(RuntimeError):
+    pass
+
+
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
     return _sign_message_cursor_impl(payload, secret=HMAC_SECRET)
 
@@ -2617,6 +2621,7 @@ class SessionManager:
             return s, s.log_path
 
     def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -2629,6 +2634,12 @@ class SessionManager:
             raise ValueError("invalid broker state response")
         if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
             return False
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            log_path = s.log_path
         if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
             return False
         return True
@@ -2696,7 +2707,7 @@ class SessionManager:
             s0.queue_sending_item_id = head_id
             text = str(head.get("text") or "")
         try:
-            resp = self.send(session_id, text)
+            resp = self.send(session_id, text, queue_item_id=head_id)
         except Exception:
             with self._lock:
                 s0 = self._sessions.get(session_id)
@@ -4305,7 +4316,7 @@ class SessionManager:
         )
         _record_launch_attempt(base)
 
-    def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False) -> dict[str, Any]:
+    def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False, queue_item_id: str | None = None) -> dict[str, Any]:
         input_lock = self._input_lock_for_session(session_id)
         with input_lock:
             with self._lock:
@@ -4314,6 +4325,11 @@ class SessionManager:
                     raise KeyError("unknown session")
                 if s.pending_attachment and not allow_pending_attachment:
                     raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
+                local_queue_len = self._queue_store_for_manager().queue_len(self._queues, session_id)
+                if queue_item_id is None and (local_queue_len > 0 or s.queue_sending_item_id is not None):
+                    raise SessionNotReadyError("send queued prompts before submitting new text")
+                if queue_item_id is not None and s.queue_sending_item_id != queue_item_id:
+                    raise SessionNotReadyError("queued prompt is no longer active")
                 sock = s.sock_path
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
@@ -4473,6 +4489,8 @@ class SessionManager:
             if not self.attachment_injection_ready(session_id):
                 raise SessionNotReadyError("session is busy; wait before attaching a file")
             resp = self.inject_keys(session_id, seq)
+            if isinstance(resp, dict) and resp.get("error"):
+                raise SessionInjectionError(str(resp.get("error")))
             self._set_pending_attachment(session_id, True)
             return resp
 
@@ -6598,6 +6616,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except SessionNotReadyError as e:
                     _json_response(self, 409, {"error": str(e)})
+                    return
+                except SessionInjectionError as e:
+                    _json_response(self, 502, {"error": str(e)})
                     return
                 _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
                 return

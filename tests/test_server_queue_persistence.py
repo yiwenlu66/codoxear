@@ -234,6 +234,58 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
             SessionManager.send(mgr, sid, "stale direct prompt")
 
+    def test_direct_send_rejects_when_local_queue_exists(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: self.fail("direct send should not overtake local queue")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "queued prompts"):
+            SessionManager.send(mgr, sid, "direct second")
+
+    def test_send_readiness_refreshes_sidecar_before_log_idle_check(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            session = _make_session(sid)
+            session.sock_path = root / "s1.sock"
+            old_idle_log = root / "old.jsonl"
+            old_idle_log.write_text("{}\n", encoding="utf-8")
+            new_busy_log = root / "new.jsonl"
+            new_busy_log.write_text("{}\n", encoding="utf-8")
+            session.log_path = old_idle_log
+            mgr._sessions[sid] = session
+            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+            mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: mgr._sessions[sid].log_path != new_busy_log  # type: ignore[method-assign]
+            mgr._sock_call = lambda *_args, **_kwargs: self.fail("send should not bypass refreshed busy log")  # type: ignore[method-assign]
+
+            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
+                self.assertFalse(drain_queue)
+                mgr._sessions[sid].log_path = new_busy_log
+
+            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
+
+            with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
+                SessionManager.send(mgr, sid, "stale log send")
+
+    def test_attachment_injection_error_does_not_set_pending(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq: {"error": "write failed"}  # type: ignore[method-assign]
+
+        from codoxear.server import SessionInjectionError
+
+        with self.assertRaisesRegex(SessionInjectionError, "write failed"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
+
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -249,7 +301,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid] = _make_session(sid)
         sent: list[tuple[str, str]] = []
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
         resp = SessionManager.enqueue(mgr, sid, "hello now")
 
@@ -264,7 +316,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid] = _make_session(sid)
         mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
         sent: list[tuple[str, str]] = []
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
 
         resp = SessionManager.enqueue(mgr, sid, "hello queued")
 

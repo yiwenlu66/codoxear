@@ -43,7 +43,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
         mgr.idle_from_log = lambda _sid: False
         sent = []
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
 
         SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [])
@@ -71,7 +71,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
         mgr.idle_from_log = lambda _sid: True
         sent = []
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
 
         with patch("codoxear.server.time.time", return_value=100.0):
             SessionManager._queue_sweep(mgr)
@@ -103,7 +103,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         )
         mgr._queues[sid] = [_queue_item("q1", "queued")]
         sent = []
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
 
         mgr.idle_from_log = lambda _sid: True
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
@@ -153,7 +153,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
         mgr.idle_from_log = lambda _sid: True
         sent = []
-        mgr.send = lambda _sid, text: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
 
         with patch("codoxear.server.time.time", return_value=300.0):
             SessionManager._queue_sweep(mgr)
