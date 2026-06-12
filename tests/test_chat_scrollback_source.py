@@ -59,6 +59,30 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn(".msg.loading", css)
         self.assertIn("color: var(--muted);", css)
 
+    def test_tail_cache_identity_uses_authoritative_tail_payload(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        identity_start = source.index("function transcriptIdentityFromData(data, fallback = null)")
+        identity_end = source.index("function getSessionTranscriptSlot", identity_start)
+        identity_block = source[identity_start:identity_end]
+        self.assertIn("const dataThreadId = typeof data?.thread_id", identity_block)
+        self.assertIn("const dataLogPath = typeof data?.log_path", identity_block)
+        remember_start = source.index("function rememberTailSnapshot(sessionId, session, data)")
+        remember_end = source.index("function appendTailSnapshotEvents", remember_start)
+        remember_block = source[remember_start:remember_end]
+        self.assertIn("const identity = transcriptIdentityFromData(data, session);", remember_block)
+        self.assertIn("threadId: identity.threadId", remember_block)
+        self.assertIn("logPath: identity.logPath", remember_block)
+        append_start = source.index("function appendTailSnapshotEvents(sessionId, events")
+        append_end = source.index("function restorePendingUserRowsForSession", append_start)
+        append_block = source[append_start:append_end]
+        self.assertIn("identityData = null", append_block)
+        self.assertIn("const identity = transcriptIdentityFromData(identityData, meta || current || null);", append_block)
+        self.assertIn("threadId: identity.threadId", append_block)
+        poll_start = source.index("appendTailSnapshotEvents(sid, evs")
+        poll_end = source.index("});", poll_start)
+        poll_block = source[poll_start:poll_end]
+        self.assertIn("identityData: data", poll_block)
+
     def test_transcript_load_error_row_is_non_transcript_feedback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")

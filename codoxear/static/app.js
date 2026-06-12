@@ -3396,6 +3396,24 @@
           };
         }
 
+        function transcriptIdentityFromData(data, fallback = null) {
+          const dataThreadId = typeof data?.thread_id === "string" && data.thread_id ? data.thread_id : null;
+          const dataLogPath = typeof data?.log_path === "string" && data.log_path ? data.log_path : null;
+          const fallbackThreadId =
+            fallback && typeof fallback.thread_id === "string" && fallback.thread_id
+              ? fallback.thread_id
+              : fallback && typeof fallback.threadId === "string" && fallback.threadId
+                ? fallback.threadId
+                : null;
+          const fallbackLogPath =
+            fallback && typeof fallback.log_path === "string" && fallback.log_path
+              ? fallback.log_path
+              : fallback && typeof fallback.logPath === "string" && fallback.logPath
+                ? fallback.logPath
+                : null;
+          return { threadId: dataThreadId || fallbackThreadId, logPath: dataLogPath || fallbackLogPath };
+        }
+
         function getSessionTranscriptSlot(sessionId) {
           if (!sessionId) return { state: "pending_bind", threadId: null, logPath: null, key: null, epoch: 0, ignoredKey: null };
           const current = sessionTranscriptSlots.get(sessionId);
@@ -3499,9 +3517,10 @@
           }
           const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
           if (events.length > maxEvents) events.splice(0, events.length - maxEvents);
+          const identity = transcriptIdentityFromData(data, session);
           sessionTailCache.set(sessionId, {
-            threadId: typeof session.thread_id === "string" ? session.thread_id : null,
-            logPath: typeof session.log_path === "string" ? session.log_path : null,
+            threadId: identity.threadId,
+            logPath: identity.logPath,
             liveCursor: typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null,
             hasOlder: Boolean(data.has_older),
             busy: Boolean(data.busy),
@@ -3511,7 +3530,7 @@
           });
         }
 
-        function appendTailSnapshotEvents(sessionId, events, { session = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
+        function appendTailSnapshotEvents(sessionId, events, { session = null, identityData = null, liveCursor: nextLiveCursor, busy, queueLen, token } = {}) {
           if (!sessionId || !events || !events.length) return;
           const current = sessionTailCache.get(sessionId);
           const list = current && Array.isArray(current.events) ? current.events.slice() : [];
@@ -3523,9 +3542,10 @@
           const maxEvents = Math.max(INIT_PAGE_LIMIT_DESKTOP, INIT_PAGE_LIMIT_MOBILE);
           if (list.length > maxEvents) list.splice(0, list.length - maxEvents);
           const meta = session || sessionIndex.get(sessionId) || null;
+          const identity = transcriptIdentityFromData(identityData, meta || current || null);
           sessionTailCache.set(sessionId, {
-            threadId: meta && typeof meta.thread_id === "string" ? meta.thread_id : current ? current.threadId : null,
-            logPath: meta && typeof meta.log_path === "string" ? meta.log_path : current ? current.logPath : null,
+            threadId: identity.threadId,
+            logPath: identity.logPath,
             liveCursor: typeof nextLiveCursor === "string" && nextLiveCursor ? nextLiveCursor : current ? current.liveCursor : null,
             hasOlder: current ? Boolean(current.hasOlder) : false,
             busy: typeof busy === "boolean" ? busy : current ? Boolean(current.busy) : false,
@@ -4847,6 +4867,7 @@
                 busy: Boolean(turnOpen || nowBusy),
                 queueLen: data.queue_len,
                 token: data.token,
+                identityData: data,
               });
             }
             if (s2) titleLabel.textContent = sessionTitleWithId(s2);
