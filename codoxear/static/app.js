@@ -4692,7 +4692,7 @@
           setTyping(cachedBusy);
         }
 
-        async function openSession(sessionId, { useCache = true } = {}) {
+        async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
           pollGen += 1;
           const myGen = pollGen;
           if (pollTimer) {
@@ -4759,7 +4759,7 @@
               return null;
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
-            if (!displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
+            if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
             }
@@ -4936,7 +4936,7 @@
           invalidateOlderLoad();
           autoScroll = true;
           try {
-            await openSession(sid, { useCache: false });
+            await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
           } catch (e) {
             if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);

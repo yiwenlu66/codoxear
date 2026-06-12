@@ -13,7 +13,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("async function selectSession(id) {", start)
         block = source[start:end]
         self.assertIn("invalidateOlderLoad();", block)
-        self.assertIn("await openSession(sid, { useCache: false });", block)
+        self.assertIn("await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });", block)
         self.assertIn("kickPoll(0);", block)
 
     def test_open_session_is_single_render_path(self) -> None:
@@ -32,7 +32,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
         self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn("if (!displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {", block)
+        self.assertIn("async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {})", block)
+        self.assertIn("if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", block)
