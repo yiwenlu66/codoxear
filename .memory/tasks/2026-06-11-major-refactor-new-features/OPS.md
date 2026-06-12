@@ -902,3 +902,9 @@
 - Final-review blocker rerun repair: attachment readiness now also rejects log-busy sessions (`idle_from_log` false), and final attachment injection rechecks readiness under a per-session input lock shared with `/send`.
 - Commit: `fix: serialize attachment and send injection`.
 - Validation: targeted server attachment/source tests passed (`17 passed in 1.85s`). Plain full suite passed (`541 passed, 10 subtests passed in 8.89s`). Full isolated Docker suite passed (`539 passed, 2 skipped, 10 subtests passed in 11.27s`).
+
+
+## 2026-06-12 20:09
+- Second clean-room rerun repair: `sessiond` now marks state busy before send ACK; attachment readiness rechecks local queue/sending/log path after broker state refresh; `enqueue()` appends under the same per-session input lock used by send/attachment injection.
+- Commit: `fix: close attachment injection race gaps`.
+- Validation: targeted attachment/sessiond/send tests passed (`25 passed in 3.07s`). Plain full suite passed (`543 passed, 10 subtests passed in 8.89s`). Full isolated Docker suite passed (`541 passed, 2 skipped, 10 subtests passed in 11.06s`).

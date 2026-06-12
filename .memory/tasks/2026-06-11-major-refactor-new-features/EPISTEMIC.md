@@ -666,3 +666,10 @@ Commitments:
 - Interventions: `attachment_injection_ready()` now matches queue readiness by checking `idle_from_log`; `send()` and `inject_attachment_keys()` share a per-session input lock, and attachment injection rechecks readiness under that lock immediately before `keys`.
 - Evidence: targeted tests cover broker-busy, remote queue, local queue, sending item, log-busy rejection, and final recheck; full local/Docker suites passed.
 - Scoped claim: known server-side paths that could inject attachments into busy/log-active sessions are now guarded. This does not prove correctness if a backend reports/logs idle incorrectly.
+
+
+## 2026-06-12 20:09
+- Observation: clean-room rerun found remaining attachment races through sessiond's reply-before-busy behavior, local queue creation outside input locking, and log-path binding after readiness snapshot.
+- Interventions: sessiond marks busy before acknowledging send; attachment readiness rechecks queue/sending/log path after broker state; enqueue queue append now shares the input lock.
+- Evidence: tests encode the counterexamples (queue mutation during state refresh, log path binding during state refresh, sessiond busy-before-ACK) plus full local/Docker suites.
+- Scoped claim: the identified attachment split/race mechanisms are now closed for server-managed send/enqueue/sessiond/broker paths; explicit interrupt remains a separate PTY mutation by design.
