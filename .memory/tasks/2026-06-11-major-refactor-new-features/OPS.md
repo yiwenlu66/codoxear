@@ -373,3 +373,8 @@
 - Architecture/refactor follow-up: extracted `load_json_file()` and `atomic_write_json()` in `codoxear/util.py`; migrated server app-dir stores (aliases/sidebar/hidden sessions/files/queues/recent cwd) and `UnattendedStore` to use the shared file IO helpers while preserving per-store schema cleaners.
 - Commit: `72e062b refactor: share json state file helpers`.
 - Validation: `python3 -m py_compile codoxear/util.py codoxear/unattended.py codoxear/server.py` passed; targeted persistence/session tests passed (`35 passed in 2.07s`); full isolated Docker suite passed (`453 passed, 2 skipped in 10.63s`).
+
+## 2026-06-12 13:23
+- Architecture/refactor follow-up: migrated voice push settings, subscriptions, and delivery ledger JSON stores to shared `load_json_file()`/`atomic_write_json()` helpers.
+- Commit: `66a4592 refactor: share voice json state helpers`.
+- Validation: `python3 -m py_compile codoxear/util.py codoxear/voice_push.py codoxear/server.py` passed; targeted voice/helper tests passed (`34 passed in 0.83s`); full isolated Docker suite passed (`453 passed, 2 skipped in 10.33s`).

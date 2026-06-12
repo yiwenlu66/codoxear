@@ -322,3 +322,6 @@ Commitments:
 ## 2026-06-12 13:21
 - Observation: app-dir JSON state files repeated absent-file loading, parent creation, temp write, and atomic replace mechanics. The useful invariant is shared IO semantics while keeping each store's owner-specific schema sanitizer.
 - Intervention/evidence: shared helpers now own JSON file IO and atomic replace; migrated stores still perform their original validation/cleaning. Targeted persistence tests and full Docker constrain regressions for aliases/sidebar/hidden sessions/files/queues/recent cwd/unattended state.
+
+## 2026-06-12 13:23
+- Evidence update: the shared JSON state IO invariant now covers voice push settings/subscriptions/ledger in addition to server UI state and unattended state. Schema semantics remain owned by each store's cleaner; the common helper owns parent creation and atomic replacement.
