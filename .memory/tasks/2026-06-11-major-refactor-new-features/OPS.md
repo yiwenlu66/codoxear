@@ -402,3 +402,9 @@
 - Consistency fix after launch parser refactor: POST `/api/sessions` parser now uses safe fallback launch defaults when backend config readers fail, matching the degraded-default semantics already used by GET `/api/sessions` and the New Session warning.
 - Commit: `3b44ad5 fix: use safe defaults for launch request parsing`.
 - Validation: targeted launch/default/reasoning/provenance tests passed (`32 passed in 1.81s`); full isolated Docker suite passed (`459 passed, 2 skipped in 10.52s`).
+
+## 2026-06-12 13:47
+- Fresh post-tranche product/architecture reviews found one true blocker: POST Pi launch parsing still reread malformed Pi model config via reasoning validation even when GET launch defaults degraded safely.
+- Fix commit: `93d1245 fix: safe-default pi reasoning validation`.
+- Validation: targeted launch/default/reasoning/provenance suite passed (`33 passed in 1.71s`); full isolated Docker suite passed (`460 passed, 2 skipped in 13.55s`).
+- Review artifacts: `/tmp/codoxear-post-tranche-product-review.md`, `/tmp/codoxear-post-tranche-architect-review.md`.

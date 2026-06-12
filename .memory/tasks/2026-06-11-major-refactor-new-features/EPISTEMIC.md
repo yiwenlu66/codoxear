@@ -342,3 +342,8 @@ Commitments:
 ## 2026-06-12 13:38
 - Observation: after extracting launch parsing, GET launch defaults could degrade safely while POST launch validation still depended on raw backend config readers. This could make the UI truthfully say safe defaults are in use but still fail to start a safe-default session.
 - Intervention/evidence: request parsing now uses fallback defaults for provider validation when backend config readers fail. Parser tests simulate malformed Codex/Pi config readers and still parse safe launch requests.
+
+## 2026-06-12 13:47
+- Observation: fresh review showed launch-default semantics were still inconsistent for Pi when the request included `reasoning_effort`: provider validation used fallback defaults, but reasoning validation called the raw Pi model capability reader. A malformed Pi models file could therefore make GET `/api/sessions` degrade while POST `/api/sessions` failed.
+- Intervention/evidence: request parsing now captures one safe Pi launch-default snapshot and passes its `reasoning_efforts_by_model` into Pi reasoning validation. Regression test patches the raw Pi reasoning capability reader to raise and confirms a fallback-supported Pi request with `reasoning_effort: high` still parses.
+- Scoped claim: safe-default consistency now covers Codex provider validation, Pi provider validation, and Pi reasoning-effort validation in the launch request parser. It does not validate real credential-backed backend startup.
