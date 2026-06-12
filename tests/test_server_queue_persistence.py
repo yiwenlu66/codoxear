@@ -711,6 +711,29 @@ class TestServerQueuePersistence(unittest.TestCase):
                     SessionManager.enqueue(mgr, sid, "new prompt")
                 self.assertEqual(len(mgr._queues[sid]), 1)
 
+    def test_enqueue_rechecks_recovery_barrier_at_append(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "normal head")]
+        calls = 0
+        real_check = SessionManager._queue_has_recovery_items_locked.__get__(mgr, SessionManager)
+
+        def racing_check(session_id: str) -> bool:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                mgr._queues[session_id][0]["commit_unknown"] = True
+                return False
+            return real_check(session_id)
+
+        mgr._queue_has_recovery_items_locked = racing_check  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "recovery queue"):
+            SessionManager.enqueue(mgr, sid, "new prompt")
+        self.assertEqual(len(mgr._queues[sid]), 1)
+        self.assertTrue(mgr._queues[sid][0]["commit_unknown"])
+
     def test_recovery_delete_marks_tail_even_before_session_prune(self) -> None:
         sid = "s1"
         mgr = self._mgr()

@@ -2745,13 +2745,15 @@ class SessionManager:
                         item["orphan_recovery"] = True
             return items
 
-    def _queue_append_item_local(self, session_id: str, text: str) -> tuple[dict[str, Any], int]:
+    def _queue_append_item_local(self, session_id: str, text: str, *, reject_recovery_barrier: bool = False) -> tuple[dict[str, Any], int]:
         t = str(text)
         if not t.strip():
             raise ValueError("text required")
         with self._lock:
             if session_id not in self._sessions:
                 raise KeyError("unknown session")
+            if reject_recovery_barrier and self._queue_has_recovery_items_locked(session_id):
+                raise SessionNotReadyError("resolve the recovery queue before queueing another prompt")
             item, ql = self._queue_store_for_manager().append(self._queues, session_id, text)
         self._save_queues()
         return item, int(ql)
@@ -4800,7 +4802,7 @@ class SessionManager:
                     raise SessionNotReadyError("resolve the recovery queue before queueing another prompt")
                 if not s.sync_send_supported:
                     raise SessionNotReadyError("broker must be restarted before queueing prompts")
-            item, ql = self._queue_append_item_local(session_id, text)
+            item, ql = self._queue_append_item_local(session_id, text, reject_recovery_barrier=True)
         if ql != 1:
             return {"queued": True, "queue_len": int(ql), "item": item}
         resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=False, expected_item_id=str(item["id"]))
