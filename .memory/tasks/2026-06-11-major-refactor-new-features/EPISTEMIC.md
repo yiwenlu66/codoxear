@@ -1076,3 +1076,10 @@ Commitments:
 - Intervention: statefully classify positioned records, seed live/chat and voice delivery deltas from prior log context, and keep split-window final text as narration while pending tool IDs remain.
 - Evidence: regressions cover tail page, live full and split deltas, delivery split deltas, and server voice observer behavior; full local and Docker suites passed.
 - Scoped claim: inspected chat API and voice delivery paths now share the Claude pending-tool invariant under synthetic logs.
+
+
+## 2026-06-13 04:35
+- Review anomaly: helper-level live delta behavior was fixed, but the actual server live route still called unseeded extraction functions; idle scan also stopped too early when the tail contained later Claude context but not the turn-start/tool-use row.
+- Intervention: seed actual live route extraction from prior Claude tool context; require the human user turn start, not merely assistant context, before trusting a terminal-looking Claude final/duration row without expanding.
+- Evidence: route source guard, split live/delivery regressions, large later-context idle regression, and full local/Docker suites passed.
+- Scoped claim: inspected server live route now participates in the Claude pending-tool invariant under synthetic split-window logs.

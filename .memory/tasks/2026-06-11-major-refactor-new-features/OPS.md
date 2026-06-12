@@ -1267,3 +1267,11 @@
   - voice delivery extraction accepts seeded pending state, and server voice scans seed it from the log before each delta.
 - Commit: `fix: carry Claude tool state through chat deltas`.
 - Validation: targeted positioned/delivery/server tests passed (`54 passed`); full local suite passed (`636 passed, 25 subtests passed in 8.90s`); isolated Docker suite passed (`635 passed, 1 skipped, 25 subtests passed in 15.33s`).
+
+
+## 2026-06-13 04:35
+- Applied blockers from `/tmp/codoxear-cc-hardening-review5.md`:
+  - actual `/messages/live` route now seeds `_extract_chat_events()` and positioned extraction with Claude pending tool state from the log before `after_byte`;
+  - `_compute_idle_from_log()` now expands terminal-looking Claude final/duration scans unless the current human user turn start is visible, so later assistant context alone cannot hide older pending tools.
+- Commit: `fix: seed Claude tool state in live route`.
+- Validation: targeted live-route/idle tests passed (`16 passed`); full local suite passed (`637 passed, 25 subtests passed in 8.96s`); isolated Docker suite passed (`636 passed, 1 skipped, 25 subtests passed in 11.81s`).
