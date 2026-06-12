@@ -9,6 +9,21 @@ from pathlib import Path
 from typing import Any
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        return default
+    return max(0, value)
+
+
+VIDEO_PREVIEW_CACHE_MAX_FILES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_FILES", 256)
+VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)
+
+
 def video_response_payload(
     *,
     path_obj: Path,
@@ -42,6 +57,7 @@ def video_preview_path(path: Path, *, preview_dir: Path) -> Path:
 def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
     out = video_preview_path(path, preview_dir=preview_dir)
     if out.exists() and out.stat().st_size > 0:
+        prune_video_preview_cache(preview_dir, keep=out)
         return out
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
@@ -85,9 +101,57 @@ def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
         if not tmp.exists() or tmp.stat().st_size <= 0:
             raise RuntimeError("ffmpeg produced an empty preview")
         os.replace(tmp, out)
+        prune_video_preview_cache(preview_dir, keep=out)
         return out
     finally:
         unlink_quiet(tmp)
+
+
+def prune_video_preview_cache(
+    preview_dir: Path,
+    *,
+    keep: Path | None = None,
+    max_files: int | None = None,
+    max_bytes: int | None = None,
+) -> None:
+    file_cap = VIDEO_PREVIEW_CACHE_MAX_FILES if max_files is None else max(0, int(max_files))
+    byte_cap = VIDEO_PREVIEW_CACHE_MAX_BYTES if max_bytes is None else max(0, int(max_bytes))
+    if not preview_dir.exists():
+        return
+    try:
+        keep_resolved = keep.resolve() if keep is not None else None
+    except OSError:
+        keep_resolved = keep
+    entries: list[tuple[float, int, Path, bool]] = []
+    total = 0
+    for path in preview_dir.glob("*.mp4"):
+        if path.name.startswith("."):
+            continue
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        if not path.is_file():
+            continue
+        try:
+            is_keep = keep_resolved is not None and path.resolve() == keep_resolved
+        except OSError:
+            is_keep = keep is not None and path == keep
+        size = max(0, int(st.st_size))
+        total += size
+        entries.append((float(st.st_mtime), size, path, is_keep))
+    entries.sort(key=lambda item: (item[0], item[2].name))
+    count = len(entries)
+    for _mtime, size, path, is_keep in entries:
+        over_files = file_cap > 0 and count > file_cap
+        over_bytes = byte_cap > 0 and total > byte_cap
+        if not over_files and not over_bytes:
+            break
+        if is_keep:
+            continue
+        unlink_quiet(path)
+        count -= 1
+        total = max(0, total - size)
 
 
 def unlink_quiet(path: Path) -> None:
