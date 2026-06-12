@@ -651,3 +651,8 @@
 - UI/UX fix: attach button now initializes and syncs as disabled when no session is selected, with title/aria-label `Select a session to attach a file`; selected sessions restore the max-size attach label.
 - Commit: `8f9b2a5 fix: disable attach without a selected session`.
 - Validation: `node --check codoxear/static/app.js` passed; focused source/static tests passed (`25 passed in 5.81s`). Browser validation on isolated Docker server `:18821` after login observed `#attachBtn.disabled === true`, title/aria-label `Select a session to attach a file`, `#threadTitle === No session selected`, and JS errors `[]`.
+
+## 2026-06-12 16:24
+- Full validation after no-session attach button UX fix.
+- HEAD: `e174c31`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`485 passed, 2 skipped, 10 subtests passed in 12.56s`).
