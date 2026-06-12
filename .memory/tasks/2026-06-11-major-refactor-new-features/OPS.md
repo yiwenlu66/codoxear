@@ -459,3 +459,7 @@
 - Long-chat UX follow-up: added a sparse `/` keyboard shortcut for the existing loaded/all-transcript chat search. Guarded against text-entry targets, no selected session, modifier keys, and open modal surfaces.
 - Commit: `a45456e feat: add chat search keyboard shortcut`.
 - Validation: `node --check codoxear/static/app.js` passed; chat navigation source tests passed (`8 passed in 0.49s`). Browser validation in isolated Docker: pressing `/` with a session selected changed search bar display from `none` to `flex` and focused `#chatSearchInput` with JS errors `[]`; pressing `/` while `#msg` was focused typed a slash into the composer and kept search closed.
+
+## 2026-06-12 14:34
+- Discoverability follow-up: Help now mentions the `/` loaded-chat search shortcut and that Previous/Next can page older history when all-transcript counts show more matches.
+- Validation: `node --check codoxear/static/app.js` passed; chat navigation and overlay/help source tests passed (`11 passed in 0.49s`).
