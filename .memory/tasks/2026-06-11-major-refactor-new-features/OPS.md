@@ -1046,3 +1046,9 @@
 - Architecture tranche: session read paths no longer promote queued prompts. Removed queue-drain side effect from `list_sessions()` and changed `refresh_session_meta(..., drain_queue=False)` default; queue sends remain owned by enqueue and queue sweep.
 - Commit: `fix: keep session reads non-committing`.
 - Validation: targeted tests passed (`68 passed, 11 subtests passed in 1.90s`). Plain full suite passed (`585 passed, 21 subtests passed in 8.82s`). Full isolated Docker suite passed (`583 passed, 2 skipped, 21 subtests passed in 11.17s`).
+
+
+## 2026-06-12 23:22
+- Focused architecture review of read-noncommit tranche at HEAD `ea0a5ac` found no blockers.
+- Review artifact: `/tmp/codoxear-read-noncommit-review.md`.
+- Reviewer observation: queue commit paths are now explicit enqueue and background sweep only; read-side updates remain metadata/cache/counter writes, not prompt commits.

@@ -831,3 +831,8 @@ Commitments:
 - Intervention: removed queue promotion from `list_sessions()` and made metadata refresh non-draining by default; queue promotion remains in explicit enqueue and queue-sweep mechanisms.
 - Evidence: targeted test asserts `list_sessions()` does not call `_maybe_drain_session_queue`; source tests pin non-draining refresh defaults; full local/Docker suites passed.
 - Scoped claim: session list/metadata reads no longer act as user-input commit paths. Queue draining may now wait for the queue sweep interval rather than piggybacking on session polling.
+
+
+## 2026-06-12 23:22
+- Observation: independent read-noncommit review found no remaining read endpoint that promotes queued prompts.
+- Scoped claim: passive session reads no longer hide prompt commits. Residual non-blocking risk: enqueue response may be stale if the background sweep commits between enqueue append and immediate-promotion response.
