@@ -1,3 +1,4 @@
+import gc
 import json
 import threading
 import unittest
@@ -648,6 +649,24 @@ class TestBrokerBusyState(unittest.TestCase):
                 "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"},
             },
             now_ts=13.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.pending_calls)
+
+    def test_cc_repeated_idless_tool_uses_do_not_collide_after_gc(self) -> None:
+        st = _state()
+        for i in range(6):
+            obj = {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "T", "input": {}}], "stop_reason": "tool_use"}}
+            _apply_rollout_obj_to_state(st, obj, now_ts=float(i))
+            del obj
+            gc.collect()
+        self.assertEqual(len(st.pending_calls), 6)
+        for i in range(5):
+            _apply_rollout_obj_to_state(st, {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}}, now_ts=10.0 + i)
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"}},
+            now_ts=20.0,
         )
         self.assertTrue(st.busy)
         self.assertTrue(st.pending_calls)

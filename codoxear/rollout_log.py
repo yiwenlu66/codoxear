@@ -14,13 +14,12 @@ from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
+from .cc_log import cc_apply_tool_result_to_pending
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import cc_current_turn_state_before
-from .cc_log import cc_discard_one_unknown_tool_use_id
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
 from .cc_log import cc_user_text
-from .cc_log import cc_user_tool_result_ids
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
@@ -179,12 +178,7 @@ def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
             pending.clear()
             return
         if cc_message_role(obj) == "toolResult":
-            result_ids = cc_user_tool_result_ids(obj)
-            if result_ids:
-                for tool_id in result_ids:
-                    pending.discard(tool_id)
-            else:
-                cc_discard_one_unknown_tool_use_id(pending)
+            cc_apply_tool_result_to_pending(obj, pending)
             return
     if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
         pending.update(cc_assistant_pending_tool_use_ids(obj))
@@ -725,12 +719,7 @@ def _extract_chat_events(
                 events.append(evcc)
                 continue
             if cc_message_role(obj) == "toolResult":
-                result_ids = cc_user_tool_result_ids(obj)
-                if result_ids:
-                    for tool_id in result_ids:
-                        cc_pending_tool_ids.discard(tool_id)
-                else:
-                    cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
+                cc_apply_tool_result_to_pending(obj, cc_pending_tool_ids)
                 total_tools += 1
                 continue
 
@@ -953,12 +942,7 @@ def _extract_delivery_messages(
                 cc_pending_tool_ids.clear()
                 continue
             if cc_message_role(obj) == "toolResult":
-                result_ids = cc_user_tool_result_ids(obj)
-                if result_ids:
-                    for tool_id in result_ids:
-                        cc_pending_tool_ids.discard(tool_id)
-                else:
-                    cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
+                cc_apply_tool_result_to_pending(obj, cc_pending_tool_ids)
                 continue
         if typ == "message":
             if pi_assistant_is_aborted_turn(obj):
@@ -1237,12 +1221,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
                 if cc_message_role(obj) == "toolResult":
                     cc_seen_turn_context = True
-                    result_ids = cc_user_tool_result_ids(obj)
-                    if result_ids:
-                        for tool_id in result_ids:
-                            cc_pending_tool_ids.discard(tool_id)
-                    else:
-                        cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
+                    cc_apply_tool_result_to_pending(obj, cc_pending_tool_ids)
                     saw_terminal_signal = True
                     idle = False
                     continue

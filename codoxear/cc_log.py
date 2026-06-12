@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Any
 from typing import Iterator
@@ -118,13 +119,20 @@ def cc_assistant_tool_use_ids(obj: dict[str, Any]) -> list[str]:
 def cc_user_tool_result_ids(obj: dict[str, Any]) -> list[str]:
     if obj.get("type") != "user":
         return []
+    ids: list[str] = []
+    top_level_result = obj.get("toolUseResult")
+    if isinstance(top_level_result, dict):
+        for key in ("tool_use_id", "toolUseId", "toolUseID", "tool_useID", "id"):
+            tool_id = top_level_result.get(key)
+            if isinstance(tool_id, str) and tool_id.strip():
+                ids.append(tool_id)
+                break
     msg = _message(obj, role="user")
     if msg is None:
-        return []
+        return ids
     content = msg.get("content")
     if not isinstance(content, list):
-        return []
-    ids: list[str] = []
+        return ids
     for part in content:
         if not isinstance(part, dict) or part.get("type") != "tool_result":
             continue
@@ -144,7 +152,7 @@ def cc_assistant_pending_tool_use_ids(obj: dict[str, Any]) -> set[str]:
         if isinstance(tool_id, str) and tool_id.strip():
             ids.add(tool_id)
         else:
-            ids.add(f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}{id(obj)}:{unknown_index}")
+            ids.add(f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}{uuid.uuid4().hex}:{unknown_index}")
             unknown_index += 1
     return ids
 
@@ -156,6 +164,18 @@ def cc_discard_one_unknown_tool_use_id(pending: set[str]) -> None:
             return
 
 
+def cc_apply_tool_result_to_pending(obj: dict[str, Any], pending: set[str]) -> None:
+    result_ids = cc_user_tool_result_ids(obj)
+    if result_ids:
+        for tool_id in result_ids:
+            pending.discard(tool_id)
+        return
+    if obj.get("toolUseResult") is not None and len(pending) == 1:
+        pending.clear()
+        return
+    cc_discard_one_unknown_tool_use_id(pending)
+
+
 def cc_update_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
     typ = obj.get("type")
     if typ == "user":
@@ -164,12 +184,7 @@ def cc_update_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
             pending.clear()
             return
         if cc_message_role(obj) == "toolResult":
-            result_ids = cc_user_tool_result_ids(obj)
-            if result_ids:
-                for tool_id in result_ids:
-                    pending.discard(tool_id)
-            else:
-                cc_discard_one_unknown_tool_use_id(pending)
+            cc_apply_tool_result_to_pending(obj, pending)
             return
     if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
         pending.update(cc_assistant_pending_tool_use_ids(obj))
@@ -296,6 +311,8 @@ def cc_message_role(obj: dict[str, Any]) -> str | None:
         return "system"
     if typ != "user":
         return None
+    if obj.get("toolUseResult") is not None:
+        return "toolResult"
     msg = _message(obj)
     if msg is None:
         return None

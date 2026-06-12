@@ -24,7 +24,7 @@ from typing import Any
 
 from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
-from codoxear.cc_log import cc_discard_one_unknown_tool_use_id as _cc_discard_one_unknown_tool_use_id
+from codoxear.cc_log import cc_apply_tool_result_to_pending as _cc_apply_tool_result_to_pending
 from codoxear.cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_final_turn_end
 from codoxear.cc_log import cc_assistant_pending_tool_use_ids as _cc_assistant_pending_tool_use_ids
 from codoxear.cc_log import cc_assistant_text as _cc_assistant_text
@@ -34,7 +34,6 @@ from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
 from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.cc_log import cc_message_role as _cc_message_role
 from codoxear.cc_log import cc_user_text as _cc_user_text
-from codoxear.cc_log import cc_user_tool_result_ids as _cc_user_tool_result_ids
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
@@ -725,12 +724,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.last_turn_activity_ts = now_ts
             return
         if _cc_message_role(obj) == "toolResult":
-            result_ids = _cc_user_tool_result_ids(obj)
-            if result_ids:
-                for tool_id in result_ids:
-                    st.pending_calls.discard(tool_id)
-            else:
-                _cc_discard_one_unknown_tool_use_id(st.pending_calls)
+            _cc_apply_tool_result_to_pending(obj, st.pending_calls)
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False

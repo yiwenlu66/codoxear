@@ -96,6 +96,36 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "narration")
         self.assertFalse(flags["turn_end"])
 
+    def test_cc_top_level_tool_use_result_clears_pending_tool(self) -> None:
+        rows = [
+            user("hello"),
+            assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+            {
+                "type": "user",
+                "toolUseResult": {"tool_use_id": "toolu_1", "stdout": "ok"},
+                "message": {"role": "user", "content": "ok"},
+            },
+            assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+        ]
+        events, _meta, flags, _diag = _extract_chat_events(rows)
+        self.assertEqual(events[-1]["message_class"], "final_response")
+        self.assertTrue(flags["turn_end"])
+
+    def test_cc_top_level_tool_use_result_without_id_clears_single_pending_tool(self) -> None:
+        rows = [
+            user("hello"),
+            assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+            {
+                "type": "user",
+                "toolUseResult": {"stdout": "ok"},
+                "message": {"role": "user", "content": "ok"},
+            },
+            assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+        ]
+        events, _meta, flags, _diag = _extract_chat_events(rows)
+        self.assertEqual(events[-1]["message_class"], "final_response")
+        self.assertTrue(flags["turn_end"])
+
     def test_cc_split_row_idless_tool_uses_need_multiple_idless_results(self) -> None:
         rows = [
             user("hello"),
