@@ -1598,6 +1598,7 @@
         let loadingOlder = false;
         let olderLoadRequestId = 0;
         let olderLoadController = null;
+        let olderLoadCancelOnScroll = true;
         let olderAutoTriggerAt = 0;
         const OLDER_AUTO_COOLDOWN_MS = 450;
         let pollTimer = null;
@@ -2734,6 +2735,7 @@
               ctl.abort();
             } catch {}
           }
+          olderLoadCancelOnScroll = true;
           if (loadingOlder) setOlderState({ hasMore: hasOlder, isLoading: false });
         }
 
@@ -2966,7 +2968,7 @@
           chatSearchLoadingOlder = false;
         }
 
-        async function loadOlderUntilChatSearchMatch() {
+        async function loadOlderUntilChatSearchMatch({ boundaryMatch = null, focus = "first" } = {}) {
           if (!selected || !chatSearchQuery || chatSearchLoadingOlder) return false;
           const sid = selected;
           const gen = pollGen;
@@ -2977,10 +2979,16 @@
           try {
             for (let i = 0; i < maxPages; i += 1) {
               if (selected !== sid || pollGen !== gen || chatSearchQuery !== query || !hasOlder) return false;
-              const loaded = await loadOlderMessages({ auto: false });
+              const loaded = await loadOlderMessages({ auto: false, cancelOnScroll: false });
               if (selected !== sid || pollGen !== gen || chatSearchQuery !== query) return false;
               refreshLoadedChatSearch({ jump: false, preserveCurrent: false });
-              if (chatSearchMatches.length) {
+              if (boundaryMatch) {
+                const boundaryIndex = chatSearchMatches.indexOf(boundaryMatch);
+                if (boundaryIndex > 0) {
+                  focusChatSearchMatch(focus === "last" ? boundaryIndex - 1 : 0, { jump: true });
+                  return true;
+                }
+              } else if (chatSearchMatches.length) {
                 focusChatSearchMatch(0, { jump: true });
                 return true;
               }
@@ -3006,7 +3014,21 @@
             setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search");
             return;
           }
-          focusChatSearchMatch(chatSearchIndex + delta, { jump: true });
+          const startIndex = chatSearchIndex;
+          const unloadedTranscriptMatches = Number.isFinite(chatSearchAllCount) ? chatSearchAllCount > chatSearchMatches.length : true;
+          const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlder);
+          const atForwardWrap = delta > 0 && startIndex >= chatSearchMatches.length - 1;
+          const atBackwardWrap = delta < 0 && startIndex <= 0;
+          if (canLoadOlderMatches && (atForwardWrap || atBackwardWrap)) {
+            const found = await loadOlderUntilChatSearchMatch({
+              boundaryMatch: chatSearchMatches[0],
+              focus: atBackwardWrap ? "last" : "first",
+            });
+            if (found) return;
+            focusChatSearchMatch(startIndex + delta, { jump: true });
+            return;
+          }
+          focusChatSearchMatch(startIndex + delta, { jump: true });
         }
 
         chatSearchBtn.onclick = (e) => {
@@ -4158,7 +4180,7 @@
           syncJumpButton();
         }
 
-        async function loadOlderMessages({ auto = false } = {}) {
+        async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {
           if (!selected || !hasOlder || loadingOlder) return false;
           if (auto) {
             const now = performance.now();
@@ -4171,6 +4193,7 @@
           olderLoadRequestId = reqId;
           const ctl = new AbortController();
           olderLoadController = ctl;
+          olderLoadCancelOnScroll = Boolean(cancelOnScroll);
           setOlderState({ hasMore: hasOlder, isLoading: true });
           try {
             const reqCursor = oldestRenderedHistoryCursor();
@@ -4197,6 +4220,7 @@
             return false;
           } finally {
             if (olderLoadController === ctl) olderLoadController = null;
+            olderLoadCancelOnScroll = true;
           }
         }
 
@@ -9594,7 +9618,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          lastScrollTop = cur;
 	          if (d < 0) autoScroll = false;
           else if (isNearBottom()) autoScroll = true;
-          if (loadingOlder && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
+          if (loadingOlder && olderLoadCancelOnScroll && cur > OLDER_CANCEL_PX) invalidateOlderLoad();
           if (cur <= OLDER_TOP_TRIGGER_PX && d <= 0) maybeAutoLoadOlder();
           syncJumpButton();
         });

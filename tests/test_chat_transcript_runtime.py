@@ -94,7 +94,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["activeLogPath"], "/new.jsonl")
 
     def test_history_request_cursor_comes_from_oldest_rendered_row(self) -> None:
-        snippet = _source_between("async function loadOlderMessages({ auto = false } = {}) {", "function maybeAutoLoadOlder()")
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
         js = textwrap.dedent(
             f"""
             const ctx = {{

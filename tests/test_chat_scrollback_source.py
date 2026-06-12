@@ -62,7 +62,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_load_older_messages_uses_oldest_rendered_row_cursor(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function loadOlderMessages({ auto = false } = {}) {")
+        start = source.index("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {")
         end = source.index("function maybeAutoLoadOlder()", start)
         block = source[start:end]
         self.assertIn("const reqCursor = oldestRenderedHistoryCursor();", block)
