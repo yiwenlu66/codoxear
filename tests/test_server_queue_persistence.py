@@ -42,12 +42,14 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(_match_session_route("/api/sessions/s1/delete", "delete"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s%201/queue/delete", "queue", "delete"), "s%201")
         self.assertIsNone(_match_session_route("/api/sessions/s1/queue/delete", "delete"))
-        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/queue", "queue"))
-        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/send", "send"))
-        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/unattended", "unattended"))
-        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/interrupt", "interrupt"))
+        for suffix in ["queue", "send", "unattended", "interrupt", "diagnostics", "edit", "rename", "inject_file", "inject_image"]:
+            self.assertIsNone(_match_session_route(f"/api/sessions/s1/extra/{suffix}", suffix))
         self.assertIsNone(_match_session_route("/api/sessions/s1/queue/extra/delete", "queue", "delete"))
         self.assertEqual(_match_session_route("/api/sessions/s1/queue/delete", "queue", "delete"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s1/diagnostics", "diagnostics"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s1/edit", "edit"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s1/rename", "rename"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s1/inject_file", "inject_file"), "s1")
 
     def test_enqueue_sends_immediately_when_idle(self) -> None:
         mgr = self._mgr()

@@ -5848,14 +5848,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"metrics": _metrics_snapshot()})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/diagnostics"):
+            session_id = _match_session_route(path, "diagnostics")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -7368,12 +7364,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/edit"):
+            session_id = _match_session_route(path, "edit")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7402,12 +7397,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "alias": alias, **sidebar_meta})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/rename"):
+            session_id = _match_session_route(path, "rename")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7641,12 +7635,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "broker": resp})
                 return
 
-            if path.startswith("/api/sessions/") and (path.endswith("/inject_file") or path.endswith("/inject_image")):
+            session_id = _match_session_route(path, "inject_file")
+            if session_id is None:
+                session_id = _match_session_route(path, "inject_image")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 try:
                     body = _read_body(self, limit=ATTACH_UPLOAD_BODY_MAX_BYTES)
                 except ValueError:
