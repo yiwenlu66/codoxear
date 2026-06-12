@@ -5944,14 +5944,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/queue"):
+            session_id = _match_session_route(path, "queue")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
-                    return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
-                if not session_id:
-                    self.send_error(404)
                     return
                 try:
                     q = MANAGER.queue_list(session_id)
@@ -6814,12 +6810,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/tail"):
+            session_id = _match_session_route(path, "tail")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 try:
                     tail = MANAGER.get_tail(session_id)
                 except KeyError:
@@ -6828,15 +6823,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"tail": tail})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/unattended"):
+            session_id = _match_session_route(path, "unattended")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                if len(parts) < 4:
-                    self.send_error(404)
-                    return
-                session_id = parts[3]
                 try:
                     cfg = MANAGER.unattended_get(session_id)
                 except KeyError:
@@ -7436,12 +7427,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "alias": alias})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/send"):
+            session_id = _match_session_route(path, "send")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7457,12 +7447,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/enqueue"):
+            session_id = _match_session_route(path, "enqueue")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7485,12 +7474,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/queue/delete"):
+            session_id = _match_session_route(path, "queue", "delete")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7513,12 +7501,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/queue/update"):
+            session_id = _match_session_route(path, "queue", "update")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7545,12 +7532,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/queue/move"):
+            session_id = _match_session_route(path, "queue", "move")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7577,12 +7563,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, res)
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/unattended"):
+            session_id = _match_session_route(path, "unattended")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 body = _read_body(self)
                 body_text = body.decode("utf-8")
                 if not body_text.strip():
@@ -7640,12 +7625,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, **cfg})
                 return
 
-            if path.startswith("/api/sessions/") and path.endswith("/interrupt"):
+            session_id = _match_session_route(path, "interrupt")
+            if session_id is not None:
                 if not _require_auth(self):
                     self._unauthorized()
                     return
-                parts = path.split("/")
-                session_id = parts[3] if len(parts) >= 4 else ""
                 _read_body(self)
                 try:
                     # Send a literal ESC byte. Older brokers may not recognize "ESC" but will

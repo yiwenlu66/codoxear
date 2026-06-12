@@ -40,7 +40,13 @@ class TestServerQueuePersistence(unittest.TestCase):
 
     def test_match_session_route_requires_exact_suffix(self) -> None:
         self.assertEqual(_match_session_route("/api/sessions/s1/delete", "delete"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s%201/queue/delete", "queue", "delete"), "s%201")
         self.assertIsNone(_match_session_route("/api/sessions/s1/queue/delete", "delete"))
+        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/queue", "queue"))
+        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/send", "send"))
+        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/unattended", "unattended"))
+        self.assertIsNone(_match_session_route("/api/sessions/s1/extra/interrupt", "interrupt"))
+        self.assertIsNone(_match_session_route("/api/sessions/s1/queue/extra/delete", "queue", "delete"))
         self.assertEqual(_match_session_route("/api/sessions/s1/queue/delete", "queue", "delete"), "s1")
 
     def test_enqueue_sends_immediately_when_idle(self) -> None:

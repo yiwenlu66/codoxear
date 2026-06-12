@@ -35,7 +35,7 @@ class TestUnattendedModeSource(unittest.TestCase):
 
     def test_server_exposes_unattended_route_and_fields_without_harness_alias(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn('path.endswith("/unattended")', source)
+        self.assertIn('_match_session_route(path, "unattended")', source)
         self.assertNotIn('path.endswith("/harness") or path.endswith("/unattended")', source)
         self.assertIn('"unattended_enabled": unattended_enabled', source)
         self.assertIn('"unattended_cooldown_minutes": unattended_cooldown_minutes', source)
