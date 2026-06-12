@@ -269,3 +269,9 @@ Commitments:
 - Observation: file/context workflow is reachable from the new session utilities rail, preserves modal isolation, and can search/open README.md in the isolated repo. Initial one-second read observation was still `Loading...`; after waiting, content and status appeared, so the issue was latency/async completion rather than a stuck viewer.
 - Observation: bounded responsiveness measurements in the synthetic long-chat browser session were small for the tested rendered window: tail API resource about 5 ms, loaded search about 23 ms, user jump about 33 ms.
 - Scoped claim: these measurements support that the redesigned contextual controls are usable in the isolated synthetic desktop browser and do not obviously regress loaded-window search/jump latency. They do not prove real mobile device performance, slow network behavior, or full unbounded transcript scalability.
+
+## 2026-06-12 12:12
+- Observation: backend refactor seams were low-risk structurally but still caused a real integration regression when the auth extraction was applied without its dependent fix. This confirms the user criticism: refactor progress is not proof unless the integrated workflow is revalidated.
+- Mechanism: `_is_same_password()` remained in `server.py` and still called `hmac.compare_digest`; extracting auth helpers removed the module import until the later fix restored it.
+- Revised claim: the recovered branch now includes product fixes plus selected backend refactors, but the claim is integrated only because login, source tests, targeted Docker tests, full Docker tests, and a restarted browser sandbox all ran after the refactors and auth fix.
+- Scoped uncertainty: frontend modularization refactor remains parked; real backend launches, real mobile-device performance, and slow-network behavior remain outside current evidence.
