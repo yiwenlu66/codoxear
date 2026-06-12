@@ -1661,6 +1661,7 @@
         let newSessionResumeSelection = null;
         let newSessionResumeLoadSeq = 0;
         let newSessionResumeLoadTimer = null;
+        let newSessionStartBusy = false;
         let newSessionCwdInfo = { exists: false, will_create: false, git_repo: false, git_root: "", git_branch: "" };
         let newSessionCwdError = "";
         newSessionBackend = "codex";
@@ -6698,6 +6699,7 @@
           applyDialogMenus();
         };
         newSessionStartBtn.onclick = async () => {
+          if (newSessionStartBusy) return;
           const cwd = String(newSessionCwdInput.value || "").trim();
           const agentBackend = newSessionBackend;
           setNewSessionCwdError("");
@@ -6725,18 +6727,25 @@
           newSessionStatus.textContent = resumeSessionId ? "Resuming..." : worktreeBranch ? "Creating worktree..." : createInTmux ? "Starting in tmux..." : "Starting...";
           let cwdStartError = false;
           let startErrorText = "";
-          const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
-            if (e && e.obj && e.obj.field === "cwd") {
-              cwdStartError = true;
-              newSessionStatus.textContent = "";
-              setNewSessionCwdError(e.message);
-              return;
-            }
-            const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
-            startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
-          }, agentBackend);
-          if (brokerPid) hideNewSessionDialog();
-          else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
+          newSessionStartBusy = true;
+          newSessionStartBtn.disabled = true;
+          try {
+            const brokerPid = await spawnSessionWithCwd(cwd, resumeSessionId, worktreeBranch, sessionName, providerChoice, model, newSessionReasoningEffort, newSessionFast, createInTmux, (e) => {
+              if (e && e.obj && e.obj.field === "cwd") {
+                cwdStartError = true;
+                newSessionStatus.textContent = "";
+                setNewSessionCwdError(e.message);
+                return;
+              }
+              const launchId = e && e.obj && e.obj.launch_id ? String(e.obj.launch_id) : "";
+              startErrorText = launchId ? `${e.message} (${launchId})` : e && e.message ? e.message : "Start failed.";
+            }, agentBackend);
+            if (brokerPid) hideNewSessionDialog();
+            else if (!cwdStartError) newSessionStatus.textContent = startErrorText || "Start failed.";
+          } finally {
+            newSessionStartBusy = false;
+            newSessionStartBtn.disabled = false;
+          }
         };
         let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
         let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";

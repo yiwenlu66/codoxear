@@ -98,6 +98,17 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("statusText || newSessionDefaultsWarningText()", source)
         self.assertIn('statusText.startsWith("Launch defaults degraded for ")', source)
 
+    def test_new_session_start_button_has_inflight_guard(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("let newSessionStartBusy = false;", source)
+        self.assertIn("newSessionStartBtn.onclick = async () => {\n          if (newSessionStartBusy) return;", source)
+        self.assertIn("newSessionStartBusy = true;\n          newSessionStartBtn.disabled = true;", source)
+        self.assertIn("} finally {\n            newSessionStartBusy = false;\n            newSessionStartBtn.disabled = false;", source)
+        start = source.index("newSessionStartBtn.onclick = async () => {")
+        end = source.index("        let fileViewMode", start)
+        block = source[start:end]
+        self.assertLess(block.index("newSessionStartBusy = true;"), block.index("await spawnSessionWithCwd("))
+
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function lastProviderModelKey(backend)", source)
