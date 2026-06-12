@@ -388,3 +388,8 @@
 - Architecture/refactor follow-up: moved first-history timestamp recovery (`_last_conversation_ts_from_tail`) out of `SessionManager.list_sessions()`'s manager lock. The outside-lock result is applied with a guarded re-lock and row `updated_ts`/priority/recent-cwd fields are recomputed when a conversation timestamp is found.
 - Commit: `2106d04 refactor: read history timestamps outside manager lock`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; targeted timestamp/session tests passed (`62 passed in 1.81s`); full isolated Docker suite passed (`454 passed, 2 skipped in 10.20s`).
+
+## 2026-06-12 13:34
+- Architecture/refactor follow-up: extracted `/api/sessions` POST launch validation into `NewSessionLaunchRequest` and `_parse_new_session_launch_request()`. The HTTP route now handles auth/body/error response and calls `spawn_web_session()` with the normalized request; backend-specific provider/reasoning/service-tier validation lives in one parser.
+- Commit: `36cd30f refactor: parse new session launch requests`.
+- Validation: targeted parser/reasoning/launch tests passed (`62 passed in 1.79s`); full isolated Docker suite passed (`458 passed, 2 skipped in 10.22s`).

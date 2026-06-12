@@ -331,3 +331,7 @@ Commitments:
 
 ## 2026-06-12 13:27
 - Evidence update: first-history timestamp recovery is no longer lock-held IO. Because the scan can affect recency, priority, and recent-cwd state, the refactor recomputes those row fields after the guarded update. `list_sessions()` still performs some filesystem existence checks under lock, but the larger log scans and git subprocess lookup have been moved out.
+
+## 2026-06-12 13:34
+- Observation: launch request semantics were spread through the HTTP handler. This increased drift risk across Codex/Pi/Claude provider/model/reasoning validation.
+- Intervention/evidence: a normalized launch request parser now owns backend-specific validation while the route preserves response/spawn behavior. Tests cover Codex custom provider, providerless Pi, Claude field rejection, cwd field errors, and Pi model-specific reasoning coupling.
