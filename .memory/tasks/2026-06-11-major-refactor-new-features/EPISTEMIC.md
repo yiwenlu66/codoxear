@@ -368,3 +368,7 @@ Commitments:
 ## 2026-06-12 14:19
 - Observation: duplicate JSONL tail wrappers mostly already shared the safe util reader, but sessiond still differed from broker on missing files. A disappearing pending/session log could terminate the sessiond watcher rather than preserving the current offset and retrying.
 - Intervention/evidence: sessiond now mirrors broker's missing-file behavior. Regression test covers the contract directly.
+
+## 2026-06-12 14:22
+- Observation: `_pid_alive` and `_process_group_alive` were duplicated across server/broker/sessiond. Broker's PID helper also handled unexpected `os.kill` failures more defensively than the server copy.
+- Intervention/evidence: util now owns `pid_alive` and `process_group_alive`; server/broker/sessiond import them as local private names so call-site semantics stay stable. A source guard asserts the definitions remain centralized.

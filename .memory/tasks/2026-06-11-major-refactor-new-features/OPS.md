@@ -436,3 +436,8 @@
 - Architecture robustness follow-up: broker/server/sessiond all delegate JSONL tail parsing to the shared safe util reader, but sessiond's local wrapper lacked broker's missing-file contract. Aligned sessiond so missing logs return `([], offset)` instead of killing the watcher thread.
 - Commit: `e6d38d6 fix: keep sessiond jsonl tailing fail-closed`.
 - Validation: `python3 -m py_compile codoxear/sessiond.py` passed; targeted sessiond/broker/shared JSONL reader tests passed (`8 passed in 0.71s`).
+
+## 2026-06-12 14:22
+- Architecture cleanup: centralized duplicated process liveness helpers in `codoxear.util` and imported them into server, broker, and sessiond under the existing private helper names.
+- Commit: `06469b8 refactor: share process liveness helpers`.
+- Validation: `python3 -m py_compile codoxear/util.py codoxear/server.py codoxear/broker.py codoxear/sessiond.py` passed; targeted process/session/stale/resume tests plus source guard passed (`60 passed in 2.75s`).
