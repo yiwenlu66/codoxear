@@ -573,3 +573,10 @@ Commitments:
 - Observation: Settings modal semantics were improved earlier but focus restoration had not been proven. Browser evidence now shows focus returns to the Settings opener after Escape-close.
 - Evidence: source tests constrain showModal/cancel/Escape/focus restoration; full isolated Docker suite passed; browser runtime evidence confirmed focus transition and redacted empty API-key field.
 - Scoped claim: Settings behaves as a keyboard-modal dialog in the current browser runtime. This does not exhaustively prove every assistive technology path.
+
+
+## 2026-06-12 18:34
+- Observation: clean-room review found two blockers in the voice-key tranche: background polls could clobber open Settings edits/clear checkbox, and persisted secrets inherited umask-derived permissions.
+- Interventions: split Settings form syncing from general voice UI updates and skip form sync while the dialog is open; chmod voice settings and VAPID private key files to `0600` after creation/write and on existing VAPID key load.
+- Evidence: targeted tests, full isolated Docker suite, browser poll-window scenario, and container file-mode checks all passed.
+- Scoped claim: explicit key clear is robust across the normal visible secondary poll interval, browser GET remains redacted, and newly/currently written voice secret files are private to the user. Existing app directories may still have broader directory permissions, but secret files are `0600`.
