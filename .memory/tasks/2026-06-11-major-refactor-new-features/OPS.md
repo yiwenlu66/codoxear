@@ -501,3 +501,8 @@
 - Browser-fixture anomaly follow-up: malformed/synthetic Codex logs without session metadata no longer crash session discovery or refresh when a broker sidecar already supplies authoritative session identity and log path.
 - Commit: `128eb42 fix: tolerate codex logs without session metadata`.
 - Validation: reproduced failure first in `tests/test_stale_sidecars.py`; after fix, `python3 -m py_compile codoxear/server.py` passed and stale-sidecar/sidebar/session-polling/launch-provenance tests passed (`32 passed in 1.84s`).
+
+## 2026-06-12 15:04
+- Malformed-log diagnostic cleanup: warning for invalid session metadata is now emitted once per context/path instead of on every poll/sweep.
+- Commit: `77365c8 fix: rate limit invalid session metadata warnings`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; stale-sidecar/sidebar/session-polling/launch-provenance tests passed (`33 passed in 1.85s`).
