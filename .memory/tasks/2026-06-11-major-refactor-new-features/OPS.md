@@ -1091,3 +1091,9 @@
 - Repaired cleanup/confirmation blockers from unknown-refinement review: runtime deleted-state cleanup preserves direct and queued unknown recovery markers unless explicit user deletion passes `clear_recovery`; queue sweep missing-session cleanup preserves queues containing `commit_unknown`; queue delete confirmation now requires a JSON boolean `allow_commit_unknown: true` rather than arbitrary truthy values.
 - Commit: `fix: preserve unknown recovery markers during cleanup`.
 - Validation: targeted tests passed (`60 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`592 passed, 21 subtests passed in 9.01s`). Full isolated Docker suite passed (`590 passed, 2 skipped, 21 subtests passed in 10.95s`).
+
+
+## 2026-06-13 00:32
+- Repaired orphan unknown queue blocker: queue sweep now drains only active-session queues, preserving but skipping missing-session queues that contain `commit_unknown`; orphan unknown queues are listable/deletable through the queue API with the same explicit confirmation rules.
+- Commit: `fix: skip orphan unknown queues during sweep`.
+- Validation: targeted tests passed (`59 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`593 passed, 21 subtests passed in 8.92s`). Full isolated Docker suite passed (`591 passed, 2 skipped, 21 subtests passed in 10.98s`).

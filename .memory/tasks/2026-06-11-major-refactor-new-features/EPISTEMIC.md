@@ -881,3 +881,11 @@ Commitments:
 - Intervention: separated explicit user deletion from runtime cleanup via `clear_recovery`; preserved unknown queues for missing sessions; required strict boolean confirmation for unknown queue deletion.
 - Evidence: tests cover state cleanup preservation, queue-store missing-session preservation, and strict route source; full local and Docker suites passed.
 - Scoped claim: unknown recovery markers are no longer silently removed by stale/dead cleanup or truthy non-boolean delete confirmation.
+
+
+## 2026-06-13 00:32
+- Observation: preserving missing-session queued unknowns in the main queue map made `_queue_sweep()` attempt to drain an orphan session, raising `KeyError` before active queues later in iteration could drain.
+- Mechanism: evidence preservation and queue scheduling shared the same map but sweep did not filter to active sessions.
+- Intervention: sweep now filters drain candidates to active session ids after cleanup preservation; orphan unknown queues remain reviewable through queue list/delete APIs with explicit confirmation.
+- Evidence: tests cover sweep skipping an orphan unknown queue while still considering a live queue, and full local/Docker suites passed.
+- Scoped claim: missing-session queued unknown evidence no longer crashes or blocks the queue sweeper, and can be explicitly deleted via API if needed.
