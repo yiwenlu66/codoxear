@@ -491,3 +491,8 @@
 - Hygiene cleanup from extended review note: removed trailing whitespace from recon markdown files only.
 - Commit: `b2bac78 docs: remove recon trailing whitespace`.
 - Validation: `git diff --check main -- recon/architecture-review.md recon/git-history-bugs.md` passed before commit.
+
+## 2026-06-12 14:51
+- Numeric query hardening: introduced shared bounded integer parsing for session message routes and applied it to `messages/search`, `messages/tail`, and `messages/history`. Malformed `limit` now returns `400 {\"error\": \"limit must be an integer\"}` on all three routes.
+- Commit: `f86c67b fix: share message limit validation`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; transcript export/search, chat transcript runtime, scrollback source, and chat navigation source tests passed (`37 passed, 3 subtests passed in 1.94s`). Runtime route regression covers malformed limits for search, tail, and history.
