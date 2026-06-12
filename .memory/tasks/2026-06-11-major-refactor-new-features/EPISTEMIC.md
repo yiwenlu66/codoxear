@@ -1250,3 +1250,8 @@ Commitments:
 - Intervention: Tail snapshot creation now stores identity from response payload fields first; live append updates pass the live response as `identityData`.
 - Evidence: Source tests pin data-first identity use and full validations passed.
 - Scoped claim: Tail cache identity now follows the transcript payload that produced cached events, reducing stale-sidebar false matches for cache fallback.
+
+## 2026-06-13 07:35 — No-blocker scoped claim for forced tail fallback
+- Observation: Final clean-room review found no blockers after explicit fallback gating and data-first tail cache identity.
+- Scoped claim: Jump-to-latest can degrade to the last matching cached tail when the fresh tail request fails, while automatic identity recovery avoids cached fallback and tail cache identity follows transcript payload identity.
+- Remaining uncertainty: The match check on failure still depends on latest client session metadata because a failed authoritative request supplies no new identity. This is acceptable for opt-in Jump fallback but should not be broadened without stronger server evidence.

@@ -1473,3 +1473,9 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`.
 - Full local validation: `python3 -m pytest -q` → `662 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `661 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:35 — Forced tail fallback final review
+- Clean-room critic review of gated forced-tail fallback and authoritative tail-cache identity found no blockers.
+- Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`; `node --check codoxear/static/app.js` → passed.
+- Review artifact: `/tmp/codoxear-forced-tail-fallback-review.md`.
+- Residual risks noted: tests are source-shape rather than full browser race simulations; cache fallback necessarily still matches against latest client `sessionIndex` metadata when the authoritative tail request fails because no fresh tail identity exists on failure.
