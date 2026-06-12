@@ -596,3 +596,8 @@
 - Full validation after `codoxear/file_text.py` extraction.
 - HEAD: `e9081e0`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`481 passed, 2 skipped, 10 subtests passed in 12.21s`).
+
+## 2026-06-12 16:02
+- Backend refactor tranche: extracted browser-safe video preview payload/cache/transcode helpers into `codoxear/video_preview.py` while preserving `server.VIDEO_PREVIEW_DIR` as the authoritative override via server wrappers.
+- Commit: `4c0f7a6 refactor: extract video preview helpers`.
+- Validation: `python3 -m py_compile codoxear/video_preview.py codoxear/server.py` passed; focused file viewer/inspect/static tests passed (`44 passed in 10.46s`).

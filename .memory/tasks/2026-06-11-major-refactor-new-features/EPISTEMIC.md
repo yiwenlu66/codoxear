@@ -426,3 +426,6 @@ Commitments:
 
 ## 2026-06-12 15:54
 - Refactor mechanism: text-file decoding/edit/write behavior is a pure helper cluster with direct tests. Extracting it further reduces `server.py` surface while preserving imported function names at existing call sites.
+
+## 2026-06-12 16:02
+- Observation: existing video preview runtime tests mutate `server.VIDEO_PREVIEW_DIR`; a direct imported helper would have changed the override mechanism. The accepted extraction keeps server wrappers that inject the server global into the implementation module, so the observable preview cache authority remains unchanged.
