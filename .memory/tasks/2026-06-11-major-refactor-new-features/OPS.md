@@ -486,3 +486,8 @@
 - Current-head full validation after malformed chat-search limit hardening.
 - HEAD: `ff93a4b`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`469 passed, 2 skipped in 10.97s`).
+
+## 2026-06-12 14:48
+- Hygiene cleanup from extended review note: removed trailing whitespace from recon markdown files only.
+- Commit: `b2bac78 docs: remove recon trailing whitespace`.
+- Validation: `git diff --check main -- recon/architecture-review.md recon/git-history-bugs.md` passed before commit.
