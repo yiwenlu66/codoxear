@@ -450,3 +450,6 @@ Commitments:
 
 ## 2026-06-12 16:31
 - UX observation: composer submit had the same enabled-looking/no-selected no-op behavior as attach and queue. The session-dependent composer-control invariant now covers attach, queue, and send, with explicit disabled state and keyboard-submit feedback.
+
+## 2026-06-12 16:35
+- UX observation: the no-session title previously retained edit affordance styling and tooltip even though click returned immediately. The visible affordance now matches the actual selected-session precondition.
