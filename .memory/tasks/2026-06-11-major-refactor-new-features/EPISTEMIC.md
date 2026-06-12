@@ -694,3 +694,10 @@ Commitments:
 - Interventions: added session `pending_attachment` state, server-side queue/unflagged-send barriers, and an explicit UI send flag for intended attachment commit.
 - Evidence: targeted tests cover pending attachment blocking enqueue/unflagged send, queue promotion stop, explicit send clearing the marker, frontend send payload, and full local/Docker suites.
 - Scoped claim: web/server send and queue paths now preserve attachment ownership until an explicit attachment-commit send; physical terminal input remains outside server serialization.
+
+
+## 2026-06-12 20:44
+- Observation: clean-room review found pending attachment barriers were not atomic with the input lock, were lost on safe server restart, and client metadata alone could grant another tab attachment-consumption authority.
+- Interventions: moved pending-send authorization inside the input lock, persisted pending session ids, restored flags during discovery, and restricted web `allow_pending_attachment` to local attached-file state.
+- Evidence: targeted tests cover pending-state persistence set/clear, locked send rejection, queue blocking, and frontend no-auto-consent; full local/Docker suites passed.
+- Scoped claim: server-managed send/queue paths now preserve pending attachment ownership across concurrent sends and server restarts, unless the user explicitly sends from a local attachment-owning composer.

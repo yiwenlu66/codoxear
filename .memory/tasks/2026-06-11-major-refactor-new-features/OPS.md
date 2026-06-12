@@ -926,3 +926,9 @@
 - Clean-room rerun pending-attachment repair: successful attachment injection now marks `pending_attachment`; queue/enqueue and unflagged sends reject while pending; the intended web composer send includes `allow_pending_attachment` and clears the marker on successful send.
 - Commit: `fix: reserve pending attachments for explicit send`.
 - Validation: targeted attachment/chat/send tests passed (`52 passed in 3.13s`). Plain full suite passed (`547 passed, 10 subtests passed in 8.98s`). Full isolated Docker suite passed (`545 passed, 2 skipped, 10 subtests passed in 11.04s`).
+
+
+## 2026-06-12 20:44
+- Clean-room rerun pending-barrier repair: `/send` now checks pending attachment under the per-session input lock; pending attachments persist in `pending_attachments.json`; discovery restores pending flags; web composer only sets `allow_pending_attachment` from local attached-file state.
+- Commit: `fix: persist pending attachment ownership`.
+- Validation: targeted attachment/chat/send tests passed (`53 passed in 3.03s`). Plain full suite passed (`548 passed, 10 subtests passed in 9.04s`). Full isolated Docker suite passed (`546 passed, 2 skipped, 10 subtests passed in 11.17s`).
