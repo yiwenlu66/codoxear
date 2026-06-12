@@ -1236,3 +1236,10 @@ Commitments:
 - Intervention: On active non-auth tail failure, `openSession()` applies a matching cached tail when no cache was displayed because `useCache` was false, then appends the non-transcript error row in preserve mode.
 - Evidence: Browser Jump-to-latest failure reproduction preserved the cached transcript row and added one error row; focused/full local/Docker validations passed.
 - Scoped claim: Forced transcript refresh failures now degrade to the last matching cached tail when available rather than blanking the transcript.
+
+## 2026-06-13 07:24 — Cached fallback is safe only for user-forced refresh, not identity recovery
+- Observation: Clean-room review falsified the broad forced-refresh fallback. `useCache:false` includes two mechanisms: user-requested freshness (Jump to latest), where cached fallback is acceptable if the fresh measurement fails; and identity-mismatch recovery (409/log-path change), where cached fallback could resurrect the stale identity that the recovery was meant to replace.
+- Revised mechanism: Cache fallback must be an explicit caller contract, not inferred from `useCache:false` alone.
+- Intervention: Added `fallbackToCacheOnFailure`, default false; only Jump to latest opts in.
+- Evidence: Source tests pin the option and automatic no-fallback paths; browser evidence confirms the opt-in Jump path still degrades to cached transcript plus error; full validations passed.
+- Scoped claim: Forced refresh fallback now applies only where the caller explicitly accepts last-known transcript evidence after a failed freshness attempt.

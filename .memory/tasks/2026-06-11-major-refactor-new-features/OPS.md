@@ -1457,3 +1457,11 @@
 - Browser evidence on isolated `codoxear-sandbox-18934`: populated cache with a successful transcript load, monkeypatched `/messages/tail` to synthetic 503, clicked Jump to latest (`openSession(..., { useCache: false })`), and observed cached transcript row preserved (`nonTypingRows: 1`), no loading rows, and one non-transcript error row. Artifacts: `/tmp/codoxear-forced-refresh-evidence/before-jump-fail.json`, `after-jump-fail.json`, `after-jump-fail.png`.
 - Full local validation: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:24 — Forced fallback stale-cache gating repair
+- Clean-room critic found a blocker in the forced-refresh fallback: automatic identity-mismatch/409 recovery also calls `openSession(..., { useCache: false })`, and falling back to cache there could restore a transcript matching stale sidebar metadata instead of the new authoritative log identity.
+- Repaired by adding explicit `fallbackToCacheOnFailure` option to `openSession()`, defaulting false. Only Jump to latest passes `{ useCache: false, fallbackToCacheOnFailure: true }`; automatic mismatch/409 paths remain no-cache/no-fallback.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `31 passed`.
+- Browser evidence on isolated `codoxear-sandbox-18934` after gating: Jump-to-latest forced tail failure still preserves one cached transcript row and appends one non-transcript error row. Artifact: `/tmp/codoxear-forced-refresh-evidence/gated-after-jump-fail.json`.
+- Full local validation: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.
