@@ -39,6 +39,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("out_path = _stage_uploaded_file"))
         self.assertIn("with input_lock:\n            with self._lock:\n                s = self._sessions.get(session_id)", source)
         self.assertIn("if s.pending_attachment and not allow_pending_attachment:\n                    raise SessionNotReadyError", source)
+        self.assertIn("if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise SessionNotReadyError(\"session is busy; wait before sending\")", source)
         self.assertIn("resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text}, timeout_s=3.0)", source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertIn("self._record_prelog_user_message(s, text, source=\"enqueue\")\n            item, ql = self._queue_append_item_local(session_id, text)", source)

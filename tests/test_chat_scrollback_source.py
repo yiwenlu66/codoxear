@@ -200,9 +200,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("form.onsubmit = async", start)
         block = source[start:end]
         self.assertIn("const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);", block)
+        self.assertIn("const sessionInfo = sessionIndex.get(sessionId) || null;", block)
         self.assertIn("const localAttachmentCount = typeof attachedFiles === \"number\" ? attachedFiles : 0;", block)
-        self.assertIn("const allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);", block)
-        self.assertNotIn("sessionInfo && sessionInfo.pending_attachment", block)
+        self.assertIn("let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);", block)
+        self.assertIn("sessionInfo && sessionInfo.pending_attachment", block)
+        self.assertIn("window.confirm(\"This session has a pending file attachment. Send it with this message?\")", block)
         self.assertIn("const res = await api(`/api/sessions/${sessionId}/send`, { method: \"POST\", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });", block)
         self.assertIn("if (renderHere && renewsTranscript) {", block)
         self.assertIn("beginTranscriptRenewal(sessionId);", block)

@@ -195,6 +195,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.enqueue(mgr, sid, "queued prompt")
 
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
         mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
         with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
             SessionManager.send(mgr, sid, "stale direct prompt")
@@ -221,6 +222,17 @@ class TestServerQueuePersistence(unittest.TestCase):
         finally:
             if input_lock.acquire(blocking=False):
                 input_lock.release()
+
+    def test_send_rejects_remote_busy_before_socket_send(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("busy send should fail before local echo record")  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: self.fail("busy send should fail before broker send")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
+            SessionManager.send(mgr, sid, "stale direct prompt")
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"

@@ -2616,6 +2616,23 @@ class SessionManager:
                 raise KeyError("unknown session")
             return s, s.log_path
 
+    def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.pending_attachment and not allow_pending_attachment:
+                return False
+            log_path = s.log_path
+        st = self.get_state(session_id)
+        if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
+            raise ValueError("invalid broker state response")
+        if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
+            return False
+        if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
+            return False
+        return True
+
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
         with self._lock:
             s = self._sessions.get(session_id)
@@ -4298,6 +4315,8 @@ class SessionManager:
                 if s.pending_attachment and not allow_pending_attachment:
                     raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
                 sock = s.sock_path
+            if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
+                raise SessionNotReadyError("session is busy; wait before sending")
             self._record_prelog_user_message(s, text, source="send")
             try:
                 resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)

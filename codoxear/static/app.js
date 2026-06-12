@@ -10512,8 +10512,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             currentRunning = true;
           }
           try {
+            const sessionInfo = sessionIndex.get(sessionId) || null;
             const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;
-            const allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);
+            let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);
+            if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
+              const confirmed = window.confirm("This session has a pending file attachment. Send it with this message?");
+              if (!confirmed) return false;
+              allowPendingAttachment = true;
+            }
             const res = await api(`/api/sessions/${sessionId}/send`, { method: "POST", body: { text: raw, allow_pending_attachment: allowPendingAttachment } });
             if (renderHere && renewsTranscript) {
               sessionTailCache.delete(sessionId);
