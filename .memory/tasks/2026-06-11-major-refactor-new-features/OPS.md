@@ -896,3 +896,9 @@
 - Final-review blocker repair: `/inject_file` now checks `MANAGER.attachment_injection_ready(session_id)` before base64 decode/staging/injecting; readiness requires no local queue/sending item and broker state `busy=false`, `queue_len=0`.
 - Commit: `fix: reject attachment injection while busy`.
 - Validation: targeted server attachment/queue tests passed (`15 passed in 1.82s`). Plain full suite passed (`539 passed, 10 subtests passed in 9.01s`). Full isolated Docker suite passed (`537 passed, 2 skipped, 10 subtests passed in 15.48s`).
+
+
+## 2026-06-12 19:59
+- Final-review blocker rerun repair: attachment readiness now also rejects log-busy sessions (`idle_from_log` false), and final attachment injection rechecks readiness under a per-session input lock shared with `/send`.
+- Commit: `fix: serialize attachment and send injection`.
+- Validation: targeted server attachment/source tests passed (`17 passed in 1.85s`). Plain full suite passed (`541 passed, 10 subtests passed in 8.89s`). Full isolated Docker suite passed (`539 passed, 2 skipped, 10 subtests passed in 11.27s`).

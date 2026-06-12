@@ -659,3 +659,10 @@ Commitments:
 - Intervention: added server-side attachment readiness guard before staging uploaded bytes or calling `inject_keys`; guard checks local queue/sending state plus broker busy/queue state.
 - Evidence: targeted tests assert busy/remote-queue/local-queue/sending rejection and route guard before staging; full local/Docker suites passed.
 - Scoped claim: attachment injection is now fail-closed at the server API boundary for known busy/local-queue states. It still relies on broker `state` accuracy for remote busy reporting.
+
+
+## 2026-06-12 19:59
+- Observation: clean-room rerun found two residual attachment injection mechanisms: broker-idle/log-busy disagreement and a TOCTOU race between readiness check and final PTY write.
+- Interventions: `attachment_injection_ready()` now matches queue readiness by checking `idle_from_log`; `send()` and `inject_attachment_keys()` share a per-session input lock, and attachment injection rechecks readiness under that lock immediately before `keys`.
+- Evidence: targeted tests cover broker-busy, remote queue, local queue, sending item, log-busy rejection, and final recheck; full local/Docker suites passed.
+- Scoped claim: known server-side paths that could inject attachments into busy/log-active sessions are now guarded. This does not prove correctness if a backend reports/logs idle incorrectly.
