@@ -31,7 +31,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
-        self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
+        self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
+        self.assertIn("renderTranscriptLoadError(sessionId, e);", block)
+        self.assertIn("if (e && e.status === 401) {", block)
+        self.assertIn("handleAppAuthLoss();", block)
+        self.assertIn("if (pollGen !== myGen || selected !== sessionId) return null;", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
@@ -43,13 +47,27 @@ class TestChatScrollbackSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         css = APP_CSS.read_text(encoding="utf-8")
         start = source.index("function renderTranscriptLoading(sessionId)")
-        end = source.index("function applyCachedTail", start)
+        end = source.index("function renderTranscriptLoadError", start)
         block = source[start:end]
         self.assertIn('class: "msg-row assistant typing-row transcript-loading-row"', block)
         self.assertIn('role: "status", "aria-live": "polite", text: "Loading transcript…"', block)
         self.assertIn("chatInner.insertBefore(row, bottomSentinel);", block)
         self.assertIn(".msg.loading", css)
         self.assertIn("color: var(--muted);", css)
+
+    def test_transcript_load_error_row_is_non_transcript_feedback(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        start = source.index("function renderTranscriptLoadError(sessionId, err)")
+        end = source.index("function applyCachedTail", start)
+        block = source[start:end]
+        self.assertIn('class: "msg-row assistant typing-row transcript-error-row"', block)
+        self.assertIn('role: "alert"', block)
+        self.assertIn("Could not load transcript.", block)
+        self.assertIn("Select the conversation again to retry.", block)
+        self.assertIn("setTyping(false);", block)
+        self.assertIn("markClickFirstPaint();", block)
+        self.assertIn(".msg.transcript-error", css)
 
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

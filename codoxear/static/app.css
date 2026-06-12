@@ -917,6 +917,10 @@
         border-color: rgba(185, 28, 28, 0.34);
         background: rgba(254, 242, 242, 0.96);
       }
+      .msg.transcript-error {
+        color: #7f1d1d;
+        box-shadow: none;
+      }
       .msg.assistant.warning {
         border-color: rgba(180, 83, 9, 0.28);
         background: rgba(255, 251, 235, 0.96);

@@ -4643,6 +4643,28 @@
           syncJumpButton();
         }
 
+        function renderTranscriptLoadError(sessionId, err) {
+          clearTranscriptDom();
+          setOlderState({ hasMore: false, isLoading: false });
+          renderedAtLiveTail = true;
+          restorePendingUserRowsForSession(sessionId);
+          const reason = err && err.message ? ` ${err.message}` : "";
+          const row = el("div", { class: "msg-row assistant typing-row transcript-error-row" });
+          row.dataset.role = "assistant";
+          row.appendChild(
+            el("div", {
+              class: "msg assistant error transcript-error",
+              role: "alert",
+              text: `Could not load transcript.${reason} Select the conversation again to retry.`,
+            })
+          );
+          chatInner.insertBefore(row, bottomSentinel);
+          turnOpen = false;
+          setTyping(false);
+          markClickFirstPaint();
+          syncJumpButton();
+        }
+
         function applyCachedTail(sessionId, cache, sessionMeta) {
           updateSessionTranscriptSlot(sessionId, {
             transcript_state: "bound",
@@ -4725,7 +4747,18 @@
           }
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
-          const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
+          let data;
+          try {
+            data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
+          } catch (e) {
+            if (pollGen !== myGen || selected !== sessionId) return null;
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return null;
+            }
+            renderTranscriptLoadError(sessionId, e);
+            return null;
+          }
           if (pollGen !== myGen || selected !== sessionId) return null;
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {
