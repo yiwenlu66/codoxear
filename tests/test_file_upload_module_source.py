@@ -58,7 +58,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("except SessionNotReadyError as e:\n                    _json_response(self, 409, {\"error\": str(e)})", block)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertIn("self._record_prelog_user_message(s, text, source=\"enqueue\")\n            item, ql = self._queue_append_item_local(session_id, text)", source)
-        self.assertIn("if isinstance(resp, dict) and resp.get(\"error\"):", source)
+        self.assertIn("if resp.get(\"error\"):", source)
         self.assertIn("raise SessionInjectionError(err)", source)
         self.assertIn("except SessionInjectionError as e:", block)
         self.assertIn("self._set_pending_attachment(session_id, True)", source)
