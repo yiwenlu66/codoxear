@@ -50,6 +50,9 @@ from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_text import write_new_text_file_atomic as _write_new_text_file_atomic
 from .file_text import write_text_file_atomic as _write_text_file_atomic
 from .file_types import file_kind as _file_kind
+from .file_upload import attachment_inject_text as _attachment_inject_text
+from .file_upload import safe_filename as _safe_filename
+from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
 from .file_view import inspect_openable_file as _inspect_openable_file
@@ -1162,44 +1165,15 @@ def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
     return out
 
 
-def _safe_filename(name: str, *, default: str = "file") -> str:
-    out = []
-    base = Path(str(name or "")).name
-    for ch in base:
-        if ch.isalnum() or ch in ("-", "_", ".", " "):
-            out.append(ch)
-    s = "".join(out).strip().replace(" ", "_")
-    if not s:
-        return default
-    return s[:96]
-
-
 def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_bytes: int = ATTACH_UPLOAD_MAX_BYTES) -> Path:
-    if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError("session_id required")
-    if not isinstance(filename, str) or not filename.strip():
-        raise ValueError("filename required")
-    if not isinstance(raw, (bytes, bytearray)):
-        raise ValueError("file bytes required")
-    data = bytes(raw)
-    if len(data) > int(max_bytes):
-        raise ValueError(f"file too large (max {int(max_bytes)} bytes)")
-    safe_name = _safe_filename(filename, default="file")
-    subdir = (UPLOAD_DIR / session_id).resolve()
-    subdir.mkdir(parents=True, exist_ok=True)
-    out_path = (subdir / f"{int(_now() * 1000)}_{safe_name}").resolve()
-    if not str(out_path).startswith(str(subdir) + os.sep):
-        raise ValueError("bad path")
-    out_path.write_bytes(data)
-    os.chmod(out_path, 0o600)
-    return out_path
-
-
-def _attachment_inject_text(attachment_index: int, path: Path) -> str:
-    idx = int(attachment_index)
-    if idx <= 0:
-        raise ValueError("attachment_index must be >= 1")
-    return f"Attachment {idx}: {path}\n"
+    return _stage_uploaded_file_impl(
+        session_id,
+        filename,
+        raw,
+        upload_dir=UPLOAD_DIR,
+        now_fn=_now,
+        max_bytes=max_bytes,
+    )
 
 
 def _clean_alias(name: str) -> str:
