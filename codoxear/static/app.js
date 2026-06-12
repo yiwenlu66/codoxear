@@ -2860,6 +2860,7 @@
           if (wasRunning && !currentRunning) {
             // no-op placeholder; keep transition boundary for future UI behavior
           }
+          syncAttachButtonState();
           updateQueueBadge();
         }
 
@@ -4845,13 +4846,7 @@
             syncUnattendedNumberInputs();
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
-          const attachControl = $("#attachBtn");
-          if (attachControl) {
-            attachControl.disabled = !selected;
-            const attachLabel = selected ? `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})` : "Select a session to attach a file";
-            attachControl.title = attachLabel;
-            attachControl.setAttribute("aria-label", attachLabel);
-          }
+          syncAttachButtonState();
           fileBtn.disabled = !selected;
           copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
@@ -9396,15 +9391,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         });
 
         let sendChoicePending = null;
+        function syncSendChoiceAttachmentPolicy() {
+          const laterBtn = $("#sendChoiceLater");
+          if (!laterBtn) return;
+          const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
+          const laterLabel = hasAttachments ? "Attachments cannot be queued; send now or wait until idle" : "Send after current";
+          laterBtn.disabled = hasAttachments;
+          laterBtn.title = laterLabel;
+          laterBtn.setAttribute("aria-label", laterLabel);
+        }
         function showSendChoice(raw) {
           prepareModalOpen();
-          sendChoicePending = { sid: selected, text: raw };
+          sendChoicePending = { sid: selected, text: raw, attachmentCount: attachedFiles };
+          syncSendChoiceAttachmentPolicy();
           sendChoiceBackdrop.style.display = "block";
           sendChoice.style.display = "flex";
           afterModalVisibilityChanged();
         }
         function hideSendChoice() {
           sendChoicePending = null;
+          syncSendChoiceAttachmentPolicy();
           sendChoiceBackdrop.style.display = "none";
           sendChoice.style.display = "none";
           afterModalVisibilityChanged();
@@ -9425,6 +9431,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           sendChoiceLaterBtn.onclick = async () => {
             const raw = sendChoicePending && sendChoicePending.text;
             const sid = sendChoicePending && sendChoicePending.sid;
+            const hasAttachments = Boolean(sendChoicePending && sendChoicePending.attachmentCount > 0);
+            if (hasAttachments) {
+              setToast("attachments can only be sent now; wait until idle to queue text with files");
+              return;
+            }
             hideSendChoice();
             if (!raw || !sid) return;
             const ok = await enqueueComposerText(raw, { sid });
@@ -10109,10 +10120,27 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             attachBadgeEl.style.display = "none";
           }
         };
+        function syncAttachButtonState() {
+          const attachControl = $("#attachBtn");
+          if (!attachControl) return;
+          let attachLabel = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
+          let disabled = false;
+          if (!selected) {
+            attachLabel = "Select a session to attach a file";
+            disabled = true;
+          } else if (currentRunning) {
+            attachLabel = "Wait for the current response to finish before attaching a file";
+            disabled = true;
+          } else if (sending) {
+            attachLabel = "Wait for the current send to finish before attaching a file";
+            disabled = true;
+          }
+          attachControl.disabled = disabled;
+          attachControl.title = attachLabel;
+          attachControl.setAttribute("aria-label", attachLabel);
+        }
         setAttachCount(0);
-        const attachHint = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
-        attachBtn.title = attachHint;
-        attachBtn.setAttribute("aria-label", attachHint);
+        syncAttachButtonState();
         if (!selected) {
           attachBtn.disabled = true;
           attachBtn.title = "Select a session to attach a file";
@@ -10190,6 +10218,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
 	        attachBtn.onclick = () => {
 	          if (!selected) return;
+	          if (currentRunning) {
+	            setToast("wait for the current response before attaching a file");
+	            return;
+	          }
+	          if (sending) return;
 	          imgInput.value = "";
 	          imgInput.click();
 	        };
@@ -10199,6 +10232,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		          const attachmentIndex = attachedFiles + 1;
 		          const f = imgInput.files && imgInput.files[0];
 		          if (!f) return;
+		          if (currentRunning) {
+		            if (selected === sid) setToast("wait for the current response before attaching a file");
+		            return;
+		          }
 		          if (sending) return;
 		          try {
 	            function safeStem(name) {
@@ -10320,6 +10357,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (sending) return false;
           sending = true;
           syncSendButtonState();
+          syncAttachButtonState();
           setToast("sending...");
 
           const localId = ++localEchoSeq;
@@ -10371,6 +10409,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } finally {
             sending = false;
             syncSendButtonState();
+            syncAttachButtonState();
           }
         }
 
