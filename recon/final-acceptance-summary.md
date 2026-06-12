@@ -1,7 +1,9 @@
 # Codoxear `develop` Acceptance Summary
 
+> Historical note (2026-06-12): this file describes the earlier `develop` acceptance attempt and is no longer the current handoff artifact. The current recovery candidate is `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps`; latest recorded validation is in `.memory/tasks/2026-06-11-major-refactor-new-features/OPS.md` and includes full Docker `451 passed, 2 skipped` plus the current port-18812 browser smoke. Do not use the `develop` branch/validation counts below as current acceptance evidence.
+
 Date: 2026-06-12
-Branch: `develop`
+Branch: `develop` (historical, superseded by `recovery/product-gaps`)
 Base branch protected: `main` was not merged into or modified.
 
 ## Acceptance candidate
