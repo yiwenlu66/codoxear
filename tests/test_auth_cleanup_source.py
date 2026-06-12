@@ -69,6 +69,26 @@ class TestAuthCleanupSource(unittest.TestCase):
         logout = app[logout_start:logout_end]
         self.assertIn("finally {\n            cleanupApp();\n            renderLogin(renderApp);\n          }", logout)
 
+    def test_async_poll_results_stop_after_cleanup(self) -> None:
+        app = render_app_block()
+        refresh_start = app.index("async function refreshSessions()")
+        refresh_end = app.index("function appendEvent", refresh_start)
+        refresh_block = app[refresh_start:refresh_end]
+        voice_start = app.index("async function pollNotificationFeed")
+        voice_end = app.index("async function enableNotificationsOnDevice", voice_start)
+        voice_block = app[voice_start:voice_end]
+
+        self.assertIn('const data = await api("/api/sessions");\n          if (appDisposed) return latestSessions;', refresh_block)
+        self.assertIn("if (appDisposed || !desktopNotificationsEnabled()) return;", voice_block)
+        self.assertIn("if (appDisposed) return;", voice_block)
+        self.assertIn("if (appDisposed || !desktopNotificationsEnabled()) {", voice_block)
+        self.assertIn("if (appDisposed) return data;", voice_block)
+        self.assertIn("async function syncNotificationState(serverSnapshot) {\n          if (appDisposed) return;", voice_block)
+        self.assertIn('snapshot = await api("/api/notifications/subscription");', voice_block)
+        self.assertIn("if (appDisposed) return;\n          let endpoint = \"\";", voice_block)
+        self.assertIn("const reg = await ensureVoiceServiceWorker();\n              if (appDisposed) return;", voice_block)
+        self.assertIn("const sub = await reg.pushManager.getSubscription();\n              if (appDisposed) return;", voice_block)
+
     def test_app_global_listeners_are_cleanup_tracked(self) -> None:
         app = render_app_block()
         self.assertIn("function addAppEvent(target, type, handler, options)", app)

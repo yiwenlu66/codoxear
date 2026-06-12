@@ -3949,6 +3949,7 @@
 
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
+          if (appDisposed) return latestSessions;
           latestSessions = Array.isArray(data.sessions) ? data.sessions.slice() : [];
           newSessionDefaults =
             data && typeof data.new_session_defaults === "object" && data.new_session_defaults
@@ -5418,10 +5419,11 @@
         }
 
         async function pollNotificationFeed({ prime = false } = {}) {
-          if (!desktopNotificationsEnabled()) return;
+          if (appDisposed || !desktopNotificationsEnabled()) return;
           let maxSeen = notificationFeedSinceTs;
           try {
             const data = await api(`/api/notifications/feed?since=${encodeURIComponent(notificationFeedSinceTs)}`);
+            if (appDisposed) return;
             const items = Array.isArray(data.items) ? data.items : [];
             for (const item of items) {
               const updatedTs = Number(item && item.updated_ts ? item.updated_ts : 0);
@@ -5461,13 +5463,17 @@
           if (!messageId || desktopNotificationTimers.has(messageId)) return;
           let attempts = 0;
           const tick = async () => {
-            if (!desktopNotificationsEnabled()) {
+            if (appDisposed || !desktopNotificationsEnabled()) {
               desktopNotificationTimers.delete(messageId);
               return;
             }
             attempts += 1;
             try {
               const data = await api(`/api/notifications/message?message_id=${encodeURIComponent(messageId)}`);
+              if (appDisposed) {
+                desktopNotificationTimers.delete(messageId);
+                return;
+              }
               const text = String(data.notification_text || "").trim();
               const summaryStatus = String(data.summary_status || "");
               if (text && (summaryStatus === "sent" || summaryStatus === "skipped" || summaryStatus === "error")) {
@@ -5517,6 +5523,7 @@
 
         async function loadVoiceSettings() {
           const data = await api("/api/settings/voice");
+          if (appDisposed) return data;
           if (!data || typeof data !== "object") throw new Error("invalid voice settings response");
           voiceSettings = {
             ...voiceSettings,
@@ -5581,6 +5588,7 @@
         }
 
         async function syncNotificationState(serverSnapshot) {
+          if (appDisposed) return;
           notificationState.desktop_supported = !!(window.isSecureContext && typeof Notification !== "undefined");
           notificationState.push_supported = !!(notificationState.desktop_supported && "serviceWorker" in navigator && "PushManager" in window);
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
@@ -5593,11 +5601,14 @@
               if (!(e && e.status === 404)) throw e;
             }
           }
+          if (appDisposed) return;
           let endpoint = "";
           if (notificationDeviceClass() === "mobile" && notificationState.push_supported) {
             try {
               const reg = await ensureVoiceServiceWorker();
+              if (appDisposed) return;
               const sub = await reg.pushManager.getSubscription();
+              if (appDisposed) return;
               endpoint = sub && typeof sub.endpoint === "string" ? sub.endpoint : "";
             } catch (e) {
               console.error("load push subscription failed", e);
