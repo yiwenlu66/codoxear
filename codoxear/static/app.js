@@ -1740,6 +1740,28 @@
               if (!selected) return;
               openEditSession(selected);
             };
+            titleLabel.onkeydown = (e) => {
+              if (!selected) return;
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              openEditSession(selected);
+            };
+            function syncTitleEditState() {
+              const interactive = Boolean(selected);
+              titleLabel.style.cursor = interactive ? "pointer" : "default";
+              titleLabel.title = interactive ? "Edit conversation" : "No session selected";
+              titleLabel.tabIndex = interactive ? 0 : -1;
+              if (interactive) {
+                titleLabel.setAttribute("role", "button");
+                titleLabel.setAttribute("aria-label", "Edit conversation");
+                titleLabel.removeAttribute("aria-disabled");
+              } else {
+                titleLabel.removeAttribute("role");
+                titleLabel.removeAttribute("aria-label");
+                titleLabel.setAttribute("aria-disabled", "true");
+              }
+            }
+            syncTitleEditState();
 				        const statusChip = el("span", { class: "status-chip", id: "statusChip", text: "Idle" });
 				        const ctxChip = el("span", { class: "status-chip", id: "ctxChip", text: "" });
 		        ctxChip.style.display = "none";
@@ -4600,8 +4622,7 @@
 
         function updateUnattendedBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
-          titleLabel.style.cursor = selected ? "pointer" : "default";
-          titleLabel.title = selected ? "Edit conversation" : "No session selected";
+          syncTitleEditState();
           const on = Boolean(s && s.unattended_enabled);
           unattendedBtn.disabled = !selected;
           unattendedBtn.classList.toggle("active", Boolean(selected && on));
