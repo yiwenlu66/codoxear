@@ -851,3 +851,11 @@ Commitments:
 - Intervention: made direct unknown-send state part of attachment readiness, and made queued unknown items ordering barriers at the queue store authority plus UI affordance layer.
 - Evidence: tests cover server attachment rejection and queue-store move rejection; browser validation shows disabled attach/send/queue controls and disabled move-up for later item behind an unknown queue head.
 - Scoped claim: unresolved direct or queued commit uncertainty now blocks overtaking input mutations through send, enqueue, attachments, queue sweep, and queue reorder. Interrupt remains a separate control action, not a prompt commit path.
+
+
+## 2026-06-12 23:59
+- Observation: adversarial rerun showed ordinary queue delete removed a queued unknown barrier, allowing later queued work to sweep.
+- Mechanism: move was hardened, but delete/update remained normal queue mutations; deleting the unknown head erased the only barrier and editing it could destroy the evidence text.
+- Intervention: queue delete now requires explicit `allow_commit_unknown` for unknown items; queue update rejects unknown items; UI deletion of unknown items requires a transcript/terminal confirmation before passing the flag.
+- Evidence: tests cover store and manager behavior; API/browser validation showed 409 without flag, cancel preserving the barrier, and confirmed deletion as explicit resolution.
+- Scoped claim: queued unknown barriers cannot be bypassed by normal delete/update/move/sweep paths. Confirmed delete is now the explicit user resolution action for queued unknown items.

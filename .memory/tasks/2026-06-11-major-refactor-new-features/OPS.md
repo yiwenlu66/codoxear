@@ -1066,3 +1066,10 @@
 - Commit: `b7eb79d fix: enforce unknown commit barriers`.
 - Validation: targeted tests passed (`64 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`588 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`586 passed, 2 skipped, 21 subtests passed in 10.93s`).
 - Browser evidence: isolated fake-broker Docker on `:18913`; `/tmp/codoxear_barriers_unknown_selected.txt` and `/tmp/codoxear_barriers_unknown_controls.json` show direct-unknown session disables Attach/Queue/Send with explicit labels. `/tmp/codoxear_barriers_queue_viewer.txt` and `/tmp/codoxear_barriers_queue_dom.json` show queued `Commit unknown` head and later item Move Up disabled, preventing reorder-around. Screenshot: `/tmp/codoxear-unknown-barriers-evidence/queue-viewer.png`.
+
+
+## 2026-06-12 23:59
+- Repaired focused rerun blocker: deleting a queued `commit_unknown` item now requires explicit confirmation via `allow_commit_unknown`; API deletion without the flag returns 409. Queue update now rejects `commit_unknown` items to preserve comparison text. UI delete path prompts with transcript/terminal warning and passes the explicit flag only after confirmation.
+- Commit: `fix: require explicit queued unknown resolution`.
+- Validation: targeted tests passed (`64 passed, 11 subtests passed in 1.80s`). Plain full suite passed (`589 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`587 passed, 2 skipped, 21 subtests passed in 12.88s`).
+- Browser/API evidence: isolated fake-broker Docker `:18914`; direct API delete without flag returned `409 {"error":"commit-unknown item requires explicit confirmation"}`; browser delete cancel preserved both rows and confirmation prompt; browser delete confirm removed only the unknown row and left the later prompt. Artifacts under `/tmp/codoxear-queue-delete-evidence/`.
