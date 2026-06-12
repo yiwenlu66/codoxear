@@ -372,3 +372,7 @@ Commitments:
 ## 2026-06-12 14:22
 - Observation: `_pid_alive` and `_process_group_alive` were duplicated across server/broker/sessiond. Broker's PID helper also handled unexpected `os.kill` failures more defensively than the server copy.
 - Intervention/evidence: util now owns `pid_alive` and `process_group_alive`; server/broker/sessiond import them as local private names so call-site semantics stay stable. A source guard asserts the definitions remain centralized.
+
+## 2026-06-12 14:25
+- Observation: broker and sessiond duplicated PTY full-write and bracketed-paste injection logic. This was a low-risk extraction because tests already exercise partial writes and send acknowledgements.
+- Intervention/evidence: shared helpers now live in `pty_util`; module-local wrappers preserve call-site and patching structure for control-flow tests. A source guard asserts bracketed-paste constants remain centralized.

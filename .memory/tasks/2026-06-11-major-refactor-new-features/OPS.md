@@ -441,3 +441,8 @@
 - Architecture cleanup: centralized duplicated process liveness helpers in `codoxear.util` and imported them into server, broker, and sessiond under the existing private helper names.
 - Commit: `06469b8 refactor: share process liveness helpers`.
 - Validation: `python3 -m py_compile codoxear/util.py codoxear/server.py codoxear/broker.py codoxear/sessiond.py` passed; targeted process/session/stale/resume tests plus source guard passed (`60 passed in 2.75s`).
+
+## 2026-06-12 14:25
+- Architecture cleanup: centralized PTY `write_all` and bracketed-paste injection in `codoxear.pty_util`; broker/sessiond retain local wrapper names but delegate to the shared implementation.
+- Commit: `c4cae80 refactor: share pty write helpers`.
+- Validation: `python3 -m py_compile codoxear/pty_util.py codoxear/broker.py codoxear/sessiond.py` passed; send-ack, PTY source, broker fail-closed, and sessiond fail-closed tests passed (`36 passed in 2.14s`).
