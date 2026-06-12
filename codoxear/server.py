@@ -28,7 +28,7 @@ import urllib.parse
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
@@ -1951,8 +1951,13 @@ def _read_pi_reasoning_efforts_by_model() -> dict[str, list[str]]:
     return out
 
 
-def _pi_allowed_reasoning_efforts_for_model(*, model_provider: str | None, model: str | None) -> list[str] | None:
-    mapping = _read_pi_reasoning_efforts_by_model()
+def _pi_allowed_reasoning_efforts_for_model(
+    *,
+    model_provider: str | None,
+    model: str | None,
+    reasoning_efforts_by_model: Mapping[str, list[str]] | None = None,
+) -> list[str] | None:
+    mapping = reasoning_efforts_by_model if reasoning_efforts_by_model is not None else _read_pi_reasoning_efforts_by_model()
     key = _pi_reasoning_effort_key(model_provider, model)
     if key and key in mapping:
         return list(mapping[key])
@@ -1962,7 +1967,13 @@ def _pi_allowed_reasoning_efforts_for_model(*, model_provider: str | None, model
     return None
 
 
-def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str | None = None, model: str | None = None) -> str | None:
+def _normalize_requested_pi_reasoning_effort(
+    value: Any,
+    *,
+    model_provider: str | None = None,
+    model: str | None = None,
+    reasoning_efforts_by_model: Mapping[str, list[str]] | None = None,
+) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str):
@@ -1970,7 +1981,11 @@ def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str 
     out = value.strip().lower()
     if not out:
         return None
-    allowed = _pi_allowed_reasoning_efforts_for_model(model_provider=model_provider, model=model) or list(SUPPORTED_PI_REASONING_EFFORTS)
+    allowed = _pi_allowed_reasoning_efforts_for_model(
+        model_provider=model_provider,
+        model=model,
+        reasoning_efforts_by_model=reasoning_efforts_by_model,
+    ) or list(SUPPORTED_PI_REASONING_EFFORTS)
     if out not in allowed:
         model_label = _clean_optional_text(model) or "selected model"
         raise ValueError(f"reasoning_effort must be one of {', '.join(allowed)} for Pi model {model_label}")
@@ -2497,7 +2512,11 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
         provider_choices.insert(0, configured_provider)
     if configured_model is not None and configured_model not in model_choices:
         model_choices.insert(0, configured_model)
-    configured_efforts = _pi_allowed_reasoning_efforts_for_model(model_provider=configured_provider, model=configured_model)
+    configured_efforts = _pi_allowed_reasoning_efforts_for_model(
+        model_provider=configured_provider,
+        model=configured_model,
+        reasoning_efforts_by_model=reasoning_efforts_by_model,
+    )
     if configured_efforts is None:
         configured_efforts = list(SUPPORTED_PI_REASONING_EFFORTS)
     if configured_effort not in configured_efforts:
@@ -2638,9 +2657,10 @@ def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRe
         reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
         service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
     elif agent_backend == "pi":
+        pi_launch_defaults = _pi_launch_defaults_for_request()
         pi_provider_choices = {
             str(value)
-            for value in (_pi_launch_defaults_for_request().get("provider_choices") or [])
+            for value in (pi_launch_defaults.get("provider_choices") or [])
             if isinstance(value, str) and value.strip()
         }
         model_provider = _normalize_requested_model_provider(
@@ -2668,6 +2688,7 @@ def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRe
             obj.get("reasoning_effort"),
             model_provider=model_provider,
             model=model,
+            reasoning_efforts_by_model=pi_launch_defaults.get("reasoning_efforts_by_model") if isinstance(pi_launch_defaults, dict) else None,
         )
         if obj.get("service_tier") not in (None, ""):
             raise LaunchRequestValidationError("service_tier is not supported for pi")

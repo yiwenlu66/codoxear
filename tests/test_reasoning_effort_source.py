@@ -27,10 +27,11 @@ class TestReasoningEffortSource(unittest.TestCase):
         source = SERVER_PY.read_text(encoding="utf-8")
         self.assertIn("def _read_pi_reasoning_efforts_by_model()", source)
         self.assertIn('if reasoning is False:\n        return ["off"]', source)
-        self.assertIn("def _normalize_requested_pi_reasoning_effort(value: Any, *, model_provider: str | None = None, model: str | None = None)", source)
+        self.assertIn("def _normalize_requested_pi_reasoning_effort(\n    value: Any,", source)
+        self.assertIn("reasoning_efforts_by_model: Mapping[str, list[str]] | None = None", source)
         self.assertIn("reasoning_effort must be one of {', '.join(allowed)} for Pi model", source)
         self.assertIn("def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest", source)
-        self.assertIn("model_provider=model_provider,\n            model=model,", source)
+        self.assertIn("model_provider=model_provider,\n            model=model,\n            reasoning_efforts_by_model=pi_launch_defaults.get", source)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,13 @@ class TestNewSessionLaunchRequest(unittest.TestCase):
         self.assertEqual(pi_req.model_provider, "macaron")
         self.assertEqual(pi_req.agent_backend, "pi")
 
+    def test_pi_parser_safe_defaults_cover_reasoning_effort(self) -> None:
+        with patch("codoxear.server._read_pi_launch_defaults", side_effect=RuntimeError("bad pi config")):
+            with patch("codoxear.server._read_pi_reasoning_efforts_by_model", side_effect=AssertionError("must not reread malformed Pi models")):
+                req = _parse_new_session_launch_request({"agent_backend": "pi", "cwd": "/repo", "reasoning_effort": "high"})
+
+        self.assertEqual(req.reasoning_effort, "high")
+
 
 if __name__ == "__main__":
     unittest.main()
