@@ -22,7 +22,7 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn('fileMenuOpen = false;', source)
         self.assertIn('prepareModalOpen();\n          helpBackdrop.style.display = "block";', source)
         self.assertIn('prepareModalOpen();\n          queueViewerSid = selected;', source)
-        self.assertIn('prepareModalOpen();\n          voiceSettingsBackdrop.style.display = "block";', source)
+        self.assertIn('prepareModalOpen();\n          voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          voiceSettingsBackdrop.style.display = "block";', source)
 
     def test_settings_dialog_uses_modal_and_cancel_semantics(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -32,8 +32,12 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         hide_start = show_end
         hide_end = source.index("announceBtn.onclick", hide_start)
         hide_block = source[hide_start:hide_end]
+        self.assertIn("voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
         self.assertIn("if (!voiceSettingsViewer.open) voiceSettingsViewer.showModal();", show_block)
+        self.assertIn("const focusTarget = voiceSettingsReturnFocusEl;", hide_block)
+        self.assertIn("voiceSettingsReturnFocusEl = null;", hide_block)
         self.assertIn("if (voiceSettingsViewer.open) voiceSettingsViewer.close();", hide_block)
+        self.assertIn('requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));', hide_block)
         self.assertIn('voiceSettingsViewer.addEventListener("cancel", (e) => {', source)
         self.assertIn("e.preventDefault();\n          hideVoiceSettingsDialog();", source)
         self.assertIn('if (voiceSettingsViewer.style.display === "flex") hideVoiceSettingsDialog();', source)

@@ -2481,6 +2481,7 @@
           html: iconSvg("x"),
         });
         const voiceSettingsStatus = el("div", { class: "muted", id: "voiceSettingsStatus", text: "" });
+        let voiceSettingsReturnFocusEl = null;
         const voiceBaseUrlInput = el("input", { id: "voiceBaseUrlInput", type: "text", autocomplete: "off", spellcheck: "false" });
         const voiceApiKeyInput = el("input", { id: "voiceApiKeyInput", type: "password", autocomplete: "off", spellcheck: "false" });
         const voiceClearApiKeyToggle = el("input", { id: "voiceClearApiKeyToggle", type: "checkbox" });
@@ -5713,6 +5714,7 @@
 
         function showVoiceSettingsDialog() {
           prepareModalOpen();
+          voiceSettingsReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           voiceSettingsBackdrop.style.display = "block";
           voiceSettingsViewer.style.display = "flex";
           updateVoiceUi();
@@ -5721,11 +5723,16 @@
         }
 
         function hideVoiceSettingsDialog() {
+          const focusTarget = voiceSettingsReturnFocusEl;
+          voiceSettingsReturnFocusEl = null;
           voiceSettingsBackdrop.style.display = "none";
           voiceSettingsViewer.style.display = "none";
           voiceSettingsStatus.textContent = "";
           if (voiceSettingsViewer.open) voiceSettingsViewer.close();
           afterModalVisibilityChanged();
+          if (focusTarget && document.contains(focusTarget) && typeof focusTarget.focus === "function") {
+            requestAnimationFrame(() => focusTarget.focus({ preventScroll: true }));
+          }
         }
 
         announceBtn.onclick = async (e) => {
