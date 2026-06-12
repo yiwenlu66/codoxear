@@ -466,3 +466,8 @@
 
 ## 2026-06-12 14:35
 - Current-head full validation after path-helper refactor and chat-search shortcut/help changes: isolated Docker suite passed (`467 passed, 2 skipped in 14.24s`).
+
+## 2026-06-12 14:38
+- Rollout-log cleanup: removed local duplicate timestamp/message-id helper definitions from chat-event extraction and delivery-message extraction; both now use the module-level helpers.
+- Commit: `a16c762 refactor: reuse rollout chat helper functions`.
+- Validation: `python3 -m py_compile codoxear/rollout_log.py` passed; targeted rollout helper, server chat flags, Claude chat/idle, message index, idle heuristic, and voice push tests passed (`68 passed in 2.08s`).

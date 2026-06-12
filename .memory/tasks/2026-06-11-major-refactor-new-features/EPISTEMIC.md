@@ -384,3 +384,7 @@ Commitments:
 ## 2026-06-12 14:32
 - Observation: long-chat search existed but required pointer discovery. A global Ctrl/Cmd+F override would conflict with browser semantics, so it was rejected.
 - Intervention/evidence: added an app-specific `/` shortcut with explicit text-entry and modal guards. Browser evidence confirms it opens search from chat context and does not steal typing from the composer.
+
+## 2026-06-12 14:38
+- Observation: the broad duplicate chat-extraction refactor is still riskier than warranted, but the timestamp and message-id helper duplication was mechanical and directly testable.
+- Intervention/evidence: duplicate local helper definitions were removed; a source guard now asserts only one module-level timestamp and message-id helper remains for rollout chat extraction.
