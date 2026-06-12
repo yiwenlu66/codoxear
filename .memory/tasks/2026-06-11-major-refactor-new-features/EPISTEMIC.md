@@ -1032,3 +1032,10 @@ Commitments:
 - Review anomaly: history extraction could classify a text-bearing Pi aborted message differently than live extraction.
 - Intervention: suppress Pi aborted messages before text classification in `_single_chat_event`.
 - Evidence: affected suites and full local/Docker suites passed.
+
+
+## 2026-06-13 03:36
+- Review residual risk: text-bearing Pi aborted records were fixed for visible chat but could still feed delivery notifications and assistant timestamp accounting.
+- Intervention: suppress `pi_assistant_is_aborted_turn()` before Pi assistant text handling in delivery extraction, sidebar conversation timestamps, and last-chat role timestamps.
+- Evidence: targeted regressions and full local/Docker suites passed.
+- Scoped claim: text-bearing Pi aborts are no longer treated as final assistant output by the inspected chat, delivery, and timestamp consumers.

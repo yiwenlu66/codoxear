@@ -1217,3 +1217,9 @@
   - Historical single-event chat extraction now suppresses Pi aborted assistant messages consistently with live abort handling.
 - Commit: `fix: harden video and Pi abort edge cases`.
 - Validation: focused review-blocker tests passed (`4 passed`); affected suites passed (`108 passed`); full local suite passed (`620 passed, 25 subtests passed in 12.60s`); full isolated Docker suite passed (`619 passed, 1 skipped, 25 subtests passed in 12.31s`).
+
+
+## 2026-06-13 03:36
+- Applied non-blocking focused review follow-up for Pi abort consistency: text-bearing Pi aborted messages are now suppressed in voice/push delivery extraction and sidebar/last-chat timestamp accounting, matching live/history chat extraction.
+- Commit: `fix: suppress Pi aborts in adjacent consumers`.
+- Validation: targeted adjacent-consumer tests passed (`3 passed`); affected suites passed (`140 passed`); full local suite passed (`622 passed, 25 subtests passed in 9.33s`); full isolated Docker suite passed (`621 passed, 1 skipped, 25 subtests passed in 11.88s`).
