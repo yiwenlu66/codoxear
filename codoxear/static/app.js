@@ -4641,6 +4641,7 @@
           chatNavRail.style.display = selected ? "flex" : "none";
           if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
+          syncQueueSubmitState();
           diagBtn.disabled = !selected;
         }
            async function loadUnattendedCfgForSelected() {
@@ -9183,7 +9184,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function syncQueueSubmitState() {
-          if (queueBtn) queueBtn.disabled = !!queueSubmitBusy;
+          const queueControl = $("#queueBtn");
+          if (!queueControl) return;
+          queueControl.disabled = !!queueSubmitBusy || !selected;
+          const queueLabel = selected ? "Queued messages" : "Select a session to view queued messages";
+          queueControl.title = queueLabel;
+          queueControl.setAttribute("aria-label", queueLabel);
         }
 
         async function enqueueComposerText(raw, { sid = null } = {}) {
@@ -9814,6 +9820,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           attachBtn.setAttribute("aria-label", "Select a session to attach a file");
         }
         updateQueueBadge();
+        syncQueueSubmitState();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
 	          const maxPx = 180;
