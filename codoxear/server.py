@@ -4,6 +4,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import heapq
+import hmac
 import http.server
 import io
 import json

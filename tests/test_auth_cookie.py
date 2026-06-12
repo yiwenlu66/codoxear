@@ -43,6 +43,16 @@ class TestAuthCookie(unittest.TestCase):
         payload, sig = token.split(".", 1)
         self.assertIsNone(server._verify_cookie(f"{payload}x.{sig}"))
 
+    def test_password_compare_wrapper_uses_constant_time_compare(self) -> None:
+        with patch.dict("os.environ", {"CODEX_WEB_PASSWORD": "test-password"}):
+            old_cache = server._PASSWORD_CACHE
+            try:
+                server._PASSWORD_CACHE = None
+                self.assertTrue(server._is_same_password("test-password"))
+                self.assertFalse(server._is_same_password("wrong-password"))
+            finally:
+                server._PASSWORD_CACHE = old_cache
+
     def test_legacy_exp_cookie_is_refreshed_without_time_check(self) -> None:
         token = server._sign_cookie({"exp": 1})
         handler = _Handler(cookie=f"codoxear_auth={token}")
