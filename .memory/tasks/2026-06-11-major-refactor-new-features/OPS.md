@@ -1016,3 +1016,9 @@
 - Bounded-send fourth rerun repair: attachment key injection now tracks request-sent response loss and conservatively marks pending on attachment commit-unknown; immediate enqueue promotion returns `commit_unknown` in the API response; enqueue rejects unsupported old brokers before appending undrainable items.
 - Commit: `fix: surface attachment and enqueue uncertainty`.
 - Validation: targeted tests passed (`81 passed, 7 subtests passed in 2.94s`). Plain full suite passed (`579 passed, 17 subtests passed in 9.05s`). Full isolated Docker suite passed (`577 passed, 2 skipped, 17 subtests passed in 11.30s`).
+
+
+## 2026-06-12 22:54
+- Bounded-send fifth rerun repair: generic pre-dispatch queue failures clear conservative unknown markers; attachment key malformed/empty/post-request failures become commit-unknown and set pending state; attach UI now surfaces attachment unknown and refreshes sessions.
+- Commit: `fix: classify attachment commit uncertainty`.
+- Validation: targeted tests passed (`83 passed, 7 subtests passed in 3.02s`). Plain full suite passed (`581 passed, 17 subtests passed in 13.19s`). Full isolated Docker suite passed (`579 passed, 2 skipped, 17 subtests passed in 11.29s`).

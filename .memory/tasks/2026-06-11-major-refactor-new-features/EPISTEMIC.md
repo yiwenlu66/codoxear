@@ -798,3 +798,10 @@ Commitments:
 - Interventions: attachment keys now use request-sent tracking and mark pending on unknown; queue promotion returns commit-unknown response; enqueue rejects brokers without sync-send support before append.
 - Evidence: targeted tests cover attachment empty response pending+unknown, enqueue commit-unknown response, unsupported enqueue rejection, and full local/Docker suites.
 - Scoped claim: ambiguity at attachment/enqueue boundaries is now surfaced immediately and preserved conservatively rather than hidden as ordinary failure/queued success.
+
+
+## 2026-06-12 22:54
+- Observation: rerun found false commit-unknown queue markers after generic pre-dispatch errors, attachment key post-request ambiguity hidden as ordinary attach error/no pending state, and malformed attachment replies treated as success.
+- Interventions: clear unknown markers for generic non-unknown queue failures; classify attachment key response ambiguity as commit-unknown while conservatively setting pending state; UI shows attachment unknown and refreshes sessions.
+- Evidence: targeted tests cover generic queue failure cleanup, attachment empty/malformed unknown pending state, attach UI unknown branch, and full local/Docker suites.
+- Scoped claim: attachment and queue uncertainty now follows the same conservative evidence-preserving model as send uncertainty.
