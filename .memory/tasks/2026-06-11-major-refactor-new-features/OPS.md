@@ -1142,3 +1142,9 @@
 - Repaired non-blocking orphan recovery issues: missing-session recovery queue update/move now return recovery conflict semantics instead of 404, and deleting the last queue item hides the queue modal even if a direct orphan marker remains for the same row.
 - Commit: `fix: smooth orphan recovery queue conflicts`.
 - Validation: targeted tests passed (`58 passed, 11 subtests passed in 1.84s`). Plain full suite passed (`601 passed, 21 subtests passed in 8.93s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 11.05s`).
+
+
+## 2026-06-13 01:42
+- Repaired final orphan queue blocker: deleting any explicit recovery item from a missing-session queue now marks all remaining items as `orphan_recovery`, so later plain items stay listable/protected after the marked item is removed.
+- Commit: `fix: propagate orphan recovery after deletion`.
+- Validation: targeted `tests/test_server_queue_persistence.py` passed (`57 passed, 11 subtests passed in 1.87s`). Plain full suite passed (`602 passed, 21 subtests passed in 12.25s`). Full isolated Docker suite passed (`600 passed, 2 skipped, 21 subtests passed in 11.58s`).

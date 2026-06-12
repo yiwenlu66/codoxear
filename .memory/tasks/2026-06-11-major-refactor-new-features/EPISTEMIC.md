@@ -944,3 +944,10 @@ Commitments:
 - Intervention: missing-session recovery queue update/move now fail as recovery conflicts, and queue modal hides after the last queue row deletion regardless of remaining direct orphan evidence.
 - Evidence: targeted/full/Docker suites passed.
 - Scoped claim: orphan queue recovery now has consistent conflict semantics and does not show a false queue-unavailable error after successful final row deletion.
+
+
+## 2026-06-13 01:42
+- Observation: review showed a mixed orphan queue with one persisted `orphan_recovery` item and later plain items could lose the later items after deleting the marked item.
+- Intervention: any explicit recovery deletion in a missing-session queue now propagates `orphan_recovery` to all remaining items.
+- Evidence: regression test covers deletion of a persisted recovery item with a plain tail; full local/Docker suites passed.
+- Scoped claim: missing-session recovery queues retain queue-level recovery protection until all queued prompts are explicitly resolved.
