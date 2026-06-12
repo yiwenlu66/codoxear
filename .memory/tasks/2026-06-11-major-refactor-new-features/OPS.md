@@ -531,3 +531,8 @@
 - UX/network tranche: decoupled secondary voice/notification polling from the core session-list poll. `refreshSessions()` remains on the 2.5s visible / 15s hidden loop; voice settings, notification subscription state, and notification feed now use a slower 10s visible / 60s hidden loop with immediate refresh on visibility wake. Auth loss and unload stop both timers.
 - Commit: `9f06978 feat: decouple secondary UI polling`.
 - Validation: `node --check codoxear/static/app.js` passed; session polling, voice push source, and static asset tests passed (`16 passed in 4.67s`).
+
+## 2026-06-12 15:18
+- Browser/network validation for secondary polling decoupling, isolated Docker server on port 18814 and headless Chromium/CDP.
+- Observation over 6.6s after authenticated app load: API requests were `/api/me`, `/api/settings/voice`, `/api/notifications/subscription`, and three `/api/sessions` requests. Counts: `sessions=3`, `voiceSettings=1`, `notificationSubscription=1`, `notificationFeed=0`, JS errors `[]`.
+- Interpretation: session-list freshness remains on the fast visible loop, while secondary voice/notification fetches no longer run on every session tick.

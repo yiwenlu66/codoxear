@@ -405,3 +405,6 @@ Commitments:
 
 ## 2026-06-12 15:16
 - Mechanism: prior visibility-aware session polling still fetched low-priority voice/notification state every session tick. Decoupling those requests should reduce foreground/background network work while preserving immediate session-list freshness. Remaining uncertainty until browser/network validation: actual request cadence under a live page.
+
+## 2026-06-12 15:18
+- Evidence update: live browser request counts support the intended polling mechanism: core session polling continued at visible cadence, while secondary voice/notification state stayed off the fast session loop for the measured window. This constrains request cadence, not slow-network latency or real mobile-radio power use.
