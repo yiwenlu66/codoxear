@@ -1417,3 +1417,12 @@
 - Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `29 passed`; `node --check codoxear/static/app.js` → passed.
 - Review artifact: `/tmp/codoxear-transcript-loading-review.md`.
 - Residual risks noted: source-shape tests rather than runtime DOM tests; busy sessions show loading row rather than typing dots until tail arrives; if tail fetch fails, the loading row can remain as failed-load state because no explicit error UI was added.
+
+## 2026-06-13 06:58 — Transcript tail error feedback
+- Implemented `renderTranscriptLoadError(sessionId, err)` in `codoxear/static/app.js`. It renders a non-transcript `.typing-row.transcript-error-row` with `role="alert"`, clears older-loading state, stops visible typing, marks first paint, and tells the user to select the conversation again to retry.
+- `openSession()` now wraps the initial `/messages/tail` call: stale-generation errors are ignored; 401 invokes `handleAppAuthLoss()`; other failures render the transcript error row instead of leaving `Loading transcript…` indefinitely.
+- Added `.msg.transcript-error` styling and source assertions in `tests/test_chat_scrollback_source.py`.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `30 passed`.
+- Browser evidence on isolated `codoxear-sandbox-18933`: monkeypatched browser `fetch` to return a synthetic 503 for `/messages/tail`, selected a session, observed one `.transcript-error-row`, zero loading rows, and text `Could not load transcript. synthetic tail failure Select the conversation again to retry.` Then restored fetch, reselected the conversation, and observed real transcript content with zero error/loading rows. Artifacts: `/tmp/codoxear-tail-error-evidence/error-visible.json`, `retry-after.json`, `error-visible.png`.
+- Full local validation: `python3 -m pytest -q` → `660 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `659 passed, 1 skipped, 25 subtests passed`.

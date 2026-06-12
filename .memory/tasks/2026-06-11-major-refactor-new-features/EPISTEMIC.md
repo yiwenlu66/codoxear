@@ -1203,3 +1203,10 @@ Commitments:
 - Observation: Clean-room review found no blockers in the loading feedback tranche and confirmed the row is excluded from transcript/search/history state by `typing-row` treatment.
 - Scoped claim: The loading indicator is UI feedback only; authoritative transcript, pending-bind, and failed transcript paths remain the source of truth and clear the indicator through existing DOM reset paths.
 - Remaining uncertainty: There is no explicit failed-tail error state in this tranche; if the tail request fails, the loading row may remain until another action/poll changes the transcript state.
+
+## 2026-06-13 06:58 — Tail-load failure is now explicit UI state
+- Observation: The transcript loading tranche left a residual failure mode: if initial `/messages/tail` failed, `Loading transcript…` could remain without explaining the failure or retry path.
+- Mechanism: A failed tail fetch should not be represented as a transcript event, but it should replace the loading indicator with visible error feedback. Auth loss is a different mechanism and should route to login cleanup instead of an in-chat error row.
+- Intervention: `openSession()` now classifies tail-load failures: stale generation/session changes are ignored, 401 runs `handleAppAuthLoss()`, and other errors render a non-transcript alert row. Reselecting the conversation retries through the existing `openSession()` path.
+- Evidence: Focused tests pin the non-transcript row and failure handling; browser evidence demonstrates synthetic tail failure -> explicit error -> successful retry; full local/Docker suites passed.
+- Scoped claim: Initial transcript tail failures no longer leave an indefinite loading state; they are visible, non-authoritative UI feedback with a manual retry path.
