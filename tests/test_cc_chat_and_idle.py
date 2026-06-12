@@ -2,6 +2,7 @@ import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from codoxear.rollout_log import _cc_pending_tool_ids_before
 from codoxear.rollout_log import _compute_idle_from_log
@@ -64,6 +65,34 @@ class TestCcChatAndIdle(unittest.TestCase):
                 assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
             ]
         )
+        self.assertEqual(events[-1]["message_class"], "narration")
+        self.assertFalse(flags["turn_end"])
+
+    def test_cc_live_delta_at_eof_does_not_scan_prior_context(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            write_log(path, [user("hello"), assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")])
+            eof = path.stat().st_size
+            with patch("codoxear.rollout_log._cc_pending_tool_ids_before", side_effect=AssertionError("should not scan")):
+                events, next_after, _meta, flags, _diag, _token = _read_chat_live_delta(path, after_byte=eof)
+            self.assertEqual(events, [])
+            self.assertEqual(next_after, eof)
+            self.assertFalse(flags["turn_end"])
+
+    def test_cc_multiple_idless_tool_uses_need_multiple_idless_results(self) -> None:
+        rows = [
+            user("hello"),
+            assistant(
+                [
+                    {"type": "tool_use", "name": "A", "input": {}},
+                    {"type": "tool_use", "name": "B", "input": {}},
+                ],
+                stop_reason="tool_use",
+            ),
+            {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "one result"}]}},
+            assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+        ]
+        events, _meta, flags, _diag = _extract_chat_events(rows)
         self.assertEqual(events[-1]["message_class"], "narration")
         self.assertFalse(flags["turn_end"])
 

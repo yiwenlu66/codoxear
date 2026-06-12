@@ -6,7 +6,8 @@ from typing import Any
 
 
 CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
-CC_UNKNOWN_TOOL_USE_ID = "__codoxear_cc_unknown_tool_use__"
+CC_UNKNOWN_TOOL_USE_ID_PREFIX = "__codoxear_cc_unknown_tool_use__:"
+CC_UNKNOWN_TOOL_USE_ID = f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}0"
 
 
 def _read_jsonl_first_object_with_session_id(path: Path) -> dict[str, Any] | None:
@@ -132,10 +133,25 @@ def cc_user_tool_result_ids(obj: dict[str, Any]) -> list[str]:
 
 
 def cc_assistant_pending_tool_use_ids(obj: dict[str, Any]) -> set[str]:
-    ids = set(cc_assistant_tool_use_ids(obj))
-    if cc_assistant_tool_use_count(obj) > len(ids):
-        ids.add(CC_UNKNOWN_TOOL_USE_ID)
+    ids: set[str] = set()
+    unknown_index = 0
+    for part in cc_assistant_content_parts(obj):
+        if part.get("type") != "tool_use":
+            continue
+        tool_id = part.get("id")
+        if isinstance(tool_id, str) and tool_id.strip():
+            ids.add(tool_id)
+        else:
+            ids.add(f"{CC_UNKNOWN_TOOL_USE_ID_PREFIX}{unknown_index}")
+            unknown_index += 1
     return ids
+
+
+def cc_discard_one_unknown_tool_use_id(pending: set[str]) -> None:
+    for tool_id in sorted(pending):
+        if tool_id.startswith(CC_UNKNOWN_TOOL_USE_ID_PREFIX):
+            pending.discard(tool_id)
+            return
 
 
 def cc_assistant_tool_use_count(obj: dict[str, Any]) -> int:

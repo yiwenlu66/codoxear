@@ -15,7 +15,7 @@ from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
-from .cc_log import CC_UNKNOWN_TOOL_USE_ID
+from .cc_log import cc_discard_one_unknown_tool_use_id
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
 from .cc_log import cc_user_text
@@ -183,7 +183,7 @@ def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
                 for tool_id in result_ids:
                     pending.discard(tool_id)
             else:
-                pending.discard(CC_UNKNOWN_TOOL_USE_ID)
+                cc_discard_one_unknown_tool_use_id(pending)
             return
     if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
         pending.update(cc_assistant_pending_tool_use_ids(obj))
@@ -657,7 +657,7 @@ def _read_chat_live_delta(
     max_bytes: int = 2 * 1024 * 1024,
 ) -> tuple[list[dict[str, Any]], int, dict[str, int], dict[str, bool], dict[str, Any], dict[str, Any] | None]:
     records, next_after = _read_jsonl_records_from_offset(log_path, after_byte, max_bytes=max_bytes)
-    initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if after_byte > 0 else set()
+    initial_pending = _cc_pending_tool_ids_before(log_path, after_byte) if records and after_byte > 0 else set()
     events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_pending)
     objs = [record.obj for record in records]
     _events, meta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_pending)
@@ -729,7 +729,7 @@ def _extract_chat_events(
                     for tool_id in result_ids:
                         cc_pending_tool_ids.discard(tool_id)
                 else:
-                    cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
+                    cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
                 total_tools += 1
                 continue
 
@@ -957,7 +957,7 @@ def _extract_delivery_messages(
                     for tool_id in result_ids:
                         cc_pending_tool_ids.discard(tool_id)
                 else:
-                    cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
+                    cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
                 continue
         if typ == "message":
             if pi_assistant_is_aborted_turn(obj):
@@ -1229,7 +1229,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                         for tool_id in result_ids:
                             cc_pending_tool_ids.discard(tool_id)
                     else:
-                        cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
+                        cc_discard_one_unknown_tool_use_id(cc_pending_tool_ids)
                     saw_terminal_signal = True
                     idle = False
                     continue

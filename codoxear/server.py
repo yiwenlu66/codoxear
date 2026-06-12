@@ -6357,7 +6357,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 records, next_after = _read_jsonl_records_from_offset(s.log_path, after_byte)
                 objs = [record.obj for record in records]
-                initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if after_byte > 0 else set()
+                initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
                 events, meta_delta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
                 token_update = _extract_token_update(objs)
                 events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending)
