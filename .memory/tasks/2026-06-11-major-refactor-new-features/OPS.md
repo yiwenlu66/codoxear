@@ -621,3 +621,8 @@
 - Backend refactor tranche: extracted pure file-view metadata/read/download helpers and `ClientFileView` into `codoxear/file_view.py`; kept server route aliases and left HTTP range streaming in `server.py`.
 - Commit: `4d42006 refactor: extract file view helpers`.
 - Validation: `python3 -m py_compile codoxear/file_view.py codoxear/server.py` passed; focused file view/text/type/viewer/inspect/list/transcript tests passed (`51 passed, 3 subtests passed in 2.46s`).
+
+## 2026-06-12 16:12
+- Full validation after `codoxear/file_view.py` extraction.
+- HEAD: `3826f47`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`482 passed, 2 skipped, 10 subtests passed in 12.62s`).
