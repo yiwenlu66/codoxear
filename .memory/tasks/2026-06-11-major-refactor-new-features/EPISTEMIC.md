@@ -357,3 +357,6 @@ Commitments:
 ## 2026-06-12 14:10
 - Observation: `list_sessions()` had a dead `recent_cwd_dirty = True` assignment and active-session recent cwd updates were memory-only. This did not affect immediate sidebar rows but could lose recent cwd learning across server restarts.
 - Intervention/evidence: `list_sessions()` now tracks recent-cwd dirtiness for both active-session and history-backfill updates and persists after lock-held row construction. Regression test confirms a new active cwd triggers exactly one save across repeated list calls.
+
+## 2026-06-12 14:12
+- Observation: backward all-transcript search paging follows the same mechanism as forward boundary paging under browser validation: Prev at the first loaded hit loads older history without scroll-cancel abort and focuses the older match. This strengthens the scoped claim from forward-only to both boundary directions for the synthetic long transcript.

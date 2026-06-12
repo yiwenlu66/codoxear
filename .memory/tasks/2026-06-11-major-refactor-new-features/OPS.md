@@ -420,3 +420,6 @@
 - Refactor follow-up from architecture review: `list_sessions()` updated in-memory recent cwd state but did not persist it after the lock-scope refactor; the out-of-lock history path also had a dead dirty assignment.
 - Commit: `6e32194 fix: persist recent cwd updates from session list`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; targeted recent-cwd/sidebar/json-state tests passed (`19 passed in 1.77s`).
+
+## 2026-06-12 14:12
+- Additional browser evidence for search boundary paging: in the isolated Docker synthetic `ux-search-boundary` transcript, pressing Prev at the first loaded hit changed `1/1 loaded · 3 all` at turn 149 to `1/2 loaded · 3 all` focused on older turn 080, with 181 rendered rows, 2 highlighted hits, and captured JS errors `[]`.
