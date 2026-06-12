@@ -540,6 +540,17 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
 
+    def test_recovery_tail_blocks_queue_auto_promote(self) -> None:
+        sid = "s1"
+        for flag in ["orphan_recovery", "commit_unknown"]:
+            with self.subTest(flag=flag):
+                mgr = self._mgr()
+                mgr._sessions[sid] = _make_session(sid)
+                mgr._queues[sid] = [_queue_item("q1", "normal first"), dict(_queue_item("q2", "recover tail"), **{flag: True})]
+                mgr.get_state = lambda _sid: self.fail("recovery tail should block before broker state")  # type: ignore[method-assign]
+
+                self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+
     def test_commit_unknown_queue_delete_requires_explicit_confirmation(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -696,6 +707,32 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         row = SessionManager.list_sessions(mgr)[0]
 
+        self.assertTrue(row["queue_recovery"])
+        self.assertEqual(row["queue_len"], 1)
+
+    def test_active_direct_unknown_with_queue_is_queue_recovery(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].commit_unknown_send = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._commit_unknown_sends[sid] = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._queues[sid] = [_queue_item("q", "plain tail")]
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
+        mgr._include_launch_attempts = False
+        mgr._unattended = {}
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._files = {}
+        mgr._recent_cwds = {}
+        mgr._save_files = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_recent_cwds = lambda: None
+
+        row = SessionManager.list_sessions(mgr)[0]
+
+        self.assertTrue(row["commit_unknown_send"])
         self.assertTrue(row["queue_recovery"])
         self.assertEqual(row["queue_len"], 1)
 

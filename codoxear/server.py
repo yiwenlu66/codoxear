@@ -2759,7 +2759,7 @@ class SessionManager:
         return item, int(ql)
 
     def _queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
-        item, ql = self._queue_append_item_local(session_id, text)
+        item, ql = self._queue_append_item_local(session_id, text, reject_recovery_barrier=True)
         return {"queued": True, "queue_len": int(ql), "item": item}
 
     def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
@@ -2912,10 +2912,13 @@ class SessionManager:
                 return None
             if s0.queue_sending_item_id is not None:
                 return None
-            head = q[0]
-            if bool(head.get("commit_unknown")) or bool(head.get("orphan_recovery")):
+            if any(
+                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                for item in q
+            ):
                 s0.queue_idle_since = None
                 return None
+            head = q[0]
             head_id = str(head.get("id") or "")
             if expected_item_id is not None and head_id != expected_item_id:
                 return None
@@ -3793,7 +3796,7 @@ class SessionManager:
                     q0 = qmap.get(s.session_id)
                     if isinstance(q0, list):
                         queue_len = len(q0)
-                        queue_recovery = any(
+                        queue_recovery = bool(s.commit_unknown_send) or any(
                             isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
                             for item in q0
                         )
