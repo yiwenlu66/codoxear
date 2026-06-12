@@ -363,3 +363,8 @@
 ## 2026-06-12 13:05
 - Restarted isolated browser sandbox at current head on port 18812 (`codoxear-sandbox-recovery-18812`) after transcript search and list-lock refactors.
 - Browser smoke: logged in, opened New Session, waited past a poll interval, switched to Pi tab. Observed captured JS errors `[]`, backend tabs `Codex/Pi/Claude`, provider-only DOM count `0`, modal still open, and topbar actions `['interruptBtn']`.
+
+## 2026-06-12 13:18
+- UX follow-up: extended loaded chat search so when server-backed all-transcript count shows matches outside the loaded DOM, pressing Next can page older history contiguously until a loaded match appears. The loop is bounded to 12 older pages and uses the existing `/messages/history` path to avoid creating gaps in rendered transcript state.
+- Commit: `20122bf feat: page older chat search matches`.
+- Validation: `node --check codoxear/static/app.js` passed; targeted chat/search tests passed (`30 passed in 1.74s`); full isolated Docker suite passed (`451 passed, 2 skipped in 10.37s`).

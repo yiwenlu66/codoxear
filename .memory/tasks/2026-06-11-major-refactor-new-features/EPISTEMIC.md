@@ -314,3 +314,7 @@ Commitments:
 ## 2026-06-12 13:04
 - Observation: `list_sessions()` still had external IO inside the manager lock. A narrow, low-risk mechanism was identified for git branch lookup: it depends only on a resolved cwd snapshot, not mutable manager state.
 - Intervention/evidence: git branch lookup now runs after releasing the lock. A regression test asserts `_current_git_branch` observes `mgr._lock.locked() == False`. This reduces one lock-held IO source; log-derived run settings and first-history scans remain known future lock-scope risks.
+
+## 2026-06-12 13:18
+- Observation: all-transcript search counts reduced uncertainty but still left the user to manually page older history when `all > loaded`. Direct byte-cursor jumping risked creating gaps in the loaded transcript because the existing UI assumes older pages are prepended contiguously.
+- Intervention/evidence: search Next now uses bounded contiguous older-page loading through the existing history endpoint, refreshing loaded search after each page and stopping at the first loaded match or after 12 pages. This improves long-session search without introducing a second transcript ordering model.
