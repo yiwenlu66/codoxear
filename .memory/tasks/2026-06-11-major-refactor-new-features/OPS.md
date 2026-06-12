@@ -426,3 +426,8 @@
 
 ## 2026-06-12 14:12
 - Current-head full validation after recent-cwd persistence and backward search paging evidence: isolated Docker suite passed (`461 passed, 2 skipped in 10.53s`).
+
+## 2026-06-12 14:17
+- Mobile UX follow-up: toast feedback was hidden at widths <=520px even though many mobile actions rely on `setToast()`. Changed mobile toast to a compact fixed bottom snackbar and made the toast element an ARIA live status region.
+- Commit: `2d208e3 fix: show toast feedback on mobile`.
+- Validation: `node --check codoxear/static/app.js` passed; mobile toast source/tooling tests passed (`2 passed in 0.47s`). Browser validation at 390x844 in isolated Docker: non-empty toast computed `display: block`, `position: fixed`, `bottom: 76px`, `pointer-events: none`, role `status`, aria-live `polite`, no composer overlap, JS errors `[]`.

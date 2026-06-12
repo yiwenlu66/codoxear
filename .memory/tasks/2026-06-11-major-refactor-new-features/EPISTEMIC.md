@@ -360,3 +360,7 @@ Commitments:
 
 ## 2026-06-12 14:12
 - Observation: backward all-transcript search paging follows the same mechanism as forward boundary paging under browser validation: Prev at the first loaded hit loads older history without scroll-cancel abort and focuses the older match. This strengthens the scoped claim from forward-only to both boundary directions for the synthetic long transcript.
+
+## 2026-06-12 14:17
+- Observation: prior mobile CSS explicitly hid `.toast` at <=520px. Because send/queue/copy/search/file operations report transient status through `setToast()`, mobile users could lose feedback for successful or failed actions.
+- Intervention/evidence: mobile toast now uses a sparse snackbar style that remains absent when empty via existing `.toast:empty`, but visible when populated. Browser measurement at 390px width showed it does not overlap the composer and remains pointer-transparent.
