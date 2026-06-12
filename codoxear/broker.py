@@ -1386,27 +1386,33 @@ class Broker:
                 if now_ts > st.last_turn_activity_ts:
                     st.last_turn_activity_ts = now_ts
                 fd = st.pty_master_fd
+            def restore_state_after_inject_failure() -> None:
+                with self._lock:
+                    if self.state is st:
+                        st.busy = prev_busy
+                        st.turn_open = prev_turn_open
+                        st.turn_has_completion_candidate = prev_turn_has_completion_candidate
+                        st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
+                        st.last_turn_activity_ts = prev_last_turn_activity_ts
+
             if sync_commit:
                 if fd is None:
+                    restore_state_after_inject_failure()
                     return {"error": "no pty"}, None
                 try:
                     _inject(fd, text=text, suffix=seq)
                 except Exception as e:
-                    with self._lock:
-                        if self.state is st:
-                            st.busy = prev_busy
-                            st.turn_open = prev_turn_open
-                            st.turn_has_completion_candidate = prev_turn_has_completion_candidate
-                            st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
-                            st.last_turn_activity_ts = prev_last_turn_activity_ts
+                    restore_state_after_inject_failure()
                     return {"error": str(e)}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
+                    restore_state_after_inject_failure()
                     return
                 try:
                     _inject(fd, text=text, suffix=seq)
                 except Exception:
+                    restore_state_after_inject_failure()
                     traceback.print_exc()
             return {"queued": False, "queue_len": 0}, after_reply
 

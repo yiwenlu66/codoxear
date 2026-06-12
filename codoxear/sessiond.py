@@ -289,23 +289,29 @@ class Sessiond:
                 prev_busy = st.busy
                 st.busy = True
                 fd = st.pty_master_fd
+            def restore_state_after_inject_failure() -> None:
+                with self._lock:
+                    if self.state is st:
+                        st.busy = prev_busy
+
             if sync_commit:
                 if fd is None:
+                    restore_state_after_inject_failure()
                     return {"error": "no pty"}, None
                 try:
                     _inject(fd, text=text, suffix=enter)
                 except Exception as e:
-                    with self._lock:
-                        if self.state is st:
-                            st.busy = prev_busy
+                    restore_state_after_inject_failure()
                     return {"error": str(e)}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
+                    restore_state_after_inject_failure()
                     return
                 try:
                     _inject(fd, text=text, suffix=enter)
                 except Exception:
+                    restore_state_after_inject_failure()
                     traceback.print_exc()
             return {"queued": False, "queue_len": 0}, after_reply
 
