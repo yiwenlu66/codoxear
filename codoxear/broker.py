@@ -1373,6 +1373,11 @@ class Broker:
                 if not st:
                     return {"error": "no state"}, None
                 now_ts = _now()
+                prev_busy = st.busy
+                prev_turn_open = st.turn_open
+                prev_turn_has_completion_candidate = st.turn_has_completion_candidate
+                prev_last_interrupt_hint_ts = st.last_interrupt_hint_ts
+                prev_last_turn_activity_ts = st.last_turn_activity_ts
                 st.pending_calls.clear()
                 st.busy = True
                 st.turn_open = True
@@ -1387,6 +1392,13 @@ class Broker:
                 try:
                     _inject(fd, text=text, suffix=seq)
                 except Exception as e:
+                    with self._lock:
+                        if self.state is st:
+                            st.busy = prev_busy
+                            st.turn_open = prev_turn_open
+                            st.turn_has_completion_candidate = prev_turn_has_completion_candidate
+                            st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
+                            st.last_turn_activity_ts = prev_last_turn_activity_ts
                     return {"error": str(e)}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:

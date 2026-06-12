@@ -103,6 +103,7 @@ class TestSendAck(unittest.TestCase):
                 self.assertEqual(json.loads(line.decode("utf-8")), {"error": "write failed"})
                 thread.join(1.0)
                 self.assertFalse(thread.is_alive())
+                self.assertFalse(broker.state.busy)
         finally:
             client_sock.close()
 
@@ -179,6 +180,7 @@ class TestSendAck(unittest.TestCase):
                 self.assertEqual(json.loads(line.decode("utf-8")), {"error": "write failed"})
                 thread.join(1.0)
                 self.assertFalse(thread.is_alive())
+                self.assertFalse(sessiond.state.busy)
         finally:
             client_sock.close()
 

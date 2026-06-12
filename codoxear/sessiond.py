@@ -286,6 +286,7 @@ class Sessiond:
                 st = self.state
                 if not st:
                     return {"error": "no state"}, None
+                prev_busy = st.busy
                 st.busy = True
                 fd = st.pty_master_fd
             if sync_commit:
@@ -294,6 +295,9 @@ class Sessiond:
                 try:
                     _inject(fd, text=text, suffix=enter)
                 except Exception as e:
+                    with self._lock:
+                        if self.state is st:
+                            st.busy = prev_busy
                     return {"error": str(e)}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:

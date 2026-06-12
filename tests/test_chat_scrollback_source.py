@@ -214,7 +214,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("if (renderHere && !renewsTranscript) {", block)
         self.assertIn("if (!renderedAtLiveTail)", block)
         self.assertIn("pendingUser.splice(i, 1);", block)
-        self.assertIn("if (pendingEl) pendingEl.remove();", block)
+        self.assertIn("const pendingRow = pendingEl.closest(\".msg-row\");", block)
+        self.assertIn("if (pendingRow) pendingRow.remove();", block)
         self.assertIn("currentRunning = false;", block)
 
 

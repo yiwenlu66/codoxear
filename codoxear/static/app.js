@@ -10546,7 +10546,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (pending && pending.id === localId && pending.sessionId === sessionId) pendingUser.splice(i, 1);
               }
               const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-              if (pendingEl) pendingEl.remove();
+              if (pendingEl) {
+                const pendingRow = pendingEl.closest(".msg-row");
+                if (pendingRow) pendingRow.remove();
+                else pendingEl.remove();
+              }
               if (!pendingUser.some((pending) => pending && pending.sessionId === sessionId)) {
                 turnOpen = false;
                 currentRunning = false;
