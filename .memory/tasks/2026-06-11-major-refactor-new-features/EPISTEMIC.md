@@ -552,3 +552,10 @@ Commitments:
 - Interventions: added a pending hash-session target that is retried after subsequent `refreshSessions()` while the hash still matches; added post-await `appDisposed` guards in session refresh, voice settings, notification state, notification feed, and desktop notification resolution paths.
 - Evidence: source regressions assert deferred hash target ownership and post-cleanup async guards; full isolated Docker suite passed.
 - Scoped claim: open tabs no longer drop notification hash targets solely because target session discovery lags one refresh, and selected async poll paths no longer apply results after app cleanup. Real service-worker click behavior and mobile push timing remain outside deterministic evidence.
+
+
+## 2026-06-12 18:18
+- Observation: fresh product/UX review identified five user-facing gaps: disabled pinch zoom, repeated voice API-key exposure to browser JS, click-only login, non-modal Settings dialog behavior, and New Session defaulting to Codex before selected-session backend.
+- Interventions: removed viewport/gesture zoom suppression; added redacted voice settings snapshots plus blank-save preservation and explicit clear; converted login to a real form with password semantics and focus; opened Settings with native modal/cancel/Escape behavior; changed backend precedence to selected session -> remembered -> server default.
+- Evidence: source/unit tests constrain each contract; full isolated Docker suite passed; browser runtime evidence confirmed viewport/login/settings behavior in an isolated server/browser session.
+- Scoped claim: the reviewed UI/UX defects are fixed for the current browser-rendered app. Real mobile-device pinch gestures, real password manager behavior, and live TTS key workflows are not exhaustively proven beyond DOM/source/server evidence.
