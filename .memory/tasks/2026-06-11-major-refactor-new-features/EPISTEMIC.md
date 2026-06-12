@@ -595,3 +595,11 @@ Commitments:
 - Intervention: attach button state now depends on selected/running/sending; file-picker change handler rechecks running before upload; send-choice captures current attachment count and disables/blocks `Send after current` when attachments are present.
 - Evidence: source tests assert running attach fail-closed labels and queued-attachment block; runtime sendText harness updated for attach-state sync; full isolated Docker suite passed.
 - Scoped claim: the UI now prevents known text/attachment splitting paths. This does not implement attachment-aware queue items; that remains a larger feature.
+
+
+## 2026-06-12 18:59
+- Observation: fresh review found each chat-search input change immediately started `/messages/search?...limit=0`, which makes the server re-read/normalize the full transcript per keystroke.
+- Mechanism: client aborts do not prevent server-side work already started, so superseded keystrokes can still consume disk/CPU on large logs.
+- Intervention: keep loaded message marking synchronous but schedule the expensive all-transcript count through a 300ms debounce; reset/abort old requests and clear the timer on cleanup.
+- Evidence: source tests constrain debounce scheduling and cleanup; full isolated Docker suite passed.
+- Scoped claim: rapid typing no longer starts one full-transcript count request per input event from the client. Server-side caching for repeated final queries is not implemented.

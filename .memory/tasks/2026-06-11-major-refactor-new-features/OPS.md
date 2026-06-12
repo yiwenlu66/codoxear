@@ -844,3 +844,9 @@
 - Product correctness tranche: attachments now fail closed while the selected session is running/sending, and the running-turn `Send after current` option is disabled/blocked when the pending draft has attachments, preventing immediate file injection from being split from queued text.
 - Commit: `08b8918 fix: prevent queued drafts from splitting attachments`.
 - Validation: targeted JS/source/runtime checks passed (`6 passed in 0.50s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`528 passed, 2 skipped, 10 subtests passed in 11.05s`). Attempted browser evidence with a fake busy broker was discarded because the fake socket did not reliably report busy state to the server; not used as proof.
+
+
+## 2026-06-12 18:59
+- Performance/UX tranche: all-transcript chat-search count requests are now debounced (`300ms`) while loaded-DOM highlighting remains immediate; cleanup clears the debounce timer and aborts in-flight count requests.
+- Commit: `d808f3d fix: debounce full transcript search counts`.
+- Validation: targeted chat navigation/auth cleanup source tests passed (`14 passed in 0.93s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`528 passed, 2 skipped, 10 subtests passed in 13.92s`).
