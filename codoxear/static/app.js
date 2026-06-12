@@ -5715,6 +5715,7 @@
           voiceSettingsBackdrop.style.display = "block";
           voiceSettingsViewer.style.display = "flex";
           updateVoiceUi();
+          if (!voiceSettingsViewer.open) voiceSettingsViewer.showModal();
           afterModalVisibilityChanged();
         }
 
@@ -5722,6 +5723,7 @@
           voiceSettingsBackdrop.style.display = "none";
           voiceSettingsViewer.style.display = "none";
           voiceSettingsStatus.textContent = "";
+          if (voiceSettingsViewer.open) voiceSettingsViewer.close();
           afterModalVisibilityChanged();
         }
 
@@ -5806,6 +5808,10 @@
         voiceSettingsCloseBtn.onclick = hideVoiceSettingsDialog;
         $("#voiceSettingsCancelBtn").onclick = hideVoiceSettingsDialog;
         voiceSettingsBackdrop.onclick = hideVoiceSettingsDialog;
+        voiceSettingsViewer.addEventListener("cancel", (e) => {
+          e.preventDefault();
+          hideVoiceSettingsDialog();
+        });
         $("#voiceSettingsSaveBtn").onclick = async () => {
           try {
             voiceSettingsStatus.textContent = "Saving...";
@@ -9365,6 +9371,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (queueViewer.style.display === "flex") hideQueueViewer();
           if (helpViewer.style.display === "flex") hideHelpViewer();
           if (diagViewer.style.display === "flex") hideDiagViewer();
+          if (voiceSettingsViewer.style.display === "flex") hideVoiceSettingsDialog();
           if (editViewer.style.display === "flex") hideEditSession();
           if (newSessionViewer.style.display === "flex") hideNewSessionDialog();
         });
