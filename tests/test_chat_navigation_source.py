@@ -77,6 +77,16 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('if (loadingOlder && olderLoadCancelOnScroll && cur > OLDER_CANCEL_PX) invalidateOlderLoad();', source)
         self.assertIn('void stepChatSearch(1);', source)
 
+    def test_chat_search_has_safe_keyboard_shortcut(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('function chatSearchShortcutBlocked(target) {', source)
+        self.assertIn('if (!selected) return true;', source)
+        self.assertIn('if (isTextEntryElement(target)) return true;', source)
+        self.assertIn('return modalIsolationTargets.some(isModalTargetOpen);', source)
+        self.assertIn('if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;', source)
+        self.assertIn('if (chatSearchShortcutBlocked(e.target)) return;', source)
+        self.assertIn('openChatSearch();', source)
+
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn(".chatSearchBar", css)

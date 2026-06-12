@@ -3063,6 +3063,19 @@
           closeChatSearch();
         };
 
+        function chatSearchShortcutBlocked(target) {
+          if (!selected) return true;
+          if (isTextEntryElement(target)) return true;
+          return modalIsolationTargets.some(isModalTargetOpen);
+        }
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+          if (chatSearchShortcutBlocked(e.target)) return;
+          e.preventDefault();
+          openChatSearch();
+        });
+
         function oldestRenderedHistoryCursor() {
           for (const row of renderedMessageRows()) {
             const cursor = typeof row.dataset.historyCursor === "string" ? row.dataset.historyCursor : "";
