@@ -44,9 +44,15 @@ from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
 from .file_search import search_session_relative_files as _search_session_relative_files_impl
-from .file_types import MARKDOWN_EXTENSIONS
-from .file_types import TEXTUAL_EXTENSIONS
-from .file_types import TEXTUAL_FILENAMES
+from .file_text import FILE_READ_MAX_BYTES
+from .file_text import decode_text_view_for_client as _decode_text_view_for_client
+from .file_text import file_content_version as _file_content_version
+from .file_text import markdown_kind as _markdown_kind
+from .file_text import read_text_file_for_client as _read_text_file_for_client
+from .file_text import read_text_file_for_write as _read_text_file_for_write
+from .file_text import read_text_file_strict as _read_text_file_strict
+from .file_text import write_new_text_file_atomic as _write_new_text_file_atomic
+from .file_text import write_text_file_atomic as _write_text_file_atomic
 from .file_types import file_kind as _file_kind
 from .file_types import sniff_image_ext as _sniff_image_ext
 from .cc_log import cc_user_text as _cc_user_text
@@ -219,7 +225,6 @@ QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECO
 UNATTENDED_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
 DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
-FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
 GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
@@ -1053,154 +1058,6 @@ def _safe_read_text(path: Path, max_bytes: int = 512 * 1024) -> str:
         return b.decode("utf-8", errors="replace")
     except FileNotFoundError:
         return ""
-
-
-def _read_text_file_strict(path: Path, *, max_bytes: int) -> tuple[str, int]:
-    st = path.stat()
-    size = int(st.st_size)
-    if size > max_bytes:
-        raise ValueError(f"file too large (max {max_bytes} bytes)")
-    data = path.read_bytes()
-    if b"\x00" in data:
-        raise ValueError("binary file not supported")
-    text = data.decode("utf-8", errors="replace")
-    return text, size
-
-
-def _file_content_version(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
-
-
-def _file_extension(path: Path) -> str:
-    suffix = str(path.suffix or "").lower()
-    if not suffix.startswith("."):
-        return ""
-    return suffix[1:]
-
-
-def _markdown_kind(path: Path) -> str:
-    return "markdown" if _file_extension(path) in MARKDOWN_EXTENSIONS else "text"
-
-
-def _path_looks_textual(path: Path) -> bool:
-    ext = _file_extension(path)
-    if ext in TEXTUAL_EXTENSIONS:
-        return True
-    return str(path.name or "").strip().lower() in TEXTUAL_FILENAMES
-
-
-def _looks_like_text_bytes(raw: bytes) -> bool:
-    if b"\x00" in raw:
-        return False
-    for b in raw:
-        if b < 32 and b not in (9, 10, 12, 13, 27):
-            return False
-    return True
-
-
-def _decode_text_for_client(raw: bytes) -> tuple[str, bool]:
-    try:
-        return raw.decode("utf-8"), True
-    except UnicodeDecodeError:
-        return raw.decode("utf-8", errors="replace"), False
-
-
-def _decode_text_view_for_client(path: Path, raw: bytes) -> tuple[str, bool, str] | None:
-    if b"\x00" in raw:
-        return None
-    try:
-        text = raw.decode("utf-8")
-        editable = True
-    except UnicodeDecodeError:
-        if not _path_looks_textual(path) and not _looks_like_text_bytes(raw):
-            return None
-        text = raw.decode("utf-8", errors="replace")
-        editable = False
-    return text, editable, _file_content_version(raw)
-
-
-def _read_text_file_for_client(path: Path, *, max_bytes: int) -> tuple[str, int, bool, str]:
-    st = path.stat()
-    size = int(st.st_size)
-    if size > max_bytes:
-        raise ValueError(f"file too large (max {max_bytes} bytes)")
-    data = path.read_bytes()
-    if b"\x00" in data:
-        raise ValueError("binary file not supported")
-    text, editable = _decode_text_for_client(data)
-    return text, size, editable, _file_content_version(data)
-
-
-def _read_text_file_for_write(path: Path, *, max_bytes: int) -> tuple[str, int, str]:
-    st = path.stat()
-    size = int(st.st_size)
-    if size > max_bytes:
-        raise ValueError(f"file too large (max {max_bytes} bytes)")
-    data = path.read_bytes()
-    if b"\x00" in data:
-        raise ValueError("binary file not supported")
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError as e:
-        raise ValueError("file is not editable as utf-8 text") from e
-    return text, size, _file_content_version(data)
-
-
-def _write_text_file_atomic(path: Path, *, text: str) -> tuple[int, str]:
-    if not isinstance(text, str):
-        raise ValueError("text must be a string")
-    if path.is_symlink():
-        raise ValueError("symlink file not supported")
-    data = text.encode("utf-8")
-    size = len(data)
-    if size > FILE_READ_MAX_BYTES:
-        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
-    st = path.stat()
-    tmp = path.with_name(f".{path.name}.codoxear-tmp-{secrets.token_hex(6)}")
-    try:
-        tmp.write_bytes(data)
-        os.chmod(tmp, st.st_mode & 0o777)
-        os.replace(tmp, path)
-    finally:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
-    return size, _file_content_version(data)
-
-
-def _write_new_text_file_atomic(path: Path, *, text: str) -> tuple[int, str]:
-    if not isinstance(text, str):
-        raise ValueError("text must be a string")
-    if path.is_symlink():
-        raise ValueError("symlink file not supported")
-    parent = path.parent
-    if not parent.exists():
-        raise FileNotFoundError("parent directory not found")
-    if not parent.is_dir():
-        raise ValueError("parent path is not a directory")
-    if parent.is_symlink():
-        raise ValueError("symlink parent directory not supported")
-    if path.exists():
-        raise FileExistsError("file already exists")
-    data = text.encode("utf-8")
-    size = len(data)
-    if size > FILE_READ_MAX_BYTES:
-        raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
-    tmp = path.with_name(f".{path.name}.codoxear-tmp-{secrets.token_hex(6)}")
-    try:
-        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-        os.link(str(tmp), str(path))
-    finally:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
-    return size, _file_content_version(data)
 
 
 def _resolve_under(base: Path, rel: str) -> Path:
