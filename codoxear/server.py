@@ -4477,7 +4477,6 @@ class SessionManager:
                 cwd_path = Path(s.cwd).expanduser()
                 if not cwd_path.is_absolute():
                     cwd_path = cwd_path.resolve()
-                git_branch = _current_git_branch(cwd_path)
                 items.append(
                     {
                         "session_id": s.session_id,
@@ -4504,7 +4503,7 @@ class SessionManager:
                         "unattended_remaining_injections": unattended_remaining_injections,
                         "alias": alias,
                         "files": list(files),
-                        "git_branch": git_branch,
+                        "_cwd_path_obj": cwd_path,
                         "model_provider": s.model_provider,
                         "preferred_auth_method": s.preferred_auth_method,
                         "provider_choice": _provider_choice_for_settings(
@@ -4542,10 +4541,14 @@ class SessionManager:
                     busy_out = not idle_val
                 except FileNotFoundError:
                     busy_out = False
+            cwd_path_obj = it.get("_cwd_path_obj")
+            git_branch = _current_git_branch(cwd_path_obj) if isinstance(cwd_path_obj, Path) else None
             it2 = dict(it)
             it2.pop("_log_path_obj", None)
+            it2.pop("_cwd_path_obj", None)
             it2.pop("log_exists", None)
             it2.pop("state_busy", None)
+            it2["git_branch"] = git_branch
             it2["busy"] = bool(busy_out)
             out.append(it2)
         if bool(getattr(self, "_include_launch_attempts", False)):

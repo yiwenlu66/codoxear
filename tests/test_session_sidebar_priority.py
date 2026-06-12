@@ -89,6 +89,21 @@ class TestSessionSidebarPriority(unittest.TestCase):
         self.assertIsNone(rows[0]["snooze_until"])
         self.assertIsNone(rows[0]["dependency_session_id"])
 
+    def test_list_sessions_reads_git_branch_outside_manager_lock(self) -> None:
+        mgr = _make_manager()
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 50)
+        mgr._sessions = {current.session_id: current}
+
+        def branch_lookup(_cwd: Path) -> str:
+            self.assertFalse(mgr._lock.locked())
+            return "feature/outside-lock"
+
+        with patch("codoxear.server._current_git_branch", side_effect=branch_lookup):
+            rows = mgr.list_sessions()
+
+        self.assertEqual(rows[0]["git_branch"], "feature/outside-lock")
+
     def test_delete_session_kills_terminal_owned_and_clears_dependents(self) -> None:
         mgr = _make_manager()
         now = time.time()
