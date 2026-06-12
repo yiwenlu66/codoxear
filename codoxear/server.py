@@ -108,6 +108,11 @@ from .message_cursor import sign_message_cursor as _sign_message_cursor_impl
 from .message_cursor import verify_message_cursor as _verify_message_cursor_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .queue_store import QueueStore
+from .queue_store import coerce_queue_item as _queue_store_coerce_item
+from .queue_store import copy_queue_item as _queue_store_copy_item
+from .queue_store import new_queue_item as _queue_store_new_item
+from .queue_store import new_queue_item_id as _queue_store_new_item_id
 from .util import append_launch_attempt as _append_launch_attempt
 from .util import atomic_write_json as _atomic_write_json
 from .util import default_app_dir as _default_app_dir
@@ -1556,50 +1561,19 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
 
 
 def _new_queue_item_id() -> str:
-    return f"queue-{secrets.token_hex(8)}"
+    return _queue_store_new_item_id()
 
 
 def _new_queue_item(text: str, *, created_ts: float | None = None) -> dict[str, Any]:
-    ts = float(created_ts) if created_ts is not None else time.time()
-    if not math.isfinite(ts) or ts <= 0:
-        ts = time.time()
-    return {"id": _new_queue_item_id(), "text": str(text), "created_ts": ts}
+    return _queue_store_new_item(text, created_ts=created_ts)
 
 
 def _copy_queue_item(item: dict[str, Any]) -> dict[str, Any]:
-    created_ts = item.get("created_ts")
-    try:
-        ts = float(created_ts)
-    except (TypeError, ValueError):
-        ts = time.time()
-    if not math.isfinite(ts) or ts <= 0:
-        ts = time.time()
-    return {"id": str(item.get("id") or ""), "text": str(item.get("text") or ""), "created_ts": ts}
+    return _queue_store_copy_item(item)
 
 
 def _coerce_queue_item(raw: Any) -> dict[str, Any] | None:
-    if isinstance(raw, str):
-        text = raw.strip()
-        if not text:
-            return None
-        return _new_queue_item(raw)
-    if not isinstance(raw, dict):
-        return None
-    item_id = raw.get("id")
-    text = raw.get("text")
-    if not isinstance(text, str) or not text.strip():
-        return None
-    if not isinstance(item_id, str) or not item_id.strip():
-        item_id = _new_queue_item_id()
-    created_ts = raw.get("created_ts")
-    try:
-        ts = float(created_ts)
-    except (TypeError, ValueError):
-        ts = time.time()
-    if not math.isfinite(ts) or ts <= 0:
-        ts = time.time()
-    return {"id": item_id.strip(), "text": text, "created_ts": ts}
-
+    return _queue_store_coerce_item(raw)
 
 def _fallback_codex_launch_defaults() -> dict[str, Any]:
     return _launch_fallback_codex_launch_defaults()
@@ -2015,6 +1989,7 @@ class SessionManager:
         self._hidden_sessions: set[str] = set()
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[dict[str, Any]]] = {}
+        self._queue_store = QueueStore(QUEUE_PATH)
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
         self._unattended_last_injected: dict[str, float] = {}
@@ -2399,43 +2374,22 @@ class SessionManager:
             obj = dict(self._files)
         _atomic_write_json(FILE_HISTORY_PATH, obj)
 
+    def _queue_store_for_manager(self) -> QueueStore:
+        store = getattr(self, "_queue_store", None)
+        if not isinstance(store, QueueStore):
+            store = QueueStore(QUEUE_PATH)
+            self._queue_store = store
+        return store
+
     def _load_queues(self) -> None:
-        obj = _load_json_file(QUEUE_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_queues.json (expected object)")
-        cleaned: dict[str, list[dict[str, Any]]] = {}
-        for sid, arr in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(arr, list):
-                continue
-            out: list[dict[str, Any]] = []
-            seen_ids: set[str] = set()
-            for v in arr:
-                item = _coerce_queue_item(v)
-                if item is None:
-                    continue
-                item_id = str(item["id"])
-                if item_id in seen_ids:
-                    item["id"] = _new_queue_item_id()
-                    item_id = str(item["id"])
-                seen_ids.add(item_id)
-                out.append(item)
-            if out:
-                cleaned[sid] = out
+        cleaned = self._queue_store_for_manager().load()
         with self._lock:
             self._queues = cleaned
 
     def _save_queues(self) -> None:
         with self._lock:
-            obj = {
-                sid: [_copy_queue_item(item) for item in items]
-                for sid, items in self._queues.items()
-                if isinstance(items, list) and items
-            }
-        _atomic_write_json(QUEUE_PATH, obj)
+            obj = dict(self._queues)
+        self._queue_store_for_manager().save(obj)
 
     def _load_recent_cwds(self) -> None:
         obj = _load_json_file(RECENT_CWD_PATH, default=None)
@@ -2526,42 +2480,27 @@ class SessionManager:
             qmap = getattr(self, "_queues", None)
             if not isinstance(qmap, dict):
                 return 0
-            q = qmap.get(session_id)
-            return int(len(q)) if isinstance(q, list) else 0
+            return self._queue_store_for_manager().queue_len(qmap, session_id)
 
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
         with self._lock:
             qmap = getattr(self, "_queues", None)
             if not isinstance(qmap, dict):
                 return []
-            q = qmap.get(session_id)
-            if not isinstance(q, list) or not q:
-                return []
             s = self._sessions.get(session_id)
             sending_id = s.queue_sending_item_id if s else None
-            out: list[dict[str, Any]] = []
-            for item in q:
-                copied = _copy_queue_item(item)
-                copied["sending"] = bool(sending_id and copied["id"] == sending_id)
-                out.append(copied)
-            return out
+            return self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
 
     def _queue_append_item_local(self, session_id: str, text: str) -> tuple[dict[str, Any], int]:
         t = str(text)
         if not t.strip():
             raise ValueError("text required")
-        item = _new_queue_item(t)
         with self._lock:
             if session_id not in self._sessions:
                 raise KeyError("unknown session")
-            q = self._queues.get(session_id)
-            if not isinstance(q, list):
-                q = []
-                self._queues[session_id] = q
-            q.append(item)
-            ql = len(q)
+            item, ql = self._queue_store_for_manager().append(self._queues, session_id, text)
         self._save_queues()
-        return _copy_queue_item(item), int(ql)
+        return item, int(ql)
 
     def _queue_enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
         item, ql = self._queue_append_item_local(session_id, text)
@@ -2575,19 +2514,8 @@ class SessionManager:
             if session_id not in self._sessions:
                 raise KeyError("unknown session")
             s = self._sessions.get(session_id)
-            q = self._queues.get(session_id)
-            if not isinstance(q, list):
-                q = []
-                self._queues[session_id] = q
-            if s and s.queue_sending_item_id == item_id_clean:
-                raise ValueError("item is already sending")
-            idx = next((i for i, item in enumerate(q) if item.get("id") == item_id_clean), -1)
-            if idx < 0:
-                raise ValueError("item not found")
-            q.pop(idx)
-            ql = len(q)
-            if not q:
-                self._queues.pop(session_id, None)
+            sending_id = s.queue_sending_item_id if s else None
+            ql = self._queue_store_for_manager().delete(self._queues, session_id, item_id_clean, sending_item_id=sending_id)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -2602,18 +2530,8 @@ class SessionManager:
             if session_id not in self._sessions:
                 raise KeyError("unknown session")
             s = self._sessions.get(session_id)
-            q = self._queues.get(session_id)
-            if not isinstance(q, list):
-                q = []
-                self._queues[session_id] = q
-            if s and s.queue_sending_item_id == item_id_clean:
-                raise ValueError("item is already sending")
-            idx = next((i for i, item in enumerate(q) if item.get("id") == item_id_clean), -1)
-            if idx < 0:
-                raise ValueError("item not found")
-            q[idx]["text"] = t
-            ql = len(q)
-            item = _copy_queue_item(q[idx])
+            sending_id = s.queue_sending_item_id if s else None
+            item, ql = self._queue_store_for_manager().update(self._queues, session_id, item_id_clean, t, sending_item_id=sending_id)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql), "item": item}
 
@@ -2628,24 +2546,8 @@ class SessionManager:
             if session_id not in self._sessions:
                 raise KeyError("unknown session")
             s = self._sessions.get(session_id)
-            q = self._queues.get(session_id)
-            if not isinstance(q, list):
-                q = []
-                self._queues[session_id] = q
-            if not q:
-                raise ValueError("item not found")
-            idx = next((i for i, item in enumerate(q) if item.get("id") == item_id_clean), -1)
-            if idx < 0:
-                raise ValueError("item not found")
             sending_id = s.queue_sending_item_id if s else None
-            if sending_id == item_id_clean:
-                raise ValueError("item is already sending")
-            min_index = 1 if sending_id else 0
-            if target < min_index or target >= len(q):
-                raise ValueError("to_index out of range")
-            item = q.pop(idx)
-            q.insert(target, item)
-            ql = len(q)
+            ql = self._queue_store_for_manager().move(self._queues, session_id, item_id_clean, target, sending_item_id=sending_id)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -2726,13 +2628,7 @@ class SessionManager:
             if s0 and s0.queue_sending_item_id == head_id:
                 s0.queue_sending_item_id = None
                 s0.queue_idle_since = None
-            q = self._queues.get(session_id)
-            if isinstance(q, list):
-                idx = next((i for i, item in enumerate(q) if item.get("id") == head_id), -1)
-                if idx >= 0:
-                    q.pop(idx)
-                if not q:
-                    self._queues.pop(session_id, None)
+            self._queue_store_for_manager().pop_sent(self._queues, session_id, head_id)
         self._save_queues()
         return resp
 
@@ -3051,11 +2947,9 @@ class SessionManager:
         self._prune_dead_sessions()
         with self._lock:
             # Drop queues for sessions that no longer exist.
-            drop = [sid for sid in self._queues.keys() if sid not in self._sessions]
-            for sid in drop:
-                self._queues.pop(sid, None)
-            session_ids = [sid for sid, q in self._queues.items() if isinstance(q, list) and q]
-        if drop:
+            dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, self._sessions.keys())
+            session_ids = self._queue_store_for_manager().nonempty_session_ids(self._queues)
+        if dropped:
             self._save_queues()
         for sid in session_ids:
             if self._maybe_drain_session_queue(sid):
