@@ -213,6 +213,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertLess(block.index("const res = await api"), block.index("beginTranscriptRenewal(sessionId);"))
         self.assertIn("if (renderHere && !renewsTranscript) {", block)
         self.assertIn("if (!renderedAtLiveTail)", block)
+        self.assertIn("pendingUser.splice(i, 1);", block)
+        self.assertIn("if (pendingEl) pendingEl.remove();", block)
+        self.assertIn("currentRunning = false;", block)
 
 
 if __name__ == "__main__":

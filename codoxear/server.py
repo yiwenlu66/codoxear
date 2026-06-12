@@ -4335,7 +4335,7 @@ class SessionManager:
                 raise SessionNotReadyError("session is busy; wait before sending")
             self._record_prelog_user_message(s, text, source="send")
             try:
-                resp = self._sock_call(sock, {"cmd": "send", "text": text}, timeout_s=3.0)
+                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": bool(allow_pending_attachment)}, timeout_s=3.0)
             except Exception:
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
@@ -4346,6 +4346,8 @@ class SessionManager:
                     raise KeyError("unknown session")
                 raise
             with self._lock:
+                if isinstance(resp, dict) and resp.get("error"):
+                    raise SessionInjectionError(str(resp.get("error")))
                 s2 = self._sessions.get(session_id)
                 if s2:
                     if "busy" in resp:
@@ -6384,6 +6386,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except SessionNotReadyError as e:
                     _json_response(self, 409, {"error": str(e)})
+                    return
+                except SessionInjectionError as e:
+                    _json_response(self, 502, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
                 return

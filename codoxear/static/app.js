@@ -10541,11 +10541,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e2) {
             setToast(`send error: ${e2.message}`);
             if (renderHere) {
+              for (let i = pendingUser.length - 1; i >= 0; i -= 1) {
+                const pending = pendingUser[i];
+                if (pending && pending.id === localId && pending.sessionId === sessionId) pendingUser.splice(i, 1);
+              }
               const pendingEl = chatInner.querySelector(`.msg.user[data-local-id="${localId}"]`);
-              if (pendingEl) {
-                pendingEl.style.opacity = "1";
-                pendingEl.style.borderColor = "rgba(185, 28, 28, 0.7)";
-                pendingEl.style.boxShadow = "0 0 0 2px rgba(185, 28, 28, 0.12)";
+              if (pendingEl) pendingEl.remove();
+              if (!pendingUser.some((pending) => pending && pending.sessionId === sessionId)) {
+                turnOpen = false;
+                currentRunning = false;
               }
             }
             return false;

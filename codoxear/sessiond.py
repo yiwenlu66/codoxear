@@ -281,12 +281,21 @@ class Sessiond:
                 return {"error": "text required"}, None
             fd: int | None = None
             enter = _encode_enter()
+            sync_commit = bool(req.get("sync"))
             with self._lock:
                 st = self.state
                 if not st:
                     return {"error": "no state"}, None
                 st.busy = True
                 fd = st.pty_master_fd
+            if sync_commit:
+                if fd is None:
+                    return {"error": "no pty"}, None
+                try:
+                    _inject(fd, text=text, suffix=enter)
+                except Exception as e:
+                    return {"error": str(e)}, None
+                return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
                     return

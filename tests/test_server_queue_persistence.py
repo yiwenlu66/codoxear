@@ -205,6 +205,30 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
 
+    def test_pending_send_commit_error_preserves_pending_attachment(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        seen: list[dict[str, object]] = []
+
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0) -> dict[str, str]:
+            seen.append(req)
+            return {"error": "write failed"}
+
+        mgr._sock_call = sock_call  # type: ignore[method-assign]
+
+        from codoxear.server import SessionInjectionError
+
+        with self.assertRaisesRegex(SessionInjectionError, "write failed"):
+            SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True)
+        self.assertEqual(seen, [{"cmd": "send", "text": "intended prompt", "sync": True}])
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()

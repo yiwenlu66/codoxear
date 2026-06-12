@@ -82,6 +82,54 @@ class TestSendAck(unittest.TestCase):
         payload = b"".join(writes)
         self.assertEqual(payload, b"\x1b[200~hello world\x1b[201~\r")
 
+    def test_broker_sync_send_reports_inject_failure_before_ack(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = BrokerState(
+            codex_pid=1,
+            pty_master_fd=1,
+            cwd="/tmp",
+            start_ts=0.0,
+            codex_home=Path("/tmp"),
+            sessions_dir=Path("/tmp"),
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            with patch("codoxear.broker._inject", side_effect=OSError("write failed")):
+                thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+                thread.start()
+                client_sock.settimeout(0.5)
+                client_sock.sendall((json.dumps({"cmd": "send", "text": "x", "sync": True}) + "\n").encode("utf-8"))
+                line = _recv_line(client_sock)
+                self.assertEqual(json.loads(line.decode("utf-8")), {"error": "write failed"})
+                thread.join(1.0)
+                self.assertFalse(thread.is_alive())
+        finally:
+            client_sock.close()
+
+    def test_broker_keys_reports_write_failure(self) -> None:
+        broker = Broker(cwd="/tmp", codex_args=[])
+        broker.state = BrokerState(
+            codex_pid=1,
+            pty_master_fd=1,
+            cwd="/tmp",
+            start_ts=0.0,
+            codex_home=Path("/tmp"),
+            sessions_dir=Path("/tmp"),
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            with patch("codoxear.broker._write_all", side_effect=OSError("write failed")):
+                thread = threading.Thread(target=broker._handle_conn, args=(server_sock,), daemon=True)
+                thread.start()
+                client_sock.settimeout(0.5)
+                client_sock.sendall((json.dumps({"cmd": "keys", "seq": "abc"}) + "\n").encode("utf-8"))
+                line = _recv_line(client_sock)
+                self.assertEqual(json.loads(line.decode("utf-8"))["error"], "write failed")
+                thread.join(1.0)
+                self.assertFalse(thread.is_alive())
+        finally:
+            client_sock.close()
+
     def test_broker_send_ack_does_not_wait_for_full_inject(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
         broker.state = BrokerState(
@@ -105,6 +153,30 @@ class TestSendAck(unittest.TestCase):
                 self.assertLess(dt, 0.2)
                 self.assertEqual(json.loads(line.decode("utf-8")), {"queued": False, "queue_len": 0})
                 self.assertTrue(thread.is_alive())
+                thread.join(1.0)
+                self.assertFalse(thread.is_alive())
+        finally:
+            client_sock.close()
+
+    def test_sessiond_sync_send_reports_inject_failure_before_ack(self) -> None:
+        sessiond = Sessiond("/tmp", [])
+        sessiond.state = SessiondState(
+            session_id="sid",
+            codex_pid=1,
+            log_path=Path("/tmp/log.jsonl"),
+            sock_path=Path("/tmp/test.sock"),
+            pty_master_fd=1,
+            start_ts=0.0,
+        )
+        server_sock, client_sock = socket.socketpair()
+        try:
+            with patch("codoxear.sessiond._inject", side_effect=OSError("write failed")):
+                thread = threading.Thread(target=sessiond._handle_conn, args=(server_sock,), daemon=True)
+                thread.start()
+                client_sock.settimeout(0.5)
+                client_sock.sendall((json.dumps({"cmd": "send", "text": "x", "sync": True}) + "\n").encode("utf-8"))
+                line = _recv_line(client_sock)
+                self.assertEqual(json.loads(line.decode("utf-8")), {"error": "write failed"})
                 thread.join(1.0)
                 self.assertFalse(thread.is_alive())
         finally:

@@ -1366,6 +1366,7 @@ class Broker:
                 return {"error": "text required"}, None
             seq_raw = req.get("enter_seq")
             seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+            sync_commit = bool(req.get("sync"))
             fd: int | None = None
             with self._lock:
                 st = self.state
@@ -1380,6 +1381,14 @@ class Broker:
                 if now_ts > st.last_turn_activity_ts:
                     st.last_turn_activity_ts = now_ts
                 fd = st.pty_master_fd
+            if sync_commit:
+                if fd is None:
+                    return {"error": "no pty"}, None
+                try:
+                    _inject(fd, text=text, suffix=seq)
+                except Exception as e:
+                    return {"error": str(e)}, None
+                return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
                     return
@@ -1404,8 +1413,8 @@ class Broker:
             if fd is not None:
                 try:
                     _write_all(fd, b)
-                except Exception:
-                    traceback.print_exc()
+                except Exception as e:
+                    return {"error": str(e), "queued": False, "n": 0, "key_queue_len": 0}, None
             return resp, None
 
         def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
