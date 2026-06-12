@@ -986,3 +986,9 @@
 - Next-tranche implementation: bounded synchronous send commit waits with explicit commit-unknown semantics.
 - Changes: `SEND_COMMIT_TIMEOUT_SECONDS` default 30s; `/send` timeout returns HTTP 504 with `commit_unknown=true`; pending attachments are preserved on unknown; queued items whose dispatch times out are marked `commit_unknown` and not auto-retried; queue viewer shows "Commit unknown" and allows deletion; manual send UI reports "send status unknown; check transcript before retrying" while preserving composer text.
 - Validation: targeted tests passed (`66 passed in 2.91s`). Plain full suite passed (`564 passed, 10 subtests passed in 13.66s`). Full isolated Docker suite passed (`562 passed, 2 skipped, 10 subtests passed in 11.13s`).
+
+
+## 2026-06-12 22:06
+- Bounded-send review blocker repair: queued head items are now persisted as `commit_unknown` before dispatch and only popped on confirmed success; non-timeout response loss/empty response maps to `SessionCommitUnknownError`; broker/sessiond sidecars advertise `control_protocol_version=2` with `sync_send`, and server refuses confirmed sends through older sidecars.
+- Commit: `fix: harden commit-unknown queue semantics`.
+- Validation: targeted tests passed (`70 passed in 3.00s`). Plain full suite passed (`568 passed, 10 subtests passed in 12.17s`). Full isolated Docker suite passed (`566 passed, 2 skipped, 10 subtests passed in 11.40s`).

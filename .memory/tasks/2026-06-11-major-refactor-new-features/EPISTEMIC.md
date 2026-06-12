@@ -763,3 +763,10 @@ Commitments:
 - Interventions: bounded server sync send wait; `SessionCommitUnknownError` maps to 504/`commit_unknown`; queue promotion marks timed-out head items as `commit_unknown` and blocks automatic resend; frontend surfaces unknown status and keeps user text recoverable.
 - Evidence: targeted regressions cover timeout preservation of pending attachments, queue unknown marking/non-promotion, queue-store persistence, frontend unknown UI, and full local/Docker suites.
 - Scoped claim: server/browser no longer hang indefinitely on missing sync-send replies, and timeout does not create false success or automatic queue duplication. It remains possible that a user manually resends after an unknown commit without checking transcript/terminal.
+
+
+## 2026-06-12 22:06
+- Observation: adversarial review found bounded send unknown semantics still failed across server restart mid-queue-dispatch, non-timeout response loss, and old live brokers that ignore `sync`.
+- Interventions: persist conservative `commit_unknown` before queue dispatch, treat empty/failed send responses as unknown after request, and require broker/sessiond sync-send capability in metadata before HTTP `/send`.
+- Evidence: targeted regressions cover unsupported brokers, empty response unknown, durable pre-dispatch queue unknown marking, unknown queue non-promotion, queue-store persistence/list behavior, and full local/Docker suites.
+- Scoped claim: queued prompts are no longer auto-retried after server restart or response-loss uncertainty, and HTTP send no longer silently trusts old broker control sockets for confirmed-send semantics.
