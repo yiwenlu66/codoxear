@@ -17,6 +17,7 @@ from codoxear.broker import _agent_shell_command
 from codoxear.broker import _exec_agent_via_login_shell
 from codoxear.broker import _observe_shell_pre_exec_marker
 from codoxear.broker import _pi_bridge_extension_path
+from codoxear.broker import _read_jsonl_from_offset
 from codoxear.broker import _read_pi_active_session_marker
 from codoxear.agent_backend import get_agent_backend
 from codoxear.util import append_launch_attempt
@@ -33,6 +34,27 @@ def _broker_state(*, codex_pid: int, sock_path: Path) -> State:
         sessions_dir=Path("/tmp"),
         sock_path=sock_path,
     )
+
+
+class TestBrokerJsonlOffsetReader(unittest.TestCase):
+    def test_broker_reader_ignores_partial_appended_line(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            first = json.dumps({"type": "event_msg", "payload": {"type": "task_complete"}}) + "\n"
+            path.write_text(first + '{"type":"event_msg"', encoding="utf-8")
+
+            objs, off = _read_jsonl_from_offset(path, 0, max_bytes=4096)
+
+        self.assertEqual(objs, [{"type": "event_msg", "payload": {"type": "task_complete"}}])
+        self.assertEqual(off, len(first.encode("utf-8")))
+
+    def test_broker_reader_preserves_missing_file_contract(self) -> None:
+        missing = Path(tempfile.gettempdir()) / "codoxear-missing-jsonl-for-test.jsonl"
+        try:
+            missing.unlink()
+        except FileNotFoundError:
+            pass
+        self.assertEqual(_read_jsonl_from_offset(missing, 12, max_bytes=4096), ([], 12))
 
 
 class _AcceptCrashSocket:

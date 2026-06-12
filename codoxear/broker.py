@@ -50,6 +50,7 @@ from codoxear.util import iter_session_logs as _iter_session_logs
 from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from codoxear.util import read_launch_attempts as _read_launch_attempts
+from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
 from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
@@ -567,22 +568,9 @@ def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: 
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
-    try:
-        with path.open("rb") as f:
-            f.seek(offset)
-            data = f.read(max_bytes)
-            new_off = f.tell()
-    except FileNotFoundError:
+    if not path.exists():
         return [], offset
-
-    lines = data.splitlines()
-    out: list[dict[str, Any]] = []
-    for line in lines:
-        try:
-            out.append(json.loads(line))
-        except Exception:
-            continue
-    return out, new_off
+    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
 
 
 def _strip_ansi(text: str) -> str:
