@@ -908,3 +908,9 @@
 - Second clean-room rerun repair: `sessiond` now marks state busy before send ACK; attachment readiness rechecks local queue/sending/log path after broker state refresh; `enqueue()` appends under the same per-session input lock used by send/attachment injection.
 - Commit: `fix: close attachment injection race gaps`.
 - Validation: targeted attachment/sessiond/send tests passed (`25 passed in 3.07s`). Plain full suite passed (`543 passed, 10 subtests passed in 8.89s`). Full isolated Docker suite passed (`541 passed, 2 skipped, 10 subtests passed in 11.06s`).
+
+
+## 2026-06-12 20:15
+- Final clean-room rerun stale-log repair: attachment readiness refreshes broker sidecar metadata when present before and after broker state, so log-idle veto uses current `log_path` rather than stale in-memory binding.
+- Commit: `fix: refresh attachment log metadata`.
+- Validation: targeted attachment/sessiond/send tests passed (`26 passed in 2.85s`). Plain full suite passed (`544 passed, 10 subtests passed in 9.73s`). Full isolated Docker suite passed (`542 passed, 2 skipped, 10 subtests passed in 10.68s`).

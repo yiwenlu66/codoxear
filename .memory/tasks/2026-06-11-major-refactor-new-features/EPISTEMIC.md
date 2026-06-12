@@ -673,3 +673,10 @@ Commitments:
 - Interventions: sessiond marks busy before acknowledging send; attachment readiness rechecks queue/sending/log path after broker state; enqueue queue append now shares the input lock.
 - Evidence: tests encode the counterexamples (queue mutation during state refresh, log path binding during state refresh, sessiond busy-before-ACK) plus full local/Docker suites.
 - Scoped claim: the identified attachment split/race mechanisms are now closed for server-managed send/enqueue/sessiond/broker paths; explicit interrupt remains a separate PTY mutation by design.
+
+
+## 2026-06-12 20:15
+- Observation: clean-room rerun found a stale metadata mechanism: broker sidecar could point to a busy new log while server memory still held an old idle `log_path`; broker `state` alone could report idle.
+- Intervention: attachment readiness now refreshes sidecar metadata when available before checking local/log state and again after broker state refresh; tests simulate sidecar refresh rebinding to a busy log.
+- Evidence: targeted stale-metadata regression plus full local/Docker suites passed.
+- Scoped claim: attachment readiness now uses current sidecar-bound log metadata for the known stale-log bypass; it still cannot cover unreported physical-terminal keystrokes before backend state/logs observe them.
