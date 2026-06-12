@@ -4,6 +4,7 @@ import datetime
 import errno
 import json
 import os
+import re
 import socket
 import sys
 import time
@@ -25,6 +26,7 @@ from .pi_log import read_pi_session_id
 
 _LEGACY_WARNED = False
 LAUNCH_ATTEMPTS_FILENAME = "session_launches.jsonl"
+_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 
 
 def _log_error(msg: str) -> None:
@@ -195,6 +197,11 @@ def read_launch_attempts(
 
 def now() -> float:
     return time.time()
+
+
+def session_id_from_rollout_path(log_path: Path) -> str | None:
+    matches = _SESSION_ID_RE.findall(log_path.name)
+    return matches[-1] if matches else None
 
 
 def _is_codex_rollout_log_path(path: Path) -> bool:

@@ -51,9 +51,11 @@ from codoxear.util import launch_attempts_path as _launch_attempts_path
 from codoxear.util import pid_alive as _pid_alive
 from codoxear.util import process_group_alive as _process_group_alive
 from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_log
+from codoxear.util import _paths_match as _paths_match
 from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
+from codoxear.util import session_id_from_rollout_path as _session_id_from_rollout_path
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
 from codoxear.util import _socket_peer_disconnected as _socket_peer_disconnected
 from codoxear.util import subagent_parent_thread_id as _subagent_parent_thread_id
@@ -94,7 +96,6 @@ SHELL_PRE_EXEC_MARKER_BYTES = SHELL_PRE_EXEC_MARKER.encode("utf-8")
 
 INTERRUPT_HINT_TAIL_MAX = 4096
 
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
 _ANSI_CSI_RE = re.compile("\x1B(?:[@-Z\\-_]|\\[[0-?]*[ -/]*[@-~])")
 
@@ -460,16 +461,6 @@ def _term_size() -> tuple[int, int]:
         return int(sz.lines), int(sz.columns)
     except Exception:
         return 40, 120
-
-def _paths_match(a: Path, b: Path) -> bool:
-    try:
-        return a.resolve() == b.resolve()
-    except Exception:
-        try:
-            return a.absolute() == b.absolute()
-        except Exception:
-            return str(a) == str(b)
-
 
 def _claimed_log_paths_from_sock_meta(*, sock_dir: Path, exclude_sock: Path | None = None) -> set[Path]:
     out: set[Path] = set()
@@ -1465,9 +1456,7 @@ class Broker:
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
         # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),
         # so path components are not a stable session id. Extract the id from the filename.
-        name = log_path.name
-        m = _SESSION_ID_RE.findall(name)
-        return m[-1] if m else None
+        return _session_id_from_rollout_path(log_path)
 
     def _maybe_register_or_switch_rollout(self, *, log_path: Path) -> None:
         try:

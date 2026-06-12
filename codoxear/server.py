@@ -68,6 +68,7 @@ from .util import read_launch_attempts as _read_launch_attempts
 from .util import load_json_file as _load_json_file
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
+from .util import session_id_from_rollout_path as _session_id_from_rollout_path
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .unattended import UnattendedStore
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
@@ -353,7 +354,6 @@ def _clean_unattended_remaining_injections(raw: Any, *, allow_zero: bool) -> int
         allow_zero=allow_zero,
     )
 
-_SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
 
@@ -2160,11 +2160,6 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 *
 
 def _discover_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
     return _find_session_log_for_session_id(session_id, agent_backend=agent_backend)
-
-def _session_id_from_rollout_path(log_path: Path) -> str | None:
-    name = log_path.name
-    m = _SESSION_ID_RE.findall(name)
-    return m[-1] if m else None
 
 
 def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> dict[str, Any]:
