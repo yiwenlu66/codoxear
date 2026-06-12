@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.pi_log import pi_token_update
+from codoxear.rollout_log import _last_chat_role_ts_from_tail
 from codoxear.rollout_log import _single_chat_event
 from codoxear.server import _compute_idle_from_log
 from codoxear.server import _extract_chat_events
@@ -242,6 +243,22 @@ class TestServerChatFlags(unittest.TestCase):
                 }
             )
         )
+
+    def test_pi_aborted_text_does_not_count_as_last_assistant_chat(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "pi.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"session","id":"s1","cwd":"/tmp"}',
+                        '{"type":"message","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"test"}]}}',
+                        '{"type":"message","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","stopReason":"aborted","content":[{"type":"text","text":"partial"}]}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024), ("user", 1767225600.0))
 
     def test_compute_idle_from_log_pi_final_message_with_thinking_is_idle(self) -> None:
         with TemporaryDirectory() as td:

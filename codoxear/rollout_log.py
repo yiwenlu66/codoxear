@@ -124,6 +124,8 @@ def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
     if typ == "message":
         if pi_user_text(obj):
             return _event_ts(obj)
+        if pi_assistant_is_aborted_turn(obj):
+            return None
         if pi_assistant_text(obj) or pi_assistant_error_text(obj):
             return _event_ts(obj)
         return None
@@ -870,6 +872,8 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         message_class: str | None = None
         text = ""
         if typ == "message":
+            if pi_assistant_is_aborted_turn(obj):
+                continue
             text = pi_assistant_text(obj) or ""
             if not text.strip():
                 continue
@@ -1218,6 +1222,8 @@ def _last_chat_role_ts_from_tail(
             if typ == "message":
                 if pi_user_text(obj):
                     last_user = (i, _event_ts(obj))
+                    continue
+                if pi_assistant_is_aborted_turn(obj):
                     continue
                 if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
                     last_assistant = (i, _event_ts(obj))

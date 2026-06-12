@@ -73,6 +73,20 @@ class TestDeliveryExtraction(unittest.TestCase):
         self.assertEqual(messages[0].message_class, "narration")
         self.assertEqual(messages[0].text, "Working on it")
 
+    def test_pi_aborted_text_is_not_delivered(self) -> None:
+        rows = [
+            {
+                "type": "message",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "aborted",
+                    "content": [{"type": "text", "text": "partial should not notify"}],
+                },
+            }
+        ]
+        self.assertEqual(_extract_delivery_messages(rows), [])
+
     def test_marks_final_response_from_phase_and_end_turn(self) -> None:
         rows = [
             {
