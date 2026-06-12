@@ -54,6 +54,27 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(_match_session_route("/api/sessions/s1/rename", "rename"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/inject_file", "inject_file"), "s1")
 
+    def test_attachment_injection_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        states = iter([
+            {"busy": True, "queue_len": 0},
+            {"busy": False, "queue_len": 1},
+            {"busy": False, "queue_len": 0},
+        ])
+        mgr.get_state = lambda _sid: next(states)  # type: ignore[method-assign]
+
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+        mgr._queues.clear()
+        mgr._sessions[sid].queue_sending_item_id = "q1"
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+        mgr._sessions[sid].queue_sending_item_id = None
+        self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
+
     def test_enqueue_sends_immediately_when_idle(self) -> None:
         mgr = self._mgr()
         sid = "s1"

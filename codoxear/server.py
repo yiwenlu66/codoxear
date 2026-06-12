@@ -4333,6 +4333,20 @@ class SessionManager:
             raise ValueError("invalid broker tail response")
         return tail
 
+    def attachment_injection_ready(self, session_id: str) -> bool:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.queue_sending_item_id is not None:
+                return False
+            if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
+                return False
+        st = self.get_state(session_id)
+        if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
+            raise ValueError("invalid broker state response")
+        return (not bool(st.get("busy"))) and int(st.get("queue_len")) <= 0
+
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
@@ -6405,6 +6419,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 if not isinstance(data_b64, str) or not data_b64:
                     _json_response(self, 400, {"error": "data_b64 required"})
+                    return
+                try:
+                    ready_for_attachment = MANAGER.attachment_injection_ready(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except Exception:
+                    _json_response(self, 409, {"error": "session state unavailable; wait before attaching a file"})
+                    return
+                if not ready_for_attachment:
+                    _json_response(self, 409, {"error": "session is busy; wait before attaching a file"})
                     return
                 try:
                     raw = base64.b64decode(data_b64.encode("ascii"), validate=True)

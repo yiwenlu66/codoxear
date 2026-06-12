@@ -19,12 +19,21 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("now_fn=_now", server_source)
         self.assertNotIn("def _safe_filename(", server_source)
         self.assertNotIn("def _attachment_inject_text(", server_source)
-
         self.assertIn("def safe_filename(", module_source)
         self.assertIn("def stage_uploaded_file(", module_source)
         self.assertIn("def attachment_inject_text(", module_source)
         self.assertIn("upload_dir: Path", module_source)
         self.assertIn("now_fn: Callable[[], float]", module_source)
+
+    def test_inject_file_route_checks_session_idle_before_staging(self) -> None:
+        source = SERVER_PY.read_text(encoding="utf-8")
+        start = source.index('session_id = _match_session_route(path, "inject_file")')
+        end = source.index('if path == "/api/hooks/notify":', start)
+        block = source[start:end]
+        self.assertIn("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)", block)
+        self.assertIn('{"error": "session is busy; wait before attaching a file"}', block)
+        self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("raw = base64.b64decode"))
+        self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("out_path = _stage_uploaded_file"))
 
 
 if __name__ == "__main__":
