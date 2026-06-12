@@ -635,8 +635,10 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(remaining[0]["orphan_recovery"])
         with self.assertRaisesRegex(ValueError, "explicit confirmation"):
             SessionManager.queue_delete(mgr, "orphan", "n")
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
             SessionManager.queue_update(mgr, "orphan", "n", "changed")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, "orphan", "n", 0)
         rows = SessionManager.list_sessions(mgr)
         by_id = {row["session_id"]: row for row in rows}
         self.assertTrue(by_id["orphan"]["orphan_recovery"])

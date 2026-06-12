@@ -9801,7 +9801,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             await refreshSessions();
             updateQueueBadge();
             if (queueViewer.style.display === "flex") {
-              if (sessionIndex.has(sid)) await refreshQueueViewer();
+              const refreshedSession = sessionIndex.get(sid);
+              if (refreshedSession && Number(refreshedSession.queue_len || 0) > 0) await refreshQueueViewer();
               else hideQueueViewer();
             }
           } catch (e) {

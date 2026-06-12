@@ -44,6 +44,9 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('const commitUnknown = Boolean(item && item.commitUnknown);', source)
         self.assertIn('Delete this recovery item only after checking the transcript or terminal.', source)
         self.assertIn('body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery }', source)
+        self.assertIn('const refreshedSession = sessionIndex.get(sid);', source)
+        self.assertIn('if (refreshedSession && Number(refreshedSession.queue_len || 0) > 0) await refreshQueueViewer();', source)
+        self.assertIn('else hideQueueViewer();', source)
 
 
 if __name__ == "__main__":

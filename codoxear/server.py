@@ -2770,9 +2770,11 @@ class SessionManager:
         if not t.strip():
             raise ValueError("text required")
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
             s = self._sessions.get(session_id)
+            if s is None:
+                if self._queue_has_recovery_items_locked(session_id):
+                    raise ValueError("item is preserved for recovery")
+                raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             item, ql = self._queue_store_for_manager().update(self._queues, session_id, item_id_clean, t, sending_item_id=sending_id)
         self._save_queues()
@@ -2786,9 +2788,11 @@ class SessionManager:
             raise ValueError("to_index must be an integer")
         target = int(to_index)
         with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
             s = self._sessions.get(session_id)
+            if s is None:
+                if self._queue_has_recovery_items_locked(session_id):
+                    raise ValueError("item is preserved for recovery")
+                raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             ql = self._queue_store_for_manager().move(self._queues, session_id, item_id_clean, target, sending_item_id=sending_id)
         self._save_queues()
