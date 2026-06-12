@@ -77,7 +77,8 @@ class TestStaticAssets(unittest.TestCase):
         end = source.index("fileRefCandidateCache.clear();", start)
         block = source[start:end]
         self.assertNotIn("renderNewSessionBackendTabs();", block)
-        self.assertIn("renderNewSessionProviderMenu();", block)
+        self.assertNotIn("renderNewSessionProviderMenu();", block)
+        self.assertIn("renderNewSessionModelMenu();", block)
         self.assertIn("renderNewSessionReasoningMenu();", block)
 
     def test_wheel_includes_nested_logo_assets(self) -> None:
