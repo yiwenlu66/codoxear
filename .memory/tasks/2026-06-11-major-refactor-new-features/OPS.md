@@ -980,3 +980,9 @@
 - Final clean-room review at HEAD `adcfd37` returned no demonstrated blockers.
 - Review artifact: `/tmp/codoxear-final-cleanroom-rerun14.md`.
 - Reviewer independently ran `pytest -q`: `559 tests + 10 subtests` passed.
+
+
+## 2026-06-12 21:54
+- Next-tranche implementation: bounded synchronous send commit waits with explicit commit-unknown semantics.
+- Changes: `SEND_COMMIT_TIMEOUT_SECONDS` default 30s; `/send` timeout returns HTTP 504 with `commit_unknown=true`; pending attachments are preserved on unknown; queued items whose dispatch times out are marked `commit_unknown` and not auto-retried; queue viewer shows "Commit unknown" and allows deletion; manual send UI reports "send status unknown; check transcript before retrying" while preserving composer text.
+- Validation: targeted tests passed (`66 passed in 2.91s`). Plain full suite passed (`564 passed, 10 subtests passed in 13.66s`). Full isolated Docker suite passed (`562 passed, 2 skipped, 10 subtests passed in 11.13s`).

@@ -755,3 +755,11 @@ Commitments:
 ## 2026-06-12 21:40
 - Observation: final clean-room rerun found no demonstrated blockers at `adcfd37` after synchronous send timeout boundary fix.
 - Scoped claim: the reviewed server-managed attachment/send/queue commit-boundary blockers are closed under source inspection and test evidence. Residual risks: sync send can hang if broker/PTY never replies; real credentialed Codex/Pi/Claude startup and mobile/slow-network behavior remain unproven.
+
+
+## 2026-06-12 21:54
+- Observation: product review identified that `timeout_s=None` for synchronous `/send` removed false 3s failures but introduced unbounded browser/server hangs if broker accepted a sync send and never replied.
+- Mechanisms considered: a finite timeout after possible PTY side effects cannot be treated as ordinary failure without risking duplicate queue/manual sends; it must be an explicit unknown commit state.
+- Interventions: bounded server sync send wait; `SessionCommitUnknownError` maps to 504/`commit_unknown`; queue promotion marks timed-out head items as `commit_unknown` and blocks automatic resend; frontend surfaces unknown status and keeps user text recoverable.
+- Evidence: targeted regressions cover timeout preservation of pending attachments, queue unknown marking/non-promotion, queue-store persistence, frontend unknown UI, and full local/Docker suites.
+- Scoped claim: server/browser no longer hang indefinitely on missing sync-send replies, and timeout does not create false success or automatic queue duplication. It remains possible that a user manually resends after an unknown commit without checking transcript/terminal.
