@@ -4759,6 +4759,10 @@
               return null;
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
+            if (!displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
+              applyCachedTail(sessionId, cachedTail, s);
+              displayedCachedTail = true;
+            }
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             return null;
           }
