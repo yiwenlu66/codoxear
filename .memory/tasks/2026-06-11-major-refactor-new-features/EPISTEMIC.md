@@ -491,3 +491,11 @@ Commitments:
 - Intervention: captured `sid` at save start, used it for the API URL and selected-title refresh, disabled the save button while pending, and ignored stale success/error/finally updates unless `editSessionId` still equals `sid`.
 - Evidence: source regression constrains the captured id, disabled guard, stale success/error checks, and selected-title update; targeted tests and full Docker suite passed.
 - Scoped claim: edit-save responses are now owned by the edit session that initiated them. This does not prove all edit modal UX semantics on real mobile devices, only the stale-response and duplicate-save boundaries in the current JS.
+
+
+## 2026-06-12 17:29
+- Observation: fresh reviewer found that logout/auth-loss could call `renderLogin(renderApp)` without stopping the active message poller or removing renderApp-registered global listeners. `pollMessages()` also lacked a 401 branch.
+- Mechanism supported: replacing the root DOM is not sufficient cleanup for timers, in-flight controllers, audio heartbeat/watchdog timers, or document/window listeners captured by the old renderApp closure. A re-login could therefore create duplicate event handlers and stale pollers.
+- Intervention: introduced an active-app cleanup authority, routed render boundaries/logout/auth-loss through it, moved session/secondary poll control to shared functions, cleanup-tracked renderApp global listeners, and guarded the boot `finally` so auth-loss cleanup is not followed by listener re-registration.
+- Evidence: source regressions assert the cleanup boundary, stopped timers/controllers/listeners, 401 auth-loss routing, tracked global events, and the boot-finally guard; targeted tests and full Docker suite passed.
+- Scoped claim: current source prevents old renderApp pollers/listeners from surviving logout/auth-loss or re-render. Runtime browser request-count evidence was not collected for this tranche, so the claim is bounded to source-level lifecycle invariants plus suite coverage.

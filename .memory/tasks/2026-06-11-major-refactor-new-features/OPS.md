@@ -758,3 +758,9 @@
 - UI race fix: edit-conversation save now captures the edited session id, uses it in the API URL/title update, disables duplicate saves while pending, and ignores stale success/error UI updates if another edit session is opened before the request resolves.
 - Commit: `92fb308 fix: bind edit save responses to the edited session`.
 - Validation: `node --check codoxear/static/app.js` passed; focused edit/title/sidebar tests passed (`19 passed in 1.84s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`498 passed, 2 skipped, 10 subtests passed in 11.25s`).
+
+
+## 2026-06-12 17:29
+- Reviewer finding #1 fix: app logout/auth-loss now has shared `cleanupApp()` ownership that stops message/session/secondary polling, clears pending timers, aborts outstanding controllers, removes renderApp-registered document/window listeners, stops voice/audio timers, and clears `/api/sessions` ETag cache. Message polling now treats 401 as auth loss. Logout tears down even if the POST fails.
+- Commit: `6f4a2a7 fix: clean up app pollers on auth loss`.
+- Validation: `node --check codoxear/static/app.js` passed; focused auth-cleanup/session-polling/voice/chat/file-viewer source tests passed (`42 passed in 0.71s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`502 passed, 2 skipped, 10 subtests passed in 11.36s`).
