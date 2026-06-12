@@ -966,3 +966,11 @@ Commitments:
 - Intervention: introduced a shared locked marker helper and invoked it before direct unknown clear, old-marker prune, deleted-session cleanup, and queue sweep; saved queue state whenever marking changed.
 - Evidence: regressions cover direct unknown clear and age prune preserving plain orphan queue tails; full local/Docker suites passed.
 - Scoped claim: direct unknown markers no longer act as ephemeral-only recovery evidence for same-session queued tails at marker removal boundaries.
+
+
+## 2026-06-13 02:11
+- Observation: clean recovery review found no blockers, but active sessions with recovery-protected queue tails were enforced server-side without a visible row-level recovery signal.
+- Interpretation: using `orphan_recovery` for active rows would falsely imply a missing transcript; a separate active `queue_recovery` state preserves the distinction between live session and protected queue.
+- Intervention: expose active `queue_recovery`, render a recovery badge, and redirect send/attach/queue affordances toward queue review.
+- Evidence: server/source tests, full local/Docker validation, and browser evidence on isolated Docker fake session.
+- Scoped claim: active recovery queue barriers are now visible and review-oriented in the UI without marking the active transcript as missing.

@@ -1160,3 +1160,10 @@
 - Repaired direct-unknown marker boundary blockers: same-session queued tails are durably marked `orphan_recovery` before a direct unknown marker is cleared, age-pruned, or used during deleted-session cleanup/sweep; sweep now saves marking changes even when no queue was dropped.
 - Commit: `fix: persist queue recovery before clearing markers`.
 - Validation: targeted tests passed (`68 passed, 11 subtests passed in 1.85s`). Plain full suite passed (`606 passed, 21 subtests passed in 9.05s`). Full isolated Docker suite passed (`604 passed, 2 skipped, 21 subtests passed in 14.12s`).
+
+
+## 2026-06-13 02:11
+- Implemented active recovery queue visibility: active sessions with stored `orphan_recovery` queue items now expose `queue_recovery: true`; sidebar shows a recovery badge; send/attach are disabled with recovery-specific labels; the queue button opens the recovery viewer before enqueueing composer text.
+- Commit: `fix: surface active recovery queues`.
+- Validation: targeted source/server tests passed (`64 passed, 11 subtests passed in 1.84s`). Plain full suite passed (`606 passed, 21 subtests passed in 9.22s`). Full isolated Docker suite passed (`604 passed, 2 skipped, 21 subtests passed in 11.23s`).
+- Browser evidence on isolated Docker `:18922` with fake active session `active-recovery`: API row showed `queue_len: 2`, `queue_recovery: true`; UI snapshot showed attach/send disabled as recovery actions and queue button labeled `Review preserved queued recovery items`; queue viewer showed both queued messages locked with Recovery tags. Artifacts: `/tmp/codoxear-active-recovery-evidence/main-snapshot.txt`, `/tmp/codoxear-active-recovery-evidence/queue-snapshot.txt`, `/tmp/codoxear-active-recovery-evidence/dom.json`, `/tmp/codoxear-active-recovery-evidence/active-recovery-queue.png`.
