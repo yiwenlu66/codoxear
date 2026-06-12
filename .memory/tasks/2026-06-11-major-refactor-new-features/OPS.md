@@ -691,3 +691,8 @@
 - UI/accessibility fix: selected-session title edit affordance now has role/button keyboard activation for Enter/Space; no-session title removes role/label, uses tabIndex -1, keeps cursor/default and aria-disabled true.
 - Commit: `4bb042a fix: make title edit affordance keyboard accessible`.
 - Validation: `node --check codoxear/static/app.js` passed; focused title/button-tooltip/static tests passed (`10 passed in 5.50s`). Browser validation on isolated Docker server `:18825` after login observed no-session title role null, aria-label null, aria-disabled `true`, tabIndex `-1`, cursor `default`, and JS errors `[]`.
+
+## 2026-06-12 16:42
+- Full validation after title keyboard/ARIA accessibility fix.
+- HEAD: `b91c6f5`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`488 passed, 2 skipped, 10 subtests passed in 13.71s`).
