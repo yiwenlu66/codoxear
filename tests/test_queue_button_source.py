@@ -24,6 +24,7 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));', source)
         self.assertIn('const locked = sending || commitUnknown || queueMutationLocks.has(itemId);', source)
         self.assertIn('del.disabled = sending || queueMutationLocks.has(itemId);', source)
+        self.assertIn('if (res && res.commit_unknown) setToast("send status unknown; queued item needs review");', source)
 
 
 if __name__ == "__main__":

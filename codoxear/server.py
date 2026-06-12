@@ -2760,6 +2760,8 @@ class SessionManager:
             self._save_queues()
             return None
         except SessionCommitUnknownError:
+            unknown_item: dict[str, Any] | None = None
+            queue_len = 0
             with self._lock:
                 s0 = self._sessions.get(session_id)
                 if s0 and s0.queue_sending_item_id == head_id:
@@ -2767,13 +2769,15 @@ class SessionManager:
                     s0.queue_idle_since = None
                 q = self._queues.get(session_id)
                 if isinstance(q, list):
+                    queue_len = len(q)
                     for item in q:
                         if str(item.get("id") or "") == head_id:
                             item["commit_unknown"] = True
                             item["commit_unknown_ts"] = time.time()
+                            unknown_item = dict(item)
                             break
             self._save_queues()
-            return None
+            return {"queued": True, "queue_len": int(queue_len), "item": unknown_item, "commit_unknown": True}
         except Exception:
             with self._lock:
                 s0 = self._sessions.get(session_id)
@@ -4467,6 +4471,8 @@ class SessionManager:
                     raise KeyError("unknown session")
                 if s.pending_attachment:
                     raise SessionNotReadyError("send the pending attachment before queueing another prompt")
+                if not s.sync_send_supported:
+                    raise SessionNotReadyError("broker must be restarted before queueing prompts")
             self._record_prelog_user_message(s, text, source="enqueue")
             item, ql = self._queue_append_item_local(session_id, text)
         if ql != 1:
@@ -4592,22 +4598,38 @@ class SessionManager:
         with input_lock:
             if not self.attachment_injection_ready(session_id):
                 raise SessionNotReadyError("session is busy; wait before attaching a file")
-            resp = self.inject_keys(session_id, seq)
+            try:
+                resp = self.inject_keys(session_id, seq, track_request_sent=True)
+            except SessionCommitUnknownError:
+                self._set_pending_attachment(session_id, True)
+                raise
             if isinstance(resp, dict) and resp.get("error"):
-                if bool(resp.get("commit_unknown")):
-                    raise SessionCommitUnknownError(f"attachment commit status unknown; {resp.get('error')}")
-                raise SessionInjectionError(str(resp.get("error")))
+                err = str(resp.get("error"))
+                if bool(resp.get("commit_unknown")) or err == "empty response":
+                    self._set_pending_attachment(session_id, True)
+                    raise SessionCommitUnknownError(f"attachment commit status unknown; {err}")
+                raise SessionInjectionError(err)
             self._set_pending_attachment(session_id, True)
             return resp
 
-    def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
+    def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
         try:
-            resp = self._sock_call(sock, {"cmd": "keys", "seq": seq}, timeout_s=2.0)
+            resp = self._sock_call(sock, {"cmd": "keys", "seq": seq}, timeout_s=2.0, track_request_sent=track_request_sent)
+        except ControlSocketCallError as e:
+            if track_request_sent and e.request_sent:
+                raise SessionCommitUnknownError("attachment commit status unknown; broker response failed") from e
+            if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
+                with self._lock:
+                    self._sessions.pop(session_id, None)
+                _unlink_quiet(sock)
+                _unlink_quiet(sock.with_suffix(".json"))
+                raise KeyError("unknown session")
+            raise
         except Exception:
             if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                 with self._lock:

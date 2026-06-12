@@ -9639,7 +9639,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const res = await api(`/api/sessions/${sessionId}/enqueue`, { method: "POST", body: { text } });
             const qn = res && typeof res.queue_len === "number" ? res.queue_len : null;
-            if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
+            if (res && res.commit_unknown) setToast("send status unknown; queued item needs review");
+            else if (res && res.queued) setToast(`queued (${qn ?? "?"})`);
             else setToast("sent");
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);

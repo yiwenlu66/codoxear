@@ -190,7 +190,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
         mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq: {"ok": True}  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"ok": True}  # type: ignore[method-assign]
 
         self.assertEqual(SessionManager.inject_attachment_keys(mgr, sid, "ATTACH"), {"ok": True})
         self.assertTrue(mgr._sessions[sid].pending_attachment)
@@ -359,8 +359,9 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
 
         with patch("codoxear.server.time.time", return_value=123.0):
-            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+            resp = SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1")
 
+        self.assertTrue(resp and resp.get("commit_unknown"))
         self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
         self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
@@ -390,7 +391,8 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("partial write"))  # type: ignore[method-assign]
 
         with patch("codoxear.server.time.time", return_value=654.0):
-            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+            resp = SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1")
+        self.assertTrue(resp and resp.get("commit_unknown"))
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
         self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 654.0)
 
@@ -505,7 +507,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr = self._mgr()
         mgr._sessions[sid] = _make_session(sid)
         mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
-        mgr.inject_keys = lambda _sid, _seq: {"error": "write failed"}  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"error": "write failed"}  # type: ignore[method-assign]
 
         from codoxear.server import SessionInjectionError
 
@@ -513,6 +515,18 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
+
+    def test_attachment_empty_response_sets_pending_and_reports_unknown(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"error": "empty response"}  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "attachment commit status unknown"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
 
     def test_pending_attachment_stops_queue_promotion(self) -> None:
         sid = "s1"
@@ -537,6 +551,31 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(resp.get("queue_len"), 0)
         self.assertEqual(sent, [(sid, "hello now")])
         self.assertEqual(mgr._queues.get(sid, []), [])
+
+    def test_enqueue_surfaces_immediate_commit_unknown(self) -> None:
+        mgr = self._mgr()
+        sid = "s1"
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=777.0):
+            resp = SessionManager.enqueue(mgr, sid, "maybe sent")
+
+        self.assertTrue(resp.get("queued"))
+        self.assertTrue(resp.get("commit_unknown"))
+        self.assertTrue(resp.get("item", {}).get("commit_unknown"))
+        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+
+    def test_enqueue_rejects_broker_without_sync_capability_before_append(self) -> None:
+        mgr = self._mgr()
+        sid = "s1"
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].sync_send_supported = False
+
+        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
+            SessionManager.enqueue(mgr, sid, "cannot drain")
+        self.assertNotIn(sid, mgr._queues)
 
     def test_enqueue_persists_when_busy(self) -> None:
         mgr = self._mgr()
