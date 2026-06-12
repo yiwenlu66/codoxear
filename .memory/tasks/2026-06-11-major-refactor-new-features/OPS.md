@@ -868,3 +868,9 @@
 - Clean-room blocker repair: removed third-party font/script execution from `index.html`, added restrictive CSP, changed Monaco/PDF loaders to use self-hosted/local paths or fallback, and chmod-repaired existing `voice_settings.json`/`hmac_secret` on load.
 - Commit: `81c2f89 fix: remove third-party app scripts and repair secret modes`.
 - Validation: targeted static/file-viewer/auth/voice tests passed (`72 passed in 4.90s`). Plain full suite passed (`534 passed, 10 subtests passed in 9.27s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 11.39s`). Static grep/test confirms no `fonts.googleapis.com`, `fonts.gstatic.com`, `cdn.jsdelivr.net`, third-party script `src`, or third-party stylesheet `href` remains in the app shell/static loaders.
+
+
+## 2026-06-12 19:25
+- Architecture tranche: extracted launch defaults, reasoning/provider/service-tier normalization, Pi/Claude capability parsing, and new-session request validation into `codoxear/launch_config.py`; `server.py` keeps compatibility wrappers over current global paths so existing route/test patch points remain stable.
+- Commit: `0d27f37 refactor: extract launch defaults and validation`.
+- Validation: targeted reasoning/launch tests passed (`39 passed in 1.92s`). Plain full suite passed (`534 passed, 10 subtests passed in 11.61s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 13.07s`).

@@ -627,3 +627,10 @@ Commitments:
 - Interventions: app shell now uses only self assets with CSP; Monaco/PDF loaders no longer reference jsDelivr and fall back locally; existing voice settings and HMAC secret files are chmodded `0600` during load.
 - Evidence: targeted tests, full local suite, full isolated Docker suite, and static no-third-party URL assertions passed.
 - Scoped claim: authenticated app execution no longer depends on third-party script/font assets in the committed shell. Rich Monaco/PDF functionality now requires future self-hosted assets or falls back; HLS.js is no longer loaded from CDN, so non-native HLS live audio support is reduced until vendored locally.
+
+
+## 2026-06-12 19:25
+- Observation: architecture review identified a remaining launch ownership split: UI-advertised defaults and accepted request fields lived in `server.py`, while argv/env/resume encoding lived in `backend_launch.py`.
+- Intervention: introduced `launch_config.py` for pure/path-parameterized launch defaults and request parsing; server wrappers preserve existing API and tests while narrowing server ownership to HTTP/orchestration.
+- Evidence: direct launch/default/request/source tests and full local/Docker suites passed.
+- Scoped claim: launch defaults and request validation now have a dedicated owner, aligned with the existing backend launch adapter. Process spawning, tmux orchestration, and launch-attempt recording intentionally remain in `SessionManager.spawn_web_session`.
