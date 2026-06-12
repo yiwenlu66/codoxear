@@ -9670,13 +9670,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 text: typeof item.text === "string" ? item.text : "",
                 sending: !!item.sending,
                 commitUnknown: !!item.commit_unknown,
+                orphanRecovery: !!item.orphan_recovery,
               }))
               .filter((item) => item.id && item.text.trim());
           }
           if (data && Array.isArray(data.queue)) {
             return data.queue
               .filter((text) => typeof text === "string" && text.trim())
-              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false, commitUnknown: false }));
+              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false, commitUnknown: false, orphanRecovery: false }));
           }
           return [];
         }
@@ -9885,7 +9886,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             for (let i = lo; i <= hi; i += 1) {
               if (i === fromIdx) continue;
               const candidate = q[i];
-              if (candidate && (candidate.sending || candidate.commitUnknown)) return true;
+              if (candidate && (candidate.sending || candidate.commitUnknown || candidate.orphanRecovery)) return true;
             }
             return false;
           };
@@ -9893,7 +9894,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const itemId = String(item.id || "");
             const sending = !!item.sending;
             const commitUnknown = !!item.commitUnknown;
-            const locked = sending || commitUnknown || queueMutationLocks.has(itemId);
+            const orphanRecovery = !!item.orphanRecovery;
+            const locked = sending || commitUnknown || orphanRecovery || queueMutationLocks.has(itemId);
             const row = el("div", { class: "queueItem" });
             const editorShell = el("div", { class: "queueEditorShell" });
             const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
@@ -9911,6 +9913,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const actions = el("div", { class: "queueActionRail" });
             if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
             if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));
+            else if (orphanRecovery) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Recovery" }));
             const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
             up.disabled = locked || idx <= 0 || queueMoveCrossesBarrier(idx, idx - 1);
             up.onclick = (e) => {

@@ -35,7 +35,7 @@ class TestQueueStore(unittest.TestCase):
     def test_commit_unknown_state_survives_load_list_and_save(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"
-            path.write_text(json.dumps({"s1": [{"id": "a", "text": "maybe sent", "created_ts": 1, "commit_unknown": True, "commit_unknown_ts": 2}]}), encoding="utf-8")
+            path.write_text(json.dumps({"s1": [{"id": "a", "text": "maybe sent", "created_ts": 1, "commit_unknown": True, "commit_unknown_ts": 2}, {"id": "b", "text": "recover later", "created_ts": 3, "orphan_recovery": True}]}), encoding="utf-8")
             store = QueueStore(path)
             queues = store.load()
             listed = store.list_items(queues, "s1")
@@ -44,10 +44,13 @@ class TestQueueStore(unittest.TestCase):
 
         self.assertTrue(queues["s1"][0]["commit_unknown"])
         self.assertEqual(queues["s1"][0]["commit_unknown_ts"], 2.0)
+        self.assertTrue(queues["s1"][1]["orphan_recovery"])
         self.assertTrue(listed[0]["commit_unknown"])
+        self.assertTrue(listed[1]["orphan_recovery"])
         self.assertFalse(store.list_items(queues, "s1", sending_item_id="a")[0]["commit_unknown"])
         self.assertTrue(saved["s1"][0]["commit_unknown"])
         self.assertEqual(saved["s1"][0]["commit_unknown_ts"], 2.0)
+        self.assertTrue(saved["s1"][1]["orphan_recovery"])
 
     def test_commit_unknown_item_blocks_reordering_past_it(self) -> None:
         store = QueueStore(Path("/tmp/unused.json"))

@@ -577,6 +577,36 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 0})
         self.assertNotIn("orphan", mgr._queues)
 
+    def test_orphan_recovery_queue_head_does_not_auto_promote(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [dict(_queue_item("n", "later unsent"), orphan_recovery=True)]
+        mgr.get_state = lambda _sid: self.fail("orphan recovery head must block before broker state")  # type: ignore[method-assign]
+
+        self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="n"))
+
+    def test_delete_session_clears_orphan_recovery_rows(self) -> None:
+        mgr = self._mgr()
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._unattended = {}
+        mgr._files = {}
+        mgr._input_locks = {}
+        mgr._save_aliases = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_unattended = lambda: None
+        mgr._save_files = lambda: None
+        mgr.kill_session = lambda _sid: self.fail("orphan delete should not kill a process")  # type: ignore[method-assign]
+        mgr._commit_unknown_sends["direct"] = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._queues["queue"] = [dict(_queue_item("n", "later"), orphan_recovery=True)]
+
+        self.assertTrue(SessionManager.delete_session(mgr, "direct"))
+        self.assertTrue(SessionManager.delete_session(mgr, "queue"))
+
+        self.assertNotIn("direct", mgr._commit_unknown_sends)
+        self.assertNotIn("queue", mgr._queues)
+
     def test_orphan_queue_remains_reviewable_after_unknown_item_delete(self) -> None:
         mgr = self._mgr()
         mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
@@ -631,6 +661,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         by_id = {row["session_id"]: row for row in rows}
 
         self.assertTrue(by_id["direct-orphan"]["orphan_recovery"])
+        self.assertEqual(by_id["direct-orphan"]["transcript_state"], "failed")
         self.assertTrue(by_id["direct-orphan"]["commit_unknown_send"])
         self.assertEqual(by_id["direct-orphan"]["commit_unknown_send_text"], "maybe direct")
         self.assertTrue(by_id["queue-orphan"]["orphan_recovery"])

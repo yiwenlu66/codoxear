@@ -2860,7 +2860,7 @@ class SessionManager:
             if s0.queue_sending_item_id is not None:
                 return None
             head = q[0]
-            if bool(head.get("commit_unknown")):
+            if bool(head.get("commit_unknown")) or bool(head.get("orphan_recovery")):
                 s0.queue_idle_since = None
                 return None
             head_id = str(head.get("id") or "")
@@ -3999,6 +3999,7 @@ class SessionManager:
                     "busy": False,
                     "git_branch": None,
                     "orphan_recovery": True,
+                    "transcript_state": "failed",
                 }
             )
         if files_dirty:
@@ -4584,6 +4585,12 @@ class SessionManager:
         with self._lock:
             s = self._sessions.get(session_id)
         if not s:
+            with self._lock:
+                has_direct_unknown = session_id in getattr(self, "_commit_unknown_sends", {})
+                has_queue_recovery = self._queue_has_recovery_items_locked(session_id)
+            if has_direct_unknown or has_queue_recovery:
+                self._clear_deleted_session_state(session_id, clear_recovery=True)
+                return True
             for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
                 row = _launch_attempt_row(rec)
                 if row is not None and row.get("session_id") == session_id:
