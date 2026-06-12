@@ -8425,6 +8425,42 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           });
         }
 
+        function renderFileSaveConflict(savePath, message = "conflict") {
+          const label = el("span", { class: "fileConflictText", text: `${savePath} - save conflict: ${message}` });
+          const reloadBtn = el("button", {
+            class: "icon-btn text-btn fileConflictReload",
+            type: "button",
+            text: "Reload from disk",
+            title: "Discard unsaved edits and load the current disk version",
+          });
+          const keepBtn = el("button", {
+            class: "icon-btn text-btn fileConflictKeep",
+            type: "button",
+            text: "Keep editing",
+            title: "Keep the unsaved draft in the editor",
+          });
+          reloadBtn.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (activeFilePath !== savePath || !fileViewerSessionId) return;
+            const ok = window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
+            if (!ok) return;
+            fileStatus.textContent = `Reloading ${savePath}...`;
+            const reloaded = await openFilePath(savePath, { line: activeFileLine });
+            if (!reloaded && activeFilePath === savePath) fileStatus.textContent = `${savePath} - reload failed`;
+          };
+          keepBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (activeFilePath !== savePath) return;
+            fileStatus.textContent = `${savePath} - editing unsaved conflict`;
+            const editor = getActiveFileCodeEditor();
+            if (editor && typeof editor.focus === "function") editor.focus();
+          };
+          const actions = el("span", { class: "fileConflictActions" }, [reloadBtn, keepBtn]);
+          fileStatus.replaceChildren(label, actions);
+        }
+
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
           if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
           if (!fileDirty && !activeFileDraft) {
@@ -8465,7 +8501,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             if (!saveStillCurrent()) return false;
             if (e && e.status === 409) {
-              fileStatus.textContent = `${savePath} - save conflict: ${e && e.message ? e.message : "conflict"}`;
+              renderFileSaveConflict(savePath, e && e.message ? e.message : "conflict");
             } else {
               fileStatus.textContent = `save error: ${e && e.message ? e.message : "unknown error"}`;
             }

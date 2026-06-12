@@ -1704,6 +1704,18 @@ select {
         white-space: normal;
         overflow-wrap: anywhere;
       }
+      .fileConflictActions {
+        display: inline-flex;
+        gap: 6px;
+        margin-left: 8px;
+        vertical-align: middle;
+        flex-wrap: wrap;
+      }
+      .fileConflictActions .icon-btn.text-btn {
+        min-width: 0;
+        height: 28px;
+        padding: 0 8px;
+      }
       .fileTouchToolbar {
         display: none;
         position: absolute;

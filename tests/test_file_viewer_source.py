@@ -237,6 +237,25 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("fileStatus.textContent = `${savePath} - ${fmtBytes(size)}`;", block)
         self.assertIn("rememberOpenedFile(savePath,", block)
 
+    def test_file_save_conflict_offers_reload_or_keep_editing(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css_source = APP_CSS.read_text(encoding="utf-8")
+        start = source.index("function renderFileSaveConflict(savePath")
+        end = source.index("async function saveActiveFileEdits", start)
+        block = source[start:end]
+        self.assertIn('text: "Reload from disk"', block)
+        self.assertIn('text: "Keep editing"', block)
+        self.assertIn("window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);", block)
+        self.assertIn("await openFilePath(savePath, { line: activeFileLine });", block)
+        self.assertIn("getActiveFileCodeEditor();", block)
+        self.assertIn("fileStatus.replaceChildren(label, actions);", block)
+        save_start = source.index("async function saveActiveFileEdits")
+        save_end = source.index("async function maybeHandleUnsavedFileChanges", save_start)
+        save_block = source[save_start:save_end]
+        self.assertIn("renderFileSaveConflict(savePath, e && e.message ? e.message : \"conflict\");", save_block)
+        self.assertIn(".fileConflictActions", css_source)
+        self.assertNotIn("overwrite", block.lower())
+
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
