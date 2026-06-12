@@ -4447,6 +4447,8 @@ class SessionManager:
                 raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
             if not isinstance(resp, dict):
                 raise SessionCommitUnknownError("send commit status unknown; broker response was malformed")
+            if bool(resp.get("commit_unknown")):
+                raise SessionCommitUnknownError("send commit status unknown; broker marked commit unknown")
             if resp.get("error"):
                 err = str(resp.get("error"))
                 if err == "empty response":
@@ -4613,6 +4615,9 @@ class SessionManager:
             if not isinstance(resp, dict):
                 self._set_pending_attachment(session_id, True)
                 raise SessionCommitUnknownError("attachment commit status unknown; broker response was malformed")
+            if bool(resp.get("commit_unknown")):
+                self._set_pending_attachment(session_id, True)
+                raise SessionCommitUnknownError("attachment commit status unknown; broker marked commit unknown")
             if resp.get("error"):
                 err = str(resp.get("error"))
                 if bool(resp.get("commit_unknown")) or err == "empty response":

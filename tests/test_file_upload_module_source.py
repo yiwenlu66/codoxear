@@ -48,6 +48,8 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("if e.request_sent:\n                    raise SessionCommitUnknownError", source)
         self.assertIn("except SessionCommitUnknownError as e:", source)
         self.assertIn('"commit_unknown": True', source)
+        self.assertIn("if bool(resp.get(\"commit_unknown\")):\n                raise SessionCommitUnknownError(\"send commit status unknown; broker marked commit unknown\")", source)
+        self.assertIn("if bool(resp.get(\"commit_unknown\")):\n                self._set_pending_attachment(session_id, True)\n                raise SessionCommitUnknownError(\"attachment commit status unknown; broker marked commit unknown\")", source)
         self.assertIn('session_id = _match_session_route(path, "pending_attachment", "clear")', source)
         self.assertIn("res = MANAGER.clear_pending_attachment(session_id)", source)
         self.assertIn("if not s.sync_send_supported:", source)

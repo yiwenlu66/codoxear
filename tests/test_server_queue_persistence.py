@@ -302,6 +302,17 @@ class TestServerQueuePersistence(unittest.TestCase):
                 SessionManager.send(mgr, sid, "normal prompt")
         self.assertNotIn(sid, mgr._sessions)
 
+    def test_send_explicit_commit_unknown_overrides_success_fields(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("explicit unknown should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0, "commit_unknown": True}  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "marked commit unknown"):
+            SessionManager.send(mgr, sid, "normal prompt")
+
     def test_send_empty_response_is_commit_unknown(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -529,6 +540,18 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertFalse(mgr._sessions[sid].pending_attachment)
         self.assertNotIn(sid, mgr._pending_attachment_ids)
 
+    def test_attachment_explicit_commit_unknown_overrides_success_fields(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"ok": True, "commit_unknown": True}  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "marked commit unknown"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+
     def test_attachment_empty_response_sets_pending_and_reports_unknown(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -593,6 +616,21 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(resp.get("queued"))
         self.assertTrue(resp.get("commit_unknown"))
         self.assertTrue(resp.get("item", {}).get("commit_unknown"))
+        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+
+    def test_enqueue_explicit_commit_unknown_response_preserves_queue_item(self) -> None:
+        mgr = self._mgr()
+        sid = "s1"
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("commit-unknown enqueue should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0, "commit_unknown": True}  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=778.0):
+            resp = SessionManager.enqueue(mgr, sid, "maybe sent")
+
+        self.assertTrue(resp.get("commit_unknown"))
+        self.assertIn(sid, mgr._queues)
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
 
     def test_enqueue_rejects_broker_without_sync_capability_before_append(self) -> None:
