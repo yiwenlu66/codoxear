@@ -516,3 +516,8 @@
 - Latest-head full validation after malformed-log discovery fix, invalid-metadata warning rate-limit, and mobile sidebar shortcut browser evidence.
 - HEAD: `705fe07`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`472 passed, 2 skipped, 3 subtests passed in 11.12s`).
+
+## 2026-06-12 15:07
+- Current-head review follow-up: added direct runtime tests for `_match_session_route()` exact-shape matching and rejection of extra/missing/wrong route segments.
+- Commit: `13134cb test: exercise exact session route matching`.
+- Validation: route matcher/decomposition/message-route/transcript tests passed (`11 passed, 10 subtests passed in 1.89s`).
