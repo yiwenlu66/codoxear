@@ -1174,3 +1174,8 @@ Commitments:
 - Intervention: Preserve the flag through `closeOpenSwipe()`; let `refreshSessions()` bypass the 304 early return while the flag is true and clear it only after `sessionsWrap.innerHTML = ""` on the deferred render path.
 - Evidence: Focused tests now pin the close-path lifecycle; isolated mobile-browser reproduction showed old alias during open swipe after a real 200, then the new alias after closing the swipe with 304 resources present.
 - Scoped claim: The session-list fast path now distinguishes three states: server payload unchanged and DOM already applied (safe no-op), server payload changed (200 apply/defer), and server payload unchanged but DOM application still deferred (render cached payload).
+
+## 2026-06-13 06:35 — No-blocker scoped claim for session poll fast path
+- Observation: Final clean-room review found no blockers after the deferred-refresh flag lifecycle correction.
+- Scoped claim: Under the reviewed code paths, same-bucket unchanged `/api/sessions` responses avoid sidebar/default mutation, while mobile swipe-deferred cached payloads still render after close even when the follow-up fetch returns 304.
+- Remaining uncertainty: the guarantee is supported by source tests, full suites, isolated browser reproduction, and clean-room review, but not by a dedicated JS DOM unit-test harness or exhaustive refresh concurrency testing.

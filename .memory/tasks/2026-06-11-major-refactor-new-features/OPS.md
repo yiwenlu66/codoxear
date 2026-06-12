@@ -1383,3 +1383,9 @@
 - Isolated mobile browser reproduction on `codoxear-sandbox-18932`: opened a mobile swipe on the `review` row, edited its alias via API, observed the polling 200 while the DOM still showed the old alias, closed the swipe, then observed the new alias rendered while subsequent `/api/sessions` resources were 304. Artifacts: `/tmp/codoxear-sidebar-gtd-evidence/deferred-swipe-open.json`, `deferred-before-close.json`, `deferred-after-close.json`, `deferred-new-name.txt`.
 - Final full local validation: `python3 -m pytest -q` → `657 passed, 25 subtests passed`.
 - Final full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `656 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 06:35 — Session poll fast-path final review
+- Clean-room critic review of the finalized no-op session poll tranche found no blockers.
+- Review command run by critic: `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `26 passed in 1.81s`.
+- Review artifact: `/tmp/codoxear-session-poll-fastpath-review.md`.
+- Residual risks noted: source-string JS tests are not full browser unit tests; overlapping manual `refreshSessions()` calls could theoretically race; a render exception after clearing the deferred flag would not automatically retry.
