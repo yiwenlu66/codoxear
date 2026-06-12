@@ -1059,3 +1059,10 @@
 - Commit: `03fe3fa fix: persist unknown direct sends`.
 - Validation: targeted tests passed (`73 passed, 11 subtests passed in 2.93s`). Plain full suite passed (`586 passed, 21 subtests passed in 11.40s`). Full isolated Docker suite passed (`584 passed, 2 skipped, 21 subtests passed in 11.27s`).
 - Browser evidence: isolated Docker container with fake broker and seeded unknown direct send on `http://127.0.0.1:18912/`; after login, snapshot `/tmp/codoxear_unknown_ui_after_login.txt` showed the unknown-send badge plus disabled `Resolve the unknown send before queueing/sending` buttons. After accepting clear, snapshot `/tmp/codoxear_unknown_ui_after_clear.txt` and API dump showed `commit_unknown_send: false` and Send/Queued Messages controls re-enabled. Screenshot artifact: `/tmp/codoxear-unknown-ui-evidence/after-clear.png`.
+
+
+## 2026-06-12 23:49
+- Repaired post-review unknown-commit blockers: direct `commit_unknown_send` now blocks attachment injection/readiness and disables the Attach button; queued `commit_unknown` items now form ordering barriers in `QueueStore.move()` and queue UI move-up affordances.
+- Commit: `b7eb79d fix: enforce unknown commit barriers`.
+- Validation: targeted tests passed (`64 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`588 passed, 21 subtests passed in 8.88s`). Full isolated Docker suite passed (`586 passed, 2 skipped, 21 subtests passed in 10.93s`).
+- Browser evidence: isolated fake-broker Docker on `:18913`; `/tmp/codoxear_barriers_unknown_selected.txt` and `/tmp/codoxear_barriers_unknown_controls.json` show direct-unknown session disables Attach/Queue/Send with explicit labels. `/tmp/codoxear_barriers_queue_viewer.txt` and `/tmp/codoxear_barriers_queue_dom.json` show queued `Commit unknown` head and later item Move Up disabled, preventing reorder-around. Screenshot: `/tmp/codoxear-unknown-barriers-evidence/queue-viewer.png`.

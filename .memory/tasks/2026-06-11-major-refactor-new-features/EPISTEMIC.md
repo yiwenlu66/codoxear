@@ -843,3 +843,11 @@ Commitments:
 - Intervention: direct-send unknown responses now create a persisted per-session `commit_unknown_send` record. The server blocks new sends, queues, and queue sweep promotion for that session until the user explicitly clears the marker after checking transcript/terminal evidence. Queue-item uncertainty remains owned by the queue item; attachment uncertainty remains owned by pending attachment state.
 - Evidence: tests cover explicit mixed success+unknown persistence, retry/queue/sweep blocking, and clear semantics. Browser validation in isolated Docker showed the warning badge and disabled controls before clear, then re-enabled controls and `commit_unknown_send: false` after clear.
 - Scoped claim: direct send commit uncertainty is no longer ephemeral UI state; it is durable server state with an explicit recovery action. It still cannot prove whether the underlying prompt committed; it preserves that uncertainty and prevents overtaking/duplication until human verification.
+
+
+## 2026-06-12 23:49
+- Observation: focused adversarial review found two ways uncertainty could be bypassed: attachment key injection during unresolved direct send unknown, and queue reordering around a commit-unknown head.
+- Mechanism: both were alternate input mutation paths not covered by the initial direct-send barriers. Attachment paste mutates the CLI input buffer; queue move can make a later prompt the sweep head.
+- Intervention: made direct unknown-send state part of attachment readiness, and made queued unknown items ordering barriers at the queue store authority plus UI affordance layer.
+- Evidence: tests cover server attachment rejection and queue-store move rejection; browser validation shows disabled attach/send/queue controls and disabled move-up for later item behind an unknown queue head.
+- Scoped claim: unresolved direct or queued commit uncertainty now blocks overtaking input mutations through send, enqueue, attachments, queue sweep, and queue reorder. Interrupt remains a separate control action, not a prompt commit path.
