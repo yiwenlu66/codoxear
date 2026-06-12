@@ -3888,7 +3888,7 @@ class SessionManager:
             raise RuntimeError("unable to compute idle state from log")
         return bool(idle)
 
-    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float = 2.0) -> dict[str, Any]:
+    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0) -> dict[str, Any]:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(timeout_s)
         try:
@@ -4335,7 +4335,7 @@ class SessionManager:
                 raise SessionNotReadyError("session is busy; wait before sending")
             self._record_prelog_user_message(s, text, source="send")
             try:
-                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=3.0)
+                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=None)
             except Exception:
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
