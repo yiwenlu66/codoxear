@@ -1022,3 +1022,9 @@
 - Bounded-send fifth rerun repair: generic pre-dispatch queue failures clear conservative unknown markers; attachment key malformed/empty/post-request failures become commit-unknown and set pending state; attach UI now surfaces attachment unknown and refreshes sessions.
 - Commit: `fix: classify attachment commit uncertainty`.
 - Validation: targeted tests passed (`83 passed, 7 subtests passed in 3.02s`). Plain full suite passed (`581 passed, 17 subtests passed in 13.19s`). Full isolated Docker suite passed (`579 passed, 2 skipped, 17 subtests passed in 11.29s`).
+
+
+## 2026-06-12 23:01
+- Bounded-send sixth rerun repair: attachment key acknowledgements now require `ok is True`; enqueue no longer records prompts as submitted before confirmed send commit.
+- Commit: `fix: tighten attachment ack validation`.
+- Validation: targeted tests passed (`86 passed, 11 subtests passed in 3.10s`). Plain full suite passed (`581 passed, 21 subtests passed in 9.36s`). Full isolated Docker suite passed (`579 passed, 2 skipped, 21 subtests passed in 11.06s`).

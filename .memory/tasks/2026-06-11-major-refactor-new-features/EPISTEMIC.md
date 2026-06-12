@@ -805,3 +805,10 @@ Commitments:
 - Interventions: clear unknown markers for generic non-unknown queue failures; classify attachment key response ambiguity as commit-unknown while conservatively setting pending state; UI shows attachment unknown and refreshes sessions.
 - Evidence: targeted tests cover generic queue failure cleanup, attachment empty/malformed unknown pending state, attach UI unknown branch, and full local/Docker suites.
 - Scoped claim: attachment and queue uncertainty now follows the same conservative evidence-preserving model as send uncertainty.
+
+
+## 2026-06-12 23:01
+- Observation: rerun found truthy non-boolean attachment `ok` values were accepted as success, and immediate enqueue commit-unknown still recorded pre-log submitted messages before commit was known.
+- Interventions: attachment key responses now require boolean `ok is True`; enqueue no longer calls `_record_prelog_user_message` before promotion/commit, relying on `send()` to record only after confirmed commit.
+- Evidence: targeted tests cover truthy malformed attachment replies and commit-unknown enqueue no-prelog behavior; full local/Docker suites passed.
+- Scoped claim: attachment success acknowledgement is schema-strict and enqueue no longer creates false transcript fallback evidence before a prompt is committed.
