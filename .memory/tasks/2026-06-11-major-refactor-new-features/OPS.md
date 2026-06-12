@@ -561,3 +561,8 @@
 - Commit: `f6dfaa8 feat: add conditional sessions polling`.
 - Validation before commit: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; auth/session-polling/static-asset/route-decomposition tests passed (`19 passed in 6.29s`).
 - Browser/CDP validation, isolated Docker port 18816: `/api/sessions` statuses over 8.5s were 200 then 304, 304, 304; 304 requests carried the matching `If-None-Match`; JS errors `[]`.
+
+## 2026-06-12 15:38
+- Full validation after conditional `/api/sessions` polling / ETag support.
+- HEAD: `7f3b1c0`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`478 passed, 2 skipped, 10 subtests passed in 12.79s`).
