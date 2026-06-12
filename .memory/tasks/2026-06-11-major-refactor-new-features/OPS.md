@@ -832,3 +832,9 @@
 - Clean-room blocker repair: background voice settings polls no longer sync over an open Settings form, so explicit key clear/base URL edits survive the visible poll interval; voice settings and VAPID private key files are chmodded `0600`.
 - Commit: `f0e87d2 fix: protect voice secrets and settings edits`.
 - Validation: targeted voice/settings tests passed (`40 passed in 2.92s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`523 passed, 2 skipped, 10 subtests passed in 11.03s`). Browser evidence on isolated Docker `:18880`: after saving a test key, GET redacted `tts_api_key` and reported `has_tts_api_key=true`; with Settings open and clear checked, after waiting 11.2s the checkbox remained checked; Save cleared the key (`has_tts_api_key=false`, `tts_api_key=""`). File modes inside container: `600 voice_settings.json`, `600 webpush_vapid_private.pem`.
+
+
+## 2026-06-12 18:44
+- Architecture tranche: extracted backend-specific launch argv/env/resume/tmux-inline mapping from `server.py` into `codoxear/backend_launch.py`; server still owns cwd/worktree/resume-live checks, process spawning, launch records, and tmux orchestration.
+- Commit: `a792d32 refactor: extract backend launch adapter`.
+- Validation: targeted launch adapter/default/request/resume/Claude source tests passed (`55 passed in 1.86s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`527 passed, 2 skipped, 10 subtests passed in 10.61s`).

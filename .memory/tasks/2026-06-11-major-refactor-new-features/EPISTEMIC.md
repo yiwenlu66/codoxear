@@ -580,3 +580,10 @@ Commitments:
 - Interventions: split Settings form syncing from general voice UI updates and skip form sync while the dialog is open; chmod voice settings and VAPID private key files to `0600` after creation/write and on existing VAPID key load.
 - Evidence: targeted tests, full isolated Docker suite, browser poll-window scenario, and container file-mode checks all passed.
 - Scoped claim: explicit key clear is robust across the normal visible secondary poll interval, browser GET remains redacted, and newly/currently written voice secret files are private to the user. Existing app directories may still have broader directory permissions, but secret files are `0600`.
+
+
+## 2026-06-12 18:44
+- Observation: architecture review found backend launch semantics spread across server request parsing, argv assembly, environment ownership, resume args, and tmux inline environment.
+- Intervention: centralized the backend-specific launch-plan mechanics in `backend_launch.py` while keeping orchestration in `SessionManager.spawn_web_session`.
+- Evidence: direct adapter tests constrain Codex/Pi/Claude args, resume args, env ownership, and tmux inline env/unset contract; existing launch defaults, launch request, resume, and Claude source tests pass; full isolated Docker suite passes.
+- Scoped claim: backend argv/env/resume/tmux-inline semantics now have one tested owner. UI defaults and request validation still remain in `server.py`, so this is an incremental launch-adapter extraction, not a complete backend launch abstraction.
