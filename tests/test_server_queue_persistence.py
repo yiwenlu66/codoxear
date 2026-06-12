@@ -179,6 +179,36 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
             SessionManager.inject_attachment_keys(mgr, sid, "abc")
 
+    def test_pending_attachment_blocks_queue_until_explicit_send(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq: {"ok": True}  # type: ignore[method-assign]
+
+        self.assertEqual(SessionManager.inject_attachment_keys(mgr, sid, "ATTACH"), {"ok": True})
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
+            SessionManager.enqueue(mgr, sid, "queued prompt")
+
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+        with self.assertRaisesRegex(SessionNotReadyError, "pending attachment"):
+            SessionManager.send(mgr, sid, "stale direct prompt")
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+
+        self.assertEqual(SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True), {"queued": False, "queue_len": 0})
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+
+    def test_pending_attachment_stops_queue_promotion(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr.get_state = lambda _sid: self.fail("pending attachment should fail before broker state")  # type: ignore[method-assign]
+
+        self.assertFalse(SessionManager._queue_remote_ready(mgr, sid, log_path=None))
+
     def test_enqueue_sends_immediately_when_idle(self) -> None:
         mgr = self._mgr()
         sid = "s1"

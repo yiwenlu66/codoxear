@@ -1933,6 +1933,7 @@ class Session:
     launch_id: str | None = None
     spawn_nonce: str | None = None
     resume_session_id: str | None = None
+    pending_attachment: bool = False
 
 
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
@@ -2579,6 +2580,12 @@ class SessionManager:
             return s, s.log_path
 
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.pending_attachment:
+                return False
         st = self.get_state(session_id)
         if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
             raise ValueError("invalid broker state response")
@@ -3475,6 +3482,7 @@ class SessionManager:
                         "needs_history_scan": needs_history_scan,
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
+                        "pending_attachment": bool(s.pending_attachment),
                         "token": s.token,
                         "thinking": int(s.meta_thinking),
                         "tools": int(s.meta_tools),
@@ -4241,11 +4249,13 @@ class SessionManager:
         )
         _record_launch_attempt(base)
 
-    def send(self, session_id: str, text: str) -> dict[str, Any]:
+    def send(self, session_id: str, text: str, *, allow_pending_attachment: bool = False) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if s.pending_attachment and not allow_pending_attachment:
+                raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
             sock = s.sock_path
         self._record_prelog_user_message(s, text, source="send")
         input_lock = self._input_lock_for_session(session_id)
@@ -4269,15 +4279,18 @@ class SessionManager:
                 if "queue_len" not in resp:
                     raise ValueError("invalid broker send response")
                 s2.queue_len = int(resp.get("queue_len"))
+                s2.pending_attachment = False
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
         input_lock = self._input_lock_for_session(session_id)
         with input_lock:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if not s:
+                    raise KeyError("unknown session")
+                if s.pending_attachment:
+                    raise SessionNotReadyError("send the pending attachment before queueing another prompt")
             self._record_prelog_user_message(s, text, source="enqueue")
             item, ql = self._queue_append_item_local(session_id, text)
         if ql != 1:
@@ -4401,7 +4414,12 @@ class SessionManager:
         with input_lock:
             if not self.attachment_injection_ready(session_id):
                 raise SessionNotReadyError("session is busy; wait before attaching a file")
-            return self.inject_keys(session_id, seq)
+            resp = self.inject_keys(session_id, seq)
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if s:
+                    s.pending_attachment = True
+            return resp
 
     def inject_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         with self._lock:
@@ -6285,7 +6303,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(text, str) or not text.strip():
                     _json_response(self, 400, {"error": "text required"})
                     return
-                res = MANAGER.send(session_id, text)
+                allow_pending_attachment = bool(obj.get("allow_pending_attachment"))
+                try:
+                    res = MANAGER.send(session_id, text, allow_pending_attachment=allow_pending_attachment)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except SessionNotReadyError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 _json_response(self, 200, res)
                 return
 
@@ -6303,6 +6329,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     res = MANAGER.enqueue(session_id, text)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except SessionNotReadyError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 except ValueError as e:
                     _json_response(self, 502, {"error": str(e)})
