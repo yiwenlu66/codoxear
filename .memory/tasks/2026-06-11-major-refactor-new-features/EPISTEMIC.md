@@ -897,3 +897,11 @@ Commitments:
 - Intervention: direct orphan markers can now be cleared by id; orphan direct/queue markers are surfaced as recovery rows; opening a recovery row avoids transcript fetch and only exposes review/clear affordances.
 - Evidence: tests cover orphan list rows and orphan direct clear; full local/Docker suites passed; browser validation showed direct and queued orphan recovery controls.
 - Scoped claim: preserved unknown evidence is no longer stranded solely in JSON files when its session disappears.
+
+
+## 2026-06-13 00:54
+- Observation: orphan recovery row removal left a stale selected id with controls re-enabled; queued orphan review was blocked when the composer contained draft text.
+- Mechanism: session list refresh rebuilt `sessionIndex` but did not clear selected ids that disappeared; queue button prioritized enqueue behavior before recovery review.
+- Intervention: refresh now clears stale selected state, and orphan recovery queue review has precedence over draft enqueue behavior. Orphan `openSession()` avoids transcript-tail fetch.
+- Evidence: targeted/full/Docker tests passed; browser validation showed controls disabled after direct orphan clear and queue viewer opens despite draft text.
+- Scoped claim: resolving the last orphan evidence no longer leaves a phantom selected session, and queued orphan recovery remains reachable from the enabled queue/review button.

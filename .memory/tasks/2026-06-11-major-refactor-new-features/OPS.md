@@ -1104,3 +1104,10 @@
 - Commit: `fix: expose orphan unknown recovery rows`.
 - Validation: targeted tests passed (`83 passed, 11 subtests passed in 2.14s`). Plain full suite passed (`596 passed, 21 subtests passed in 9.17s`). Full isolated Docker suite passed (`594 passed, 2 skipped, 21 subtests passed in 11.22s`).
 - Browser evidence: isolated Docker `:18917` seeded only orphan direct/queued unknown records. `/tmp/codoxear-orphan-recovery-evidence/codoxear_orphan_direct_browser.json` shows direct orphan row exposes clear badge and disables attach/queue/send; `/tmp/codoxear-orphan-recovery-evidence/codoxear_orphan_queue_controls.json` and `codoxear_orphan_queue_rows.json` show queued orphan row enables review queue, disables send/attach, and renders the `Commit unknown` row. Screenshot: `/tmp/codoxear-orphan-recovery-evidence/queue-orphan.png`.
+
+
+## 2026-06-13 00:54
+- Repaired orphan recovery UI regressions: when a selected recovery row disappears after clearing/deleting its last evidence, `refreshSessions()` clears selection/hash/title/controls; queue button opens orphan queued recovery review before considering composer draft text; orphan recovery rows are handled locally without transcript-tail fetch.
+- Commit: `fix: stabilize orphan recovery selection`.
+- Validation: targeted tests passed (`73 passed, 11 subtests passed in 1.82s`, then `83 passed, 11 subtests passed in 2.14s` after local orphan handling). Plain full suite passed (`596 passed, 21 subtests passed in 12.14s`). Full isolated Docker suite passed (`594 passed, 2 skipped, 21 subtests passed in 11.02s`).
+- Browser evidence: isolated Docker `:18918`; after clearing selected direct orphan marker, `/tmp/codoxear-orphan-recovery-fix-evidence/codoxear_orphan_after_clear_controls.json` shows empty hash, title `No session selected`, and send/attach/queue disabled. With a composer draft on queued orphan, `/tmp/codoxear-orphan-recovery-fix-evidence/codoxear_orphan_queue_with_draft_rows.json` shows queue viewer open with `Commit unknown` row.
