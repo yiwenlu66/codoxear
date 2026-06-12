@@ -736,3 +736,8 @@
 - Full validation after sessiond Pi log-binding fix.
 - HEAD: `ae4dfe5`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`492 passed, 2 skipped, 10 subtests passed in 14.29s`).
+
+## 2026-06-12 17:05
+- API hardening from reviewer finding: malformed JSON/object bodies now raise `BadRequestError` and return 400 without trace; oversized bodies return `RequestPayloadTooLargeError`/413; generic 500 responses omit trace unless `CODEX_WEB_DEBUG_ERRORS=1`.
+- Commit: `a06d362 fix: return bad request for malformed JSON bodies`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; focused client-disconnect/json-body/auth/upload/queue tests passed (`25 passed in 2.11s`). Live isolated Docker curl on `:18826`: malformed `/api/login` and authenticated malformed `/api/sessions/fake/inject_file` both returned 400 with `{"error":"invalid json body"}` and no `trace` field.

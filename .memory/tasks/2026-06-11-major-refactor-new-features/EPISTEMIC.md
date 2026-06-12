@@ -468,3 +468,10 @@ Commitments:
 
 ## 2026-06-12 16:58
 - Mechanism fixed: `sessiond` previously called `_proc_find_open_rollout_log` only for Codex/Claude, even though the util discovery function already supports Pi session paths and headers. Pi headless sessions could therefore remain bound to pending placeholder logs. Allowing Pi through the same backend-aware discovery path binds the real Pi log and removes the pending placeholder.
+
+## 2026-06-12 17:07
+- Observation: before the API hardening tranche, JSON decode/object-shape failures in POST routes could escape to `_handle_route_exception`, which returned HTTP 500 and exposed a `trace` field.
+- Mechanism supported: malformed client input was being represented as ordinary exceptions rather than typed client-error evidence; duplicated inline POST parsers made this likely to recur.
+- Intervention: introduced `BadRequestError` and `RequestPayloadTooLargeError`, routed `_read_json_body()` through them, replaced duplicate inline JSON parsing in POST routes, and hid generic 500 traces unless `CODEX_WEB_DEBUG_ERRORS=1`.
+- Evidence: focused tests passed (`25 passed in 2.11s`); isolated Docker curl showed malformed `/api/login` and authenticated malformed `/api/sessions/fake/inject_file` return 400 with no `trace`.
+- Scoped claim: representative malformed JSON and object-body errors now fail as client errors instead of internal server errors; this does not prove every semantic validation path returns an ideal status, only the centralized parse/object-shape boundary and checked attach filename path.
