@@ -555,3 +555,9 @@
 - Full validation after loaded-user-turn shortcut implementation and browser evidence.
 - HEAD: `b0d1a15`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`476 passed, 2 skipped, 10 subtests passed in 12.95s`).
+
+## 2026-06-12 15:37
+- Network-load tranche: added conditional GET support for `GET /api/sessions`. Server now emits `ETag` and returns 304 for matching `If-None-Match`; client caches the last `/api/sessions` JSON payload and reuses it on 304.
+- Commit: `f6dfaa8 feat: add conditional sessions polling`.
+- Validation before commit: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; auth/session-polling/static-asset/route-decomposition tests passed (`19 passed in 6.29s`).
+- Browser/CDP validation, isolated Docker port 18816: `/api/sessions` statuses over 8.5s were 200 then 304, 304, 304; 304 requests carried the matching `If-None-Match`; JS errors `[]`.

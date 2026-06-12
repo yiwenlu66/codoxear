@@ -414,3 +414,6 @@ Commitments:
 
 ## 2026-06-12 15:24
 - Evidence update: browser validation supports the shortcut guard mechanism for loaded user-turn navigation. Initial CDP attempt without the Alt modifier bit produced no pulse, distinguishing test harness setup from product behavior; rerun with Chromium `modifiers:1` exercised the intended path.
+
+## 2026-06-12 15:37
+- Evidence update: conditional sessions polling works in a live browser against the isolated server. The observation constrains unchanged-payload transfer behavior for `/api/sessions`; it does not prove performance on real slow mobile networks, but it removes repeated JSON body transfer when session state is unchanged.
