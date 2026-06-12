@@ -13,7 +13,6 @@ class TestFileTypesModuleSource(unittest.TestCase):
         module_source = FILE_TYPES_PY.read_text(encoding="utf-8")
 
         self.assertIn("from .file_types import file_kind as _file_kind", server_source)
-        self.assertIn("from .file_types import sniff_image_ext as _sniff_image_ext", server_source)
         self.assertNotIn("def _image_content_type(", server_source)
         self.assertNotIn("def _pdf_content_type(", server_source)
         self.assertNotIn("def _video_content_type(", server_source)

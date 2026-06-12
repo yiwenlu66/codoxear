@@ -5,7 +5,6 @@ import errno
 import hashlib
 import hmac
 import http.server
-import io
 import json
 import math
 import os
@@ -17,14 +16,12 @@ import shutil
 import socket
 import socketserver
 import subprocess
-import struct
 import sys
 import threading
 import time
 import tomllib
 import traceback
 import urllib.parse
-import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -54,7 +51,6 @@ from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_text import write_new_text_file_atomic as _write_new_text_file_atomic
 from .file_text import write_text_file_atomic as _write_text_file_atomic
 from .file_types import file_kind as _file_kind
-from .file_types import sniff_image_ext as _sniff_image_ext
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
 from .video_preview import video_preview_path as _video_preview_path_impl
 from .video_preview import video_response_payload as _video_response_payload
@@ -762,49 +758,6 @@ def _video_preview_path(path: Path) -> Path:
 
 def _ensure_video_preview(path: Path) -> Path:
     return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
-
-
-def _repair_png_crc(raw: bytes) -> bytes:
-    if len(raw) < 8 or raw[:8] != b"\x89PNG\r\n\x1a\n":
-        return raw
-    out = bytearray(raw)
-    o = 8
-    while o + 12 <= len(out):
-        ln = struct.unpack(">I", out[o : o + 4])[0]
-        typ = bytes(out[o + 4 : o + 8])
-        data_start = o + 8
-        data_end = data_start + ln
-        crc_start = data_end
-        crc_end = crc_start + 4
-        if data_end > len(out) or crc_end > len(out):
-            break
-        data = bytes(out[data_start:data_end])
-        calc = zlib.crc32(typ)
-        calc = zlib.crc32(data, calc) & 0xFFFFFFFF
-        cur = struct.unpack(">I", out[crc_start:crc_end])[0]
-        if cur != calc:
-            out[crc_start:crc_end] = struct.pack(">I", calc)
-        o = crc_end
-        if typ == b"IEND":
-            break
-    return bytes(out)
-
-
-def _validate_image(raw: bytes) -> None:
-    try:
-        from PIL import Image
-    except Exception:
-        ext = _sniff_image_ext(raw)
-        if ext is None:
-            raise ValueError("unsupported image format")
-        return
-    try:
-        with Image.open(io.BytesIO(raw)) as im:
-            im.load()
-            if not im.size or im.size[0] <= 0 or im.size[1] <= 0:
-                raise ValueError("invalid image dimensions")
-    except Exception as e:
-        raise ValueError(str(e)) from e
 
 
 _CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
