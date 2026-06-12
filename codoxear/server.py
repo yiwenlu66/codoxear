@@ -42,15 +42,19 @@ from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
 from .file_search import search_session_relative_files as _search_session_relative_files_impl
 from .file_text import FILE_READ_MAX_BYTES
-from .file_text import decode_text_view_for_client as _decode_text_view_for_client
-from .file_text import file_content_version as _file_content_version
-from .file_text import markdown_kind as _markdown_kind
 from .file_text import read_text_file_for_client as _read_text_file_for_client
 from .file_text import read_text_file_for_write as _read_text_file_for_write
 from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_text import write_new_text_file_atomic as _write_new_text_file_atomic
 from .file_text import write_text_file_atomic as _write_text_file_atomic
 from .file_types import file_kind as _file_kind
+from .file_view import download_disposition as _download_disposition
+from .file_view import inspect_client_path as _inspect_client_path
+from .file_view import inspect_openable_file as _inspect_openable_file
+from .file_view import inspect_path_metadata as _inspect_path_metadata
+from .file_view import read_client_file_view as _read_client_file_view
+from .file_view import read_downloadable_file as _read_downloadable_file
+from .file_view import read_text_or_image as _read_text_or_image
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
 from .video_preview import video_preview_path as _video_preview_path_impl
 from .video_preview import video_response_payload as _video_response_payload
@@ -901,18 +905,6 @@ def _set_auth_cookie(handler: http.server.BaseHTTPRequestHandler) -> None:
 _PASSWORD_CACHE: str | None = None
 
 
-@dataclass(frozen=True)
-class ClientFileView:
-    kind: str
-    size: int
-    content_type: str | None = None
-    text: str | None = None
-    editable: bool = False
-    version: str | None = None
-    blocked_reason: str | None = None
-    viewer_max_bytes: int | None = None
-
-
 def _require_password() -> str:
     global _PASSWORD_CACHE
     if _PASSWORD_CACHE is not None:
@@ -1546,89 +1538,6 @@ def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
     else:
         path_obj = path_obj.resolve()
     return path_obj
-
-
-def _inspect_openable_file(path_obj: Path) -> tuple[bytes, int, str, str | None]:
-    view = _read_client_file_view(path_obj)
-    if view.kind == "directory":
-        raise ValueError("path is not a file")
-    if view.kind == "download_only":
-        if view.blocked_reason == "too_large":
-            raise ValueError(f"file too large (max {FILE_READ_MAX_BYTES} bytes)")
-        raise ValueError("binary file not supported")
-    raw = path_obj.read_bytes()
-    return raw, view.size, view.kind, view.content_type
-
-
-def _inspect_path_metadata(path_obj: Path) -> tuple[int, str, str | None]:
-    view = _read_client_file_view(path_obj)
-    return view.size, view.kind, view.content_type
-
-
-def _read_client_file_view(path_obj: Path) -> ClientFileView:
-    if not path_obj.exists():
-        raise FileNotFoundError("file not found")
-    if path_obj.is_dir():
-        return ClientFileView(kind="directory", size=0)
-    if not path_obj.is_file():
-        raise ValueError("path is not a file")
-    try:
-        size = int(path_obj.stat().st_size)
-        with path_obj.open("rb") as f:
-            prefix = f.read(4096)
-    except PermissionError as e:
-        raise PermissionError("permission denied") from e
-    kind, content_type = _file_kind(path_obj, prefix)
-    if kind in {"image", "pdf", "video"}:
-        return ClientFileView(kind=kind, size=size, content_type=content_type)
-    if size > FILE_READ_MAX_BYTES:
-        return ClientFileView(
-            kind="download_only",
-            size=size,
-            blocked_reason="too_large",
-            viewer_max_bytes=FILE_READ_MAX_BYTES,
-        )
-    raw = path_obj.read_bytes()
-    text_payload = _decode_text_view_for_client(path_obj, raw)
-    if text_payload is None:
-        return ClientFileView(kind="download_only", size=size, blocked_reason="binary")
-    text, editable, version = text_payload
-    return ClientFileView(
-        kind=_markdown_kind(path_obj),
-        size=size,
-        text=text,
-        editable=editable,
-        version=version,
-    )
-
-
-def _read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | None]:
-    view = _read_client_file_view(path_obj)
-    if view.kind in {"image", "pdf", "video", "download_only", "directory"}:
-        return view.kind, view.size, view.content_type, None
-    raw = path_obj.read_bytes()
-    return view.kind, view.size, view.content_type, raw
-
-
-def _read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
-    if not path_obj.exists():
-        raise FileNotFoundError("file not found")
-    if not path_obj.is_file():
-        raise ValueError("path is not a file")
-    try:
-        raw = path_obj.read_bytes()
-    except PermissionError as e:
-        raise PermissionError("permission denied") from e
-    return raw, len(raw)
-
-
-def _inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
-    view = _read_client_file_view(path_obj)
-    return view.size, view.kind, view.content_type
-
-
-def _download_disposition(path_obj: Path) -> str:
-    return f"attachment; filename*=UTF-8''{urllib.parse.quote(path_obj.name, safe='')}"
 
 
 def _sessions_dir_for_backend(agent_backend: str) -> Path:
