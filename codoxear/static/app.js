@@ -166,6 +166,9 @@
       function lastProviderKey(backend) {
         return `codoxear.newSessionProvider.${normalizeAgentBackendName(backend)}`;
       }
+      function lastProviderModelKey(backend) {
+        return `codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}`;
+      }
       function loadRememberedBackendChoice() {
         return normalizeAgentBackendName(localStorage.getItem(LAST_BACKEND_KEY) || "codex");
       }
@@ -179,6 +182,16 @@
         const value = String(provider || "").trim();
         if (value) localStorage.setItem(lastProviderKey(backend), value);
         else localStorage.removeItem(lastProviderKey(backend));
+      }
+      function loadRememberedProviderModelChoice(backend) {
+        return String(localStorage.getItem(lastProviderModelKey(backend)) || "").trim();
+      }
+      function rememberProviderModelChoice(backend, provider, model) {
+        const providerValue = String(provider || "").trim();
+        const modelValue = String(model || "").trim() || "default";
+        const value = providerValue ? `${providerValue}/${modelValue}` : modelValue;
+        if (value) localStorage.setItem(lastProviderModelKey(backend), value);
+        else localStorage.removeItem(lastProviderModelKey(backend));
       }
 
       async function api(path, { method = "GET", body, signal } = {}) {
@@ -5701,6 +5714,16 @@
           return { providerChoice, model: model || "default", providerError };
         }
 
+        function rememberedNewSessionProviderModelChoice() {
+          const remembered = loadRememberedProviderModelChoice(newSessionBackend);
+          if (!remembered) return null;
+          const parsed = parseNewSessionProviderModelInput(remembered);
+          if (parsed.providerError) return null;
+          const choices = newSessionProviderChoices();
+          if (choices.length && parsed.providerChoice && !choices.includes(parsed.providerChoice)) return null;
+          return parsed;
+        }
+
         function clearNewSessionProviderModelError() {
           newSessionModelField.classList.remove("error");
           if (String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")) {
@@ -5778,7 +5801,12 @@
           }
           const modelDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (resetSelections || previous !== next) {
-            newSessionModelInput.value = newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider);
+            const rememberedPair = rememberedNewSessionProviderModelChoice();
+            const selectedPair = rememberedPair || parseNewSessionProviderModelInput(newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider));
+            if (selectedPair.providerChoice && providerChoices.includes(selectedPair.providerChoice)) {
+              setNewSessionProvider(selectedPair.providerChoice);
+            }
+            newSessionModelInput.value = newSessionProviderModelDisplay(selectedPair.model || modelDefault || "default", selectedPair.providerChoice || newSessionProvider);
             clearNewSessionProviderModelError();
           }
           const reasoningChoices = currentReasoningChoices();
@@ -5969,10 +5997,12 @@
 
         function selectNewSessionModel(option) {
           const item = option && typeof option === "object" ? option : newSessionModelOption(option || "default");
+          const selectedProvider = item.providerChoice || newSessionProvider;
           if (item.providerChoice && newSessionProviderChoices().includes(item.providerChoice)) {
             setNewSessionProvider(item.providerChoice);
           }
-          newSessionModelInput.value = newSessionProviderModelDisplay(item.model || "default", item.providerChoice || newSessionProvider);
+          newSessionModelInput.value = newSessionProviderModelDisplay(item.model || "default", selectedProvider);
+          rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || "default");
           newSessionModelField.classList.remove("error");
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
@@ -6485,6 +6515,7 @@
           }
           const providerChoice = String(parsedProviderModel.providerChoice || newSessionProvider || "").trim();
           const model = String(parsedProviderModel.model || "default").trim() || "default";
+          rememberProviderModelChoice(agentBackend, providerChoice, model);
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
           const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;

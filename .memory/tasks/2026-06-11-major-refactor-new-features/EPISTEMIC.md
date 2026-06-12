@@ -275,3 +275,9 @@ Commitments:
 - Mechanism: `_is_same_password()` remained in `server.py` and still called `hmac.compare_digest`; extracting auth helpers removed the module import until the later fix restored it.
 - Revised claim: the recovered branch now includes product fixes plus selected backend refactors, but the claim is integrated only because login, source tests, targeted Docker tests, full Docker tests, and a restarted browser sandbox all ran after the refactors and auth fix.
 - Scoped uncertainty: frontend modularization refactor remains parked; real backend launches, real mobile-device performance, and slow-network behavior remain outside current evidence.
+
+## 2026-06-12 12:24
+- Observation: the combined provider/model selector was real, but reopening New Session still derived its model from backend defaults plus remembered provider. That left a workflow gap: the app remembered `chatgpt`, not `chatgpt/gpt-5.4-mini`.
+- Mechanism: previous persistence key stored only provider choice. Recent sessions could suggest pairs, but the user's explicit selected pair was not the remembered launch default.
+- Intervention: added a separate per-backend provider/model memory key, wrote it on valid menu selection and valid start attempts, and restored it through the same provider/model parser so stale provider names are ignored loudly/safely.
+- Evidence: browser showed the selected pair persisted and restored exactly; deterministic frontend tests and full Docker passed.

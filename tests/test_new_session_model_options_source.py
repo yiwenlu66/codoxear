@@ -68,7 +68,8 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("displayText,", source)
         self.assertIn("searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel", source)
         self.assertIn("setNewSessionProvider(item.providerChoice);", source)
-        self.assertIn("newSessionProviderModelDisplay(item.model || \"default\", item.providerChoice || newSessionProvider)", source)
+        self.assertIn("const selectedProvider = item.providerChoice || newSessionProvider;", source)
+        self.assertIn("newSessionProviderModelDisplay(item.model || \"default\", selectedProvider)", source)
         self.assertIn("item.recent ? \"Recent\" : item.configured ? \"Configured\"", source)
 
     def test_provider_only_selector_is_not_rendered(self) -> None:
@@ -84,6 +85,17 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn('String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")', source)
         self.assertIn("if (!parsed.providerError) clearNewSessionProviderModelError();", source)
         self.assertIn("clearNewSessionProviderModelError();\n          }\n          const reasoningChoices = currentReasoningChoices();", source)
+
+    def test_provider_model_pair_is_remembered_per_backend(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function lastProviderModelKey(backend)", source)
+        self.assertIn("codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}", source)
+        self.assertIn("function loadRememberedProviderModelChoice(backend)", source)
+        self.assertIn("function rememberProviderModelChoice(backend, provider, model)", source)
+        self.assertIn("rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || \"default\");", source)
+        self.assertIn("rememberProviderModelChoice(agentBackend, providerChoice, model);", source)
+        self.assertIn("function rememberedNewSessionProviderModelChoice()", source)
+        self.assertIn("const rememberedPair = rememberedNewSessionProviderModelChoice();", source)
 
 
 if __name__ == "__main__":
