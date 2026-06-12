@@ -784,3 +784,10 @@ Commitments:
 - Interventions: broker/sessiond distinguish declared commit-unknown errors; queue promotion clears unknown markers for known `SessionInjectionError`; send response schema requires a non-negative integer queue length; added explicit pending-attachment clear endpoint and UI recovery confirmation.
 - Evidence: targeted tests cover known vs unknown queue failure, strict queue_len schema, pending clear, UI recovery prompt, and full local/Docker suites.
 - Scoped claim: commit-unknown state is now reserved for actual uncertainty, strict malformed responses are not accepted as confirmed sends, and stale pending-attachment state can be cleared explicitly after user confirmation.
+
+
+## 2026-06-12 22:34
+- Observation: rerun found post-request socket failure with dead PIDs was treated as stale session cleanup, deleting a pre-marked unknown queued item even though the prompt may have reached the broker.
+- Intervention: control socket send now tracks whether the request was sent before failure; `send()` maps post-request failure to commit-unknown regardless of PID liveness and only prunes dead sessions for pre-request failures.
+- Evidence: targeted tests cover post-request failure with dead PIDs preserving the session/unknown state and pre-request dead socket pruning; full local/Docker suites passed.
+- Scoped claim: response loss after a dispatched send no longer destroys queue evidence or returns ordinary unknown-session semantics.

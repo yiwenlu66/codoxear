@@ -1004,3 +1004,9 @@
 - Bounded-send second rerun repair: known broker send failures clear pre-dispatch queue unknown markers; broker-declared partial/unknown write failures include `commit_unknown`; send responses now require strict non-negative integer `queue_len`; stale pending attachments on unsupported brokers can be explicitly cleared via `/pending_attachment/clear` with UI confirmation.
 - Commit: `fix: recover stale pending attachments`.
 - Validation: targeted tests passed (`76 passed, 7 subtests passed in 2.93s`). Plain full suite passed (`574 passed, 17 subtests passed in 9.21s`). Full isolated Docker suite passed (`572 passed, 2 skipped, 17 subtests passed in 11.23s`).
+
+
+## 2026-06-12 22:34
+- Bounded-send third rerun repair: `_sock_call(..., track_request_sent=True)` now reports whether a send request crossed the socket boundary; post-request socket failures remain `SessionCommitUnknownError` even if PIDs are dead, while pre-request dead sockets can still prune stale sessions.
+- Commit: `fix: track dispatched send uncertainty`.
+- Validation: targeted tests passed (`78 passed, 7 subtests passed in 3.03s`). Plain full suite passed (`576 passed, 17 subtests passed in 9.06s`). Full isolated Docker suite passed (`574 passed, 2 skipped, 17 subtests passed in 11.80s`).
