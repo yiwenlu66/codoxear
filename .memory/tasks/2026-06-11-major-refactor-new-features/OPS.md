@@ -1232,3 +1232,12 @@
   - Claude `system/turn_duration` no longer marks a turn idle while an assistant `tool_use` lacks a matching user `tool_result`; broker busy state now tracks Claude tool-use IDs too.
 - Commit: `fix: harden Claude transcript and tool busy state`.
 - Validation: targeted Claude suites passed (`42 passed`); full local suite passed (`625 passed, 25 subtests passed in 9.21s`); isolated Docker suite passed (`624 passed, 1 skipped, 25 subtests passed in 12.50s`).
+
+
+## 2026-06-13 04:00
+- Applied clean-room Claude hardening review fixes from `/tmp/codoxear-cc-hardening-review.md`:
+  - `_compute_idle_from_log()` now expands ambiguous Claude `turn_duration` tails when no local turn context is present, so an unmatched tool-use outside the initial 256 KiB tail cannot be closed by a trailing duration row.
+  - Final Claude assistant text no longer closes a known unmatched tool-use in log idle or broker state.
+  - User rows containing Claude `tool_result` are hidden from chat even if schema drift adds sibling text parts.
+- Commit: `fix: close Claude tool idle edge cases`.
+- Validation: targeted Claude suites passed (`44 passed`); full local suite passed (`627 passed, 25 subtests passed in 10.13s`); isolated Docker suite passed (`626 passed, 1 skipped, 25 subtests passed in 11.46s`).

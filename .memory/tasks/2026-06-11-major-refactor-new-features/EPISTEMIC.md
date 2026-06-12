@@ -1047,3 +1047,11 @@ Commitments:
 - Intervention: remove the arbitrary XML suppression while retaining meta/tool-result filtering; add Claude tool-use/result ID tracking in log-idle and broker busy paths.
 - Evidence: targeted tests now preserve `<task>summarize</task>` in chat and keep unmatched `tool_use` + `turn_duration` busy; full local and Docker suites passed.
 - Scoped claim: synthetic Claude transcript/busy invariants are stronger, but real credentialed Claude sessions and TUI injection/interrupt behavior remain unproven.
+
+
+## 2026-06-13 04:00
+- Review anomaly: the first Claude tool-use pairing fix was tail-local; a large gap could push the original `tool_use` outside the initial 256 KiB scan while a trailing `turn_duration` still marked idle.
+- Review anomaly: final assistant text and mixed `tool_result`+text rows weakened the same pairing/transport invariants.
+- Intervention: expand ambiguous `turn_duration` tails up to the configured scan budget, refuse final-answer closure while known Claude pending tool IDs remain, and classify any user row containing `tool_result` as transport rather than chat.
+- Evidence: targeted regressions cover the 504 KiB tail case, final-without-tool-result, and mixed tool-result/text; full local and Docker suites passed.
+- Scoped claim: synthetic Claude log normalization and busy/idle handling now preserve the inspected tool pairing invariants; live Claude credentials/TUI behavior remain unproven.
