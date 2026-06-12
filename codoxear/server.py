@@ -2303,6 +2303,51 @@ def _coerce_queue_item(raw: Any) -> dict[str, Any] | None:
     return {"id": item_id.strip(), "text": text, "created_ts": ts}
 
 
+def _fallback_codex_launch_defaults() -> dict[str, Any]:
+    return {
+        "model_provider": "openai",
+        "preferred_auth_method": "apikey",
+        "provider_choice": "openai-api",
+        "model": None,
+        "model_providers": ["chatgpt", "openai-api"],
+        "service_tier": "flex",
+        "reasoning_effort": None,
+    }
+
+
+def _fallback_pi_launch_defaults() -> dict[str, Any]:
+    return {
+        "agent_backend": "pi",
+        "model_provider": None,
+        "preferred_auth_method": None,
+        "provider_choice": None,
+        "provider_choices": [],
+        "model": None,
+        "models": [],
+        "reasoning_effort": "high",
+        "reasoning_efforts": list(SUPPORTED_PI_REASONING_EFFORTS),
+        "reasoning_efforts_by_model": {},
+        "service_tier": None,
+        "supports_fast": False,
+    }
+
+
+def _fallback_cc_launch_defaults() -> dict[str, Any]:
+    return {
+        "agent_backend": "cc",
+        "model_provider": None,
+        "preferred_auth_method": None,
+        "provider_choice": None,
+        "provider_choices": [],
+        "model": None,
+        "models": ["sonnet", "opus", "fable"],
+        "reasoning_effort": "medium",
+        "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
+        "service_tier": None,
+        "supports_fast": False,
+    }
+
+
 def _read_codex_launch_defaults() -> dict[str, Any]:
     configured_model = None
     configured_effort = None
@@ -2482,15 +2527,32 @@ def _read_cc_launch_defaults() -> dict[str, Any]:
     }
 
 
+def _launch_defaults_warning(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
 def _read_new_session_defaults() -> dict[str, Any]:
-    codex = _read_codex_launch_defaults()
+    warnings: dict[str, str] = {}
+    try:
+        codex = _read_codex_launch_defaults()
+    except Exception as exc:
+        codex = _fallback_codex_launch_defaults()
+        warnings["codex"] = _launch_defaults_warning(exc)
     codex["agent_backend"] = "codex"
     codex["provider_choices"] = list(codex.get("model_providers") or [])
     codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
     codex["supports_fast"] = True
-    pi = _read_pi_launch_defaults()
-    cc = _read_cc_launch_defaults()
-    return {
+    try:
+        pi = _read_pi_launch_defaults()
+    except Exception as exc:
+        pi = _fallback_pi_launch_defaults()
+        warnings["pi"] = _launch_defaults_warning(exc)
+    try:
+        cc = _read_cc_launch_defaults()
+    except Exception as exc:
+        cc = _fallback_cc_launch_defaults()
+        warnings["cc"] = _launch_defaults_warning(exc)
+    out = {
         "default_backend": DEFAULT_AGENT_BACKEND,
         "backends": {
             "codex": codex,
@@ -2498,6 +2560,9 @@ def _read_new_session_defaults() -> dict[str, Any]:
             "cc": cc,
         },
     }
+    if warnings:
+        out["warnings"] = warnings
+    return out
 
 
 def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") -> dict[str, Any] | None:

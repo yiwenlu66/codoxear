@@ -3648,10 +3648,12 @@
             ? data.recent_cwds.filter((cwd, idx, arr) => typeof cwd === "string" && cwd.trim() && arr.indexOf(cwd) === idx)
             : [];
           if (newSessionViewer.style.display === "flex") {
+            const statusText = String(newSessionStatus.textContent || "").trim();
             syncNewSessionTmuxUi();
             renderNewSessionModelMenu();
             renderNewSessionReasoningMenu();
             syncNewSessionRunConfigUi();
+            if (!statusText || statusText.startsWith("Launch defaults degraded for ")) newSessionStatus.textContent = newSessionDefaultsWarningText();
           }
           fileRefCandidateCache.clear();
           const swipeActions = !useDesktopSessionActions();
@@ -5725,10 +5727,18 @@
           return parsed;
         }
 
+        function newSessionDefaultsWarningText() {
+          const warnings = newSessionDefaults && typeof newSessionDefaults === "object" && newSessionDefaults.warnings && typeof newSessionDefaults.warnings === "object" ? newSessionDefaults.warnings : null;
+          if (!warnings) return "";
+          const names = Object.keys(warnings).map(agentBackendDisplayName).filter(Boolean);
+          if (!names.length) return "";
+          return `Launch defaults degraded for ${names.join(", ")}; using safe defaults.`;
+        }
+
         function clearNewSessionProviderModelError() {
           newSessionModelField.classList.remove("error");
           if (String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")) {
-            newSessionStatus.textContent = "";
+            newSessionStatus.textContent = newSessionDefaultsWarningText();
           }
         }
 
@@ -6210,7 +6220,7 @@
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const rememberedBackend = loadRememberedBackendChoice();
           const initialBackend = rememberedBackend || (cur ? sessionAgentBackend(cur) : normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend));
-          newSessionStatus.textContent = String(statusText || "");
+          newSessionStatus.textContent = String(statusText || newSessionDefaultsWarningText() || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";
           newSessionModelInput.value = "";

@@ -91,6 +91,13 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("if (!parsed.providerError) clearNewSessionProviderModelError();", source)
         self.assertIn("clearNewSessionProviderModelError();\n          }\n          const reasoningChoices = currentReasoningChoices();", source)
 
+    def test_degraded_launch_defaults_are_visible_but_nonblocking(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function newSessionDefaultsWarningText()", source)
+        self.assertIn("Launch defaults degraded for ${names.join(\", \")}; using safe defaults.", source)
+        self.assertIn("statusText || newSessionDefaultsWarningText()", source)
+        self.assertIn('statusText.startsWith("Launch defaults degraded for ")', source)
+
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function lastProviderModelKey(backend)", source)

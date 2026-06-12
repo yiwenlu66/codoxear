@@ -224,6 +224,56 @@ base_url = "https://example.com/v1"
         self.assertIn("pi", defaults["backends"])
         self.assertIn("cc", defaults["backends"])
         self.assertEqual(defaults["backends"]["pi"]["provider_choice"], "macaron")
+        self.assertNotIn("warnings", defaults)
+
+    def test_read_new_session_defaults_fails_soft_for_malformed_backend_configs(self) -> None:
+        with TemporaryDirectory() as td:
+            codex_config_path = Path(td) / "config.toml"
+            codex_models_path = Path(td) / "models.json"
+            pi_settings_path = Path(td) / "pi-settings.json"
+            pi_models_path = Path(td) / "pi-models.json"
+            pi_auth_path = Path(td) / "missing-auth.json"
+            cc_settings_path = Path(td) / "cc-settings.json"
+            codex_config_path.write_text("model = [\n", encoding="utf-8")
+            codex_models_path.write_text('{"models": []}\n', encoding="utf-8")
+            pi_settings_path.write_text("{bad json\n", encoding="utf-8")
+            pi_models_path.write_text('{"providers": {}}\n', encoding="utf-8")
+            cc_settings_path.write_text("{bad json\n", encoding="utf-8")
+            with patch("codoxear.server.CODEX_CONFIG_PATH", codex_config_path), patch(
+                "codoxear.server.MODELS_CACHE_PATH", codex_models_path
+            ), patch("codoxear.server.PI_SETTINGS_PATH", pi_settings_path), patch(
+                "codoxear.server.PI_MODELS_PATH", pi_models_path
+            ), patch("codoxear.server.PI_AUTH_PATH", pi_auth_path), patch("codoxear.server.CC_SETTINGS_PATH", cc_settings_path):
+                defaults = _read_new_session_defaults()
+
+        self.assertEqual(set(defaults["backends"]), {"codex", "pi", "cc"})
+        self.assertEqual(set(defaults["warnings"]), {"codex", "pi", "cc"})
+        self.assertEqual(defaults["backends"]["codex"]["provider_choices"], ["chatgpt", "openai-api"])
+        self.assertEqual(defaults["backends"]["codex"]["reasoning_effort"], None)
+        self.assertEqual(defaults["backends"]["pi"]["provider_choices"], [])
+        self.assertEqual(defaults["backends"]["pi"]["reasoning_effort"], "high")
+        self.assertEqual(defaults["backends"]["cc"]["provider_choices"], [])
+        self.assertEqual(defaults["backends"]["cc"]["reasoning_effort"], "medium")
+
+    def test_read_new_session_defaults_fails_soft_for_malformed_pi_models(self) -> None:
+        with TemporaryDirectory() as td:
+            pi_settings_path = Path(td) / "missing-settings.json"
+            pi_models_path = Path(td) / "pi-models.json"
+            pi_auth_path = Path(td) / "missing-auth.json"
+            cc_settings_path = Path(td) / "missing-cc-settings.json"
+            codex_config_path = Path(td) / "missing-config.toml"
+            codex_models_path = Path(td) / "missing-models.json"
+            pi_models_path.write_text("{bad json\n", encoding="utf-8")
+            with patch("codoxear.server.CODEX_CONFIG_PATH", codex_config_path), patch(
+                "codoxear.server.MODELS_CACHE_PATH", codex_models_path
+            ), patch("codoxear.server.PI_SETTINGS_PATH", pi_settings_path), patch(
+                "codoxear.server.PI_MODELS_PATH", pi_models_path
+            ), patch("codoxear.server.PI_AUTH_PATH", pi_auth_path), patch("codoxear.server.CC_SETTINGS_PATH", cc_settings_path):
+                defaults = _read_new_session_defaults()
+
+        self.assertEqual(set(defaults["backends"]), {"codex", "pi", "cc"})
+        self.assertEqual(set(defaults["warnings"]), {"pi"})
+        self.assertEqual(defaults["backends"]["pi"]["reasoning_efforts_by_model"], {})
 
     def test_read_pi_launch_defaults_includes_logged_in_oauth_providers(self) -> None:
         with TemporaryDirectory() as td:
