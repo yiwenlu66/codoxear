@@ -224,6 +224,7 @@ FILE_HISTORY_PATH = APP_DIR / "session_files.json"
 VIDEO_PREVIEW_DIR = APP_DIR / "video_previews"
 QUEUE_PATH = APP_DIR / "session_queues.json"
 PENDING_ATTACHMENTS_PATH = APP_DIR / "pending_attachments.json"
+COMMIT_UNKNOWN_SENDS_PATH = APP_DIR / "commit_unknown_sends.json"
 RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
 VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
 PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
@@ -1950,6 +1951,7 @@ class Session:
     spawn_nonce: str | None = None
     resume_session_id: str | None = None
     pending_attachment: bool = False
+    commit_unknown_send: dict[str, Any] | None = None
     sync_send_supported: bool = False
     key_write_errors_supported: bool = False
 
@@ -2024,6 +2026,7 @@ class SessionManager:
         self._queues: dict[str, list[dict[str, Any]]] = {}
         self._queue_store = QueueStore(QUEUE_PATH)
         self._pending_attachment_ids: set[str] = set()
+        self._commit_unknown_sends: dict[str, dict[str, Any]] = {}
         self._input_locks: dict[str, threading.Lock] = {}
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
@@ -2036,6 +2039,7 @@ class SessionManager:
         self._load_files()
         self._load_queues()
         self._load_pending_attachments()
+        self._load_commit_unknown_sends()
         self._load_recent_cwds()
         self._backfill_recent_cwds_from_logs()
         self._voice_push = VoicePushCoordinator(
@@ -2371,7 +2375,11 @@ class SessionManager:
             pending_attachment_ids = getattr(self, "_pending_attachment_ids", None)
             if isinstance(pending_attachment_ids, set):
                 pending_attachment_ids.discard(session_id)
+            unknown_sends = getattr(self, "_commit_unknown_sends", None)
+            if isinstance(unknown_sends, dict):
+                unknown_sends.pop(session_id, None)
         self._save_pending_attachments()
+        self._save_commit_unknown_sends()
         self._save_aliases()
         if changed_sidebar:
             self._save_sidebar_meta()
@@ -2482,6 +2490,72 @@ class SessionManager:
                 raise KeyError("unknown session")
         self._set_pending_attachment(session_id, False)
         return {"ok": True, "pending_attachment": False}
+
+    def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, dict):
+            return None
+        text = raw.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return None
+        ts_raw = raw.get("created_ts")
+        try:
+            created_ts = float(ts_raw) if ts_raw is not None else time.time()
+        except (TypeError, ValueError):
+            created_ts = time.time()
+        if not math.isfinite(created_ts) or created_ts <= 0:
+            created_ts = time.time()
+        error = raw.get("error")
+        record: dict[str, Any] = {"text": text, "created_ts": created_ts}
+        if isinstance(error, str) and error.strip():
+            record["error"] = error.strip()
+        return record
+
+    def _load_commit_unknown_sends(self) -> None:
+        obj = _load_json_file(COMMIT_UNKNOWN_SENDS_PATH, default=None)
+        if obj is None:
+            return
+        if not isinstance(obj, dict):
+            raise ValueError("invalid commit_unknown_sends.json (expected object)")
+        cleaned: dict[str, dict[str, Any]] = {}
+        for sid, raw in obj.items():
+            if not isinstance(sid, str) or not sid.strip():
+                continue
+            rec = self._clean_commit_unknown_send_record(raw)
+            if rec is not None:
+                cleaned[sid.strip()] = rec
+        with self._lock:
+            self._commit_unknown_sends = cleaned
+
+    def _save_commit_unknown_sends(self) -> None:
+        with self._lock:
+            source = getattr(self, "_commit_unknown_sends", {})
+            obj = {str(sid): dict(rec) for sid, rec in source.items() if str(sid).strip() and isinstance(rec, dict)}
+        _atomic_write_json(COMMIT_UNKNOWN_SENDS_PATH, obj)
+
+    def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
+        cleaned = self._clean_commit_unknown_send_record(record) if record is not None else None
+        with self._lock:
+            unknown_sends = getattr(self, "_commit_unknown_sends", None)
+            if not isinstance(unknown_sends, dict):
+                self._commit_unknown_sends = {}
+                unknown_sends = self._commit_unknown_sends
+            s = self._sessions.get(session_id)
+            if cleaned is None:
+                unknown_sends.pop(session_id, None)
+                if s:
+                    s.commit_unknown_send = None
+            else:
+                unknown_sends[session_id] = dict(cleaned)
+                if s:
+                    s.commit_unknown_send = dict(cleaned)
+        self._save_commit_unknown_sends()
+
+    def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+        self._set_commit_unknown_send(session_id, None)
+        return {"ok": True, "commit_unknown_send": False}
 
     def _load_recent_cwds(self) -> None:
         obj = _load_json_file(RECENT_CWD_PATH, default=None)
@@ -2656,6 +2730,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if s.commit_unknown_send:
+                return False
             if s.pending_attachment and not allow_pending_attachment:
                 return False
             log_path = s.log_path
@@ -2679,6 +2755,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if s.commit_unknown_send:
+                return False
             if s.pending_attachment:
                 return False
         st = self.get_state(session_id)
@@ -3305,6 +3383,7 @@ class SessionManager:
                 spawn_nonce=spawn_nonce,
                 resume_session_id=resume_session_id,
                 pending_attachment=session_id in getattr(self, "_pending_attachment_ids", set()),
+                commit_unknown_send=dict(getattr(self, "_commit_unknown_sends", {}).get(session_id) or {}) or None,
                 sync_send_supported=sync_send_supported,
                 key_write_errors_supported=key_write_errors_supported,
             )
@@ -3345,6 +3424,7 @@ class SessionManager:
                     prev.spawn_nonce = spawn_nonce
                     prev.resume_session_id = resume_session_id
                     prev.pending_attachment = bool(prev.pending_attachment or session_id in getattr(self, "_pending_attachment_ids", set()))
+                    prev.commit_unknown_send = dict(getattr(self, "_commit_unknown_sends", {}).get(session_id) or {}) or None
                     prev.sync_send_supported = sync_send_supported
                     prev.key_write_errors_supported = key_write_errors_supported
         if recent_cwd_dirty:
@@ -3634,6 +3714,9 @@ class SessionManager:
                         "state_busy": bool(s.busy),
                         "queue_len": int(queue_len),
                         "pending_attachment": bool(s.pending_attachment),
+                        "commit_unknown_send": bool(s.commit_unknown_send),
+                        "commit_unknown_send_text": (str(s.commit_unknown_send.get("text")) if isinstance(s.commit_unknown_send, dict) and isinstance(s.commit_unknown_send.get("text"), str) else None),
+                        "commit_unknown_send_ts": (float(s.commit_unknown_send.get("created_ts")) if isinstance(s.commit_unknown_send, dict) and isinstance(s.commit_unknown_send.get("created_ts"), (int, float)) else None),
                         "token": s.token,
                         "thinking": int(s.meta_thinking),
                         "tools": int(s.meta_tools),
@@ -4413,6 +4496,8 @@ class SessionManager:
                 s = self._sessions.get(session_id)
                 if not s:
                     raise KeyError("unknown session")
+                if s.commit_unknown_send:
+                    raise SessionNotReadyError("resolve the unknown send before submitting more text")
                 if s.pending_attachment and not allow_pending_attachment:
                     raise SessionNotReadyError("send the pending attachment explicitly before submitting other text")
                 local_queue_len = self._queue_store_for_manager().queue_len(self._queues, session_id)
@@ -4425,12 +4510,23 @@ class SessionManager:
                 sock = s.sock_path
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
+
+            def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
+                if queue_item_id is None:
+                    self._set_commit_unknown_send(
+                        session_id,
+                        {"text": text, "created_ts": time.time(), "error": message},
+                    )
+                if cause is None:
+                    raise SessionCommitUnknownError(message)
+                raise SessionCommitUnknownError(message) from cause
+
             try:
                 timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
                 resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s, track_request_sent=True)
             except ControlSocketCallError as e:
                 if e.request_sent:
-                    raise SessionCommitUnknownError("send commit status unknown; broker response failed") from e
+                    raise_commit_unknown("send commit status unknown; broker response failed", e)
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
                         self._sessions.pop(session_id, None)
@@ -4440,23 +4536,23 @@ class SessionManager:
                     raise KeyError("unknown session")
                 raise SessionNotReadyError("session control socket unavailable") from e
             except (TimeoutError, socket.timeout) as e:
-                raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
+                raise_commit_unknown("send commit status unknown; broker did not reply before timeout", e)
             if not isinstance(resp, dict):
-                raise SessionCommitUnknownError("send commit status unknown; broker response was malformed")
+                raise_commit_unknown("send commit status unknown; broker response was malformed")
             if bool(resp.get("commit_unknown")):
-                raise SessionCommitUnknownError("send commit status unknown; broker marked commit unknown")
+                raise_commit_unknown("send commit status unknown; broker marked commit unknown")
             if resp.get("error"):
                 err = str(resp.get("error"))
                 if err == "empty response":
-                    raise SessionCommitUnknownError("send commit status unknown; broker response was empty")
+                    raise_commit_unknown("send commit status unknown; broker response was empty")
                 if bool(resp.get("commit_unknown")):
-                    raise SessionCommitUnknownError(f"send commit status unknown; {err}")
+                    raise_commit_unknown(f"send commit status unknown; {err}")
                 raise SessionInjectionError(err)
             if "queue_len" not in resp:
-                raise SessionCommitUnknownError("send commit status unknown; broker response was incomplete")
+                raise_commit_unknown("send commit status unknown; broker response was incomplete")
             queue_len_raw = resp.get("queue_len")
             if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
-                raise SessionCommitUnknownError("send commit status unknown; broker response was invalid")
+                raise_commit_unknown("send commit status unknown; broker response was invalid")
             queue_len = int(queue_len_raw)
             with self._lock:
                 self._record_prelog_user_message(s, text, source="send")
@@ -4466,6 +4562,8 @@ class SessionManager:
                         s2.busy = bool(resp.get("busy"))
                     s2.queue_len = queue_len
             self._set_pending_attachment(session_id, False)
+            if queue_item_id is None:
+                self._set_commit_unknown_send(session_id, None)
         return resp
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
@@ -4475,6 +4573,8 @@ class SessionManager:
                 s = self._sessions.get(session_id)
                 if not s:
                     raise KeyError("unknown session")
+                if s.commit_unknown_send:
+                    raise SessionNotReadyError("resolve the unknown send before queueing another prompt")
                 if s.pending_attachment:
                     raise SessionNotReadyError("send the pending attachment before queueing another prompt")
                 if not s.sync_send_supported:
@@ -6515,6 +6615,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 try:
                     res = MANAGER.clear_pending_attachment(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                _json_response(self, 200, res)
+                return
+
+            session_id = _match_session_route(path, "commit_unknown_send", "clear")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                try:
+                    res = MANAGER.clear_commit_unknown_send(session_id)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return

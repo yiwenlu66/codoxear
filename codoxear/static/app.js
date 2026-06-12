@@ -3953,6 +3953,27 @@
           }
         }
 
+        async function clearCommitUnknownSend(sid, previewText = "") {
+          const sessionId = String(sid || "").trim();
+          if (!sessionId) return false;
+          const preview = String(previewText || "").trim();
+          const suffix = preview ? `\n\nPrompt: ${preview.slice(0, 240)}${preview.length > 240 ? "..." : ""}` : "";
+          const confirmed = window.confirm(
+            `Clear the unknown-send marker only after checking the transcript or terminal. This does not undo a prompt that may already have been sent.${suffix}`
+          );
+          if (!confirmed) return false;
+          try {
+            await api(`/api/sessions/${sessionId}/commit_unknown_send/clear`, { method: "POST", body: {} });
+            setToast("unknown send marker cleared");
+            await refreshSessions();
+            updateQueueBadge();
+            return true;
+          } catch (e) {
+            setToast(`clear unknown send error: ${e && e.message ? e.message : "unknown error"}`);
+            return false;
+          }
+        }
+
 	         async function refreshSessions() {
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
@@ -4014,6 +4035,22 @@
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
+             if (s.commit_unknown_send) {
+               const unknownBadge = el("button", {
+                 class: "badge commitUnknown",
+                 type: "button",
+                 text: "unknown",
+                 title: "Previous send status is unknown; check transcript, then click to clear",
+                 "aria-label": "Previous send status is unknown; check transcript, then clear marker",
+               });
+               unknownBadge.onclick = (e) => {
+                 e.preventDefault();
+                 e.stopPropagation();
+                 closeOpenSwipe();
+                 void clearCommitUnknownSend(s.session_id, s.commit_unknown_send_text || "");
+               };
+               badges.push(unknownBadge);
+             }
 
 	             const updatedTs = typeof s.updated_ts === "number" && Number.isFinite(s.updated_ts) ? s.updated_ts : s.start_ts;
 	             const ageS = updatedTs ? Math.max(0, Date.now() / 1000 - updatedTs) : 0;
@@ -4301,6 +4338,8 @@
           }
           updateUnattendedBtnState();
           updateQueueBadge();
+          syncSendButtonState();
+          syncQueueSubmitState();
           maybeSelectPendingHashSession();
           return sessions;
         }
@@ -9611,11 +9650,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return [];
         }
 
+        function selectedSessionHasUnknownSend() {
+          const s = selected ? sessionIndex.get(selected) : null;
+          return Boolean(s && s.commit_unknown_send);
+        }
+
         function syncQueueSubmitState() {
           const queueControl = $("#queueBtn");
           if (!queueControl) return;
-          queueControl.disabled = !!queueSubmitBusy || !selected;
-          const queueLabel = selected ? "Queued messages" : "Select a session to view queued messages";
+          const unknownSend = selectedSessionHasUnknownSend();
+          queueControl.disabled = !!queueSubmitBusy || !selected || unknownSend;
+          const queueLabel = !selected
+            ? "Select a session to view queued messages"
+            : unknownSend
+              ? "Resolve the unknown send before queueing"
+              : "Queued messages";
           queueControl.title = queueLabel;
           queueControl.setAttribute("aria-label", queueLabel);
         }
@@ -9623,8 +9672,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function syncSendButtonState() {
           const sendControl = $("#sendBtn");
           if (!sendControl) return;
-          sendControl.disabled = !!sending || !selected;
-          const sendLabel = selected ? "Send" : "Select a session to send";
+          const unknownSend = selectedSessionHasUnknownSend();
+          sendControl.disabled = !!sending || !selected || unknownSend;
+          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
         }
@@ -9633,6 +9683,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sessionId = sid || selected;
           const text = String(raw || "");
           if (!sessionId || !text.trim()) return false;
+          const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionInfo.commit_unknown_send) {
+            setToast("resolve the unknown send before queueing");
+            void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
+            return false;
+          }
           if (queueSubmitBusy) return false;
           queueSubmitBusy = true;
           syncQueueSubmitState();
@@ -10507,6 +10563,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const renderHere = sessionId === selected;
           const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
           const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionInfo.commit_unknown_send) {
+            setToast("resolve the unknown send before sending again");
+            void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
+            return false;
+          }
           const localAttachmentCount = typeof attachedFiles === "number" ? attachedFiles : 0;
           let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);
           if (!allowPendingAttachment && sessionInfo && sessionInfo.pending_attachment) {
@@ -10554,8 +10615,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return true;
           } catch (e2) {
             const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
-            if (commitUnknown) setToast("send status unknown; check transcript before retrying");
-            else setToast(`send error: ${e2.message}`);
+            if (commitUnknown) {
+              setToast("send status unknown; check transcript before retrying");
+              pollFastUntilMs = Date.now() + 4000;
+              kickPoll(0);
+              void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+            } else setToast(`send error: ${e2.message}`);
             if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(e2 && e2.message ? e2.message : ""))) {
               const clearPending = window.confirm("This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?");
               if (clearPending) {

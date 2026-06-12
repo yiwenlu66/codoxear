@@ -41,8 +41,10 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions = {}
         mgr._queues = {}
         mgr._pending_attachment_ids = set()
+        mgr._commit_unknown_sends = {}
         mgr._save_queues = lambda: None
         mgr._save_pending_attachments = lambda: None
+        mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
     def test_match_session_route_requires_exact_suffix(self) -> None:
@@ -60,6 +62,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(_match_session_route("/api/sessions/s1/edit", "edit"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/rename", "rename"), "s1")
         self.assertEqual(_match_session_route("/api/sessions/s1/inject_file", "inject_file"), "s1")
+        self.assertEqual(_match_session_route("/api/sessions/s1/commit_unknown_send/clear", "commit_unknown_send", "clear"), "s1")
 
     def test_attachment_injection_ready_requires_idle_broker_and_empty_local_queue(self) -> None:
         sid = "s1"
@@ -312,6 +315,27 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(SessionCommitUnknownError, "marked commit unknown"):
             SessionManager.send(mgr, sid, "normal prompt")
+        self.assertEqual(mgr._commit_unknown_sends[sid]["text"], "normal prompt")
+        self.assertEqual(mgr._sessions[sid].commit_unknown_send["text"], "normal prompt")
+
+    def test_commit_unknown_send_blocks_retry_queue_and_sweep_until_cleared(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].commit_unknown_send = {"text": "maybe sent", "created_ts": 123.0}
+        mgr._commit_unknown_sends[sid] = {"text": "maybe sent", "created_ts": 123.0}
+        mgr.get_state = lambda _sid: self.fail("unknown send should fail before broker readiness")  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: self.fail("unknown send should not reach broker")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
+            SessionManager.send(mgr, sid, "retry")
+        with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
+            SessionManager.enqueue(mgr, sid, "queued")
+        self.assertFalse(SessionManager._queue_remote_ready(mgr, sid, log_path=None))
+
+        self.assertEqual(SessionManager.clear_commit_unknown_send(mgr, sid), {"ok": True, "commit_unknown_send": False})
+        self.assertIsNone(mgr._sessions[sid].commit_unknown_send)
+        self.assertNotIn(sid, mgr._commit_unknown_sends)
 
     def test_send_empty_response_is_commit_unknown(self) -> None:
         sid = "s1"

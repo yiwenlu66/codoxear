@@ -517,6 +517,19 @@
 	        color: #f59e0b;
 	        border-color: rgba(245, 158, 11, 0.5);
 	      }
+      button.badge {
+        font: inherit;
+        cursor: pointer;
+      }
+      .badge.commitUnknown {
+        color: #b45309;
+        border-color: rgba(245, 158, 11, 0.65);
+        background: rgba(245, 158, 11, 0.1);
+      }
+      .badge.commitUnknown:hover,
+      .badge.commitUnknown:focus-visible {
+        border-color: rgba(180, 83, 9, 0.85);
+      }
       .badge.launchFailed {
         color: #991b1b;
         border-color: rgba(185, 28, 28, 0.5);

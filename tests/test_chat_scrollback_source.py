@@ -201,6 +201,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);", block)
         self.assertIn("const sessionInfo = sessionIndex.get(sessionId) || null;", block)
+        self.assertIn("if (sessionInfo && sessionInfo.commit_unknown_send) {", block)
+        self.assertIn("void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || \"\");", block)
         self.assertIn("const localAttachmentCount = typeof attachedFiles === \"number\" ? attachedFiles : 0;", block)
         self.assertIn("let allowPendingAttachment = Boolean(renderHere && localAttachmentCount > 0);", block)
         self.assertIn("sessionInfo && sessionInfo.pending_attachment", block)
@@ -214,7 +216,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("if (renderHere && !renewsTranscript) {", block)
         self.assertIn("if (!renderedAtLiveTail)", block)
         self.assertIn("const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);", block)
-        self.assertIn("if (commitUnknown) setToast(\"send status unknown; check transcript before retrying\");", block)
+        self.assertIn("setToast(\"send status unknown; check transcript before retrying\");", block)
+        self.assertIn("void refreshSessions().catch((e) => console.error(\"refreshSessions failed\", e));", block)
         self.assertIn("/broker must be restarted/i.test", block)
         self.assertIn("pending_attachment/clear", block)
         self.assertIn("attachment status unknown; check before retrying", source)

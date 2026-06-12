@@ -11,8 +11,9 @@ class TestSendButtonSource(unittest.TestCase):
 
         self.assertIn('function syncSendButtonState() {', source)
         self.assertIn('const sendControl = $("#sendBtn");', source)
-        self.assertIn('sendControl.disabled = !!sending || !selected;', source)
-        self.assertIn('const sendLabel = selected ? "Send" : "Select a session to send";', source)
+        self.assertIn('const unknownSend = selectedSessionHasUnknownSend();', source)
+        self.assertIn('sendControl.disabled = !!sending || !selected || unknownSend;', source)
+        self.assertIn('Resolve the unknown send before sending', source)
         self.assertIn('sendControl.setAttribute("aria-label", sendLabel);', source)
         self.assertIn('syncSendButtonState();\n          diagBtn.disabled = !selected;', source)
         self.assertIn('sending = true;\n          syncSendButtonState();', source)
