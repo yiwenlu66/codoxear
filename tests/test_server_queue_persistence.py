@@ -119,6 +119,31 @@ class TestServerQueuePersistence(unittest.TestCase):
 
             self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
 
+    def test_attachment_readiness_refreshes_sidecar_before_log_idle_check(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            session = _make_session(sid)
+            session.sock_path = root / "s1.sock"
+            old_idle_log = root / "old.jsonl"
+            old_idle_log.write_text("{}\n", encoding="utf-8")
+            new_busy_log = root / "new.jsonl"
+            new_busy_log.write_text("{}\n", encoding="utf-8")
+            session.log_path = old_idle_log
+            mgr._sessions[sid] = session
+            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+            mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: mgr._sessions[sid].log_path != new_busy_log  # type: ignore[method-assign]
+
+            def refresh(_sid: str) -> None:
+                mgr._sessions[sid].log_path = new_busy_log
+
+            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
+            self.assertEqual(mgr._sessions[sid].log_path, new_busy_log)
+
     def test_inject_attachment_keys_rechecks_readiness_under_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()

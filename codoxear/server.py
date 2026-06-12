@@ -4357,7 +4357,17 @@ class SessionManager:
             raise ValueError("invalid broker tail response")
         return tail
 
+    def _refresh_session_meta_if_sidecar_exists(self, session_id: str) -> None:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            meta_path = s.sock_path.with_suffix(".json")
+        if meta_path.exists():
+            self.refresh_session_meta(session_id)
+
     def attachment_injection_ready(self, session_id: str) -> bool:
+        self._refresh_session_meta_if_sidecar_exists(session_id)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -4372,6 +4382,7 @@ class SessionManager:
             raise ValueError("invalid broker state response")
         if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
             return False
+        self._refresh_session_meta_if_sidecar_exists(session_id)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
