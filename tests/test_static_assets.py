@@ -5,6 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from codoxear.server import CONTENT_SECURITY_POLICY
 from codoxear.server import STATIC_ASSET_VERSION_PLACEHOLDER
 from codoxear.server import _read_static_bytes
 from codoxear.server import _static_asset_version
@@ -26,7 +27,11 @@ class TestStaticAssets(unittest.TestCase):
     def test_app_shell_does_not_execute_third_party_assets(self) -> None:
         index = INDEX_HTML.read_text(encoding="utf-8")
         app = APP_JS.read_text(encoding="utf-8")
+        server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
+        self.assertIn("self.send_header(\"Content-Security-Policy\", CONTENT_SECURITY_POLICY)", server_source)
+        self.assertIn("self.send_header(\"X-Frame-Options\", \"DENY\")", server_source)
+        self.assertIn("frame-ancestors 'none'", CONTENT_SECURITY_POLICY)
         for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com"]:
             self.assertNotIn(forbidden, index)
             self.assertNotIn(forbidden, app)
@@ -34,6 +39,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertNotIn('href="https://', index)
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
         self.assertIn("connect-src 'self'", index)
+        self.assertIn("connect-src 'self'", CONTENT_SECURITY_POLICY)
         self.assertIn('const base = resolveAppUrl("monaco/vs");', app)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
 

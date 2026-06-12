@@ -205,6 +205,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
 STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
+CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
@@ -1552,58 +1553,6 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
         if reasoning_effort is None:
             reasoning_effort = ctx_effort
     return model_provider, model, reasoning_effort
-
-
-def _normalize_requested_model_provider(value: Any, *, allowed: set[str] | None = None) -> str | None:
-    provider = _clean_optional_text(value)
-    if provider is None:
-        return None
-    if allowed is not None and provider not in allowed:
-        allowed_txt = ", ".join(sorted(allowed))
-        raise ValueError(f"model_provider must be one of {allowed_txt}")
-    return provider
-
-
-def _normalize_requested_service_tier(value: Any) -> str | None:
-    tier = _clean_optional_text(value)
-    if tier is None:
-        return None
-    if tier not in {"fast", "flex"}:
-        raise ValueError("service_tier must be one of fast, flex")
-    return tier
-
-
-def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
-    method = _clean_optional_text(value)
-    if method is None:
-        return None
-    if method not in {"chatgpt", "apikey"}:
-        raise ValueError("preferred_auth_method must be one of chatgpt, apikey")
-    return method
-
-
-def _configured_model_providers(data: dict[str, Any]) -> list[str]:
-    providers = ["openai"]
-    seen = {"openai"}
-    raw = data.get("model_providers")
-    if not isinstance(raw, dict):
-        return providers
-    for key in raw.keys():
-        if not isinstance(key, str):
-            continue
-        name = key.strip()
-        if not name or name in seen:
-            continue
-        seen.add(name)
-        providers.append(name)
-    return providers
-
-
-def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
-    provider = model_provider or "openai"
-    if provider == "openai":
-        return "chatgpt" if preferred_auth_method == "chatgpt" else "openai-api"
-    return provider
 
 
 def _new_queue_item_id() -> str:
@@ -4599,8 +4548,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             raise
 
     def _send_static(self, rel: str) -> None:
-        path = (STATIC_DIR / rel.lstrip("/")).resolve()
-        if not str(path).startswith(str(STATIC_DIR.resolve())):
+        static_root = STATIC_DIR.resolve()
+        path = (static_root / rel.lstrip("/")).resolve()
+        try:
+            path.relative_to(static_root)
+        except ValueError:
             self.send_error(404)
             return
         if not path.exists() or not path.is_file():
@@ -4629,6 +4581,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ctype = "application/octet-stream"
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        if path.suffix == ".html":
+            self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+            self.send_header("X-Frame-Options", "DENY")
         self.send_header("Content-Length", str(len(data)))
         # UI is used for interactive debugging; serve assets without caching by
         # default so changes (including inline JS) show up immediately on
