@@ -1255,3 +1255,10 @@ Commitments:
 - Observation: Final clean-room review found no blockers after explicit fallback gating and data-first tail cache identity.
 - Scoped claim: Jump-to-latest can degrade to the last matching cached tail when the fresh tail request fails, while automatic identity recovery avoids cached fallback and tail cache identity follows transcript payload identity.
 - Remaining uncertainty: The match check on failure still depends on latest client session metadata because a failed authoritative request supplies no new identity. This is acceptable for opt-in Jump fallback but should not be broadened without stronger server evidence.
+
+## 2026-06-13 07:50 — Save conflict recovery should preserve the draft and refresh only by explicit reload
+- Observation: The server already returned precise stale-version conflict evidence for `/file/write`, but the client only showed conflict text. Repeated saves would reuse the stale `activeFileVersion` and repeat the conflict without a recovery affordance.
+- Mechanism: A 409 means the editor draft and disk file have diverged. The safe client actions are to keep editing the draft or explicitly discard it and reload the current disk version; blind overwrite would hide uncertainty and was not added.
+- Intervention: Conflict status now renders explicit Reload/Keep actions; reload goes through the existing file-read path after confirmation, and keep-editing leaves dirty draft/version state unchanged.
+- Evidence: Source tests pin action wiring and absence of overwrite; isolated API evidence confirms the server conflict shape; full local/Docker validations passed. Browser UI evidence is limited because Monaco timed out in the sandbox and forced read-only fallback.
+- Scoped claim: File save conflicts are no longer a dead-end stale-version loop in the client UI; users get explicit safe recovery choices.

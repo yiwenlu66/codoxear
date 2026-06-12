@@ -1479,3 +1479,12 @@
 - Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`; `node --check codoxear/static/app.js` → passed.
 - Review artifact: `/tmp/codoxear-forced-tail-fallback-review.md`.
 - Residual risks noted: tests are source-shape rather than full browser race simulations; cache fallback necessarily still matches against latest client `sessionIndex` metadata when the authoritative tail request fails because no fresh tail identity exists on failure.
+
+## 2026-06-13 07:50 — File save conflict recovery UI
+- Implemented `renderFileSaveConflict(savePath, message)` in `codoxear/static/app.js`. A stale-version save 409 now preserves the editor draft and renders inline `Reload from disk` and `Keep editing` actions in `fileStatus` instead of only replacing status text.
+- `Reload from disk` confirms that the unsaved draft will be discarded, then uses existing `openFilePath(savePath, { line: activeFileLine })` so the file-read path refreshes `activeFileText`, `activeFileVersion`, editability, and editor content only after a successful read. `Keep editing` leaves the draft in place and focuses the editor. No overwrite action was added.
+- Added compact `.fileConflictActions` styling and source tests in `tests/test_file_viewer_source.py`.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `41 passed`.
+- Isolated evidence on `codoxear-sandbox-18935`: direct API stale-version write returned HTTP 409 with `{ "conflict": true, "version": <current_version> }`. Browser end-to-end edit/save conflict evidence was attempted, but Monaco timed out in the sandbox and the viewer fell back to read-only plain text, so UI validation for the actions is source-level. Artifacts: `/tmp/codoxear-file-conflict-evidence/api-conflict-headers.txt`, `api-conflict-body.json`, `file-mode-opened-wait.json`.
+- Full local validation: `python3 -m pytest -q` → `663 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `662 passed, 1 skipped, 25 subtests passed`.
