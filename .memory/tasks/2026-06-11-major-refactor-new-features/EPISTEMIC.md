@@ -310,3 +310,7 @@ Commitments:
 ## 2026-06-12 13:02
 - Observation/interpretation: loaded-only search was honest but weak for long unattended sessions because relevant text could exist outside the rendered DOM window. A full cursor-jump search would require careful byte-boundary paging semantics; a lower-risk intervention is to surface all-transcript match counts using the export pipeline while leaving loaded-row navigation unchanged.
 - Scoped claim: the UI can now tell users when matches exist beyond loaded rows (`loaded` count plus `all` count). It does not yet automatically load/jump to an older all-transcript match; that remains a possible future enhancement requiring cursor-target validation.
+
+## 2026-06-12 13:04
+- Observation: `list_sessions()` still had external IO inside the manager lock. A narrow, low-risk mechanism was identified for git branch lookup: it depends only on a resolved cwd snapshot, not mutable manager state.
+- Intervention/evidence: git branch lookup now runs after releasing the lock. A regression test asserts `_current_git_branch` observes `mgr._lock.locked() == False`. This reduces one lock-held IO source; log-derived run settings and first-history scans remain known future lock-scope risks.

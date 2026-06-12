@@ -354,3 +354,8 @@
 - UX feature follow-up: added bounded server-backed all-transcript search counts while preserving the existing fast loaded-DOM search. Route: `/api/sessions/<id>/messages/search?q=...&limit=...` reuses export event extraction and transcript size limit; UI search status now shows loaded matches plus total transcript matches, e.g. `0/0 loaded · 3 all`.
 - Commit: `8eeca75 feat: show all-transcript search counts`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; `node --check codoxear/static/app.js` passed; targeted transcript/search tests passed (`20 passed in 1.69s`); full isolated Docker suite passed (`450 passed, 2 skipped in 10.17s`).
+
+## 2026-06-12 13:04
+- Architecture/refactor follow-up: moved `_current_git_branch(cwd)` execution out of `SessionManager.list_sessions()`'s manager lock. The lock now snapshots the resolved cwd path; git branch lookup occurs in the existing outside-lock pass that already computes log idle state.
+- Commit: `44b7a0d refactor: read git branches outside manager lock`.
+- Validation: targeted sidebar/provenance/session tests passed (`53 passed in 1.74s`); full isolated Docker suite passed (`451 passed, 2 skipped in 10.21s`).
