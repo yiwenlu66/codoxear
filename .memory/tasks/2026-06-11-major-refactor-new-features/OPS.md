@@ -814,3 +814,9 @@
 - Product/UX tranche from fresh reviewer findings: redacted saved voice API keys from browser polls, restored mobile browser zoom, made login form keyboard/password-manager accessible, made Settings a keyboard-modal dialog, and made New Session first-use backend selection prefer the selected session backend.
 - Commits: `ef29de9 fix: redact saved voice API keys from browser polls`, `459244a fix: allow mobile browser zoom`, `6a042a4 fix: make login submit accessible from keyboard`, `ef5baf1 fix: make settings dialog keyboard-modal`, `6b36112 fix: prefer selected backend for new sessions`, `247550c test: target composer submit source guard`.
 - Validation: focused tests passed for each tranche; full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`520 passed, 2 skipped, 10 subtests passed in 15.47s`). Browser evidence on isolated Docker `:18878`: viewport content `width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover`; login form present, password autocomplete `current-password`, Enter/requestSubmit reached app (`loginDone=true`); Settings dialog opened with `open=true`, key input value empty, placeholder `Enter API key`, Escape closed it (`open=false`, display `none`); JS errors `[]`.
+
+
+## 2026-06-12 18:22
+- Architecture tranche from fresh architect review: broker and sessiond now share `codoxear/control_socket.py` for JSON-line control-socket dispatch/exception/close handling while retaining backend-specific state, PTY injection, and response payload callbacks.
+- Commit: `e2e0f00 refactor: share control socket dispatch`.
+- Validation: `python3 -m py_compile codoxear/control_socket.py codoxear/broker.py codoxear/sessiond.py` passed; targeted protocol/broker/sessiond tests passed (`39 passed in 2.14s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`523 passed, 2 skipped, 10 subtests passed in 14.28s`).

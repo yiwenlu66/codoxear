@@ -559,3 +559,11 @@ Commitments:
 - Interventions: removed viewport/gesture zoom suppression; added redacted voice settings snapshots plus blank-save preservation and explicit clear; converted login to a real form with password semantics and focus; opened Settings with native modal/cancel/Escape behavior; changed backend precedence to selected session -> remembered -> server default.
 - Evidence: source/unit tests constrain each contract; full isolated Docker suite passed; browser runtime evidence confirmed viewport/login/settings behavior in an isolated server/browser session.
 - Scoped claim: the reviewed UI/UX defects are fixed for the current browser-rendered app. Real mobile-device pinch gestures, real password manager behavior, and live TTS key workflows are not exhaustively proven beyond DOM/source/server evidence.
+
+
+## 2026-06-12 18:22
+- Observation: fresh architect review found broker and sessiond duplicated the same JSON-line control command dispatch (`state`, `tail`, `send`, `keys`, `shutdown`) plus exception/close handling.
+- Mechanism supported: shared server control protocol should have one dispatch/error boundary while broker/sessiond keep their distinct state mutation and PTY-write semantics.
+- Intervention: introduced `handle_control_socket_connection()` with per-command callbacks; broker/sessiond now provide local callbacks for state/tail/send/keys/shutdown. Send still replies before slow injection; keys retains each process's existing response shape.
+- Evidence: new protocol-helper tests cover known/unknown/invalid/exception cases; existing send-ack and fail-closed tests pass; full isolated Docker suite passed.
+- Scoped claim: duplicated dispatch mechanics were reduced without changing intended wire semantics. This is not a full control-protocol abstraction of state machines or busy/idle authority.
