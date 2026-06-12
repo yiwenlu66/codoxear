@@ -376,3 +376,7 @@ Commitments:
 ## 2026-06-12 14:25
 - Observation: broker and sessiond duplicated PTY full-write and bracketed-paste injection logic. This was a low-risk extraction because tests already exercise partial writes and send acknowledgements.
 - Intervention/evidence: shared helpers now live in `pty_util`; module-local wrappers preserve call-site and patching structure for control-flow tests. A source guard asserts bracketed-paste constants remain centralized.
+
+## 2026-06-12 14:30
+- Observation: path comparison and rollout filename session-id extraction still had duplicate implementations after the larger helper cleanups.
+- Intervention/evidence: broker now imports util's path matcher, and server/broker share util's rollout session-id extractor. Source guard asserts a single definition for each helper family.

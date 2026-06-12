@@ -449,3 +449,8 @@
 
 ## 2026-06-12 14:26
 - Current-head full validation after mobile toast UX and architecture helper refactors: isolated Docker suite passed (`465 passed, 2 skipped in 11.23s`).
+
+## 2026-06-12 14:30
+- Architecture cleanup: removed broker-local duplicate path matching and centralized rollout filename session-id extraction in `codoxear.util`; server and broker now import the shared helpers.
+- Commit: `d819926 refactor: share path helper utilities`.
+- Validation: `python3 -m py_compile codoxear/util.py codoxear/server.py codoxear/broker.py` passed; targeted path-helper, session-log, session-resume, broker-proc-rollout, and broker fail-closed tests passed (`68 passed in 2.69s`).
