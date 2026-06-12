@@ -456,3 +456,6 @@ Commitments:
 
 ## 2026-06-12 16:39
 - UX/accessibility observation: a clickable div without keyboard semantics made the selected-session title edit affordance mouse-only. The updated state model distinguishes selected interactive title from no-session inert title at cursor, title, role, aria label, aria-disabled, and tab order levels.
+
+## 2026-06-12 16:45
+- Race mechanism fixed: prior attachment upload read `selected` after asynchronous image compression/arrayBuffer work, so switching sessions mid-upload could target the wrong session. The target session and attachment index are now captured before async work; UI updates are conditional on still viewing that session.

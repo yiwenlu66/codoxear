@@ -696,3 +696,8 @@
 - Full validation after title keyboard/ARIA accessibility fix.
 - HEAD: `b91c6f5`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`488 passed, 2 skipped, 10 subtests passed in 13.71s`).
+
+## 2026-06-12 16:45
+- UI/UX correctness fix from reviewer finding: file attachment upload captures `selected` as `sid` when the file is picked, uses that stable sid for `/inject_file`, captures the attachment index, and only updates visible badge/toast/poll state if the user is still on the same session.
+- Commit: `d5e06b9 fix: keep attachment upload bound to picked session`.
+- Validation: `node --check codoxear/static/app.js` passed; focused attach/file-viewer/static tests passed (`25 passed in 7.90s`).
