@@ -19,7 +19,6 @@ import subprocess
 import sys
 import threading
 import time
-import tomllib
 import traceback
 import urllib.parse
 from dataclasses import dataclass
@@ -41,7 +40,6 @@ from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from . import rollout_log as _rollout_log
-from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
@@ -59,6 +57,37 @@ from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import safe_filename as _safe_filename
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
+from .launch_config import LaunchConfigPaths
+from .launch_config import LaunchRequestValidationError
+from .launch_config import NewSessionLaunchRequest
+from .launch_config import SUPPORTED_CC_REASONING_EFFORTS
+from .launch_config import SUPPORTED_PI_REASONING_EFFORTS
+from .launch_config import SUPPORTED_REASONING_EFFORTS
+from .launch_config import clean_reasoning_effort_list as _launch_clean_reasoning_effort_list
+from .launch_config import configured_model_providers as _launch_configured_model_providers
+from .launch_config import display_pi_reasoning_effort as _launch_display_pi_reasoning_effort
+from .launch_config import display_reasoning_effort as _launch_display_reasoning_effort
+from .launch_config import fallback_cc_launch_defaults as _launch_fallback_cc_launch_defaults
+from .launch_config import fallback_codex_launch_defaults as _launch_fallback_codex_launch_defaults
+from .launch_config import fallback_pi_launch_defaults as _launch_fallback_pi_launch_defaults
+from .launch_config import launch_defaults_warning as _launch_defaults_warning_impl
+from .launch_config import normalize_requested_cc_reasoning_effort as _launch_normalize_requested_cc_reasoning_effort
+from .launch_config import normalize_requested_model as _launch_normalize_requested_model
+from .launch_config import normalize_requested_model_provider as _launch_normalize_requested_model_provider
+from .launch_config import normalize_requested_pi_reasoning_effort as _launch_normalize_requested_pi_reasoning_effort
+from .launch_config import normalize_requested_preferred_auth_method as _launch_normalize_requested_preferred_auth_method
+from .launch_config import normalize_requested_reasoning_effort as _launch_normalize_requested_reasoning_effort
+from .launch_config import normalize_requested_service_tier as _launch_normalize_requested_service_tier
+from .launch_config import parse_new_session_launch_request as _launch_parse_new_session_launch_request
+from .launch_config import pi_allowed_reasoning_efforts_for_model as _launch_pi_allowed_reasoning_efforts_for_model
+from .launch_config import pi_reasoning_effort_key as _launch_pi_reasoning_effort_key
+from .launch_config import pi_reasoning_efforts_for_model_row as _launch_pi_reasoning_efforts_for_model_row
+from .launch_config import provider_choice_for_settings as _launch_provider_choice_for_settings
+from .launch_config import read_cc_launch_defaults as _launch_read_cc_launch_defaults
+from .launch_config import read_codex_launch_defaults as _launch_read_codex_launch_defaults
+from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
+from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
+from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
 from .file_view import inspect_downloadable_file as _inspect_downloadable_file
@@ -224,10 +253,6 @@ CC_HOME = get_agent_backend("cc").home()
 CC_SESSIONS_DIR = get_agent_backend("cc").sessions_dir()
 CC_SETTINGS_PATH = CC_HOME / "settings.json"
 DEFAULT_AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex")
-SUPPORTED_REASONING_EFFORTS = ("xhigh", "high", "medium", "low")
-SUPPORTED_PI_REASONING_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh")
-SUPPORTED_CC_REASONING_EFFORTS = CC_SUPPORTED_REASONING_EFFORTS
-
 DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
 DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
 UNATTENDED_DEFAULT_IDLE_MINUTES = 5
@@ -1273,110 +1298,47 @@ def _clean_optional_text(value: Any) -> str | None:
     return out or None
 
 
+def _launch_config_paths() -> LaunchConfigPaths:
+    return LaunchConfigPaths(
+        codex_config_path=CODEX_CONFIG_PATH,
+        models_cache_path=MODELS_CACHE_PATH,
+        pi_settings_path=PI_SETTINGS_PATH,
+        pi_models_path=PI_MODELS_PATH,
+        pi_auth_path=PI_AUTH_PATH,
+        cc_settings_path=CC_SETTINGS_PATH,
+    )
+
+
 def _normalize_requested_model(value: Any) -> str | None:
-    out = _clean_optional_text(value)
-    if out is None:
-        return None
-    return None if out.lower() == "default" else out
+    return _launch_normalize_requested_model(value)
 
 
 def _display_reasoning_effort(value: Any) -> str | None:
-    out = _clean_optional_text(value)
-    if out is None:
-        return None
-    lowered = out.lower()
-    return lowered if lowered in SUPPORTED_REASONING_EFFORTS else None
+    return _launch_display_reasoning_effort(value)
 
 
 def _display_pi_reasoning_effort(value: Any) -> str | None:
-    out = _clean_optional_text(value)
-    if out is None:
-        return None
-    lowered = out.lower()
-    return lowered if lowered in SUPPORTED_PI_REASONING_EFFORTS else None
+    return _launch_display_pi_reasoning_effort(value)
 
 
 def _normalize_requested_reasoning_effort(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError("reasoning_effort must be a string")
-    out = value.strip().lower()
-    if not out:
-        return None
-    if out not in SUPPORTED_REASONING_EFFORTS:
-        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_REASONING_EFFORTS)}")
-    return out
+    return _launch_normalize_requested_reasoning_effort(value)
 
 
 def _clean_reasoning_effort_list(raw: Any, *, supported: tuple[str, ...]) -> list[str] | None:
-    if not isinstance(raw, list):
-        return None
-    out: list[str] = []
-    for item in raw:
-        if not isinstance(item, str):
-            continue
-        value = item.strip().lower()
-        if not value or value not in supported or value in out:
-            continue
-        out.append(value)
-    return out or None
+    return _launch_clean_reasoning_effort_list(raw, supported=supported)
 
 
 def _pi_reasoning_efforts_for_model_row(row: dict[str, Any]) -> list[str] | None:
-    explicit = (
-        _clean_reasoning_effort_list(row.get("reasoning_efforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
-        or _clean_reasoning_effort_list(row.get("reasoningEfforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
-        or _clean_reasoning_effort_list(row.get("thinking_efforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
-        or _clean_reasoning_effort_list(row.get("thinkingEfforts"), supported=SUPPORTED_PI_REASONING_EFFORTS)
-    )
-    if explicit is not None:
-        return explicit
-    reasoning = row.get("reasoning")
-    if reasoning is False:
-        return ["off"]
-    if reasoning is True:
-        return list(SUPPORTED_PI_REASONING_EFFORTS)
-    return None
+    return _launch_pi_reasoning_efforts_for_model_row(row)
 
 
 def _pi_reasoning_effort_key(provider: str | None, model: str | None) -> str | None:
-    model_clean = _clean_optional_text(model)
-    if model_clean is None:
-        return None
-    provider_clean = _clean_optional_text(provider)
-    return f"{provider_clean}/{model_clean}" if provider_clean else model_clean
+    return _launch_pi_reasoning_effort_key(provider, model)
 
 
 def _read_pi_reasoning_efforts_by_model() -> dict[str, list[str]]:
-    if not PI_MODELS_PATH.exists():
-        return {}
-    data = json.loads(PI_MODELS_PATH.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"invalid Pi models config in {PI_MODELS_PATH}")
-    providers = data.get("providers")
-    if not isinstance(providers, dict):
-        return {}
-    out: dict[str, list[str]] = {}
-    for provider, value in providers.items():
-        provider_name = provider.strip() if isinstance(provider, str) else ""
-        if not provider_name or not isinstance(value, dict):
-            continue
-        models = value.get("models")
-        if not isinstance(models, list):
-            continue
-        for row in models:
-            if not isinstance(row, dict):
-                continue
-            model_id = _clean_optional_text(row.get("id"))
-            if model_id is None:
-                continue
-            efforts = _pi_reasoning_efforts_for_model_row(row)
-            if efforts is None:
-                continue
-            out.setdefault(model_id, list(efforts))
-            out[f"{provider_name}/{model_id}"] = list(efforts)
-    return out
+    return _launch_read_pi_reasoning_efforts_by_model(_launch_config_paths())
 
 
 def _pi_allowed_reasoning_efforts_for_model(
@@ -1385,14 +1347,12 @@ def _pi_allowed_reasoning_efforts_for_model(
     model: str | None,
     reasoning_efforts_by_model: Mapping[str, list[str]] | None = None,
 ) -> list[str] | None:
-    mapping = reasoning_efforts_by_model if reasoning_efforts_by_model is not None else _read_pi_reasoning_efforts_by_model()
-    key = _pi_reasoning_effort_key(model_provider, model)
-    if key and key in mapping:
-        return list(mapping[key])
-    model_clean = _clean_optional_text(model)
-    if model_clean and model_clean in mapping:
-        return list(mapping[model_clean])
-    return None
+    return _launch_pi_allowed_reasoning_efforts_for_model(
+        model_provider=model_provider,
+        model=model,
+        reasoning_efforts_by_model=reasoning_efforts_by_model,
+        paths=_launch_config_paths(),
+    )
 
 
 def _normalize_requested_pi_reasoning_effort(
@@ -1402,36 +1362,37 @@ def _normalize_requested_pi_reasoning_effort(
     model: str | None = None,
     reasoning_efforts_by_model: Mapping[str, list[str]] | None = None,
 ) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError("reasoning_effort must be a string")
-    out = value.strip().lower()
-    if not out:
-        return None
-    allowed = _pi_allowed_reasoning_efforts_for_model(
+    return _launch_normalize_requested_pi_reasoning_effort(
+        value,
         model_provider=model_provider,
         model=model,
         reasoning_efforts_by_model=reasoning_efforts_by_model,
-    ) or list(SUPPORTED_PI_REASONING_EFFORTS)
-    if out not in allowed:
-        model_label = _clean_optional_text(model) or "selected model"
-        raise ValueError(f"reasoning_effort must be one of {', '.join(allowed)} for Pi model {model_label}")
-    return out
+        paths=_launch_config_paths(),
+    )
 
 
 def _normalize_requested_cc_reasoning_effort(value: Any) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError("reasoning_effort must be a string")
-    out = value.strip().lower()
-    if not out:
-        return None
-    if out not in SUPPORTED_CC_REASONING_EFFORTS:
-        raise ValueError(f"reasoning_effort must be one of {', '.join(SUPPORTED_CC_REASONING_EFFORTS)}")
-    return out
+    return _launch_normalize_requested_cc_reasoning_effort(value)
 
+
+def _normalize_requested_model_provider(value: Any, *, allowed: set[str] | None = None) -> str | None:
+    return _launch_normalize_requested_model_provider(value, allowed=allowed)
+
+
+def _normalize_requested_service_tier(value: Any) -> str | None:
+    return _launch_normalize_requested_service_tier(value)
+
+
+def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
+    return _launch_normalize_requested_preferred_auth_method(value)
+
+
+def _configured_model_providers(data: dict[str, Any]) -> list[str]:
+    return _launch_configured_model_providers(data)
+
+
+def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
+    return _launch_provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method)
 
 def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
     if elapsed_s <= 0:
@@ -1692,292 +1653,35 @@ def _coerce_queue_item(raw: Any) -> dict[str, Any] | None:
 
 
 def _fallback_codex_launch_defaults() -> dict[str, Any]:
-    return {
-        "model_provider": "openai",
-        "preferred_auth_method": "apikey",
-        "provider_choice": "openai-api",
-        "model": None,
-        "model_providers": ["chatgpt", "openai-api"],
-        "service_tier": "flex",
-        "reasoning_effort": None,
-    }
+    return _launch_fallback_codex_launch_defaults()
 
 
 def _fallback_pi_launch_defaults() -> dict[str, Any]:
-    return {
-        "agent_backend": "pi",
-        "model_provider": None,
-        "preferred_auth_method": None,
-        "provider_choice": None,
-        "provider_choices": [],
-        "model": None,
-        "models": [],
-        "reasoning_effort": "high",
-        "reasoning_efforts": list(SUPPORTED_PI_REASONING_EFFORTS),
-        "reasoning_efforts_by_model": {},
-        "service_tier": None,
-        "supports_fast": False,
-    }
+    return _launch_fallback_pi_launch_defaults()
 
 
 def _fallback_cc_launch_defaults() -> dict[str, Any]:
-    return {
-        "agent_backend": "cc",
-        "model_provider": None,
-        "preferred_auth_method": None,
-        "provider_choice": None,
-        "provider_choices": [],
-        "model": None,
-        "models": ["sonnet", "opus", "fable"],
-        "reasoning_effort": "medium",
-        "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
-        "service_tier": None,
-        "supports_fast": False,
-    }
+    return _launch_fallback_cc_launch_defaults()
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
-    configured_model = None
-    configured_effort = None
-    configured_provider = "openai"
-    configured_auth_method = "apikey"
-    configured_service_tier = "flex"
-    configured_providers = ["chatgpt", "openai-api"]
-    if CODEX_CONFIG_PATH.exists():
-        data = tomllib.loads(CODEX_CONFIG_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Codex config in {CODEX_CONFIG_PATH}")
-        configured_model = _clean_optional_text(data.get("model"))
-        configured_effort = _display_reasoning_effort(data.get("model_reasoning_effort"))
-        configured_auth_method = _normalize_requested_preferred_auth_method(data.get("preferred_auth_method")) or configured_auth_method
-        configured_providers = ["chatgpt", "openai-api", *[p for p in _configured_model_providers(data) if p != "openai"]]
-        configured_provider = _normalize_requested_model_provider(
-            data.get("model_provider") or data.get("model_provider_id"),
-            allowed=set(["openai", *[p for p in configured_providers if p not in {"chatgpt", "openai-api"}]]),
-        ) or configured_provider
-        configured_service_tier = _normalize_requested_service_tier(
-            data.get("service_tier"),
-        ) or configured_service_tier
-    defaults: dict[str, Any] = {
-        "model_provider": configured_provider,
-        "preferred_auth_method": configured_auth_method,
-        "provider_choice": _provider_choice_for_settings(model_provider=configured_provider, preferred_auth_method=configured_auth_method),
-        "model": configured_model,
-        "model_providers": configured_providers,
-        "service_tier": configured_service_tier,
-    }
-    if configured_effort is not None:
-        defaults["reasoning_effort"] = configured_effort
-        return defaults
-    if not MODELS_CACHE_PATH.exists():
-        defaults["reasoning_effort"] = None
-        return defaults
-    cache = json.loads(MODELS_CACHE_PATH.read_text(encoding="utf-8"))
-    models = cache.get("models") if isinstance(cache, dict) else None
-    if not isinstance(models, list):
-        raise ValueError(f"invalid models cache in {MODELS_CACHE_PATH}")
-    rows: list[dict[str, Any]] = [row for row in models if isinstance(row, dict)]
-    if not rows:
-        defaults["reasoning_effort"] = None
-        return defaults
-    if configured_model is not None:
-        for row in rows:
-            names = {
-                _clean_optional_text(row.get("slug")),
-                _clean_optional_text(row.get("display_name")),
-            }
-            if configured_model in names:
-                defaults["reasoning_effort"] = _display_reasoning_effort(row.get("default_reasoning_level"))
-                return defaults
-    ranked = sorted(
-        rows,
-        key=lambda row: (
-            int(row.get("priority")) if isinstance(row.get("priority"), int) else 999999,
-            _clean_optional_text(row.get("slug")) or "",
-        ),
-    )
-    defaults["reasoning_effort"] = _display_reasoning_effort(ranked[0].get("default_reasoning_level"))
-    return defaults
+    return _launch_read_codex_launch_defaults(_launch_config_paths())
 
 
 def _read_pi_launch_defaults() -> dict[str, Any]:
-    configured_provider: str | None = None
-    configured_model: str | None = None
-    configured_effort: str | None = "high"
-    provider_choices: list[str] = []
-    model_choices: list[str] = []
-    reasoning_efforts_by_model = _read_pi_reasoning_efforts_by_model()
-
-    if PI_SETTINGS_PATH.exists():
-        data = json.loads(PI_SETTINGS_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Pi settings in {PI_SETTINGS_PATH}")
-        configured_provider = _clean_optional_text(data.get("defaultProvider"))
-        configured_model = _clean_optional_text(data.get("defaultModel"))
-
-    if PI_MODELS_PATH.exists():
-        data = json.loads(PI_MODELS_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Pi models config in {PI_MODELS_PATH}")
-        providers = data.get("providers")
-        if isinstance(providers, dict):
-            for key, value in providers.items():
-                if not isinstance(key, str):
-                    continue
-                name = key.strip()
-                if not name or name in provider_choices:
-                    continue
-                provider_choices.append(name)
-                if configured_provider is not None and name != configured_provider:
-                    continue
-                if not isinstance(value, dict):
-                    continue
-                models = value.get("models")
-                if not isinstance(models, list):
-                    continue
-                for row in models:
-                    if not isinstance(row, dict):
-                        continue
-                    model_id = _clean_optional_text(row.get("id"))
-                    if model_id is None or model_id in model_choices:
-                        continue
-                    model_choices.append(model_id)
-
-    if PI_AUTH_PATH.exists():
-        data = json.loads(PI_AUTH_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Pi auth config in {PI_AUTH_PATH}")
-        for key, value in data.items():
-            if not isinstance(key, str) or not key.strip():
-                continue
-            if not isinstance(value, dict):
-                continue
-            auth_type = _clean_optional_text(value.get("type"))
-            access = _clean_optional_text(value.get("access"))
-            refresh = _clean_optional_text(value.get("refresh"))
-            if auth_type != "oauth":
-                continue
-            if access is None and refresh is None:
-                continue
-            name = key.strip()
-            if name not in provider_choices:
-                provider_choices.append(name)
-
-    if configured_provider is not None and configured_provider not in provider_choices:
-        provider_choices.insert(0, configured_provider)
-    if configured_model is not None and configured_model not in model_choices:
-        model_choices.insert(0, configured_model)
-    configured_efforts = _pi_allowed_reasoning_efforts_for_model(
-        model_provider=configured_provider,
-        model=configured_model,
-        reasoning_efforts_by_model=reasoning_efforts_by_model,
-    )
-    if configured_efforts is None:
-        configured_efforts = list(SUPPORTED_PI_REASONING_EFFORTS)
-    if configured_effort not in configured_efforts:
-        configured_effort = configured_efforts[0] if configured_efforts else None
-
-    return {
-        "agent_backend": "pi",
-        "model_provider": configured_provider,
-        "preferred_auth_method": None,
-        "provider_choice": configured_provider,
-        "provider_choices": provider_choices,
-        "model": configured_model,
-        "models": model_choices,
-        "reasoning_effort": configured_effort,
-        "reasoning_efforts": configured_efforts,
-        "reasoning_efforts_by_model": reasoning_efforts_by_model,
-        "service_tier": None,
-        "supports_fast": False,
-    }
+    return _launch_read_pi_launch_defaults(_launch_config_paths())
 
 
 def _read_cc_launch_defaults() -> dict[str, Any]:
-    configured_model: str | None = None
-    configured_effort: str | None = "medium"
-    if CC_SETTINGS_PATH.exists():
-        data = json.loads(CC_SETTINGS_PATH.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError(f"invalid Claude Code settings in {CC_SETTINGS_PATH}")
-        configured_model = _clean_optional_text(data.get("model")) or _clean_optional_text(data.get("defaultModel"))
-        configured_effort = _normalize_requested_cc_reasoning_effort(
-            data.get("effortLevel") or data.get("effort") or data.get("thinkingLevel")
-        ) or configured_effort
-    return {
-        "agent_backend": "cc",
-        "model_provider": None,
-        "preferred_auth_method": None,
-        "provider_choice": None,
-        "provider_choices": [],
-        "model": configured_model,
-        "models": [m for m in [configured_model, "sonnet", "opus", "fable"] if isinstance(m, str) and m],
-        "reasoning_effort": configured_effort,
-        "reasoning_efforts": list(SUPPORTED_CC_REASONING_EFFORTS),
-        "service_tier": None,
-        "supports_fast": False,
-    }
+    return _launch_read_cc_launch_defaults(_launch_config_paths())
 
 
 def _launch_defaults_warning(exc: BaseException) -> str:
-    return f"{type(exc).__name__}: {exc}"
+    return _launch_defaults_warning_impl(exc)
 
 
 def _read_new_session_defaults() -> dict[str, Any]:
-    warnings: dict[str, str] = {}
-    try:
-        codex = _read_codex_launch_defaults()
-    except Exception as exc:
-        codex = _fallback_codex_launch_defaults()
-        warnings["codex"] = _launch_defaults_warning(exc)
-    codex["agent_backend"] = "codex"
-    codex["provider_choices"] = list(codex.get("model_providers") or [])
-    codex["reasoning_efforts"] = list(SUPPORTED_REASONING_EFFORTS)
-    codex["supports_fast"] = True
-    try:
-        pi = _read_pi_launch_defaults()
-    except Exception as exc:
-        pi = _fallback_pi_launch_defaults()
-        warnings["pi"] = _launch_defaults_warning(exc)
-    try:
-        cc = _read_cc_launch_defaults()
-    except Exception as exc:
-        cc = _fallback_cc_launch_defaults()
-        warnings["cc"] = _launch_defaults_warning(exc)
-    out = {
-        "default_backend": DEFAULT_AGENT_BACKEND,
-        "backends": {
-            "codex": codex,
-            "pi": pi,
-            "cc": cc,
-        },
-    }
-    if warnings:
-        out["warnings"] = warnings
-    return out
-
-
-
-
-class LaunchRequestValidationError(ValueError):
-    def __init__(self, message: str, *, field: str | None = None) -> None:
-        super().__init__(message)
-        self.field = field
-
-
-@dataclass(frozen=True)
-class NewSessionLaunchRequest:
-    cwd: str
-    args: list[str] | None
-    agent_backend: str
-    resume_session_id: str | None
-    worktree_branch: str | None
-    model_provider: str | None
-    preferred_auth_method: str | None
-    model: str | None
-    reasoning_effort: str | None
-    service_tier: str | None
-    create_in_tmux: bool
+    return _launch_read_new_session_defaults(_launch_config_paths(), default_agent_backend=DEFAULT_AGENT_BACKEND)
 
 
 def _codex_launch_defaults_for_request() -> dict[str, Any]:
@@ -1995,105 +1699,12 @@ def _pi_launch_defaults_for_request() -> dict[str, Any]:
 
 
 def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest:
-    try:
-        agent_backend = normalize_agent_backend(obj.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
-    except ValueError as e:
-        raise LaunchRequestValidationError(str(e)) from e
-    cwd = obj.get("cwd")
-    if not isinstance(cwd, str) or not cwd.strip():
-        raise LaunchRequestValidationError("cwd required", field="cwd")
-    if agent_backend == "codex":
-        allowed_providers = set(_codex_launch_defaults_for_request().get("model_providers") or ["openai"])
-        model_provider = _normalize_requested_model_provider(
-            obj.get("model_provider"),
-            allowed=set(["openai", *[p for p in allowed_providers if p not in {"chatgpt", "openai-api"}]]),
-        )
-        preferred_auth_method = _normalize_requested_preferred_auth_method(obj.get("preferred_auth_method"))
-        reasoning_effort = _normalize_requested_reasoning_effort(obj.get("reasoning_effort"))
-        service_tier = _normalize_requested_service_tier(obj.get("service_tier"))
-    elif agent_backend == "pi":
-        pi_launch_defaults = _pi_launch_defaults_for_request()
-        pi_provider_choices = {
-            str(value)
-            for value in (pi_launch_defaults.get("provider_choices") or [])
-            if isinstance(value, str) and value.strip()
-        }
-        model_provider = _normalize_requested_model_provider(
-            obj.get("model_provider"),
-            allowed=pi_provider_choices or None,
-        )
-        if obj.get("preferred_auth_method") not in (None, ""):
-            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
-        preferred_auth_method = None
-        service_tier = None
-    elif agent_backend == "cc":
-        if obj.get("model_provider") not in (None, ""):
-            raise LaunchRequestValidationError("model_provider is not supported for cc")
-        if obj.get("preferred_auth_method") not in (None, ""):
-            raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
-        model_provider = None
-        preferred_auth_method = None
-        service_tier = None
-    else:
-        raise LaunchRequestValidationError(f"unsupported agent_backend: {agent_backend}")
-
-    model = _normalize_requested_model(obj.get("model"))
-    if agent_backend == "pi":
-        reasoning_effort = _normalize_requested_pi_reasoning_effort(
-            obj.get("reasoning_effort"),
-            model_provider=model_provider,
-            model=model,
-            reasoning_efforts_by_model=pi_launch_defaults.get("reasoning_efforts_by_model") if isinstance(pi_launch_defaults, dict) else None,
-        )
-        if obj.get("service_tier") not in (None, ""):
-            raise LaunchRequestValidationError("service_tier is not supported for pi")
-    elif agent_backend == "cc":
-        reasoning_effort = _normalize_requested_cc_reasoning_effort(obj.get("reasoning_effort"))
-        if obj.get("service_tier") not in (None, ""):
-            raise LaunchRequestValidationError("service_tier is not supported for cc")
-
-    create_in_tmux_raw = obj.get("create_in_tmux")
-    if create_in_tmux_raw is None:
-        create_in_tmux = False
-    elif isinstance(create_in_tmux_raw, bool):
-        create_in_tmux = create_in_tmux_raw
-    else:
-        raise LaunchRequestValidationError("create_in_tmux must be a boolean")
-    resume_session_id_raw = obj.get("resume_session_id")
-    if resume_session_id_raw is None:
-        resume_session_id = None
-    elif isinstance(resume_session_id_raw, str):
-        resume_session_id = resume_session_id_raw.strip() or None
-    else:
-        raise LaunchRequestValidationError("resume_session_id must be a string")
-    worktree_branch_raw = obj.get("worktree_branch")
-    if worktree_branch_raw is None:
-        worktree_branch = None
-    elif isinstance(worktree_branch_raw, str):
-        worktree_branch = worktree_branch_raw.strip() or None
-    else:
-        raise LaunchRequestValidationError("worktree_branch must be a string")
-    args = obj.get("args")
-    if args is None:
-        args_list = None
-    elif isinstance(args, list) and all(isinstance(x, str) for x in args):
-        args_list = [x for x in args if x]
-    else:
-        raise LaunchRequestValidationError("args must be a list of strings")
-    return NewSessionLaunchRequest(
-        cwd=cwd,
-        args=args_list,
-        agent_backend=agent_backend,
-        resume_session_id=resume_session_id,
-        worktree_branch=worktree_branch,
-        model_provider=model_provider,
-        preferred_auth_method=preferred_auth_method,
-        model=model,
-        reasoning_effort=reasoning_effort,
-        service_tier=service_tier,
-        create_in_tmux=create_in_tmux,
+    return _launch_parse_new_session_launch_request(
+        obj,
+        default_agent_backend=DEFAULT_AGENT_BACKEND,
+        codex_launch_defaults_provider=_codex_launch_defaults_for_request,
+        pi_launch_defaults_provider=_pi_launch_defaults_for_request,
     )
-
 
 def _resume_candidate_from_log(log_path: Path, *, agent_backend: str = "codex") -> dict[str, Any] | None:
     backend_name = normalize_agent_backend(agent_backend)
