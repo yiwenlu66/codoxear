@@ -1335,6 +1335,22 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
     return (resolved_base / p).resolve()
 
 
+def _require_existing_file(path: Path) -> Path:
+    if not path.exists():
+        raise FileNotFoundError("file not found")
+    if not path.is_file():
+        raise ValueError("path is not a file")
+    return path
+
+
+def _resolve_existing_session_file(base: Path, raw_path: str) -> Path:
+    return _require_existing_file(_resolve_session_path(base, raw_path))
+
+
+def _resolve_existing_absolute_file(raw_path: str) -> Path:
+    return _require_existing_file(Path(raw_path).expanduser().resolve())
+
+
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
     repo_root = Path(_run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()).resolve()
     target = _resolve_session_path(cwd, raw_path)
@@ -6151,12 +6167,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_session_path(base, rel)
-                if not p.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    p = _resolve_existing_session_file(base, rel)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not p.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 try:
                     view = _read_client_file_view(p)
@@ -6344,12 +6361,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_session_path(base, rel)
-                if not p.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    p = _resolve_existing_session_file(base, rel)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not p.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with p.open("rb") as f:
                     prefix = f.read(4096)
@@ -6382,12 +6400,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base = Path(s.cwd).expanduser()
                 if not base.is_absolute():
                     base = base.resolve()
-                p = _resolve_session_path(base, rel)
-                if not p.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    p = _resolve_existing_session_file(base, rel)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not p.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with p.open("rb") as f:
                     prefix = f.read(4096)
@@ -6412,12 +6431,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_q or not path_q[0]:
                     _json_response(self, 400, {"error": "path required"})
                     return
-                path_obj = Path(path_q[0]).expanduser().resolve()
-                if not path_obj.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    path_obj = _resolve_existing_absolute_file(path_q[0])
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not path_obj.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
@@ -6440,12 +6460,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_q or not path_q[0]:
                     _json_response(self, 400, {"error": "path required"})
                     return
-                path_obj = Path(path_q[0]).expanduser().resolve()
-                if not path_obj.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    path_obj = _resolve_existing_absolute_file(path_q[0])
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not path_obj.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
@@ -7262,12 +7283,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_q or not path_q[0]:
                     _json_response(self, 400, {"error": "path required"})
                     return
-                path_obj = Path(path_q[0]).expanduser().resolve()
-                if not path_obj.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    path_obj = _resolve_existing_absolute_file(path_q[0])
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not path_obj.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
@@ -7290,12 +7312,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not path_q or not path_q[0]:
                     _json_response(self, 400, {"error": "path required"})
                     return
-                path_obj = Path(path_q[0]).expanduser().resolve()
-                if not path_obj.exists():
-                    _json_response(self, 404, {"error": "file not found"})
+                try:
+                    path_obj = _resolve_existing_absolute_file(path_q[0])
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
                     return
-                if not path_obj.is_file():
-                    _json_response(self, 400, {"error": "path is not a file"})
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
                     return
                 with path_obj.open("rb") as f:
                     prefix = f.read(4096)
