@@ -52,13 +52,15 @@ class TestSessionPollingSource(unittest.TestCase):
 
     def test_session_polling_stops_on_auth_loss_and_unload(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("function handlePollingAuthLoss()", source)
+        self.assertIn("function handleAppAuthLoss()", source)
+        self.assertIn("function cleanupApp()", source)
         self.assertIn("sessionsPollingEnabled = false;", source)
         self.assertIn("secondaryPollingEnabled = false;", source)
         self.assertIn("stopAllPolling();", source)
         self.assertIn("stopSessionsPolling();", source)
         self.assertIn("stopSecondaryPolling();", source)
-        self.assertIn("renderLogin(renderApp);", source)
+        self.assertIn("cleanupApp();\n          renderLogin(renderApp);", source)
+        self.assertIn('addAppEvent(window, "beforeunload", () => {\n                cleanupApp();\n              });', source)
 
 
 if __name__ == "__main__":

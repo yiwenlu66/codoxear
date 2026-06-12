@@ -1495,7 +1495,16 @@
         return "";
       }
 
+      let activeAppCleanup = null;
+      function cleanupActiveApp() {
+        if (typeof activeAppCleanup !== "function") return;
+        const cleanup = activeAppCleanup;
+        activeAppCleanup = null;
+        cleanup();
+      }
+
       function renderLogin(onAuthed) {
+        cleanupActiveApp();
         const root = $("#root");
         root.innerHTML = "";
         const err = el("div", { class: "err" });
@@ -1523,6 +1532,7 @@
       }
 
 	      function renderApp() {
+            cleanupActiveApp();
 	        const root = $("#root");
 	        root.innerHTML = "";
 
@@ -1733,6 +1743,140 @@
               let unattendedNumberDirty = { cooldown_minutes: false, remaining_injections: false };
               let unattendedSaveTimer = null;
               let editSessionId = null;
+        let appDisposed = false;
+        const appEventCleanups = [];
+        function addAppEvent(target, type, handler, options) {
+          if (!target || typeof target.addEventListener !== "function") return handler;
+          target.addEventListener(type, handler, options);
+          appEventCleanups.push(() => target.removeEventListener(type, handler, options));
+          return handler;
+        }
+        function stopMessagePolling() {
+          selected = null;
+          pollGen += 1;
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer = null;
+          pollKickPending = false;
+          pollFastUntilMs = 0;
+          turnOpen = false;
+        }
+        function abortController(controller) {
+          if (!controller || typeof controller.abort !== "function") return;
+          try {
+            controller.abort();
+          } catch (_error) {}
+        }
+        function cleanupApp() {
+          if (appDisposed) return;
+          appDisposed = true;
+          sessionsPollingEnabled = false;
+          secondaryPollingEnabled = false;
+          stopMessagePolling();
+          stopAllPolling();
+          if (newSessionResumeLoadTimer) clearTimeout(newSessionResumeLoadTimer);
+          newSessionResumeLoadTimer = null;
+          if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
+          voiceSaveTimer = null;
+          if (unattendedSaveTimer) clearTimeout(unattendedSaveTimer);
+          unattendedSaveTimer = null;
+          if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
+          liveAudioRetryTimer = null;
+          if (fileSearchTimer) clearTimeout(fileSearchTimer);
+          fileSearchTimer = null;
+          if (iosViewportGuardTimer) clearTimeout(iosViewportGuardTimer);
+          iosViewportGuardTimer = null;
+          desktopNotificationTimers.forEach((timer) => clearTimeout(timer));
+          desktopNotificationTimers.clear();
+          abortController(chatSearchAllAbort);
+          chatSearchAllAbort = null;
+          abortController(olderLoadController);
+          olderLoadController = null;
+          abortController(fileOpenAbortController);
+          fileOpenAbortController = null;
+          abortController(fileSearchAbort);
+          fileSearchAbort = null;
+          stopAnnouncementHeartbeat();
+          stopLiveAudioWatchdog();
+          resetLiveAudioState();
+          hideUnattendedMenu();
+          hideFilePasteDialog();
+          hideFileUnsavedDialog("cancel");
+          hideSendChoice();
+          while (appEventCleanups.length) {
+            const cleanup = appEventCleanups.pop();
+            try {
+              cleanup();
+            } catch (_error) {}
+          }
+          apiEtags.clear();
+          if (activeAppCleanup === cleanupApp) activeAppCleanup = null;
+        }
+        function handleAppAuthLoss() {
+          cleanupApp();
+          renderLogin(renderApp);
+        }
+        function sessionsPollDelayMs() {
+          return document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS;
+        }
+        function secondaryPollDelayMs() {
+          return document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS;
+        }
+        function stopSessionsPolling() {
+          if (sessionsTimer) clearTimeout(sessionsTimer);
+          sessionsTimer = null;
+        }
+        function stopSecondaryPolling() {
+          if (secondaryPollTimer) clearTimeout(secondaryPollTimer);
+          secondaryPollTimer = null;
+        }
+        function stopAllPolling() {
+          stopSessionsPolling();
+          stopSecondaryPolling();
+        }
+        async function runSessionsPollTick() {
+          if (appDisposed || !sessionsPollingEnabled) return;
+          try {
+            await refreshSessions();
+          } catch (e2) {
+            if (e2 && e2.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            console.error("refreshSessions timer failed", e2);
+          }
+          scheduleSessionsPoll();
+        }
+        async function runSecondaryPollTick() {
+          if (appDisposed || !secondaryPollingEnabled) return;
+          try {
+            await loadVoiceSettings();
+            await syncNotificationState();
+            if (notificationsEnabledLocally()) await pollNotificationFeed();
+          } catch (e2) {
+            if (e2 && e2.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            console.error("secondary poll failed", e2);
+          }
+          scheduleSecondaryPoll();
+        }
+        function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
+          if (appDisposed || !sessionsPollingEnabled) return;
+          stopSessionsPolling();
+          sessionsTimer = setTimeout(() => {
+            sessionsTimer = null;
+            void runSessionsPollTick();
+          }, Math.max(0, Number(delayMs) || 0));
+        }
+        function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
+          if (appDisposed || !secondaryPollingEnabled) return;
+          stopSecondaryPolling();
+          secondaryPollTimer = setTimeout(() => {
+            secondaryPollTimer = null;
+            void runSecondaryPollTick();
+          }, Math.max(0, Number(delayMs) || 0));
+        }
 
             const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
             titleLabel.style.cursor = "default";
@@ -3114,7 +3258,7 @@
           return chatNavigationShortcutBlocked(target);
         }
 
-        document.addEventListener("keydown", (e) => {
+        addAppEvent(document, "keydown", (e) => {
           if (e.defaultPrevented) return;
           if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (chatSearchShortcutBlocked(e.target)) return;
@@ -4417,7 +4561,7 @@
         }
 
 			        async function pollMessages(sid = selected, gen = pollGen) {
-			          if (!sid) return;
+			          if (appDisposed || !sid) return;
 			          try {
 	            if (!liveCursor) {
 	              if (activeTranscriptState === "pending_bind") {
@@ -4483,6 +4627,10 @@
             if (s2) titleLabel.textContent = sessionTitleWithId(s2);
 		          } catch (e) {
             if (gen !== pollGen || sid !== selected) return;
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return;
@@ -4518,7 +4666,7 @@
         }
 
         async function pollLoop() {
-          if (!selected) return;
+          if (appDisposed || !selected) return;
           if (pollLoopBusy) {
             pollKickPending = true;
             return;
@@ -4536,7 +4684,7 @@
             kickPoll(0);
             return;
           }
-          if (selected !== mySid || pollGen !== myGen) return;
+          if (appDisposed || selected !== mySid || pollGen !== myGen) return;
           const now = Date.now();
           let nextMs = 900;
           if (now < pollFastUntilMs) nextMs = 200;
@@ -4545,6 +4693,7 @@
         }
 
         function kickPoll(ms = 0) {
+          if (appDisposed) return;
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
@@ -4767,20 +4916,14 @@
 		          toggleUnattendedMenu();
 		        };
 		        unattendedMenu.onclick = (e) => e.stopPropagation();
-		        if (window.__codexwebUnattendedGlobalHandlers) {
-		          const h = window.__codexwebUnattendedGlobalHandlers;
-		          if (h.docClick) document.removeEventListener("click", h.docClick);
-		          if (h.resize) window.removeEventListener("resize", h.resize);
-		        }
 		        const onDocClick = () => {
 		          if (unattendedMenuOpen) hideUnattendedMenu();
 		        };
 		        const onResize = () => {
 		          if (unattendedMenuOpen) hideUnattendedMenu();
 		        };
-			        window.__codexwebUnattendedGlobalHandlers = { docClick: onDocClick, resize: onResize };
-			        document.addEventListener("click", onDocClick);
-			        window.addEventListener("resize", onResize);
+			        addAppEvent(document, "click", onDocClick);
+			        addAppEvent(window, "resize", onResize);
 			        const unattendedEnabledEl = $("#unattendedEnabled");
 			        const unattendedCooldownEl = $("#unattendedCooldownMinutes");
 			        const unattendedRemainingEl = $("#unattendedRemainingInjections");
@@ -9063,7 +9206,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           await openFileReference({ path, line });
         });
-        document.addEventListener("click", (e) => {
+        addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
           if (!t) return;
           if (fileViewer.style.display === "flex" && fileMenuOpen && !t.closest("#fileCandRow")) {
@@ -9123,23 +9266,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           moveFileTouchSelection(direction);
         }
-        document.addEventListener("keydown", handleFileTouchSelectionKeydown, true);
-        document.addEventListener("keydown", handleFileEditorDeleteKeydown, true);
-        document.addEventListener(
+        addAppEvent(document, "keydown", handleFileTouchSelectionKeydown, true);
+        addAppEvent(document, "keydown", handleFileEditorDeleteKeydown, true);
+        addAppEvent(
+          document,
           "beforeinput",
           (e) => {
             if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
           },
           true
         );
-        document.addEventListener(
+        addAppEvent(
+          document,
           "input",
           (e) => {
             if (Date.now() <= fileTouchDeleteNativeSuppressUntil && isFileEditorNativeDeleteEvent(e)) suppressFileEditorNativeDelete(e);
           },
           true
         );
-        document.addEventListener("keydown", (e) => {
+        addAppEvent(document, "keydown", (e) => {
           if (e.key !== "Escape") return;
           if (filePasteDialog.style.display === "flex") {
             hideFilePasteDialog();
@@ -9715,8 +9860,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         };
 
         $("#logoutBtnSide").onclick = async () => {
-          await api("/api/logout", { method: "POST" });
-          renderLogin(renderApp);
+          try {
+            await api("/api/logout", { method: "POST" });
+          } catch (e) {
+            console.error("logout failed", e);
+          } finally {
+            cleanupApp();
+            renderLogin(renderApp);
+          }
         };
 
         toggleSidebarBtn.onclick = () => {
@@ -9846,8 +9997,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	               if (autoScroll || isNearBottom()) requestAnimationFrame(() => scrollToBottom());
 	             }
 	           };
-	           window.visualViewport.addEventListener("resize", onViewportShift);
-	           window.visualViewport.addEventListener("scroll", onViewportShift);
+	           addAppEvent(window.visualViewport, "resize", onViewportShift);
+	           addAppEvent(window.visualViewport, "scroll", onViewportShift);
 	         }
          const attachBtn = $("#attachBtn");
          if (!attachBadgeEl) {
@@ -9945,7 +10096,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.preventDefault();
           form.requestSubmit();
         });
-        window.addEventListener("resize", () => {
+        addAppEvent(window, "resize", () => {
           if (autoScroll) requestAnimationFrame(() => scrollToBottom());
         });
 
@@ -10156,6 +10307,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (ok && $("#msg").value === raw) clearComposer();
         };
 
+        activeAppCleanup = cleanupApp;
+
 	        (async () => {
 	          if (localStorage.getItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
 	          if (localStorage.getItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
@@ -10180,99 +10333,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            if (pick) await selectSession(pick);
 	          } catch (e) {
 	            if (e && e.status === 401) {
-              sessionsPollingEnabled = false;
-	              renderLogin(renderApp);
+              handleAppAuthLoss();
 	              return;
 	            }
 	            console.error("initial refreshSessions failed", e);
 	            setToast(`sessions error: ${e && e.message ? e.message : "unknown error"}`);
 	          } finally {
+              if (appDisposed) return;
 	            if (msgPh) msgPh.style.display = textarea.value ? "none" : "flex";
 	            autoGrow();
 
-	            function sessionsPollDelayMs() {
-              return document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS;
-            }
-            function secondaryPollDelayMs() {
-              return document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS;
-            }
-            function stopSessionsPolling() {
-              if (sessionsTimer) clearTimeout(sessionsTimer);
-              sessionsTimer = null;
-            }
-            function stopSecondaryPolling() {
-              if (secondaryPollTimer) clearTimeout(secondaryPollTimer);
-              secondaryPollTimer = null;
-            }
-            function stopAllPolling() {
-              stopSessionsPolling();
-              stopSecondaryPolling();
-            }
-            function handlePollingAuthLoss() {
-              sessionsPollingEnabled = false;
-              secondaryPollingEnabled = false;
-              stopAllPolling();
-              renderLogin(renderApp);
-            }
-            async function runSessionsPollTick() {
-              if (!sessionsPollingEnabled) return;
-              try {
-                await refreshSessions();
-              } catch (e2) {
-                if (e2 && e2.status === 401) {
-                  handlePollingAuthLoss();
-                  return;
-                }
-                console.error("refreshSessions timer failed", e2);
-              }
-              scheduleSessionsPoll();
-            }
-            async function runSecondaryPollTick() {
-              if (!secondaryPollingEnabled) return;
-              try {
-                await loadVoiceSettings();
-                await syncNotificationState();
-                if (notificationsEnabledLocally()) await pollNotificationFeed();
-              } catch (e2) {
-                if (e2 && e2.status === 401) {
-                  handlePollingAuthLoss();
-                  return;
-                }
-                console.error("secondary poll failed", e2);
-              }
-              scheduleSecondaryPoll();
-            }
-            function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
-              if (!sessionsPollingEnabled) return;
-              stopSessionsPolling();
-              sessionsTimer = setTimeout(() => {
-                sessionsTimer = null;
-                void runSessionsPollTick();
-              }, Math.max(0, Number(delayMs) || 0));
-            }
-            function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
-              if (!secondaryPollingEnabled) return;
-              stopSecondaryPolling();
-              secondaryPollTimer = setTimeout(() => {
-                secondaryPollTimer = null;
-                void runSecondaryPollTick();
-              }, Math.max(0, Number(delayMs) || 0));
-            }
-            scheduleSessionsPoll();
+	            scheduleSessionsPoll();
             scheduleSecondaryPoll();
-              window.addEventListener("hashchange", async () => {
+              addAppEvent(window, "hashchange", async () => {
                 const sid = sessionIdFromHash();
                 if (!sid || sid === selected || !sessionIndex.has(sid)) return;
                 await selectSession(sid);
               });
-              window.addEventListener("beforeunload", () => {
-                sessionsPollingEnabled = false;
-                secondaryPollingEnabled = false;
-                stopAllPolling();
-                stopAnnouncementHeartbeat();
-                stopLiveAudioWatchdog();
+              addAppEvent(window, "beforeunload", () => {
+                cleanupApp();
               });
-              document.addEventListener("visibilitychange", () => {
+              addAppEvent(document, "visibilitychange", () => {
+                if (appDisposed) return;
                 if (document.visibilityState === "visible") {
                   resumeAnnouncementRuntime({ resetSource: false });
                   scheduleSessionsPoll(0);
@@ -10282,14 +10364,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 scheduleSessionsPoll(sessionsPollDelayMs());
                 scheduleSecondaryPoll(secondaryPollDelayMs());
               });
-              window.addEventListener("pageshow", () => {
-                resumeAnnouncementRuntime({ resetSource: false });
+              addAppEvent(window, "pageshow", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
               });
-              window.addEventListener("online", () => {
-                resumeAnnouncementRuntime({ resetSource: true });
+              addAppEvent(window, "online", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: true });
               });
-              window.addEventListener("focus", () => {
-                resumeAnnouncementRuntime({ resetSource: false });
+              addAppEvent(window, "focus", () => {
+                if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });
               });
 	          }
 	        })();
