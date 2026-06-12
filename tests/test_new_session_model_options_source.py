@@ -78,6 +78,13 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertNotIn('id: "newSessionProviderMenu"', source)
         self.assertNotIn('text: "Provider"', source)
 
+    def test_provider_model_error_clears_when_backend_or_input_changes(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function clearNewSessionProviderModelError()", source)
+        self.assertIn('String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")', source)
+        self.assertIn("if (!parsed.providerError) clearNewSessionProviderModelError();", source)
+        self.assertIn("clearNewSessionProviderModelError();\n          }\n          const reasoningChoices = currentReasoningChoices();", source)
+
 
 if __name__ == "__main__":
     unittest.main()

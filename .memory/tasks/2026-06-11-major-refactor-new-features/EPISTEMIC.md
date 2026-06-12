@@ -257,3 +257,10 @@ Commitments:
 - Intervention: make provider/model a single workflow object and split action placement by user workflow: session utilities bar for files/copy/details/Unattended, chat navigation rail for loaded-chat search/user jumps, topbar only for identity/sidebar and interrupt.
 - Evidence: source/runtime tests now assert no provider-only new-session button/menu remains, configured/recent provider/model pairs are offered by the combobox, typed provider/model filters work, and topbar no longer contains session utilities or chat navigation controls.
 - Scoped claim: deterministic source/runtime evidence supports the new workflow contract at code level. Browser validation is still required for actual visual/mobile ergonomics and event behavior.
+
+## 2026-06-12 12:04
+- Observation: browser evidence found two issues missed by source tests: stale provider/model error text across backend switches, and missing modal isolation in the clean recovery branch.
+- Mechanism: provider/model validation state lived in the new-session status text and was only set on failed start, not cleared by backend changes; modal overlays were visual-only siblings and did not mark the background app inert/hidden.
+- Interventions: added provider/model error clearing on valid input/backend reset; added a shared modal isolation boundary and closed transient overlays before opening custom/native modals.
+- Evidence: browser rechecks showed providerless Pi had no stale error and modal-open accessibility snapshots exposed only modal controls; Docker suite passed after changes.
+- Scoped claim: combined provider/model selection, sparse/contextual action placement, loaded-chat rail navigation, and modal isolation are supported for the isolated synthetic desktop/mobile workflows. This does not yet prove real-device performance or live backend startup behavior.

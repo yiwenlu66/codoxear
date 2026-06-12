@@ -214,7 +214,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("cancelPendingFileOpen();\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertIn("cancelPendingFileOpen();\n          prepareModalOpen();\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:

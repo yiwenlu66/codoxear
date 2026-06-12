@@ -2515,6 +2515,57 @@
         newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
+        const modalIsolationTargets = [
+          fileViewer,
+          fileUnsavedDialog,
+          filePasteDialog,
+          sendChoice,
+          queueViewer,
+          helpViewer,
+          diagViewer,
+          editViewer,
+          voiceSettingsViewer,
+          newSessionViewer,
+        ];
+
+        function isModalTargetOpen(node) {
+          if (!node) return false;
+          if (typeof HTMLDialogElement !== "undefined" && node instanceof HTMLDialogElement && node.open) return true;
+          return !!(node.style && node.style.display && node.style.display !== "none");
+        }
+
+        function syncModalIsolation() {
+          const active = modalIsolationTargets.some(isModalTargetOpen);
+          app.toggleAttribute("inert", active);
+          if (active) app.setAttribute("aria-hidden", "true");
+          else app.removeAttribute("aria-hidden");
+        }
+
+        function closeTransientOverlays({ closeSearch = false } = {}) {
+          if (unattendedMenuOpen) hideUnattendedMenu();
+          if (closeSearch && chatSearchOpen) closeChatSearch();
+          if (document.body.classList.contains("sidebar-open")) setSidebarOpen(false);
+          fileMenuOpen = false;
+          filePickerMenu.classList.remove("open");
+          filePickerInput.setAttribute("aria-expanded", "false");
+          newSessionCwdMenuOpen = false;
+          newSessionCwdMenuFocus = -1;
+          newSessionModelMenuOpen = false;
+          newSessionModelMenuFocus = -1;
+          newSessionReasoningMenuOpen = false;
+          newSessionResumeMenuOpen = false;
+          editDependencyMenuOpen = false;
+          applyDialogMenus();
+        }
+
+        function prepareModalOpen(options = {}) {
+          closeTransientOverlays(options);
+        }
+
+        function afterModalVisibilityChanged() {
+          syncModalIsolation();
+        }
+
         function setToast(text) {
           toast.textContent = text || "";
           if (!text) return;
@@ -5250,15 +5301,18 @@
         }
 
         function showVoiceSettingsDialog() {
+          prepareModalOpen();
           voiceSettingsBackdrop.style.display = "block";
           voiceSettingsViewer.style.display = "flex";
           updateVoiceUi();
+          afterModalVisibilityChanged();
         }
 
         function hideVoiceSettingsDialog() {
           voiceSettingsBackdrop.style.display = "none";
           voiceSettingsViewer.style.display = "none";
           voiceSettingsStatus.textContent = "";
+          afterModalVisibilityChanged();
         }
 
         announceBtn.onclick = async (e) => {
@@ -5420,6 +5474,7 @@
           editDependencyMenuOpen = false;
           applyDialogMenus();
           if (editViewer.open) editViewer.close();
+          afterModalVisibilityChanged();
         }
 
         function syncEditPriorityLabel() {
@@ -5646,9 +5701,17 @@
           return { providerChoice, model: model || "default", providerError };
         }
 
+        function clearNewSessionProviderModelError() {
+          newSessionModelField.classList.remove("error");
+          if (String(newSessionStatus.textContent || "").startsWith("Provider must be one of ")) {
+            newSessionStatus.textContent = "";
+          }
+        }
+
         function syncNewSessionProviderFromModelInput() {
           const parsed = parseNewSessionProviderModelInput();
           newSessionModelField.classList.toggle("error", Boolean(parsed.providerError));
+          if (!parsed.providerError) clearNewSessionProviderModelError();
           if (parsed.providerChoice && !parsed.providerError && parsed.providerChoice !== newSessionProvider) {
             setNewSessionProvider(parsed.providerChoice);
           }
@@ -5716,7 +5779,7 @@
           const modelDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (resetSelections || previous !== next) {
             newSessionModelInput.value = newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider);
-            newSessionModelField.classList.remove("error");
+            clearNewSessionProviderModelError();
           }
           const reasoningChoices = currentReasoningChoices();
           const defaultEffort = typeof defaults.reasoning_effort === "string" ? defaults.reasoning_effort.trim().toLowerCase() : "";
@@ -6091,7 +6154,9 @@
             fillCustomSnoozeInputs(tomorrowSnoozeSeconds());
           }
           fillDependencyOptions(sid, s.dependency_session_id || "");
+          prepareModalOpen();
           if (!editViewer.open) editViewer.showModal();
+          afterModalVisibilityChanged();
         }
 
         function hideNewSessionDialog() {
@@ -6105,9 +6170,11 @@
           applyDialogMenus();
           newSessionBackdrop.style.display = "none";
           newSessionViewer.style.display = "none";
+          afterModalVisibilityChanged();
         }
 
         function openNewSessionDialog({ cwd = null, statusText = "" } = {}) {
+          prepareModalOpen();
           const cur = selected ? sessionIndex.get(selected) : null;
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const rememberedBackend = loadRememberedBackendChoice();
@@ -6137,6 +6204,7 @@
           renderNewSessionResumeMenu();
           newSessionBackdrop.style.display = "block";
           newSessionViewer.style.display = "flex";
+          afterModalVisibilityChanged();
           scheduleNewSessionResumeLoad();
           syncNewSessionTmuxUi();
           syncNewSessionWorktreeUi();
@@ -7000,6 +7068,7 @@
           filePasteBackdrop.style.display = "none";
           filePasteDialog.style.display = "none";
           filePasteInput.value = "";
+          afterModalVisibilityChanged();
         }
 
         async function pasteFromClipboardIntoActiveFile() {
@@ -7497,14 +7566,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileUnsavedResolver = null;
           fileUnsavedBackdrop.style.display = "none";
           fileUnsavedDialog.style.display = "none";
+          afterModalVisibilityChanged();
           if (resolve) resolve(choice);
         }
 
         function promptFileUnsavedChoice() {
           if (!fileDirty) return Promise.resolve("discard");
           if (fileUnsavedResolver) return Promise.resolve("cancel");
+          prepareModalOpen();
           fileUnsavedBackdrop.style.display = "block";
           fileUnsavedDialog.style.display = "flex";
+          afterModalVisibilityChanged();
           return new Promise((resolve) => {
             fileUnsavedResolver = resolve;
           });
@@ -8313,8 +8385,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
           if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
           cancelPendingFileOpen();
+          prepareModalOpen();
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
+          afterModalVisibilityChanged();
           updateFileTouchToolbar();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = selected || "";
@@ -8365,6 +8439,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileViewerSessionId = "";
           activeFileLine = null;
           updateFileTouchToolbar();
+          afterModalVisibilityChanged();
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
           if (!fileViewerSessionId) return false;
@@ -8835,14 +8910,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         let sendChoicePending = null;
         function showSendChoice(raw) {
+          prepareModalOpen();
           sendChoicePending = { sid: selected, text: raw };
           sendChoiceBackdrop.style.display = "block";
           sendChoice.style.display = "flex";
+          afterModalVisibilityChanged();
         }
         function hideSendChoice() {
           sendChoicePending = null;
           sendChoiceBackdrop.style.display = "none";
           sendChoice.style.display = "none";
+          afterModalVisibilityChanged();
         }
         const sendChoiceNowBtn = $("#sendChoiceNow");
         const sendChoiceLaterBtn = $("#sendChoiceLater");
@@ -9129,9 +9207,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function showQueueViewer() {
           if (!selected) return;
+          prepareModalOpen();
           queueViewerSid = selected;
           queueBackdrop.style.display = "block";
           queueViewer.style.display = "flex";
+          afterModalVisibilityChanged();
           void refreshQueueViewer();
         }
 
@@ -9140,23 +9220,29 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueViewer.style.display = "none";
           queueViewerSid = null;
           queueViewerItems = [];
+          afterModalVisibilityChanged();
         }
 
         function showHelpViewer() {
+          prepareModalOpen();
           helpBackdrop.style.display = "block";
           helpViewer.style.display = "flex";
+          afterModalVisibilityChanged();
         }
         function hideHelpViewer() {
           helpBackdrop.style.display = "none";
           helpViewer.style.display = "none";
+          afterModalVisibilityChanged();
         }
 
         async function showDiagViewer() {
           if (!selected) return;
+          prepareModalOpen();
           diagContent.innerHTML = "";
           diagStatus.textContent = "Loading...";
           diagBackdrop.style.display = "block";
           diagViewer.style.display = "flex";
+          afterModalVisibilityChanged();
           try {
             const d = await api(`/api/sessions/${selected}/diagnostics`);
             diagStatus.textContent = "";
@@ -9222,6 +9308,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function hideDiagViewer() {
           diagBackdrop.style.display = "none";
           diagViewer.style.display = "none";
+          afterModalVisibilityChanged();
         }
 
         const queueBtn = $("#queueBtn");
