@@ -4,6 +4,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
+BACKEND_LAUNCH_PY = Path(__file__).resolve().parents[1] / "codoxear" / "backend_launch.py"
 
 
 class TestClaudeBackendSource(unittest.TestCase):
@@ -19,14 +20,15 @@ class TestClaudeBackendSource(unittest.TestCase):
         self.assertNotIn('id: "newSessionProviderBtn"', source)
 
     def test_server_exposes_cc_launch_contract(self) -> None:
-        source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn('CC_SETTINGS_PATH = CC_HOME / "settings.json"', source)
-        self.assertIn('def _read_cc_launch_defaults()', source)
-        self.assertIn('"cc": cc', source)
-        self.assertIn('codex_args.extend(["--dangerously-skip-permissions"])', source)
-        self.assertIn('codex_args.extend(["--effort", reasoning_effort])', source)
-        self.assertIn('codex_args.extend(["--resume", resume_id])', source)
-        self.assertIn('env.setdefault("CLAUDE_CONFIG_DIR", str(CC_HOME))', source)
+        server_source = SERVER_PY.read_text(encoding="utf-8")
+        launch_source = BACKEND_LAUNCH_PY.read_text(encoding="utf-8")
+        self.assertIn('CC_SETTINGS_PATH = CC_HOME / "settings.json"', server_source)
+        self.assertIn('def _read_cc_launch_defaults()', server_source)
+        self.assertIn('"cc": cc', server_source)
+        self.assertIn('args = ["--dangerously-skip-permissions"]', launch_source)
+        self.assertIn('args.extend(["--effort", reasoning_effort])', launch_source)
+        self.assertIn('return ["--resume", resume_id]', launch_source)
+        self.assertIn('"cc": "CLAUDE_CONFIG_DIR"', launch_source)
 
 
 if __name__ == "__main__":

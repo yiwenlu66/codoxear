@@ -28,6 +28,11 @@ from typing import Any, Mapping
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .backend_launch import apply_backend_environment as _apply_backend_environment
+from .backend_launch import build_backend_args as _build_backend_args
+from .backend_launch import build_backend_resume_args as _build_backend_resume_args
+from .backend_launch import build_tmux_inline_env as _build_tmux_inline_env
+from .backend_launch import tmux_unset_vars as _tmux_unset_vars
 from .auth import CookieAuthSettings
 from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
 from .auth import parse_cookies as _parse_cookies_impl
@@ -4449,54 +4454,17 @@ class SessionManager:
             spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
 
         argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
-        codex_args: list[str] = []
+        backend_args = _build_backend_args(
+            agent_backend=backend_name,
+            spawn_cwd=spawn_cwd,
+            codex_trust_override=_codex_trust_override_for_path(spawn_cwd),
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+        )
         resume_row: dict[str, Any] | None = None
-        if backend_name == "codex":
-            # Web-owned Codex sessions need a remote-safe mode that does not block on TUI confirmations.
-            codex_args = [
-                "-c",
-                _codex_trust_override_for_path(spawn_cwd),
-                "-c",
-                "check_for_update_on_startup=false",
-                "--disable",
-                "goals",
-                "--dangerously-bypass-approvals-and-sandbox",
-            ]
-            if model is not None:
-                codex_args.extend(["--model", model])
-            if reasoning_effort is not None:
-                codex_args.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
-            if model_provider is not None:
-                codex_args.extend(["-c", f'model_provider="{model_provider}"'])
-            if preferred_auth_method is not None:
-                codex_args.extend(["-c", f'preferred_auth_method="{preferred_auth_method}"'])
-            if service_tier is not None:
-                codex_args.extend(["-c", f'service_tier="{service_tier}"'])
-        elif backend_name == "pi":
-            if preferred_auth_method is not None:
-                raise ValueError("preferred_auth_method is not supported for pi")
-            if service_tier is not None:
-                raise ValueError("service_tier is not supported for pi")
-            if model_provider is not None:
-                codex_args.extend(["--provider", model_provider])
-            if model is not None:
-                codex_args.extend(["--model", model])
-            if reasoning_effort is not None:
-                codex_args.extend(["--thinking", reasoning_effort])
-        elif backend_name == "cc":
-            if model_provider is not None:
-                raise ValueError("model_provider is not supported for cc")
-            if preferred_auth_method is not None:
-                raise ValueError("preferred_auth_method is not supported for cc")
-            if service_tier is not None:
-                raise ValueError("service_tier is not supported for cc")
-            codex_args.extend(["--dangerously-skip-permissions"])
-            if model is not None:
-                codex_args.extend(["--model", model])
-            if reasoning_effort is not None:
-                codex_args.extend(["--effort", reasoning_effort])
-        else:
-            raise ValueError(f"unsupported agent_backend: {backend_name}")
         if resume_session_id is not None:
             resume_id = str(resume_session_id).strip()
             if not resume_id:
@@ -4515,62 +4483,25 @@ class SessionManager:
                     "resume target is already live as "
                     f"{live_target.session_id}; select that session instead of creating another session bound to the same transcript"
                 )
-            if backend_name == "codex":
-                codex_args.extend(["resume", resume_id])
-            elif backend_name == "pi":
-                resume_target = str(resume_row.get("log_path") or "").strip() if isinstance(resume_row, dict) else ""
-                codex_args.extend(["--session", resume_target or resume_id])
-            elif backend_name == "cc":
-                codex_args.extend(["--resume", resume_id])
-            else:
-                raise ValueError(f"unsupported agent_backend: {backend_name}")
-        codex_args.extend(args or [])
-        argv.extend(codex_args)
+            backend_args.extend(_build_backend_resume_args(agent_backend=backend_name, resume_id=resume_id, resume_row=resume_row))
+        backend_args.extend(args or [])
+        argv.extend(backend_args)
 
         env = dict(os.environ)
         if _DOTENV.exists():
             for k, v in _load_env_file(_DOTENV).items():
                 env.setdefault(k, v)
-        env["CODEX_WEB_OWNER"] = "web"
-        env["CODEX_WEB_AGENT_BACKEND"] = backend_name
-        if backend_name == "codex":
-            env.setdefault("CODEX_HOME", str(CODEX_HOME))
-            env.pop("PI_HOME", None)
-            env.pop("CLAUDE_CONFIG_DIR", None)
-        elif backend_name == "pi":
-            env.setdefault("PI_HOME", str(PI_HOME))
-            env.pop("CODEX_HOME", None)
-            env.pop("CLAUDE_CONFIG_DIR", None)
-        elif backend_name == "cc":
-            env.setdefault("CLAUDE_CONFIG_DIR", str(CC_HOME))
-            env.pop("CODEX_HOME", None)
-            env.pop("PI_HOME", None)
-        else:
-            raise ValueError(f"unsupported agent_backend: {backend_name}")
-        env.pop("CODEX_WEB_MODEL_PROVIDER", None)
-        env.pop("CODEX_WEB_PREFERRED_AUTH_METHOD", None)
-        env.pop("CODEX_WEB_MODEL", None)
-        env.pop("CODEX_WEB_REASONING_EFFORT", None)
-        env.pop("CODEX_WEB_SERVICE_TIER", None)
-        env.pop("CODEX_WEB_TRANSPORT", None)
-        env.pop("CODEX_WEB_TMUX_SESSION", None)
-        env.pop("CODEX_WEB_TMUX_WINDOW", None)
-        env.pop("CODEX_WEB_LAUNCH_ID", None)
-        env.pop("CODEX_WEB_SPAWN_NONCE", None)
-        env.pop("CODEX_WEB_RESUME_SESSION_ID", None)
-        env.pop("CODEX_WEB_RESUME_LOG_PATH", None)
-        if model_provider is not None:
-            env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
-        if preferred_auth_method is not None:
-            env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
-        if model is not None:
-            env["CODEX_WEB_MODEL"] = model
-        if reasoning_effort is not None:
-            env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
-        if service_tier is not None:
-            env["CODEX_WEB_SERVICE_TIER"] = service_tier
-        if resume_session_id is not None:
-            env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
+        _apply_backend_environment(
+            env,
+            agent_backend=backend_name,
+            homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            resume_session_id=resume_session_id,
+        )
 
         launch_started_ts = time.time()
         launch_id = f"launch-{int(launch_started_ts * 1000)}-{secrets.token_hex(4)}"
@@ -4637,62 +4568,24 @@ class SessionManager:
             env["CODEX_WEB_TRANSPORT"] = "tmux"
             env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
             env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
-            inline_env = {
-                "CODEX_WEB_OWNER": "web",
-                "CODEX_WEB_AGENT_BACKEND": backend_name,
-                "CODEX_WEB_TRANSPORT": "tmux",
-                "CODEX_WEB_TMUX_SESSION": TMUX_SESSION_NAME,
-                "CODEX_WEB_TMUX_WINDOW": tmux_window,
-                "CODEX_WEB_LAUNCH_ID": launch_id,
-                "CODEX_WEB_SPAWN_NONCE": spawn_nonce,
-            }
-            if backend_name == "codex":
-                inline_env["CODEX_HOME"] = str(env["CODEX_HOME"])
-            elif backend_name == "pi":
-                inline_env["PI_HOME"] = str(env["PI_HOME"])
-            elif backend_name == "cc":
-                inline_env["CLAUDE_CONFIG_DIR"] = str(env["CLAUDE_CONFIG_DIR"])
-            else:
-                raise ValueError(f"unsupported agent_backend: {backend_name}")
-            if resume_session_id is not None:
-                inline_env["CODEX_WEB_RESUME_SESSION_ID"] = resume_session_id
-            if model_provider is not None:
-                inline_env["CODEX_WEB_MODEL_PROVIDER"] = model_provider
-            if preferred_auth_method is not None:
-                inline_env["CODEX_WEB_PREFERRED_AUTH_METHOD"] = preferred_auth_method
-            if model is not None:
-                inline_env["CODEX_WEB_MODEL"] = model
-            if reasoning_effort is not None:
-                inline_env["CODEX_WEB_REASONING_EFFORT"] = reasoning_effort
-            if service_tier is not None:
-                inline_env["CODEX_WEB_SERVICE_TIER"] = service_tier
             backend_bin_env_var = get_agent_backend(backend_name).bin_env_var
-            backend_bin = _clean_optional_text(os.environ.get(backend_bin_env_var))
-            if backend_bin is not None:
-                inline_env[backend_bin_env_var] = backend_bin
+            inline_env = _build_tmux_inline_env(
+                env,
+                agent_backend=backend_name,
+                tmux_session=TMUX_SESSION_NAME,
+                tmux_window=tmux_window,
+                launch_id=launch_id,
+                spawn_nonce=spawn_nonce,
+                resume_session_id=resume_session_id,
+                model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                service_tier=service_tier,
+                inherited_backend_bin=_clean_optional_text(os.environ.get(backend_bin_env_var)),
+            )
             repo_root = Path(__file__).resolve().parent.parent
-            tmux_unset_vars = [
-                "CODEX_HOME",
-                "PI_HOME",
-                "CLAUDE_CONFIG_DIR",
-                "CODEX_BIN",
-                "PI_BIN",
-                "CLAUDE_BIN",
-                "CODEX_WEB_OWNER",
-                "CODEX_WEB_AGENT_BACKEND",
-                "CODEX_WEB_MODEL_PROVIDER",
-                "CODEX_WEB_PREFERRED_AUTH_METHOD",
-                "CODEX_WEB_MODEL",
-                "CODEX_WEB_REASONING_EFFORT",
-                "CODEX_WEB_SERVICE_TIER",
-                "CODEX_WEB_TRANSPORT",
-                "CODEX_WEB_TMUX_SESSION",
-                "CODEX_WEB_TMUX_WINDOW",
-                "CODEX_WEB_LAUNCH_ID",
-                "CODEX_WEB_SPAWN_NONCE",
-                "CODEX_WEB_RESUME_SESSION_ID",
-                "CODEX_WEB_RESUME_LOG_PATH",
-            ]
+            tmux_unset_vars = _tmux_unset_vars()
             inline_argv = ["env", *[f"{key}={value}" for key, value in inline_env.items()], *argv]
             shell_cmd = f"cd {shlex.quote(str(repo_root))} && unset {shlex.join(tmux_unset_vars)} && exec {shlex.join(inline_argv)}"
             new_window_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
