@@ -47,20 +47,22 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
-    def test_prune_missing_commit_unknown_sends_drops_inactive_records(self) -> None:
+    def test_prune_missing_commit_unknown_sends_keeps_recent_orphans(self) -> None:
         mgr = self._mgr()
         mgr._sessions["live"] = _make_session("live")
         mgr._commit_unknown_sends = {
             "live": {"text": "maybe live", "created_ts": 1.0},
-            "gone": {"text": "maybe gone", "created_ts": 2.0},
+            "recent_gone": {"text": "maybe recent", "created_ts": 90.0},
+            "old_gone": {"text": "maybe old", "created_ts": 1.0},
         }
         saved = []
         mgr._save_commit_unknown_sends = lambda: saved.append(dict(mgr._commit_unknown_sends))  # type: ignore[method-assign]
 
-        self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr))
+        with patch("codoxear.server.time.time", return_value=100.0):
+            self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr, max_age_seconds=50.0))
 
-        self.assertEqual(set(mgr._commit_unknown_sends), {"live"})
-        self.assertEqual(saved, [{"live": {"text": "maybe live", "created_ts": 1.0}}])
+        self.assertEqual(set(mgr._commit_unknown_sends), {"live", "recent_gone"})
+        self.assertEqual(saved, [{"live": {"text": "maybe live", "created_ts": 1.0}, "recent_gone": {"text": "maybe recent", "created_ts": 90.0}}])
 
     def test_match_session_route_requires_exact_suffix(self) -> None:
         self.assertEqual(_match_session_route("/api/sessions/s1/delete", "delete"), "s1")

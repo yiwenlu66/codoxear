@@ -285,6 +285,7 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
     )
 )
 SEND_COMMIT_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_SEND_COMMIT_TIMEOUT_SECONDS", "30"))
+COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS = float(os.environ.get("CODEX_WEB_COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS", str(7 * 24 * 3600)))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
@@ -2558,18 +2559,27 @@ class SessionManager:
         self._set_commit_unknown_send(session_id, None)
         return {"ok": True, "commit_unknown_send": False}
 
-    def _prune_missing_commit_unknown_sends(self) -> bool:
+    def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
         changed = False
+        now_ts = time.time()
         with self._lock:
             unknown_sends = getattr(self, "_commit_unknown_sends", None)
             if not isinstance(unknown_sends, dict):
                 self._commit_unknown_sends = {}
                 return False
             active_ids = set(getattr(self, "_sessions", {}).keys())
-            for sid in list(unknown_sends.keys()):
-                if sid not in active_ids:
-                    unknown_sends.pop(sid, None)
-                    changed = True
+            for sid, record in list(unknown_sends.items()):
+                if sid in active_ids:
+                    continue
+                created_raw = record.get("created_ts") if isinstance(record, dict) else None
+                try:
+                    created_ts = float(created_raw)
+                except (TypeError, ValueError):
+                    created_ts = now_ts
+                if math.isfinite(created_ts) and created_ts > 0 and (now_ts - created_ts) < max_age_seconds:
+                    continue
+                unknown_sends.pop(sid, None)
+                changed = True
         if changed:
             self._save_commit_unknown_sends()
         return changed
@@ -6773,7 +6783,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(item_id, str) or not item_id.strip():
                     _json_response(self, 400, {"error": "id required"})
                     return
-                if not isinstance(to_index, int):
+                if isinstance(to_index, bool) or not isinstance(to_index, int):
                     _json_response(self, 400, {"error": "to_index required"})
                     return
                 try:

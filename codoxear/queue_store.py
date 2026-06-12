@@ -211,6 +211,8 @@ class QueueStore:
         if bool(q[idx].get("commit_unknown")):
             raise ValueError("item commit status is unknown")
         min_index = 1 if sending_item_id else 0
+        if target < min_index or target >= len(q):
+            raise ValueError("to_index out of range")
         if idx < target:
             crossed = q[idx + 1 : target + 1]
         elif target < idx:
@@ -219,8 +221,6 @@ class QueueStore:
             crossed = []
         if any(bool(item.get("commit_unknown")) for item in crossed):
             raise ValueError("commit-unknown item blocks reordering")
-        if target < min_index or target >= len(q):
-            raise ValueError("to_index out of range")
         item = q.pop(idx)
         q.insert(target, item)
         return len(q)

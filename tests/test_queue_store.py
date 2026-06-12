@@ -86,6 +86,8 @@ class TestQueueStore(unittest.TestCase):
             store.move(queues, "s1", "a", 2)
         with self.assertRaisesRegex(ValueError, "blocks reordering"):
             store.move(queues, "s1", "b", 0)
+        with self.assertRaisesRegex(ValueError, "out of range"):
+            store.move(queues, "s1", "a", 999)
         self.assertEqual(store.move(queues, "s1", "c", 2), 4)
         self.assertEqual([item["id"] for item in queues["s1"]], ["a", "u", "c", "b"])
 
