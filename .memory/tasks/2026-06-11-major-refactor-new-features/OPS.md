@@ -521,3 +521,8 @@
 - Current-head review follow-up: added direct runtime tests for `_match_session_route()` exact-shape matching and rejection of extra/missing/wrong route segments.
 - Commit: `13134cb test: exercise exact session route matching`.
 - Validation: route matcher/decomposition/message-route/transcript tests passed (`11 passed, 10 subtests passed in 1.89s`).
+
+## 2026-06-12 15:08
+- Exact-current-head full validation after direct route matcher tests/docs.
+- HEAD: `bdc82b6`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`474 passed, 2 skipped, 10 subtests passed in 12.98s`).
