@@ -1185,3 +1185,9 @@
 - Repaired queue-wide recovery blocker: queue promotion now freezes when any queued item has `commit_unknown` or `orphan_recovery`, not only when the head is marked; active `queue_recovery` also reports direct-unknown plus queued-tail state, and internal `_queue_enqueue_local()` uses the protected append path.
 - Commit: `fix: freeze promotion for recovery queues`.
 - Validation: targeted tests passed (`69 passed, 15 subtests passed in 1.87s`). Plain full suite passed (`611 passed, 25 subtests passed in 9.20s`). Full isolated Docker suite passed (`609 passed, 2 skipped, 25 subtests passed in 11.06s`).
+
+
+## 2026-06-13 02:42
+- Repaired queue-wide mutation blocker: queue listing now marks unflagged items as recovery-protected whenever the queue has recovery evidence; update/move reject the whole recovery queue; delete of any item in such a queue requires explicit recovery confirmation; queue promotion checks the recovery barrier before broker readiness I/O.
+- Commit: `fix: protect every item in recovery queues`.
+- Validation: targeted tests passed (`70 passed, 15 subtests passed in 1.80s`). Plain full suite passed (`612 passed, 25 subtests passed in 12.63s`). Full isolated Docker suite passed (`610 passed, 2 skipped, 25 subtests passed in 11.18s`).

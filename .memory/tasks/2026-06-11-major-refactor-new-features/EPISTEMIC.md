@@ -997,3 +997,11 @@ Commitments:
 - Intervention: promotion freezes on any queued recovery/unknown item; direct unknown plus queued tail is reported as `queue_recovery`; internal enqueue helper uses the same protected append path.
 - Evidence: regressions cover recovery tails for both flags and direct-unknown queue visibility; full local/Docker suites passed.
 - Scoped claim: active recovery queues no longer mutate backend sessions via queue promotion while any queued recovery evidence remains unresolved.
+
+
+## 2026-06-13 02:42
+- Observation: review found active recovery was only an enqueue/promotion barrier; unflagged items in a recovery queue could still be edited, moved, or deleted silently.
+- Mechanism: mutation protection was per-item, but recovery evidence creates a queue-level evidence boundary.
+- Intervention: queue listing and mutation paths now treat every item in a recovery queue as protected; promotion checks the queue-wide barrier before touching broker state.
+- Evidence: regressions cover direct-unknown queues, recovery tails, unflagged item mutation attempts, and no broker polling under recovery tails; full local/Docker suites passed.
+- Scoped claim: once an active queue contains recovery evidence, every queued item is preserved from silent mutation until explicit recovery deletion.
