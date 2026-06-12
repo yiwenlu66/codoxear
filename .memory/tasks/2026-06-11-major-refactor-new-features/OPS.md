@@ -408,3 +408,10 @@
 - Fix commit: `93d1245 fix: safe-default pi reasoning validation`.
 - Validation: targeted launch/default/reasoning/provenance suite passed (`33 passed in 1.71s`); full isolated Docker suite passed (`460 passed, 2 skipped in 13.55s`).
 - Review artifacts: `/tmp/codoxear-post-tranche-product-review.md`, `/tmp/codoxear-post-tranche-architect-review.md`.
+
+## 2026-06-12 14:04
+- Search paging follow-up from fresh product review: fixed loaded-chat search so pressing Next at the last loaded hit can page older history even when existing loaded hits are present, not only when there are zero loaded matches.
+- Mechanism found in browser: the boundary condition entered, but the history request was aborted by the generic scroll-cancel guard because search navigation leaves the chat scrolled near the current hit. Added a narrow `cancelOnScroll` option and call search-driven older loads with `cancelOnScroll: false`; normal older-load cancellation remains enabled by default.
+- Commit: `c79d925 fix: page older search matches at boundaries`.
+- Validation: `node --check codoxear/static/app.js` passed; targeted chat navigation/scrollback/runtime tests passed (`30 passed in 1.18s`); full isolated Docker suite passed (`460 passed, 2 skipped in 16.34s`).
+- Browser evidence in isolated Docker on port 18812 with synthetic `ux-search-boundary` session: initial search `1/1 loaded · 3 all` at turn 149; first Next loaded older turn 080 and showed `1/2 loaded · 3 all`; second Next selected turn 149 as `2/2 loaded · 3 all`; third Next loaded through a nonmatching older page to turn 020 and showed `1/3 loaded · 3 all`, 301 rendered rows, 3 highlighted hits, and captured JS errors `[]`.
