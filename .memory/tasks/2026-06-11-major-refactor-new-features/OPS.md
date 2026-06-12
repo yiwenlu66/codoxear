@@ -423,3 +423,6 @@
 
 ## 2026-06-12 14:12
 - Additional browser evidence for search boundary paging: in the isolated Docker synthetic `ux-search-boundary` transcript, pressing Prev at the first loaded hit changed `1/1 loaded · 3 all` at turn 149 to `1/2 loaded · 3 all` focused on older turn 080, with 181 rendered rows, 2 highlighted hits, and captured JS errors `[]`.
+
+## 2026-06-12 14:12
+- Current-head full validation after recent-cwd persistence and backward search paging evidence: isolated Docker suite passed (`461 passed, 2 skipped in 10.53s`).
