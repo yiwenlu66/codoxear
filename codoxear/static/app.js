@@ -1734,8 +1734,8 @@
               let editSessionId = null;
 
             const titleLabel = el("div", { id: "threadTitle", text: "No session selected" });
-            titleLabel.style.cursor = "pointer";
-            titleLabel.title = "Edit conversation";
+            titleLabel.style.cursor = "default";
+            titleLabel.title = "No session selected";
             titleLabel.onclick = () => {
               if (!selected) return;
               openEditSession(selected);
@@ -4600,6 +4600,8 @@
 
         function updateUnattendedBtnState() {
           const s = selected ? sessionIndex.get(selected) : null;
+          titleLabel.style.cursor = selected ? "pointer" : "default";
+          titleLabel.title = selected ? "Edit conversation" : "No session selected";
           const on = Boolean(s && s.unattended_enabled);
           unattendedBtn.disabled = !selected;
           unattendedBtn.classList.toggle("active", Boolean(selected && on));
