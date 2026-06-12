@@ -1,8 +1,12 @@
 import json
+import types
 import unittest
+import urllib.parse
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+from codoxear import server
 from codoxear.server import _read_chat_export_events
 from codoxear.server import _search_chat_events
 
@@ -70,7 +74,28 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('_match_session_route(path, "messages", "search")', source)
         self.assertIn('"event_count": len(events)', source)
         self.assertIn('"match_count": match_count', source)
+        self.assertIn('_json_response(self, 400, {"error": "limit must be an integer"})', source)
         self.assertIn('_json_response(self, 413', source)
+
+    def test_messages_search_rejects_malformed_limit(self) -> None:
+        responses = []
+        handler = server.Handler.__new__(server.Handler)
+        parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&limit=not-an-int")
+        handler._parse_prefixed_request_path = lambda: (parsed, parsed.path)  # type: ignore[attr-defined]
+        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+        fake_manager = types.SimpleNamespace(
+            refresh_session_meta=lambda _sid: None,
+            get_session=lambda _sid: object(),
+        )
+
+        with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+            server,
+            "_json_response",
+            side_effect=lambda _handler, status, obj: responses.append((status, obj)),
+        ):
+            server.Handler.do_GET(handler)
+
+        self.assertEqual(responses, [(400, {"error": "limit must be an integer"})])
 
     def test_ui_has_copy_conversation_action(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

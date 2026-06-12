@@ -6762,7 +6762,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 limit_q = qs.get("limit")
                 match_limit = 20
                 if limit_q:
-                    match_limit = max(0, min(100, int(limit_q[0])))
+                    try:
+                        match_limit = max(0, min(100, int(limit_q[0])))
+                    except (TypeError, ValueError):
+                        _json_response(self, 400, {"error": "limit must be an integer"})
+                        return
                 transcript = _message_transcript_identity(s)
                 if not isinstance(query, str) or not query.strip():
                     _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
