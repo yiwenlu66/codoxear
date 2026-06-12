@@ -408,3 +408,6 @@ Commitments:
 
 ## 2026-06-12 15:18
 - Evidence update: live browser request counts support the intended polling mechanism: core session polling continued at visible cadence, while secondary voice/notification state stayed off the fast session loop for the measured window. This constrains request cadence, not slow-network latency or real mobile-radio power use.
+
+## 2026-06-12 15:21
+- Mechanism: loaded user-turn buttons existed, but keyboard-only navigation still required focus/clicking a rail control. Guarded `Alt+↑/↓` shortcuts improve long-conversation orientation without adding visible UI density and without stealing input from composer/modals/sidebar.

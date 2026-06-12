@@ -541,3 +541,8 @@
 - Full validation after secondary UI polling decoupling and browser network-cadence evidence.
 - HEAD: `66194c1`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`475 passed, 2 skipped, 10 subtests passed in 14.62s`).
+
+## 2026-06-12 15:21
+- Long-chat UX: added guarded `Alt+↑`/`Alt+↓` shortcuts for jumping between loaded user messages, sharing the same no-selected-session/text-entry/sidebar/modal guard as chat search. Help now documents the shortcuts.
+- Commit: `40b71e1 feat: add user turn keyboard shortcuts`.
+- Validation: `node --check codoxear/static/app.js` passed; chat navigation and overlay accessibility source tests passed (`12 passed in 0.49s`).
