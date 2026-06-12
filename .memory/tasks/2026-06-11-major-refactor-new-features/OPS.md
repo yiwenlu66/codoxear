@@ -320,3 +320,9 @@
 ## 2026-06-12 12:31
 - Final validation after provider/model pair memory, chat rail flow fix, and Help copy alignment: local `node --check codoxear/static/app.js` passed; full isolated Docker suite passed (`445 passed, 2 skipped in 10.17s`).
 - Current recovery branch head before clean-room review: `recovery/product-gaps` at `a70ab96`. Live checkout `/home/yiwen/codex-web` remains on `main` at `82f13ef`.
+
+## 2026-06-12 12:37
+- Deep UX follow-up: measured loaded-chat search geometry after opening search for `UNIQUE-RECOVERY-NEEDLE`. Before intervention, `#chatSearchBar` computed `position:absolute` and overlapped visible message rows on desktop and mobile.
+- Intervention: moved `#chatSearchBar` into normal chatWrap flex layout above `#chatNavRail`; made the input flex-shrink within the toolbar and added source regression coverage that search is in-flow rather than absolute.
+- Browser recheck: fresh browser session showed `#chatSearchBar` computed `position: static`; strict visible-overlap calculation returned `[]` for visible rows on desktop 1280x900 and mobile 390x844; search status remained `1/1 loaded`; screenshot saved as `recovery-mobile-chat-search-flow.png`.
+- Validation: local `node --check codoxear/static/app.js` passed; targeted chat tests passed (`30 passed in 0.63s`); full isolated Docker suite passed (`445 passed, 2 skipped in 10.71s`).

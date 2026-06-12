@@ -60,12 +60,16 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('rowSearchText(row).toLowerCase().includes(query)', source)
         self.assertIn('setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search")', source)
 
-    def test_loaded_chat_search_has_compact_overlay_styles(self) -> None:
+    def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn(".chatSearchBar", css)
         self.assertIn(".chatSearchInput", css)
         self.assertIn(".chatNavRail", css)
         self.assertIn(".msg-row.chat-search-current .msg", css)
+        self.assertIn(".chatSearchBar {\n        order: 0;\n        flex: 0 0 auto;", css)
+        search_block = css[css.index(".chatSearchBar {"):css.index("      .chatSearchInput", css.index(".chatSearchBar {"))]
+        self.assertNotIn("position: absolute;", search_block)
+        self.assertNotIn("transform: translateX", search_block)
 
     def test_chat_navigation_rail_is_in_layout_flow(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")

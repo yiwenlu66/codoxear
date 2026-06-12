@@ -290,3 +290,8 @@ Commitments:
 ## 2026-06-12 12:31
 - Evidence update: final deterministic validation still passes after the latest UX/memory polish. No new local deterministic failure is known before clean-room review.
 - Remaining uncertainty remains scoped to live-like backend launches, real mobile/slow-network performance, full real transcripts, and Codex authoritative per-model reasoning semantics.
+
+## 2026-06-12 12:37
+- Observation: after the rail was fixed, the search bar still used absolute positioning and covered message content while search was open. This preserved a weaker version of the same readability failure.
+- Mechanism: `#chatSearchBar` was removed from layout flow, so chat rows continued under it. It did not overlap the rail, but it did overlap visible rows.
+- Intervention/evidence: placing search in the same flex flow as the rail created explicit vertical space for both controls. Browser geometry showed no visible row overlap and retained search function (`1/1 loaded`).
