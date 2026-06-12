@@ -764,3 +764,9 @@
 - Reviewer finding #1 fix: app logout/auth-loss now has shared `cleanupApp()` ownership that stops message/session/secondary polling, clears pending timers, aborts outstanding controllers, removes renderApp-registered document/window listeners, stops voice/audio timers, and clears `/api/sessions` ETag cache. Message polling now treats 401 as auth loss. Logout tears down even if the POST fails.
 - Commit: `6f4a2a7 fix: clean up app pollers on auth loss`.
 - Validation: `node --check codoxear/static/app.js` passed; focused auth-cleanup/session-polling/voice/chat/file-viewer source tests passed (`42 passed in 0.71s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`502 passed, 2 skipped, 10 subtests passed in 11.36s`).
+
+
+## 2026-06-12 17:33
+- Reviewer finding #2 fix: session file downloads now validate metadata with `inspect_downloadable_file()` and stream bytes through `send_attachment_file_response()` instead of `Path.read_bytes()` buffering the entire file before response.
+- Commit: `b8c58e3 fix: stream downloaded files instead of buffering`.
+- Validation: `python3 -m py_compile codoxear/file_response.py codoxear/file_view.py codoxear/server.py` passed; focused file-response/file-view/file-inspect/file-viewer/file-list tests passed (`46 passed in 3.12s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`503 passed, 2 skipped, 10 subtests passed in 10.90s`).

@@ -499,3 +499,11 @@ Commitments:
 - Intervention: introduced an active-app cleanup authority, routed render boundaries/logout/auth-loss through it, moved session/secondary poll control to shared functions, cleanup-tracked renderApp global listeners, and guarded the boot `finally` so auth-loss cleanup is not followed by listener re-registration.
 - Evidence: source regressions assert the cleanup boundary, stopped timers/controllers/listeners, 401 auth-loss routing, tracked global events, and the boot-finally guard; targeted tests and full Docker suite passed.
 - Scoped claim: current source prevents old renderApp pollers/listeners from surviving logout/auth-loss or re-render. Runtime browser request-count evidence was not collected for this tranche, so the claim is bounded to source-level lifecycle invariants plus suite coverage.
+
+
+## 2026-06-12 17:33
+- Observation: fresh reviewer found the download route used `_read_downloadable_file()`, which called `Path.read_bytes()` and then wrote the full byte string to `wfile`. Existing tests only exercised a tiny binary fixture.
+- Mechanism supported: large artifact downloads could allocate the whole file in the server process before sending; inline preview/blob routes already used chunked streaming, making download the outlier.
+- Intervention: replaced the buffering download helper with size/permission inspection and added a shared attachment response streamer that preserves `Content-Length`, `Content-Disposition`, and no-store headers while copying chunks to `wfile`.
+- Evidence: tests poison `Path.read_bytes` for both metadata inspection and attachment response streaming; targeted tests and full Docker suite passed.
+- Scoped claim: the session file-download response no longer buffers the complete file in Python before sending. It still uses a precomputed `Content-Length`, so concurrent file mutation during a download remains outside this tranche.
