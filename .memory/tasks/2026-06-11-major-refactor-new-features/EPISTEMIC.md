@@ -1198,3 +1198,8 @@ Commitments:
 - Intervention: Added a `typing-row` loading message only for no-cache opens; cached tails still render immediately, and `renderSessionTail()` / `renderPendingTranscriptSlot()` clear the loading row through existing DOM reset paths.
 - Evidence: Focused tests pin non-transcript class and cache-aware call site; browser evidence with a delayed tail fetch showed the loading row appears while pending and disappears after real transcript content renders; full local/Docker suites passed.
 - Scoped claim: No-cache session opens now provide visible loading feedback without adding transcript events or changing live/history cursor semantics.
+
+## 2026-06-13 06:50 — No-blocker scoped claim for loading feedback
+- Observation: Clean-room review found no blockers in the loading feedback tranche and confirmed the row is excluded from transcript/search/history state by `typing-row` treatment.
+- Scoped claim: The loading indicator is UI feedback only; authoritative transcript, pending-bind, and failed transcript paths remain the source of truth and clear the indicator through existing DOM reset paths.
+- Remaining uncertainty: There is no explicit failed-tail error state in this tranche; if the tail request fails, the loading row may remain until another action/poll changes the transcript state.

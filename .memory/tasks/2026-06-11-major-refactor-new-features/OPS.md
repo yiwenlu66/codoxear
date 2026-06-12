@@ -1411,3 +1411,9 @@
 - Browser evidence on `codoxear-sandbox-18932`: monkeypatched browser `fetch` to delay `/messages/tail`, clicked the `now` session, observed `Loading transcript…` while pending, then observed `loadingRows: 0` and real transcript text after the delayed tail response. Artifacts: `/tmp/codoxear-sidebar-gtd-evidence/transcript-loading-visible.json`, `transcript-loading-after.json`, `transcript-loading-visible.png`.
 - Full local validation: `python3 -m pytest -q` → `659 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `658 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 06:50 — Transcript loading feedback review
+- Clean-room critic review of commit `38d7092 feat: show transcript loading feedback` found no blockers.
+- Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `29 passed`; `node --check codoxear/static/app.js` → passed.
+- Review artifact: `/tmp/codoxear-transcript-loading-review.md`.
+- Residual risks noted: source-shape tests rather than runtime DOM tests; busy sessions show loading row rather than typing dots until tail arrives; if tail fetch fails, the loading row can remain as failed-load state because no explicit error UI was added.
