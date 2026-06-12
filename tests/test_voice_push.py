@@ -1,3 +1,4 @@
+import stat
 import threading
 import unittest
 from pathlib import Path
@@ -218,6 +219,8 @@ class TestVoicePushCoordinator(unittest.TestCase):
                     "tts_api_key": "secret-key",
                 }
             )
+            self.assertEqual(stat.S_IMODE((Path(td) / "voice_settings.json").stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE((Path(td) / "vapid.pem").stat().st_mode), 0o600)
             redacted = coord.settings_snapshot(redact_secrets=True)
             self.assertEqual(redacted["tts_api_key"], "")
             self.assertTrue(redacted["has_tts_api_key"])

@@ -94,6 +94,15 @@ def _default_vapid_subject() -> str:
     return DEFAULT_VAPID_SUBJECT
 
 
+def _chmod_private_file(path: Path) -> None:
+    try:
+        os.chmod(path, 0o600)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
 def _clean_voice_settings(raw: Any) -> dict[str, Any]:
     obj = dict(raw) if isinstance(raw, dict) else {}
     narration = bool(obj.get("tts_enabled_for_narration"))
@@ -1388,12 +1397,14 @@ class VoicePushCoordinator:
 
     def _ensure_vapid_keys(self) -> None:
         if self._vapid_private_key_path.exists():
+            _chmod_private_file(self._vapid_private_key_path)
             vapid = Vapid.from_file(str(self._vapid_private_key_path))
         else:
             vapid = Vapid()
             vapid.generate_keys()
             os.makedirs(self._vapid_private_key_path.parent, exist_ok=True)
             self._vapid_private_key_path.write_bytes(vapid.private_pem())
+            _chmod_private_file(self._vapid_private_key_path)
         public_bytes = vapid.public_key.public_bytes(
             encoding=serialization.Encoding.X962,
             format=serialization.PublicFormat.UncompressedPoint,
@@ -1420,6 +1431,7 @@ class VoicePushCoordinator:
         with self._lock:
             payload = dict(self._voice_settings)
         atomic_write_json(self._settings_path, payload)
+        _chmod_private_file(self._settings_path)
 
     def _load_subscriptions(self) -> None:
         raw = load_json_file(self._subscriptions_path, default=[])

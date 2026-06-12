@@ -5487,6 +5487,20 @@
           desktopNotificationTimers.set(messageId, firstTimer);
         }
 
+        function voiceSettingsDialogOpen() {
+          return Boolean(voiceSettingsViewer && voiceSettingsViewer.style.display === "flex");
+        }
+
+        function syncVoiceSettingsFormFromState() {
+          if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
+          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) {
+            voiceApiKeyInput.value = "";
+            voiceApiKeyInput.placeholder = voiceSettings.has_tts_api_key ? "Saved API key (leave blank to keep)" : "Enter API key";
+          }
+          if (voiceClearApiKeyToggle) voiceClearApiKeyToggle.checked = false;
+          if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+        }
+
         function updateVoiceUi() {
           announceBtn.classList.toggle("active", voiceAnnouncementsEnabled());
           announceBtn.title = voiceAnnouncementsEnabled() ? "Announcements on" : "Announcements off";
@@ -5501,13 +5515,7 @@
                 : "Notifications pending"
             : "Notifications off";
           notificationBtn.setAttribute("aria-label", notificationBtn.title);
-          if (voiceBaseUrlInput) voiceBaseUrlInput.value = String(voiceSettings.tts_base_url || "");
-          if (voiceApiKeyInput && !voiceApiKeyInput.matches(":focus")) {
-            voiceApiKeyInput.value = "";
-            voiceApiKeyInput.placeholder = voiceSettings.has_tts_api_key ? "Saved API key (leave blank to keep)" : "Enter API key";
-          }
-          if (voiceClearApiKeyToggle) voiceClearApiKeyToggle.checked = false;
-          if (narrationSettingToggle) narrationSettingToggle.checked = !!voiceSettings.tts_enabled_for_narration;
+          if (!voiceSettingsDialogOpen()) syncVoiceSettingsFormFromState();
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
         }
 
@@ -5718,6 +5726,7 @@
           voiceSettingsBackdrop.style.display = "block";
           voiceSettingsViewer.style.display = "flex";
           updateVoiceUi();
+          syncVoiceSettingsFormFromState();
           if (!voiceSettingsViewer.open) voiceSettingsViewer.showModal();
           afterModalVisibilityChanged();
         }
