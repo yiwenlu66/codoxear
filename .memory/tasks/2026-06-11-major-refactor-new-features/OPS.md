@@ -992,3 +992,9 @@
 - Bounded-send review blocker repair: queued head items are now persisted as `commit_unknown` before dispatch and only popped on confirmed success; non-timeout response loss/empty response maps to `SessionCommitUnknownError`; broker/sessiond sidecars advertise `control_protocol_version=2` with `sync_send`, and server refuses confirmed sends through older sidecars.
 - Commit: `fix: harden commit-unknown queue semantics`.
 - Validation: targeted tests passed (`70 passed in 3.00s`). Plain full suite passed (`568 passed, 10 subtests passed in 12.17s`). Full isolated Docker suite passed (`566 passed, 2 skipped, 10 subtests passed in 11.40s`).
+
+
+## 2026-06-12 22:15
+- Bounded-send rerun blocker repair: malformed parseable broker send responses now map to `SessionCommitUnknownError` before submitted-message bookkeeping; attachment injection now requires both sync-send and key-write-error capabilities so old brokers cannot create unsendable pending attachments.
+- Commit: `fix: close remaining commit-unknown gaps`.
+- Validation: targeted tests passed (`73 passed, 3 subtests passed in 2.97s`). Plain full suite passed (`571 passed, 13 subtests passed in 9.24s`). Full isolated Docker suite passed (`569 passed, 2 skipped, 13 subtests passed in 11.44s`).

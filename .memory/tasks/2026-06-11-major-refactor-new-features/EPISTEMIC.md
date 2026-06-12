@@ -770,3 +770,10 @@ Commitments:
 - Interventions: persist conservative `commit_unknown` before queue dispatch, treat empty/failed send responses as unknown after request, and require broker/sessiond sync-send capability in metadata before HTTP `/send`.
 - Evidence: targeted regressions cover unsupported brokers, empty response unknown, durable pre-dispatch queue unknown marking, unknown queue non-promotion, queue-store persistence/list behavior, and full local/Docker suites.
 - Scoped claim: queued prompts are no longer auto-retried after server restart or response-loss uncertainty, and HTTP send no longer silently trusts old broker control sockets for confirmed-send semantics.
+
+
+## 2026-06-12 22:15
+- Observation: bounded-send rerun found parseable malformed broker responses still produced ordinary failures after dispatch, and old brokers could accept attachment key injection even though later confirmed send was impossible.
+- Interventions: validate send response schema before local submitted bookkeeping and classify malformed/incomplete responses as commit-unknown; require sync-send plus key-write-error capability before attachment injection.
+- Evidence: targeted tests cover malformed responses, unsupported send brokers, unsupported attachment brokers, and full local/Docker suites.
+- Scoped claim: post-dispatch response corruption no longer creates false ordinary failure or submitted bookkeeping, and old live brokers cannot create browser-managed pending attachment state without the confirmed-send/key-error protocol.
