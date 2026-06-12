@@ -7031,6 +7031,8 @@
         let monacoNs = null;
         let monacoThemeReady = false;
         let pdfjsReadyPromise = null;
+        const MONACO_LOADER_TIMEOUT_MS = 4000;
+        const PDFJS_LOADER_TIMEOUT_MS = 6000;
         let activePdfRender = null;
         let fileEditor = null;
         let fileEditorKind = "";
@@ -7273,6 +7275,7 @@
         function activeFileCanEnterEditMode() {
           if (!activeFilePath || fileSavePending) return false;
           if (activeFileKind && !isTextFileKind(activeFileKind)) return false;
+          if (fileEditorKind === "plain-fallback") return false;
           if (fileViewMode === "file") return Boolean(activeFileEditable);
           return Boolean(activeFileEditable);
         }
@@ -7688,12 +7691,81 @@
           setFileDirty(false);
         }
 
+        function timeoutPromise(promise, timeoutMs, message) {
+          return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+            promise.then(
+              (value) => {
+                clearTimeout(timer);
+                resolve(value);
+              },
+              (error) => {
+                clearTimeout(timer);
+                reject(error);
+              }
+            );
+          });
+        }
+
+        function renderPlainTextFallback(rel, text, lineNumber = null, reason = "Rich file viewer unavailable") {
+          disposeFileEditor();
+          clearFileVideo();
+          fileDiff.innerHTML = "";
+          fileDiff.style.display = "block";
+          fileEditorKind = "plain-fallback";
+          fileEditMode = false;
+          const targetLine = normalizeLineNumber(lineNumber) || 1;
+          const notice = el("div", { class: "fileFallbackNotice" }, [
+            el("div", { class: "title", text: "Plain text fallback" }),
+            el("p", { text: `${reason}. Showing a read-only plain-text view.` }),
+          ]);
+          const pre = el("pre", { class: "filePlainFallbackText", text: String(text || "") });
+          fileDiff.appendChild(el("div", { class: "filePlainFallback", "data-path": rel }, [notice, pre]));
+          if (targetLine > 1) {
+            requestAnimationFrame(() => {
+              fileDiff.scrollTop = Math.max(0, (targetLine - 1) * 18);
+            });
+          }
+          setFileDirty(false);
+          updateFileEditButton();
+          updateFileTouchToolbar();
+        }
+
+        function renderDownloadFallback(rel, url, reason = "Preview unavailable") {
+          disposeFileEditor();
+          disposePdfRender();
+          clearFileVideo();
+          fileDiff.innerHTML = "";
+          fileDiff.style.display = "block";
+          const link = el("a", { href: url, target: "_blank", rel: "noopener", text: "Open or download file" });
+          const body = el("div", { class: "fileBlockedNotice fileDownloadFallback" }, [
+            el("div", { class: "title", text: "Preview unavailable" }),
+            el("p", { text: `${reason}. You can still open or download ${rel}.` }),
+            el("div", { class: "fileFallbackActions" }, [link]),
+          ]);
+          fileDiff.appendChild(body);
+          updateFileTouchToolbar();
+        }
+
         function ensureMonaco() {
           if (monacoReadyPromise) return monacoReadyPromise;
           monacoReadyPromise = new Promise((resolve, reject) => {
+            let done = false;
+            const startedAt = Date.now();
+            const fail = (error) => {
+              if (done) return;
+              done = true;
+              reject(error instanceof Error ? error : new Error(String(error || "monaco failed")));
+            };
+            const succeed = (value) => {
+              if (done) return;
+              done = true;
+              resolve(value);
+            };
             const finish = () => {
+              if (done) return;
               if (!(window.require && window.require.config)) {
-                reject(new Error("monaco loader unavailable"));
+                fail(new Error("monaco loader unavailable"));
                 return;
               }
               const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
@@ -7710,7 +7782,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               window.require(["vs/editor/editor.main"], () => {
                 monacoNs = window.monaco;
                 if (!monacoNs) {
-                  reject(new Error("monaco failed to initialize"));
+                  fail(new Error("monaco failed to initialize"));
                   return;
                 }
                 if (!monacoThemeReady) {
@@ -7732,8 +7804,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   });
                   monacoThemeReady = true;
                 }
-                resolve(monacoNs);
-              }, reject);
+                succeed(monacoNs);
+              }, fail);
             };
             if (window.monaco && window.monaco.editor) {
               monacoNs = window.monaco;
@@ -7745,22 +7817,37 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               return;
             }
             const waitForLoader = () => {
+              if (done) return;
               if (window.require && window.require.config) {
                 finish();
+                return;
+              }
+              if (Date.now() - startedAt >= MONACO_LOADER_TIMEOUT_MS) {
+                fail(new Error("monaco loader timed out"));
                 return;
               }
               setTimeout(waitForLoader, 25);
             };
             waitForLoader();
           });
+          monacoReadyPromise.catch(() => {
+            monacoReadyPromise = null;
+          });
           return monacoReadyPromise;
         }
 
         async function ensurePdfJs() {
           if (pdfjsReadyPromise) return pdfjsReadyPromise;
-          pdfjsReadyPromise = import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.mjs").then((pdfjs) => {
+          pdfjsReadyPromise = timeoutPromise(
+            import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.mjs"),
+            PDFJS_LOADER_TIMEOUT_MS,
+            "PDF renderer timed out"
+          ).then((pdfjs) => {
             pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.mjs";
             return pdfjs;
+          });
+          pdfjsReadyPromise.catch(() => {
+            pdfjsReadyPromise = null;
           });
           return pdfjsReadyPromise;
         }
@@ -7783,7 +7870,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function renderMonacoFile(rel, text, lineNumber = null, langOverride = "", request = null) {
-          const monaco = await ensureMonaco();
+          let monaco;
+          try {
+            monaco = await ensureMonaco();
+          } catch (e) {
+            if (request && !isCurrentFileOpenRequest(request)) return false;
+            renderPlainTextFallback(rel, text, lineNumber, e && e.message ? e.message : "Rich file viewer unavailable");
+            return true;
+          }
           if (request && !isCurrentFileOpenRequest(request)) return false;
           const host = fileDiff;
           const lang = langOverride || extToEditorLang(rel);
@@ -7851,7 +7945,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null) {
-          const monaco = await ensureMonaco();
+          let monaco;
+          try {
+            monaco = await ensureMonaco();
+          } catch (e) {
+            if (request && !isCurrentFileOpenRequest(request)) return false;
+            renderPlainTextFallback(rel, modifiedText, lineNumber, e && e.message ? `Rich diff unavailable: ${e.message}` : "Rich diff unavailable");
+            return true;
+          }
           if (request && !isCurrentFileOpenRequest(request)) return false;
           const host = fileDiff;
           const lang = extToEditorLang(rel);
@@ -7957,8 +8058,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileDiff.scrollTop = 0;
           const container = el("div", { class: "filePdfPages", role: "document", "aria-label": `${rel} PDF preview` });
           fileDiff.appendChild(container);
-          if (typeof IntersectionObserver !== "function") throw new Error("PDF lazy renderer unavailable");
-          const pdfjs = await ensurePdfJs();
+          if (typeof IntersectionObserver !== "function") {
+            if (!isCurrentFileOpenRequest(request)) return false;
+            renderDownloadFallback(rel, url, "PDF lazy renderer unavailable");
+            return true;
+          }
+          let pdfjs;
+          try {
+            pdfjs = await ensurePdfJs();
+          } catch (e) {
+            if (!isCurrentFileOpenRequest(request)) return false;
+            renderDownloadFallback(rel, url, e && e.message ? e.message : "PDF renderer unavailable");
+            return true;
+          }
           if (!isCurrentFileOpenRequest(request)) return false;
           const loadingTask = pdfjs.getDocument({ url, withCredentials: true });
           const state = {
