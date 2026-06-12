@@ -432,3 +432,6 @@ Commitments:
 
 ## 2026-06-12 16:06
 - Observation: image validation/PNG CRC helpers were not called by file preview or attachment upload paths. Treating them as active protection would overstate behavior; removing them makes the server surface better match the real invariant, where client-side image compression is best-effort and server attachment staging is byte-preserving with size limits.
+
+## 2026-06-12 16:11
+- Refactor mechanism: file-view interpretation (directory, media, too-large, binary, text/markdown) is pure path/byte classification. Route-specific byte-range streaming remains in `server.py`, avoiding a false abstraction over HTTP handler behavior.
