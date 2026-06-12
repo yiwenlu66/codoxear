@@ -547,9 +547,41 @@ class TestServerQueuePersistence(unittest.TestCase):
                 mgr = self._mgr()
                 mgr._sessions[sid] = _make_session(sid)
                 mgr._queues[sid] = [_queue_item("q1", "normal first"), dict(_queue_item("q2", "recover tail"), **{flag: True})]
-                mgr.get_state = lambda _sid: self.fail("recovery tail should block before broker state")  # type: ignore[method-assign]
+                state_calls = 0
+
+                def get_state(_sid: str) -> dict[str, object]:
+                    nonlocal state_calls
+                    state_calls += 1
+                    return {"busy": False, "queue_len": 0}
+
+                mgr.get_state = get_state  # type: ignore[method-assign]
 
                 self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+                self.assertEqual(state_calls, 0)
+
+    def test_active_recovery_queue_protects_unflagged_items(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [
+            _queue_item("q1", "normal first"),
+            dict(_queue_item("u", "maybe sent"), commit_unknown=True),
+            _queue_item("q2", "normal tail"),
+        ]
+
+        listed = SessionManager.queue_list(mgr, sid)
+        by_id = {item["id"]: item for item in listed}
+        self.assertTrue(by_id["q1"]["orphan_recovery"])
+        self.assertTrue(by_id["u"]["commit_unknown"])
+        self.assertTrue(by_id["q2"]["orphan_recovery"])
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_update(mgr, sid, "q1", "edited")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, sid, "q2", 0)
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, sid, "q2")
+        self.assertEqual(SessionManager.queue_delete(mgr, sid, "q2", allow_orphan_recovery=True), {"ok": True, "queue_len": 2})
+        self.assertTrue(mgr._queues[sid][0]["orphan_recovery"])
 
     def test_commit_unknown_queue_delete_requires_explicit_confirmation(self) -> None:
         sid = "s1"
@@ -559,7 +591,7 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "explicit confirmation"):
             SessionManager.queue_delete(mgr, sid, "q1")
-        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
             SessionManager.queue_update(mgr, sid, "q1", "edited maybe sent")
         self.assertEqual([item["id"] for item in mgr._queues[sid]], ["q1", "q2"])
 
@@ -667,7 +699,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.queue_update(mgr, sid, "r", "changed")
         with self.assertRaisesRegex(ValueError, "preserved for recovery"):
             SessionManager.queue_move(mgr, sid, "r", 1)
-        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
             SessionManager.queue_move(mgr, sid, "n", 0)
 
         mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
@@ -731,10 +763,18 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_recent_cwds = lambda: None
 
         row = SessionManager.list_sessions(mgr)[0]
+        listed = SessionManager.queue_list(mgr, sid)
 
         self.assertTrue(row["commit_unknown_send"])
         self.assertTrue(row["queue_recovery"])
         self.assertEqual(row["queue_len"], 1)
+        self.assertTrue(listed[0]["orphan_recovery"])
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_update(mgr, sid, "q", "edited")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, sid, "q", 0)
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, sid, "q")
 
     def test_enqueue_rejects_active_recovery_queue_barriers(self) -> None:
         for flag in ["orphan_recovery", "commit_unknown"]:

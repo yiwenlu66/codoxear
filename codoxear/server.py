@@ -2739,9 +2739,9 @@ class SessionManager:
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             items = self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
-            if s is None and self._queue_has_recovery_items_locked(session_id):
+            if self._queue_has_recovery_items_locked(session_id):
                 for item in items:
-                    if not bool(item.get("commit_unknown")):
+                    if not bool(item.get("sending")) and not bool(item.get("commit_unknown")):
                         item["orphan_recovery"] = True
             return items
 
@@ -2768,13 +2768,14 @@ class SessionManager:
             raise ValueError("id required")
         with self._lock:
             s = self._sessions.get(session_id)
-            if s is None and not self._queue_has_recovery_items_locked(session_id):
+            queue_recovery = self._queue_has_recovery_items_locked(session_id)
+            if s is None and not queue_recovery:
                 raise KeyError("unknown session")
             target_item = None
             q_before = self._queues.get(session_id)
             if isinstance(q_before, list):
                 target_item = next((item for item in q_before if isinstance(item, dict) and item.get("id") == item_id_clean), None)
-            if s is None and self._queue_has_recovery_items_locked(session_id) and isinstance(target_item, dict):
+            if queue_recovery and isinstance(target_item, dict):
                 if not bool(target_item.get("commit_unknown")) and not bool(target_item.get("orphan_recovery")):
                     if not allow_orphan_recovery:
                         raise ValueError("orphan recovery item requires explicit confirmation")
@@ -2805,9 +2806,9 @@ class SessionManager:
             raise ValueError("text required")
         with self._lock:
             s = self._sessions.get(session_id)
+            if self._queue_has_recovery_items_locked(session_id):
+                raise ValueError("item is preserved for recovery")
             if s is None:
-                if self._queue_has_recovery_items_locked(session_id):
-                    raise ValueError("item is preserved for recovery")
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             item, ql = self._queue_store_for_manager().update(self._queues, session_id, item_id_clean, t, sending_item_id=sending_id)
@@ -2823,9 +2824,9 @@ class SessionManager:
         target = int(to_index)
         with self._lock:
             s = self._sessions.get(session_id)
+            if self._queue_has_recovery_items_locked(session_id):
+                raise ValueError("item is preserved for recovery")
             if s is None:
-                if self._queue_has_recovery_items_locked(session_id):
-                    raise ValueError("item is preserved for recovery")
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             ql = self._queue_store_for_manager().move(self._queues, session_id, item_id_clean, target, sending_item_id=sending_id)
@@ -2894,6 +2895,25 @@ class SessionManager:
         if now_ts is None:
             now_ts = time.time()
         _session, log_path = self._queue_session_state(session_id)
+        with self._lock:
+            s0 = self._sessions.get(session_id)
+            if not s0:
+                return None
+            q = self._queues.get(session_id)
+            if not isinstance(q, list) or not q:
+                s0.queue_idle_since = None
+                return None
+            if s0.queue_sending_item_id is not None:
+                return None
+            if any(
+                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                for item in q
+            ):
+                s0.queue_idle_since = None
+                return None
+            head_id = str(q[0].get("id") or "")
+            if expected_item_id is not None and head_id != expected_item_id:
+                return None
         try:
             ready = self._queue_remote_ready(session_id, log_path=log_path)
         except Exception:
