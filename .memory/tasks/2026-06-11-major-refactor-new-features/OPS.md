@@ -481,3 +481,8 @@
 - Commit: `0773dbe fix: reject malformed chat search limits`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; transcript/search and chat navigation tests passed (`14 passed in 1.83s`). Runtime unit test invokes `Handler.do_GET` for `limit=not-an-int` and observes exactly the 400 response.
 - Fresh extended-tranche review artifact: `/tmp/codoxear-extended-tranche-review.md`; no blockers, this malformed-limit hardening was its concrete next fix.
+
+## 2026-06-12 14:47
+- Current-head full validation after malformed chat-search limit hardening.
+- HEAD: `ff93a4b`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`469 passed, 2 skipped in 10.97s`).
