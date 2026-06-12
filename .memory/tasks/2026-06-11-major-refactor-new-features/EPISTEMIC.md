@@ -587,3 +587,11 @@ Commitments:
 - Intervention: centralized the backend-specific launch-plan mechanics in `backend_launch.py` while keeping orchestration in `SessionManager.spawn_web_session`.
 - Evidence: direct adapter tests constrain Codex/Pi/Claude args, resume args, env ownership, and tmux inline env/unset contract; existing launch defaults, launch request, resume, and Claude source tests pass; full isolated Docker suite passes.
 - Scoped claim: backend argv/env/resume/tmux-inline semantics now have one tested owner. UI defaults and request validation still remain in `server.py`, so this is an incremental launch-adapter extraction, not a complete backend launch abstraction.
+
+
+## 2026-06-12 18:56
+- Observation: fresh review identified a draft-atomicity bug: attachments are injected immediately into the broker input, while text can be queued via `Send after current`; this can split a user-visible draft across different turns.
+- Mechanism: queue items currently store only text, not attachment payloads or staged file references. Until queue items support attachments, allowing attach during running turns or queueing a draft with attachments violates atomic draft semantics.
+- Intervention: attach button state now depends on selected/running/sending; file-picker change handler rechecks running before upload; send-choice captures current attachment count and disables/blocks `Send after current` when attachments are present.
+- Evidence: source tests assert running attach fail-closed labels and queued-attachment block; runtime sendText harness updated for attach-state sync; full isolated Docker suite passed.
+- Scoped claim: the UI now prevents known text/attachment splitting paths. This does not implement attachment-aware queue items; that remains a larger feature.
