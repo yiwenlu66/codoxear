@@ -628,10 +628,29 @@ class TestServerQueuePersistence(unittest.TestCase):
         remaining = SessionManager.queue_list(mgr, "orphan")
         self.assertEqual([item["id"] for item in remaining], ["n"])
         self.assertTrue(remaining[0]["orphan_recovery"])
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, "orphan", "n")
+        with self.assertRaises(KeyError):
+            SessionManager.queue_update(mgr, "orphan", "n", "changed")
         rows = SessionManager.list_sessions(mgr)
         by_id = {row["session_id"]: row for row in rows}
         self.assertTrue(by_id["orphan"]["orphan_recovery"])
         self.assertEqual(by_id["orphan"]["queue_len"], 1)
+        self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "n", allow_orphan_recovery=True), {"ok": True, "queue_len": 0})
+        self.assertNotIn("orphan", mgr._queues)
+
+    def test_active_orphan_recovery_queue_item_blocks_update_and_move(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [dict(_queue_item("r", "recover"), orphan_recovery=True), _queue_item("n", "normal")]
+
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_update(mgr, sid, "r", "changed")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            SessionManager.queue_move(mgr, sid, "r", 1)
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            SessionManager.queue_move(mgr, sid, "n", 0)
 
     def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
         mgr = self._mgr()

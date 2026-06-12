@@ -61,7 +61,7 @@ class TestQueueStore(unittest.TestCase):
             ]
         }
 
-        with self.assertRaisesRegex(ValueError, "commit-unknown item blocks reordering"):
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
             store.move(queues, "s1", "b", 0)
         with self.assertRaisesRegex(ValueError, "commit status is unknown"):
             store.move(queues, "s1", "a", 1)
@@ -93,6 +93,22 @@ class TestQueueStore(unittest.TestCase):
             store.move(queues, "s1", "a", 999)
         self.assertEqual(store.move(queues, "s1", "c", 2), 4)
         self.assertEqual([item["id"] for item in queues["s1"]], ["a", "u", "c", "b"])
+
+    def test_orphan_recovery_item_requires_explicit_delete_and_blocks_mutation(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "r", "text": "recover", "created_ts": 1, "orphan_recovery": True}, {"id": "n", "text": "normal", "created_ts": 2}]}
+
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            store.delete(queues, "s1", "r")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            store.update(queues, "s1", "r", "changed")
+        with self.assertRaisesRegex(ValueError, "preserved for recovery"):
+            store.move(queues, "s1", "r", 1)
+        with self.assertRaisesRegex(ValueError, "blocks reordering"):
+            store.move(queues, "s1", "n", 0)
+
+        self.assertEqual(store.delete(queues, "s1", "r", allow_orphan_recovery=True), 1)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["n"])
 
     def test_drop_missing_sessions_preserves_unknown_queue_evidence(self) -> None:
         with TemporaryDirectory() as td:

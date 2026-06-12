@@ -9770,11 +9770,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!sid || !key) return;
           const item = queueViewerItems.find((candidate) => String(candidate && candidate.id || "") === key) || null;
           const commitUnknown = Boolean(item && item.commitUnknown);
-          if (commitUnknown) {
+          const orphanRecovery = Boolean(item && item.orphanRecovery);
+          if (commitUnknown || orphanRecovery) {
             const text = String(item && item.text || "").trim();
             const suffix = text ? `\n\nQueued prompt: ${text.slice(0, 240)}${text.length > 240 ? "..." : ""}` : "";
             const confirmed = window.confirm(
-              `Delete this queued item only after checking the transcript or terminal. This may allow later queued prompts to send.${suffix}`
+              `Delete this recovery item only after checking the transcript or terminal.${commitUnknown ? " This may allow later queued prompts to send." : ""}${suffix}`
             );
             if (!confirmed) return;
           }
@@ -9796,7 +9797,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueDraftTexts.delete(key);
           renderQueueList();
           try {
-            await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown } });
+            await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
             await refreshQueueViewer();
             await refreshSessions();
             updateQueueBadge();

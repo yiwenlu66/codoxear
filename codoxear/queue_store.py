@@ -152,7 +152,16 @@ class QueueStore:
         q.append(item)
         return copy_queue_item(item), len(q)
 
-    def delete(self, queues: QueueMap, session_id: str, item_id: str, *, sending_item_id: str | None = None, allow_commit_unknown: bool = False) -> int:
+    def delete(
+        self,
+        queues: QueueMap,
+        session_id: str,
+        item_id: str,
+        *,
+        sending_item_id: str | None = None,
+        allow_commit_unknown: bool = False,
+        allow_orphan_recovery: bool = False,
+    ) -> int:
         item_id_clean = str(item_id).strip()
         if not item_id_clean:
             raise ValueError("id required")
@@ -167,6 +176,8 @@ class QueueStore:
             raise ValueError("item not found")
         if bool(q[idx].get("commit_unknown")) and not allow_commit_unknown:
             raise ValueError("commit-unknown item requires explicit confirmation")
+        if bool(q[idx].get("orphan_recovery")) and not allow_orphan_recovery:
+            raise ValueError("orphan recovery item requires explicit confirmation")
         q.pop(idx)
         ql = len(q)
         if not q:
@@ -191,6 +202,8 @@ class QueueStore:
             raise ValueError("item not found")
         if bool(q[idx].get("commit_unknown")):
             raise ValueError("item commit status is unknown")
+        if bool(q[idx].get("orphan_recovery")):
+            raise ValueError("item is preserved for recovery")
         q[idx]["text"] = value
         return copy_queue_item(q[idx]), len(q)
 
@@ -214,6 +227,8 @@ class QueueStore:
             raise ValueError("item is already sending")
         if bool(q[idx].get("commit_unknown")):
             raise ValueError("item commit status is unknown")
+        if bool(q[idx].get("orphan_recovery")):
+            raise ValueError("item is preserved for recovery")
         min_index = 1 if sending_item_id else 0
         if target < min_index or target >= len(q):
             raise ValueError("to_index out of range")
@@ -223,8 +238,8 @@ class QueueStore:
             crossed = q[target:idx]
         else:
             crossed = []
-        if any(bool(item.get("commit_unknown")) for item in crossed):
-            raise ValueError("commit-unknown item blocks reordering")
+        if any(bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")) for item in crossed):
+            raise ValueError("recovery item blocks reordering")
         item = q.pop(idx)
         q.insert(target, item)
         return len(q)

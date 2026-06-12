@@ -2722,7 +2722,7 @@ class SessionManager:
         item, ql = self._queue_append_item_local(session_id, text)
         return {"queued": True, "queue_len": int(ql), "item": item}
 
-    def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False) -> dict[str, Any]:
+    def _queue_delete_local(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
         item_id_clean = str(item_id).strip()
         if not item_id_clean:
             raise ValueError("id required")
@@ -2737,6 +2737,7 @@ class SessionManager:
                 item_id_clean,
                 sending_item_id=sending_id,
                 allow_commit_unknown=allow_commit_unknown,
+                allow_orphan_recovery=allow_orphan_recovery,
             )
             if s is None and allow_commit_unknown:
                 q_after = self._queues.get(session_id)
@@ -4742,8 +4743,8 @@ class SessionManager:
     def queue_list(self, session_id: str) -> list[dict[str, Any]]:
         return self._queue_list_local(session_id)
 
-    def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False) -> dict[str, Any]:
-        return self._queue_delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown)
+    def queue_delete(self, session_id: str, item_id: str, *, allow_commit_unknown: bool = False, allow_orphan_recovery: bool = False) -> dict[str, Any]:
+        return self._queue_delete_local(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
 
     def queue_update(self, session_id: str, item_id: str, text: str) -> dict[str, Any]:
         return self._queue_update_local(session_id, item_id, text)
@@ -6853,9 +6854,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(allow_commit_unknown_raw, bool):
                     _json_response(self, 400, {"error": "allow_commit_unknown must be a boolean"})
                     return
+                allow_orphan_recovery_raw = obj.get("allow_orphan_recovery", False)
+                if not isinstance(allow_orphan_recovery_raw, bool):
+                    _json_response(self, 400, {"error": "allow_orphan_recovery must be a boolean"})
+                    return
                 allow_commit_unknown = allow_commit_unknown_raw is True
+                allow_orphan_recovery = allow_orphan_recovery_raw is True
                 try:
-                    res = MANAGER.queue_delete(session_id, item_id, allow_commit_unknown=allow_commit_unknown)
+                    res = MANAGER.queue_delete(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return

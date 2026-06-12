@@ -42,8 +42,8 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('if (selectedInfo && selectedInfo.orphan_recovery && Number(selectedInfo.queue_len || 0) > 0) {\n              showQueueViewer();\n              return;\n            }', source)
         self.assertLess(source.index('if (selectedInfo && selectedInfo.orphan_recovery && Number(selectedInfo.queue_len || 0) > 0)'), source.index('const raw = $("#msg") ? $("#msg").value : "";'))
         self.assertIn('const commitUnknown = Boolean(item && item.commitUnknown);', source)
-        self.assertIn('Delete this queued item only after checking the transcript or terminal.', source)
-        self.assertIn('body: { id: key, allow_commit_unknown: commitUnknown }', source)
+        self.assertIn('Delete this recovery item only after checking the transcript or terminal.', source)
+        self.assertIn('body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery }', source)
 
 
 if __name__ == "__main__":
