@@ -1119,3 +1119,10 @@ Commitments:
 - Intervention: create shared current-turn state reconstruction in `cc_log`; broker sets busy/turn_open when reconstructed idle is false even with no pending tools; rollout idle uses the same helper.
 - Evidence: broker bind regressions cover thinking-only and pending-tool active turns; large resolved/unresolved idle regressions still pass; full local/Docker suites passed.
 - Scoped claim: inspected broker bind state now agrees with log-derived Claude current-turn busy state for synthetic active turns.
+
+
+## 2026-06-13 05:24
+- Review anomaly: exact broker log-bind reconstruction handled active turns but did not close a stale pre-bind busy state when the log was already idle/final.
+- Intervention: apply idle seeds as well as active seeds during Claude log bind; a reconstructed idle current turn calls `_close_turn_state()`.
+- Evidence: regression binds a final Claude log to a previously busy broker state and verifies busy/turn_open clear; full local/Docker suites passed.
+- Scoped claim: inspected broker bind now reconciles stale busy, active non-tool, and pending-tool Claude current-turn states.
