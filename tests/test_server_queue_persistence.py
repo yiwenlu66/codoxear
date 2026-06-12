@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from codoxear.server import ControlSocketCallError
 from codoxear.server import Session
 from codoxear.server import SessionCommitUnknownError
 from codoxear.server import SessionManager
@@ -218,7 +219,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
         seen: list[dict[str, object]] = []
 
-        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0) -> dict[str, str]:
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0, **_kwargs: object) -> dict[str, str]:
             seen.append(req)
             return {"error": "write failed"}
 
@@ -240,7 +241,7 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
         seen: list[tuple[dict[str, object], float | None]] = []
 
-        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0) -> dict[str, object]:
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0, **_kwargs: object) -> dict[str, object]:
             seen.append((req, timeout_s))
             return {"queued": False, "queue_len": 0}
 
@@ -274,6 +275,32 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True)
         self.assertTrue(mgr._sessions[sid].pending_attachment)
         self.assertIn(sid, mgr._pending_attachment_ids)
+
+    def test_post_request_socket_failure_is_commit_unknown_even_if_pids_dead(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("post-request failure should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("reset", request_sent=True))  # type: ignore[method-assign]
+
+        with patch("codoxear.server._pid_alive", return_value=False):
+            with self.assertRaisesRegex(SessionCommitUnknownError, "response failed"):
+                SessionManager.send(mgr, sid, "normal prompt")
+        self.assertIn(sid, mgr._sessions)
+
+    def test_pre_request_socket_failure_can_prune_dead_session(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(ControlSocketCallError("connect failed", request_sent=False))  # type: ignore[method-assign]
+        mgr._clear_deleted_session_state = lambda deleted_sid: mgr._sessions.pop(deleted_sid, None)  # type: ignore[method-assign]
+
+        with patch("codoxear.server._pid_alive", return_value=False):
+            with self.assertRaises(KeyError):
+                SessionManager.send(mgr, sid, "normal prompt")
+        self.assertNotIn(sid, mgr._sessions)
 
     def test_send_empty_response_is_commit_unknown(self) -> None:
         sid = "s1"

@@ -888,6 +888,12 @@ class SessionCommitUnknownError(RuntimeError):
     pass
 
 
+class ControlSocketCallError(RuntimeError):
+    def __init__(self, message: str, *, request_sent: bool):
+        super().__init__(message)
+        self.request_sent = bool(request_sent)
+
+
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
     return _sign_message_cursor_impl(payload, secret=HMAC_SECRET)
 
@@ -3958,12 +3964,14 @@ class SessionManager:
             raise RuntimeError("unable to compute idle state from log")
         return bool(idle)
 
-    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0) -> dict[str, Any]:
+    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(timeout_s)
+        request_sent = False
         try:
             s.connect(str(sock_path))
             s.sendall((json.dumps(req) + "\n").encode("utf-8"))
+            request_sent = True
             buf = b""
             while b"\n" not in buf:
                 chunk = s.recv(65536)
@@ -3974,6 +3982,10 @@ class SessionManager:
             if not line:
                 return {"error": "empty response"}
             return json.loads(line.decode("utf-8"))
+        except Exception as e:
+            if track_request_sent:
+                raise ControlSocketCallError(str(e), request_sent=request_sent) from e
+            raise
         finally:
             s.close()
 
@@ -4407,10 +4419,10 @@ class SessionManager:
                 raise SessionNotReadyError("session is busy; wait before sending")
             try:
                 timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
-                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s)
-            except (TimeoutError, socket.timeout) as e:
-                raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
-            except Exception as e:
+                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s, track_request_sent=True)
+            except ControlSocketCallError as e:
+                if e.request_sent:
+                    raise SessionCommitUnknownError("send commit status unknown; broker response failed") from e
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
                         self._sessions.pop(session_id, None)
@@ -4418,7 +4430,9 @@ class SessionManager:
                     _unlink_quiet(sock)
                     _unlink_quiet(sock.with_suffix(".json"))
                     raise KeyError("unknown session")
-                raise SessionCommitUnknownError("send commit status unknown; broker response failed") from e
+                raise SessionNotReadyError("session control socket unavailable") from e
+            except (TimeoutError, socket.timeout) as e:
+                raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
             if not isinstance(resp, dict):
                 raise SessionCommitUnknownError("send commit status unknown; broker response was malformed")
             if resp.get("error"):
