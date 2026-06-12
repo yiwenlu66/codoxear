@@ -1,9 +1,15 @@
+import json
+import threading
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+from codoxear import broker as broker_mod
 from codoxear.broker import (
     BUSY_INTERRUPT_GRACE_SECONDS,
     BUSY_QUIET_SECONDS,
+    Broker,
     State,
     _apply_rollout_obj_to_state,
     _maybe_detach_on_session_switch_trigger,
@@ -412,6 +418,39 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.busy)
         self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
+
+    def test_cc_log_bind_seeds_pending_tool_state(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "cc.jsonl"
+            rows = [
+                {"type": "user", "sessionId": "cc-session", "cwd": str(root), "message": {"role": "user", "content": "run"}},
+                {
+                    "type": "assistant",
+                    "sessionId": "cc-session",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}],
+                        "stop_reason": "tool_use",
+                    },
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            st = State(codex_pid=1, pty_master_fd=1, cwd=str(root), start_ts=0.0, codex_home=root, sessions_dir=root, sock_path=root / "broker.sock")
+            broker = Broker.__new__(Broker)
+            broker.sessions_dir = root
+            broker.state = st
+            broker._lock = threading.Lock()
+            broker._write_meta = lambda: None  # type: ignore[method-assign]
+
+            with patch.object(broker_mod, "AGENT_BACKEND", "cc"):
+                broker._maybe_register_or_switch_rollout(log_path=log_path)
+
+            self.assertEqual(st.pending_calls, {"toolu_1"})
+            self.assertTrue(st.busy)
+            _apply_rollout_obj_to_state(st, {"type": "system", "subtype": "turn_duration", "durationMs": 10}, now_ts=2.0)
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
 
     def test_cc_turn_duration_does_not_close_unmatched_tool_use(self) -> None:
         st = _state()

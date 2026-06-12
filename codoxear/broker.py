@@ -32,6 +32,7 @@ from codoxear.cc_log import cc_assistant_thinking_count as _cc_assistant_thinkin
 from codoxear.cc_log import cc_assistant_tool_use_count as _cc_assistant_tool_use_count
 from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
 from codoxear.cc_log import cc_message_role as _cc_message_role
+from codoxear.cc_log import cc_pending_tool_ids_before as _cc_pending_tool_ids_before
 from codoxear.cc_log import cc_user_text as _cc_user_text
 from codoxear.cc_log import cc_user_tool_result_ids as _cc_user_tool_result_ids
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
@@ -1529,6 +1530,17 @@ class Broker:
         if not sid:
             return
 
+        try:
+            log_size = int(lp.stat().st_size)
+        except Exception:
+            log_size = 0
+        seed_pending: set[str] = set()
+        if AGENT_BACKEND == "cc" and log_size > 0:
+            try:
+                seed_pending = _cc_pending_tool_ids_before(lp, log_size)
+            except Exception:
+                seed_pending = set()
+
         with self._lock:
             st = self.state
             if not st:
@@ -1542,10 +1554,12 @@ class Broker:
             st.session_id = sid
             st.log_path = lp
             st.known_rollout_paths.add(lp)
-            try:
-                st.log_off = int(lp.stat().st_size)
-            except Exception:
-                st.log_off = 0
+            st.log_off = log_size
+            if seed_pending:
+                st.pending_calls.update(seed_pending)
+                st.busy = True
+                st.turn_open = True
+                st.turn_has_completion_candidate = False
 
         if not have_sock:
             try:

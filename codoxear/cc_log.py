@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
+from typing import Iterator
 
 
 CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -152,6 +154,80 @@ def cc_discard_one_unknown_tool_use_id(pending: set[str]) -> None:
         if tool_id.startswith(CC_UNKNOWN_TOOL_USE_ID_PREFIX):
             pending.discard(tool_id)
             return
+
+
+def cc_update_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
+    typ = obj.get("type")
+    if typ == "user":
+        user_text = cc_user_text(obj)
+        if isinstance(user_text, str) and user_text:
+            pending.clear()
+            return
+        if cc_message_role(obj) == "toolResult":
+            result_ids = cc_user_tool_result_ids(obj)
+            if result_ids:
+                for tool_id in result_ids:
+                    pending.discard(tool_id)
+            else:
+                cc_discard_one_unknown_tool_use_id(pending)
+            return
+    if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
+        pending.update(cc_assistant_pending_tool_use_ids(obj))
+
+
+def _iter_jsonl_objects_reverse(path: Path, *, before: int | None = None, block_bytes: int = 64 * 1024) -> Iterator[dict[str, Any]]:
+    if block_bytes <= 0:
+        raise ValueError("block_bytes must be positive")
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        end = size if before is None else max(0, min(int(before), size))
+        offset = end
+        carry = b""
+        drop_trailing_partial = False
+        if end > 0:
+            f.seek(end - 1)
+            drop_trailing_partial = f.read(1) != b"\n"
+        while offset > 0:
+            read_size = min(block_bytes, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            data = chunk + carry
+            parts = data.split(b"\n")
+            if drop_trailing_partial and parts:
+                parts = parts[:-1]
+                drop_trailing_partial = False
+            if offset > 0:
+                carry = parts[0] if parts else b""
+                parts = parts[1:] if parts else []
+            else:
+                carry = b""
+            for raw_line in reversed(parts):
+                line = raw_line.rstrip(b"\r")
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line.decode("utf-8"))
+                except Exception:
+                    continue
+                if isinstance(obj, dict):
+                    yield obj
+
+
+def cc_pending_tool_ids_before(log_path: Path, before: int) -> set[str]:
+    before = max(0, int(before))
+    if before <= 0:
+        return set()
+    newest_first: list[dict[str, Any]] = []
+    for obj in _iter_jsonl_objects_reverse(log_path, before=before):
+        newest_first.append(obj)
+        if obj.get("type") == "user" and cc_user_text(obj):
+            break
+    pending: set[str] = set()
+    for obj in reversed(newest_first):
+        cc_update_pending_tool_ids(obj, pending)
+    return pending
 
 
 def cc_assistant_tool_use_count(obj: dict[str, Any]) -> int:

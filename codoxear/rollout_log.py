@@ -1173,7 +1173,62 @@ def _last_conversation_ts_from_tail(
     return None
 
 
+def _compute_cc_idle_from_current_turn(path: Path) -> bool | None:
+    newest_first: list[JsonlRecord] = []
+    saw_cc_record = False
+    for record in _iter_jsonl_records_reverse(path):
+        obj = record.obj
+        if obj.get("type") in {"user", "assistant", "system"}:
+            saw_cc_record = True
+        newest_first.append(record)
+        if obj.get("type") == "user" and cc_user_text(obj):
+            break
+    if not saw_cc_record:
+        return None
+
+    pending: set[str] = set()
+    saw_signal = False
+    idle = True
+    for record in reversed(newest_first):
+        obj = record.obj
+        typ = obj.get("type")
+        if typ == "user":
+            user_text = cc_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                pending.clear()
+                saw_signal = True
+                idle = False
+                continue
+            if cc_message_role(obj) == "toolResult":
+                _update_cc_pending_tool_ids(obj, pending)
+                saw_signal = True
+                idle = False
+                continue
+        if typ == "assistant":
+            tool_count = cc_assistant_tool_use_count(obj)
+            if tool_count > 0:
+                pending.update(cc_assistant_pending_tool_use_ids(obj))
+            assistant_text = cc_assistant_text(obj)
+            if isinstance(assistant_text, str) and assistant_text:
+                saw_signal = True
+                idle = bool(cc_assistant_is_final_turn_end(obj) and not pending)
+                continue
+            if tool_count > 0 or cc_assistant_thinking_count(obj) > 0:
+                saw_signal = True
+                idle = False
+                continue
+        if typ == "system" and cc_is_turn_end(obj):
+            saw_signal = True
+            idle = not pending
+            continue
+    return idle if saw_signal else None
+
+
 def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) -> bool | None:
+    cc_idle = _compute_cc_idle_from_current_turn(path)
+    if cc_idle is not None:
+        return cc_idle
+
     sz = int(path.stat().st_size)
 
     scan = min(256 * 1024, max_scan_bytes)

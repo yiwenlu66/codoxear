@@ -210,6 +210,18 @@ class TestCcChatAndIdle(unittest.TestCase):
             self.assertGreater(path.stat().st_size, 256 * 1024)
             self.assertFalse(_compute_idle_from_log(path))
 
+    def test_cc_large_resolved_tool_result_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                user("hello"),
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_a", "input": {}}], stop_reason="tool_use"),
+                {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_a", "content": "x" * (9 * 1024 * 1024)}]}},
+                assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+            ]
+            write_log(path, rows)
+            self.assertTrue(_compute_idle_from_log(path))
+
     def test_cc_large_tool_result_does_not_hide_older_pending_tool(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "session.jsonl"
