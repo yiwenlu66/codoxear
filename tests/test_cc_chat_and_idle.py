@@ -71,6 +71,28 @@ class TestCcChatAndIdle(unittest.TestCase):
                 ],
             )
             self.assertFalse(_compute_idle_from_log(path))
+            write_log(
+                path,
+                [
+                    user("hello"),
+                    assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                    assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+                ],
+            )
+            self.assertFalse(_compute_idle_from_log(path))
+
+    def test_cc_idle_expands_tail_for_turn_duration_without_context(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                user("hello"),
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+            ]
+            rows.extend({"type": "noop", "x": "x" * 100} for _ in range(4000))
+            rows.append({"type": "system", "subtype": "turn_duration", "durationMs": 10})
+            write_log(path, rows)
+            self.assertGreater(path.stat().st_size, 256 * 1024)
+            self.assertFalse(_compute_idle_from_log(path))
 
     def test_tail_reader_returns_cc_events(self) -> None:
         with TemporaryDirectory() as td:

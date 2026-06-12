@@ -47,6 +47,7 @@ class TestCcLog(unittest.TestCase):
 
     def test_user_text_skips_tool_results_and_meta_records(self) -> None:
         self.assertIsNone(cc_user_text(cc_user([{"type": "tool_result", "content": "ok", "tool_use_id": "toolu_1"}])))
+        self.assertIsNone(cc_user_text(cc_user([{"type": "tool_result", "content": "ok", "tool_use_id": "toolu_1"}, {"type": "text", "text": "transport note"}])))
         self.assertIsNone(cc_user_text(cc_user("/compact", isMeta=True)))
         self.assertEqual(cc_message_role(cc_user([{"type": "tool_result", "content": "ok"}])), "toolResult")
 

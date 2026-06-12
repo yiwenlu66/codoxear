@@ -1100,6 +1100,8 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         saw_terminal_signal = False
         idle = True
         cc_pending_tool_ids: set[str] = set()
+        cc_seen_turn_context = False
+        cc_turn_duration_without_context = False
         for obj in objs:
             typ = obj.get("type")
             if typ == "message":
@@ -1125,11 +1127,13 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
             if typ == "user":
                 if cc_user_text(obj):
+                    cc_seen_turn_context = True
                     cc_pending_tool_ids.clear()
                     saw_terminal_signal = True
                     idle = False
                     continue
                 if cc_message_role(obj) == "toolResult":
+                    cc_seen_turn_context = True
                     result_ids = cc_user_tool_result_ids(obj)
                     if result_ids:
                         for tool_id in result_ids:
@@ -1147,16 +1151,18 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 tool_use_ids = cc_assistant_tool_use_ids(obj)
                 tool_use_count = cc_assistant_tool_use_count(obj)
                 if tool_use_count > 0:
+                    cc_seen_turn_context = True
                     cc_pending_tool_ids.update(tool_use_ids or {"__codoxear_cc_unknown_tool_use__"})
                 if cc_assistant_text(obj):
+                    cc_seen_turn_context = True
                     saw_terminal_signal = True
-                    if cc_assistant_is_final_turn_end(obj):
-                        cc_pending_tool_ids.clear()
+                    if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids:
                         idle = True
                     else:
                         idle = False
                     continue
                 if tool_use_count > 0 or cc_assistant_thinking_count(obj) > 0:
+                    cc_seen_turn_context = True
                     saw_terminal_signal = True
                     idle = False
                     continue
@@ -1166,7 +1172,12 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
             if typ == "system" and cc_is_turn_end(obj):
                 saw_terminal_signal = True
-                idle = not cc_pending_tool_ids
+                if cc_pending_tool_ids:
+                    idle = False
+                else:
+                    if not cc_seen_turn_context:
+                        cc_turn_duration_without_context = True
+                    idle = True
                 continue
             if typ == "event_msg":
                 p = obj.get("payload")
@@ -1220,7 +1231,9 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = False
                     continue
 
-        if saw_terminal_signal or scan >= max_scan_bytes:
+        if saw_terminal_signal and not (cc_turn_duration_without_context and scan < min(sz, max_scan_bytes)):
+            break
+        if scan >= max_scan_bytes:
             break
         scan *= 2
 

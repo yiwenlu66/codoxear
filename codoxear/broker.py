@@ -742,6 +742,13 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         thinking_count = _cc_assistant_thinking_count(obj)
         tool_count = _cc_assistant_tool_use_count(obj)
         if has_text and _cc_assistant_is_final_turn_end(obj):
+            if st.pending_calls:
+                _reopen_turn_on_activity(st)
+                if st.turn_open:
+                    st.turn_has_completion_candidate = False
+                st.busy = True
+                st.last_turn_activity_ts = now_ts
+                return
             _close_turn_state(st)
             return
         if tool_count > 0 or thinking_count > 0:

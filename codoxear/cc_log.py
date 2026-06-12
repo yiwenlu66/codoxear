@@ -63,9 +63,8 @@ def cc_user_text(obj: dict[str, Any]) -> str | None:
     content = msg.get("content")
     if isinstance(content, list):
         # Claude routes tool results through user-role records. Those are transport,
-        # not human chat messages.
-        non_text = [part for part in content if isinstance(part, dict) and part.get("type") != "text"]
-        if non_text and not any(isinstance(part, dict) and part.get("type") == "text" for part in content):
+        # not human chat messages, even if schema drift adds sibling text parts.
+        if any(isinstance(part, dict) and part.get("type") == "tool_result" for part in content):
             return None
     parts = _text_parts(content)
     if not parts:
