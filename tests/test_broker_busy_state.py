@@ -419,6 +419,46 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
 
+    def test_cc_log_bind_closes_stale_busy_when_log_is_idle(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "cc.jsonl"
+            rows = [
+                {"type": "user", "sessionId": "cc-session", "cwd": str(root), "message": {"role": "user", "content": "hi"}},
+                {
+                    "type": "assistant",
+                    "sessionId": "cc-session",
+                    "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}], "stop_reason": "end_turn"},
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            st = State(
+                codex_pid=1,
+                pty_master_fd=1,
+                cwd=str(root),
+                start_ts=0.0,
+                codex_home=root,
+                sessions_dir=root,
+                sock_path=root / "broker.sock",
+                busy=True,
+                turn_open=True,
+                turn_has_completion_candidate=False,
+                last_turn_activity_ts=1.0,
+            )
+            broker = Broker.__new__(Broker)
+            broker.sessions_dir = root
+            broker.state = st
+            broker._lock = threading.Lock()
+            broker._write_meta = lambda: None  # type: ignore[method-assign]
+
+            with patch.object(broker_mod, "AGENT_BACKEND", "cc"):
+                broker._maybe_register_or_switch_rollout(log_path=log_path)
+
+            self.assertFalse(st.busy)
+            self.assertFalse(st.turn_open)
+            self.assertEqual(st.pending_calls, set())
+            self.assertFalse(_should_clear_busy_state(st, now_ts=999.0))
+
     def test_cc_log_bind_seeds_busy_turn_without_pending_tool(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)

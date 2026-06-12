@@ -1563,6 +1563,8 @@ class Broker:
                 st.busy = True
                 st.turn_open = True
                 st.turn_has_completion_candidate = False
+            elif seed_idle is True:
+                _close_turn_state(st)
 
         if not have_sock:
             try:
