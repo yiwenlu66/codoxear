@@ -30,47 +30,6 @@
 	      }
 	      updateAppHeightVar();
 	      window.addEventListener("resize", updateAppHeightVar);
-      // Best-effort zoom disable (iOS Safari still has edge cases).
-      document.addEventListener(
-        "gesturestart",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "gesturechange",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "gestureend",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "touchstart",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          if (e.touches && e.touches.length > 1) e.preventDefault();
-        },
-        { passive: false }
-      );
-      document.addEventListener(
-        "touchmove",
-        (e) => {
-          if (isTextEntryElement(e.target)) return;
-          if (e.touches && e.touches.length > 1) e.preventDefault();
-        },
-        { passive: false }
-      );
       function defaultButtonTooltip(attrs = {}, node = null) {
         const candidates = [attrs.title, attrs["aria-label"], attrs["data-tooltip"], attrs.text, node && node.textContent];
         for (const raw of candidates) {
