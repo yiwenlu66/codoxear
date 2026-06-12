@@ -515,3 +515,11 @@ Commitments:
 - Intervention: await navigation before focus in the service worker; route hash changes through `selectSessionFromHash({ refreshIfMissing: true })`, which refreshes sessions once and selects the target only if it becomes selectable.
 - Evidence: source regressions assert awaited navigation/focus fallback and the hash refresh/select flow; targeted tests and full Docker suite passed.
 - Scoped claim: notification target hashes are no longer dropped solely because the open tab had a stale session snapshot. Browser-level push-click behavior was not simulated in Docker for this tranche.
+
+
+## 2026-06-12 17:39
+- Observation: fresh reviewer found `sessiond.py` had a real `main()` and README/architecture docs described a headless helper, but installed scripts exposed only server and broker.
+- Mechanism supported: a user installing the package would not discover or invoke `sessiond` as a first-class command, keeping the headless path less visible and less exercised.
+- Intervention: added the `codoxear-sessiond` console script and README examples using the same `CODEX_WEB_AGENT_BACKEND` convention as broker wrappers.
+- Evidence: source test parses `pyproject.toml`, README assertions cover the new examples, `python -m codoxear.sessiond --help` exits successfully, and full Docker suite passed.
+- Scoped claim: installed package metadata and README now expose sessiond. This does not validate real backend startup under `codoxear-sessiond` with Codex/Pi/Claude credentials.

@@ -776,3 +776,9 @@
 - Reviewer finding #3 fix: notification clicks now await `client.navigate(target)` before focusing the window, and the app hashchange path refreshes `/api/sessions` once when the hash target is absent from the current snapshot before deciding whether the session is selectable.
 - Commit: `f181a71 fix: preserve notification target after stale session lists`.
 - Validation: `node --check codoxear/static/app.js` and `node --check codoxear/static/service-worker.js` passed; focused voice-push/voice-playback/auth-cleanup/session-polling tests passed (`19 passed in 0.68s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`505 passed, 2 skipped, 10 subtests passed in 14.11s`).
+
+
+## 2026-06-12 17:39
+- Reviewer finding #4 fix: packaging now exposes `codoxear-sessiond = codoxear.sessiond:main`, and README quick start documents installed command usage for Codex, Pi, and Claude Code headless helper launches.
+- Commit: `6d3030e feat: expose sessiond as an installed command`.
+- Validation: focused sessiond packaging and sessiond fail-closed tests passed (`7 passed in 0.76s`), including `python -m codoxear.sessiond --help` smoke. Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`508 passed, 2 skipped, 10 subtests passed in 12.12s`).
