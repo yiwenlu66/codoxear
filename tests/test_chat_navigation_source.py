@@ -82,6 +82,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('function chatSearchShortcutBlocked(target) {', source)
         self.assertIn('if (!selected) return true;', source)
         self.assertIn('if (isTextEntryElement(target)) return true;', source)
+        self.assertIn('if (document.body.classList.contains("sidebar-open")) return true;', source)
         self.assertIn('return modalIsolationTargets.some(isModalTargetOpen);', source)
         self.assertIn('if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;', source)
         self.assertIn('if (chatSearchShortcutBlocked(e.target)) return;', source)

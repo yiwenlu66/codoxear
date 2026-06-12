@@ -3067,6 +3067,7 @@
         function chatSearchShortcutBlocked(target) {
           if (!selected) return true;
           if (isTextEntryElement(target)) return true;
+          if (document.body.classList.contains("sidebar-open")) return true;
           return modalIsolationTargets.some(isModalTargetOpen);
         }
 
