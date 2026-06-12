@@ -9691,18 +9691,23 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return Boolean(s && s.orphan_recovery);
         }
 
+        function selectedSessionHasOrphanQueueRecovery() {
+          const s = selected ? sessionIndex.get(selected) : null;
+          return Boolean(s && s.orphan_recovery && Number(s.queue_len || 0) > 0);
+        }
+
         function syncQueueSubmitState() {
           const queueControl = $("#queueBtn");
           if (!queueControl) return;
           const unknownSend = selectedSessionHasUnknownSend();
-          const orphanRecovery = selectedSessionIsOrphanRecovery();
-          queueControl.disabled = !!queueSubmitBusy || !selected || unknownSend;
+          const orphanQueueRecovery = selectedSessionHasOrphanQueueRecovery();
+          queueControl.disabled = !!queueSubmitBusy || !selected || (unknownSend && !orphanQueueRecovery);
           const queueLabel = !selected
             ? "Select a session to view queued messages"
-            : unknownSend
-              ? "Resolve the unknown send before queueing"
-              : orphanRecovery
-                ? "Review preserved queued recovery items"
+            : orphanQueueRecovery
+              ? "Review preserved queued recovery items"
+              : unknownSend
+                ? "Resolve the unknown send before queueing"
                 : "Queued messages";
           queueControl.title = queueLabel;
           queueControl.setAttribute("aria-label", queueLabel);
@@ -10094,7 +10099,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               setToast("failed session cannot receive messages");
               return;
             }
-            if (selectedInfo && selectedInfo.orphan_recovery) {
+            if (selectedInfo && selectedInfo.orphan_recovery && Number(selectedInfo.queue_len || 0) > 0) {
               showQueueViewer();
               return;
             }

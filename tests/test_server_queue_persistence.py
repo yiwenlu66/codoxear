@@ -577,6 +577,32 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 0})
         self.assertNotIn("orphan", mgr._queues)
 
+    def test_orphan_queue_remains_reviewable_after_unknown_item_delete(self) -> None:
+        mgr = self._mgr()
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
+        mgr._include_launch_attempts = False
+        mgr._unattended = {}
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._files = {}
+        mgr._recent_cwds = {}
+        mgr._save_files = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_recent_cwds = lambda: None
+        mgr._queues["orphan"] = [dict(_queue_item("u", "maybe sent"), commit_unknown=True), _queue_item("n", "later unsent")]
+
+        self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 1})
+
+        remaining = SessionManager.queue_list(mgr, "orphan")
+        self.assertEqual([item["id"] for item in remaining], ["n"])
+        self.assertTrue(remaining[0]["orphan_recovery"])
+        rows = SessionManager.list_sessions(mgr)
+        by_id = {row["session_id"]: row for row in rows}
+        self.assertTrue(by_id["orphan"]["orphan_recovery"])
+        self.assertEqual(by_id["orphan"]["queue_len"], 1)
+
     def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
         mgr = self._mgr()
         mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}

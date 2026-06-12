@@ -2371,8 +2371,11 @@ class SessionManager:
             queues = getattr(self, "_queues", None)
             if isinstance(queues, dict) and session_id in queues:
                 q0 = queues.get(session_id)
-                has_unknown_queue_item = isinstance(q0, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q0)
-                if clear_recovery or not has_unknown_queue_item:
+                has_queued_recovery = isinstance(q0, list) and any(
+                    isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                    for item in q0
+                )
+                if clear_recovery or not has_queued_recovery:
                     queues.pop(session_id, None)
                     changed_queues = True
             input_locks = getattr(self, "_input_locks", None)
@@ -2683,12 +2686,15 @@ class SessionManager:
                 return 0
             return self._queue_store_for_manager().queue_len(qmap, session_id)
 
-    def _queue_has_unknown_item_locked(self, session_id: str) -> bool:
+    def _queue_has_recovery_items_locked(self, session_id: str) -> bool:
         qmap = getattr(self, "_queues", None)
         if not isinstance(qmap, dict):
             return False
         q = qmap.get(session_id)
-        return isinstance(q, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q)
+        return isinstance(q, list) and any(
+            isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+            for item in q
+        )
 
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -2696,7 +2702,7 @@ class SessionManager:
             if not isinstance(qmap, dict):
                 return []
             s = self._sessions.get(session_id)
-            if s is None and not self._queue_has_unknown_item_locked(session_id):
+            if s is None and not self._queue_has_recovery_items_locked(session_id):
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             return self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
@@ -2722,7 +2728,7 @@ class SessionManager:
             raise ValueError("id required")
         with self._lock:
             s = self._sessions.get(session_id)
-            if s is None and not self._queue_has_unknown_item_locked(session_id):
+            if s is None and not self._queue_has_recovery_items_locked(session_id):
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
             ql = self._queue_store_for_manager().delete(
@@ -2732,6 +2738,12 @@ class SessionManager:
                 sending_item_id=sending_id,
                 allow_commit_unknown=allow_commit_unknown,
             )
+            if s is None and allow_commit_unknown:
+                q_after = self._queues.get(session_id)
+                if isinstance(q_after, list):
+                    for item in q_after:
+                        if isinstance(item, dict):
+                            item["orphan_recovery"] = True
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -3919,7 +3931,10 @@ class SessionManager:
                 for sid, queue in getattr(self, "_queues", {}).items()
                 if str(sid) not in active_ids
                 and isinstance(queue, list)
-                and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in queue)
+                and any(
+                    isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                    for item in queue
+                )
             }
         existing_out_ids = {str(item.get("session_id")) for item in out if isinstance(item, dict)}
         for sid in sorted(set(direct_unknowns) | set(orphan_queues)):

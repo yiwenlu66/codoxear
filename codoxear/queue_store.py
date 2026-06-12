@@ -42,6 +42,8 @@ def copy_queue_item(item: dict[str, Any]) -> dict[str, Any]:
         if not math.isfinite(unknown_ts) or unknown_ts <= 0:
             unknown_ts = time.time()
         out["commit_unknown_ts"] = unknown_ts
+    if bool(item.get("orphan_recovery")):
+        out["orphan_recovery"] = True
     return out
 
 
@@ -77,6 +79,8 @@ def coerce_queue_item(raw: Any) -> dict[str, Any] | None:
         if not math.isfinite(unknown_ts) or unknown_ts <= 0:
             unknown_ts = time.time()
         out["commit_unknown_ts"] = unknown_ts
+    if bool(raw.get("orphan_recovery")):
+        out["orphan_recovery"] = True
     return out
 
 
@@ -241,8 +245,11 @@ class QueueStore:
         for sid, q in queues.items():
             if sid in active:
                 continue
-            has_unknown_queue_item = isinstance(q, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q)
-            if has_unknown_queue_item:
+            has_recovery_item = isinstance(q, list) and any(
+                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                for item in q
+            )
+            if has_recovery_item:
                 continue
             drop.append(sid)
         for sid in drop:
