@@ -874,3 +874,9 @@
 - Architecture tranche: extracted launch defaults, reasoning/provider/service-tier normalization, Pi/Claude capability parsing, and new-session request validation into `codoxear/launch_config.py`; `server.py` keeps compatibility wrappers over current global paths so existing route/test patch points remain stable.
 - Commit: `0d27f37 refactor: extract launch defaults and validation`.
 - Validation: targeted reasoning/launch tests passed (`39 passed in 1.92s`). Plain full suite passed (`534 passed, 10 subtests passed in 11.61s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 13.07s`).
+
+
+## 2026-06-12 19:34
+- Post-critic blocker repair: CSP is now emitted as an HTTP `Content-Security-Policy` header for HTML static responses with `X-Frame-Options: DENY`; `_send_static` path containment now uses `Path.relative_to()` instead of a string-prefix check; duplicate server-local launch helper definitions were removed so wrappers delegate consistently to `launch_config`.
+- Commit: `1747e2f fix: enforce static CSP headers`.
+- Validation: targeted static/launch tests passed (`35 passed in 4.64s`). Plain full suite passed (`534 passed, 10 subtests passed in 9.57s`). Full isolated Docker suite passed (`532 passed, 2 skipped, 10 subtests passed in 11.02s`).

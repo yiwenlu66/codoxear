@@ -634,3 +634,10 @@ Commitments:
 - Intervention: introduced `launch_config.py` for pure/path-parameterized launch defaults and request parsing; server wrappers preserve existing API and tests while narrowing server ownership to HTTP/orchestration.
 - Evidence: direct launch/default/request/source tests and full local/Docker suites passed.
 - Scoped claim: launch defaults and request validation now have a dedicated owner, aligned with the existing backend launch adapter. Process spawning, tmux orchestration, and launch-attempt recording intentionally remain in `SessionManager.spawn_web_session`.
+
+
+## 2026-06-12 19:34
+- Observation: post-blocker critic found the CSP was only a meta tag, so `frame-ancestors` was not enforced; it also found duplicate server helper definitions shadowing launch_config wrappers.
+- Intervention: HTML static responses now carry an enforced CSP header and `X-Frame-Options: DENY`; static path containment uses `relative_to`; shadowing launch helper definitions were removed.
+- Evidence: targeted tests assert server header emission and launch wrapper behavior; full local/Docker suites passed.
+- Scoped claim: anti-framing policy is now delivered as an HTTP header for served HTML. CSP still allows inline scripts/styles because current shell uses inline bootstrapping; this removes third-party execution and framing, not all possible XSS impact.
