@@ -475,3 +475,9 @@
 ## 2026-06-12 14:39
 - Shortcut guard follow-up: `/` search shortcut now also no-ops while the mobile sidebar overlay is open, so it cannot open chat search behind the sidebar.
 - Validation: `node --check codoxear/static/app.js` passed; chat navigation source tests passed (`8 passed in 0.47s`).
+
+## 2026-06-12 14:44
+- Fresh review follow-up: hardened `/api/sessions/<id>/messages/search` limit parsing so malformed manual/API requests return `400 {\"error\": \"limit must be an integer\"}` instead of leaking `ValueError` through the route exception path.
+- Commit: `0773dbe fix: reject malformed chat search limits`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; transcript/search and chat navigation tests passed (`14 passed in 1.83s`). Runtime unit test invokes `Handler.do_GET` for `limit=not-an-int` and observes exactly the 400 response.
+- Fresh extended-tranche review artifact: `/tmp/codoxear-extended-tranche-review.md`; no blockers, this malformed-limit hardening was its concrete next fix.

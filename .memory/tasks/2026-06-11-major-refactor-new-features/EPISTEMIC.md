@@ -388,3 +388,7 @@ Commitments:
 ## 2026-06-12 14:38
 - Observation: the broad duplicate chat-extraction refactor is still riskier than warranted, but the timestamp and message-id helper duplication was mechanical and directly testable.
 - Intervention/evidence: duplicate local helper definitions were removed; a source guard now asserts only one module-level timestamp and message-id helper remains for rollout chat extraction.
+
+## 2026-06-12 14:46
+- Review observation: extended clean-room review found no blockers at `01cbad5`, and independently confirmed recent-cwd persistence, mobile toast accessibility, sessiond fail-closed JSONL reads, helper refactors, and shortcut guards.
+- Nonblocking anomaly promoted to fix: malformed `messages/search?limit=...` was parsed with raw `int()`; reviewer predicted a manual/API malformed limit could become a 500 despite UI always sending numeric limits. Runtime route test confirmed the desired revised behavior after intervention: `limit=not-an-int` returns 400 with an explicit integer error.
