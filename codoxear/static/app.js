@@ -9928,7 +9928,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	          imgInput.click();
 	        };
 		        imgInput.addEventListener("change", async () => {
-		          if (!selected) return;
+		          const sid = selected;
+		          if (!sid) return;
+		          const attachmentIndex = attachedFiles + 1;
 		          const f = imgInput.files && imgInput.files[0];
 		          if (!f) return;
 		          if (sending) return;
@@ -10023,18 +10025,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            const ab = await uploadBlob.arrayBuffer();
 	            if (ab.byteLength > maxBytes) throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);
 		            const b64 = b64FromBytes(new Uint8Array(ab));
-			            const res = await api(`/api/sessions/${selected}/inject_file`, {
+			            const res = await api(`/api/sessions/${sid}/inject_file`, {
 		              method: "POST",
-		              body: { filename: uploadName, data_b64: b64, attachment_index: attachedFiles + 1 },
+		              body: { filename: uploadName, data_b64: b64, attachment_index: attachmentIndex },
 		            });
-		            if (res && res.ok) {
-		              setToast("file attached");
-		              setAttachCount(attachedFiles + 1);
+		            if (selected === sid) {
+		              if (res && res.ok) {
+		                setToast("file attached");
+		                setAttachCount(attachmentIndex);
+		              }
+		              pollFastUntilMs = Date.now() + 4000;
+		              kickPoll(0);
 		            }
-		            pollFastUntilMs = Date.now() + 4000;
-		            kickPoll(0);
 		          } catch (e) {
-	            setToast(`attach error: ${e.message}`);
+	            if (selected === sid) setToast(`attach error: ${e.message}`);
 	          }
 	        });
 

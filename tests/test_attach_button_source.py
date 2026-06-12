@@ -16,6 +16,17 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('const attachLabel = selected ? `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})` : "Select a session to attach a file";', source)
         self.assertIn('attachControl.setAttribute("aria-label", attachLabel);', source)
 
+    def test_attach_upload_uses_selection_captured_at_file_pick(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('const sid = selected;\n\t\t          if (!sid) return;', source)
+        self.assertIn('const attachmentIndex = attachedFiles + 1;', source)
+        self.assertIn('api(`/api/sessions/${sid}/inject_file`', source)
+        self.assertIn('attachment_index: attachmentIndex', source)
+        self.assertIn('if (selected === sid) {', source)
+        self.assertIn('setAttachCount(attachmentIndex);', source)
+        self.assertIn('if (selected === sid) setToast(`attach error: ${e.message}`);', source)
+
 
 if __name__ == "__main__":
     unittest.main()
