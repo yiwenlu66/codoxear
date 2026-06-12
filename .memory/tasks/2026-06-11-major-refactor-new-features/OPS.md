@@ -276,3 +276,8 @@
 - Created clean isolated recovery branch/worktree `/home/yiwen/codex-web-product-recovery` from `develop` so feature recovery can happen before parked structural refactor history.
 - Ported the prompt correction from the parked refactor worktree and strengthened task prompts around product promises/workflows/invariants/evidence as the acceptance ontology.
 - Any imported structural-refactor ledger history is parked evidence from the separate refactor worktree; it must not be treated as active recovery progress or acceptance proof for this branch.
+
+## 2026-06-12 11:49
+- Product recovery implementation checkpoint: replaced separate visible Provider + Model new-session controls with one combined provider/model combobox and moved session/chat actions out of the topbar.
+- Changed files: codoxear/static/app.js, codoxear/static/app.css, tests/test_new_session_model_options_source.py, tests/test_chat_navigation_source.py, tests/test_claude_backend_source.py.
+- Validation: local `node --check codoxear/static/app.js` passed. Local frontend/source subset passed: `85 passed in 1.14s` for button tooltips, chat navigation/scrollback/transcript, Claude backend source, file picker/viewer, launch UI, markdown source, new-session model options, reasoning effort, polling, Unattended, and voice source/runtime tests.

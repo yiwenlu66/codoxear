@@ -7,14 +7,31 @@ APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css
 
 
 class TestChatNavigationSource(unittest.TestCase):
-    def test_topbar_has_loaded_user_message_jump_buttons(self) -> None:
+    def test_loaded_user_message_jump_buttons_live_in_chat_nav_rail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('id: "prevUserBtn"', source)
         self.assertIn('title: "Previous user message"', source)
         self.assertIn('id: "nextUserBtn"', source)
         self.assertIn('title: "Next user message"', source)
-        self.assertIn("prevUserBtn,", source)
-        self.assertIn("nextUserBtn,", source)
+        self.assertIn('const chatNavRail = el("div", { class: "chatNavRail"', source)
+        self.assertIn("chatSearchBtn,\n          prevUserBtn,\n          nextUserBtn", source)
+        topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
+        topbar_end = source.index('const form = el("form"', topbar_start)
+        topbar_block = source[topbar_start:topbar_end]
+        self.assertNotIn("prevUserBtn", topbar_block)
+        self.assertNotIn("nextUserBtn", topbar_block)
+        self.assertNotIn("chatSearchBtn", topbar_block)
+
+    def test_session_utilities_are_outside_topbar(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('const sessionContextBar = el("div", { class: "sessionContextBar"', source)
+        self.assertIn("fileBtn,\n          copyConversationBtn,\n          diagBtn,\n          unattendedBtn", source)
+        topbar_start = source.index('const topbar = el("div", { class: "topbar" }')
+        topbar_end = source.index('const form = el("form"', topbar_start)
+        topbar_block = source[topbar_start:topbar_end]
+        for name in ["fileBtn", "copyConversationBtn", "diagBtn", "unattendedBtn"]:
+            self.assertNotIn(name, topbar_block)
+        self.assertIn("interruptBtn", topbar_block)
 
     def test_jump_logic_is_loaded_user_rows_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -47,6 +64,7 @@ class TestChatNavigationSource(unittest.TestCase):
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn(".chatSearchBar", css)
         self.assertIn(".chatSearchInput", css)
+        self.assertIn(".chatNavRail", css)
         self.assertIn(".msg-row.chat-search-current .msg", css)
 
 

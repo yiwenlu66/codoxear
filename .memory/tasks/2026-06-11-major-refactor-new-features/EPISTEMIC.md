@@ -251,3 +251,9 @@ Commitments:
 ## 2026-06-12 11:40
 - Revised model: implementation mechanisms and green tests are insufficient acceptance objects. The live claims must be product promises about workflows under invariants, supported by scoped evidence.
 - Prediction for recovery: if this ontology is enforced, provider/model and top-bar/action-placement work will be treated as central contract failures, not polish or optional refinements.
+
+## 2026-06-12 11:49
+- Observation: current source still had separate Provider and Model controls; topbar contained file, copy, search, user-jump, details, interrupt, and Unattended controls.
+- Intervention: make provider/model a single workflow object and split action placement by user workflow: session utilities bar for files/copy/details/Unattended, chat navigation rail for loaded-chat search/user jumps, topbar only for identity/sidebar and interrupt.
+- Evidence: source/runtime tests now assert no provider-only new-session button/menu remains, configured/recent provider/model pairs are offered by the combobox, typed provider/model filters work, and topbar no longer contains session utilities or chat navigation controls.
+- Scoped claim: deterministic source/runtime evidence supports the new workflow contract at code level. Browser validation is still required for actual visual/mobile ergonomics and event behavior.

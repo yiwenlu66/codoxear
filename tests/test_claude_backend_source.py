@@ -15,7 +15,8 @@ class TestClaudeBackendSource(unittest.TestCase):
         self.assertIn('["low", "medium", "high", "xhigh", "max"]', source)
         self.assertIn('for (const backend of ["codex", "pi", "cc"])', source)
         self.assertIn('if (backend === "cc") return { model_provider: null, preferred_auth_method: null };', source)
-        self.assertIn('newSessionProviderField.style.display = hasProviders ? "" : "none";', source)
+        self.assertIn('newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model";', source)
+        self.assertNotIn('id: "newSessionProviderBtn"', source)
 
     def test_server_exposes_cc_launch_contract(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")

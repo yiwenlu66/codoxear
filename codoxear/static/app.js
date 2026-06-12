@@ -1621,7 +1621,6 @@
         let newSessionCwdMenuFocus = -1;
         let newSessionModelMenuOpen = false;
         let newSessionModelMenuFocus = -1;
-        let newSessionProviderMenuOpen = false;
         let newSessionReasoningMenuOpen = false;
         let newSessionResumeMenuOpen = false;
         let newSessionResumeCandidates = [];
@@ -1833,17 +1832,22 @@
         const topMeta = el("div", { class: "topMeta" }, [ctxChip]);
         const titleRow = el("div", { class: "titleRow" }, [titleLabel, topMeta]);
         const titleWrap = el("div", { class: "titleWrap" }, [titleRow]);
+        const sessionContextBar = el("div", { class: "sessionContextBar", id: "sessionContextBar", "aria-label": "Session utilities" }, [
+          fileBtn,
+          copyConversationBtn,
+          diagBtn,
+          unattendedBtn,
+        ]);
+        const chatNavRail = el("div", { class: "chatNavRail", id: "chatNavRail", "aria-label": "Loaded chat navigation" }, [
+          chatSearchBtn,
+          prevUserBtn,
+          nextUserBtn,
+        ]);
+        chatWrap.appendChild(chatNavRail);
         const topbar = el("div", { class: "topbar" }, [
           el("div", { class: "pill" }, [toggleSidebarBtn, titleWrap]),
           el("div", { class: "actions topActions" }, [
-            fileBtn,
-            copyConversationBtn,
-            chatSearchBtn,
-            prevUserBtn,
-            nextUserBtn,
-            diagBtn,
             interruptBtn,
-            unattendedBtn,
           ]),
         ]);
 
@@ -1879,6 +1883,7 @@
         sidebar.appendChild(sessionsWrap);
         sidebar.appendChild(sidebarFooter);
         main.appendChild(topbar);
+        main.appendChild(sessionContextBar);
         main.appendChild(toast);
         main.appendChild(chatWrap);
         main.appendChild(composer);
@@ -2130,13 +2135,13 @@
   <li>Choose a conversation from the sidebar. On desktop, hover a row to reveal <b>Edit</b>, <b>Duplicate</b>, and <b>Delete</b>. On touch, swipe left for <b>Edit</b>/<b>Duplicate</b> and right for <b>Delete</b>.</li>
   <li>The dot on the title row shows state: <b>blue</b> = busy, <b>gray</b> = idle, <b>orange</b> = snoozed or blocked.</li>
   <li>The metadata line shows the agent-backend icon first, then the session-type icon, then the reasoning marker (<b>X/H/M/L</b>) when available, followed by recency, folder, and branch.</li>
-  <li>Click the conversation title in the top bar to rename or reprioritize it. <b>Details</b> shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
+  <li>Click the conversation title to rename or reprioritize it. <b>Details</b> in the session utilities bar shows the exact backend, provider, model, reasoning level, queue state, and token usage.</li>
 </ul>
 <div class="muted">New session</div>
 <ul class="md">
   <li><b>New session</b> can start fresh or resume a matching conversation for the currently selected backend in the current working directory.</li>
-  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b> and <b>Pi</b>.</li>
-  <li>You can choose working directory, provider, model, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
+  <li>The backend tabs choose between the supported agent backends. Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.</li>
+  <li>You can choose working directory, a combined provider/model pair, reasoning level, and whether the session should start in tmux. If the directory is a Git repo, you can also start in a new worktree branch.</li>
   <li>Codoxear remembers the last backend you used and the last provider choice for each backend.</li>
 </ul>
 <div class="muted">Messages and queue</div>
@@ -2147,7 +2152,7 @@
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
-  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the top bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
+  <li>Unattended mode is a per-session idle nudge. Open the Unattended button in the session utilities bar, turn it on, and optionally add an extra request to append to the built-in unattended-work prompt.</li>
   <li><b>Cooldown time</b> is how many idle minutes must pass after the assistant finishes before the next unattended prompt is injected.</li>
   <li><b>Number of injections</b> is the remaining auto-injection budget for that session. Each unattended prompt decrements it, and unattended mode turns itself off when it reaches zero.</li>
   <li>Unattended mode runs in the server process, so it keeps working even if you close the browser tab. Enabled sessions show an <b>unattended</b> badge in the sidebar.</li>
@@ -2373,7 +2378,7 @@
         const newSessionModelInput = el("input", {
           id: "newSessionModelInput",
           type: "text",
-          placeholder: "Model",
+          placeholder: "Provider/model",
           autocomplete: "off",
           spellcheck: "false",
           role: "combobox",
@@ -2391,20 +2396,8 @@
           newSessionModelInput,
           newSessionModelMenu,
         ]);
+        const newSessionModelLabel = el("span", { class: "fieldLabel", text: "Provider / model" });
         const newSessionBackendTabs = el("div", { class: "agentBackendTabs", id: "newSessionBackendTabs" });
-        const newSessionProviderBtn = el("button", {
-          id: "newSessionProviderBtn",
-          class: "filePickerBtn dialogPickerBtn sidePickerBtn",
-          type: "button",
-          "aria-label": "Choose provider",
-          "aria-haspopup": "menu",
-          "aria-expanded": "false",
-        });
-        const newSessionProviderMenu = el("div", { id: "newSessionProviderMenu", class: "filePickerMenu dialogPickerMenu" });
-        const newSessionProviderField = el("div", { class: "pickerField comboboxField pickerButtonField", id: "newSessionProviderField" }, [
-          el("span", { class: "cwdComboboxIcon", html: iconSvg("chevronDown"), "aria-hidden": "true" }),
-          newSessionProviderBtn,
-        ]);
         let newSessionReasoningEffort = "high";
         const newSessionReasoningBtn = el("button", {
           id: "newSessionReasoningBtn",
@@ -2439,11 +2432,7 @@
             el("span", { text: "Create in tmux" }),
           ]),
         ]);
-        const newSessionProviderTmuxRow = el("div", { class: "formGrid newSessionOptionsRow" }, [
-          el("label", { class: "field" }, [
-            el("span", { class: "fieldLabel", text: "Provider" }),
-            newSessionProviderField,
-          ]),
+        const newSessionLaunchRow = el("div", { class: "formGrid newSessionOptionsRow" }, [
           newSessionTmuxField,
         ]);
         const newSessionFastToggle = el("input", {
@@ -2499,7 +2488,7 @@
             ]),
             el("div", { class: "formGrid newSessionRunConfigRow" }, [
               el("label", { class: "field" }, [
-                el("span", { class: "fieldLabel", text: "Model" }),
+                newSessionModelLabel,
                 newSessionModelField,
               ]),
               el("label", { class: "field" }, [
@@ -2512,7 +2501,7 @@
               el("span", { class: "fieldLabel", text: "Resume conversation" }),
               newSessionResumeBtn,
             ]),
-            newSessionProviderTmuxRow,
+            newSessionLaunchRow,
             newSessionWorktreeField,
           ]),
           el("div", { class: "formActions" }, [
@@ -2523,7 +2512,6 @@
         root.appendChild(newSessionBackdrop);
         root.appendChild(newSessionViewer);
         newSessionViewer.appendChild(newSessionModelMenu);
-        newSessionViewer.appendChild(newSessionProviderMenu);
         newSessionViewer.appendChild(newSessionReasoningMenu);
         newSessionViewer.appendChild(newSessionResumeMenu);
 
@@ -4419,6 +4407,8 @@
           fileBtn.disabled = !selected;
           copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
+          sessionContextBar.style.display = selected ? "flex" : "none";
+          chatNavRail.style.display = selected ? "flex" : "none";
           if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
           diagBtn.disabled = !selected;
@@ -5606,17 +5596,75 @@
           }
         }
 
-        function currentNewSessionModelForCapabilities() {
-          const raw = String(newSessionModelInput.value || "").trim();
+        function newSessionProviderChoices() {
+          return providerChoicesForBackend(newSessionBackend);
+        }
+
+        function newSessionHasProviderChoices() {
+          return newSessionProviderChoices().length > 0;
+        }
+
+        function defaultNewSessionProviderChoice() {
+          const choices = newSessionProviderChoices();
+          if (!choices.length) return "";
           const defaults = defaultsForAgentBackend(newSessionBackend);
-          const fallback = typeof defaults.model === "string" ? defaults.model.trim() : "";
-          const model = raw || fallback;
+          const configured = typeof defaults.provider_choice === "string" ? defaults.provider_choice.trim() : "";
+          const remembered = loadRememberedProviderChoice(newSessionBackend);
+          if (remembered && choices.includes(remembered)) return remembered;
+          if (configured && choices.includes(configured)) return configured;
+          if (newSessionProvider && choices.includes(newSessionProvider)) return newSessionProvider;
+          return choices[0] || "";
+        }
+
+        function newSessionProviderModelDisplay(model, providerChoice = "") {
+          const cleanModel = String(model || "").trim() || "default";
+          const cleanProvider = String(providerChoice || "").trim();
+          if (newSessionHasProviderChoices() && cleanProvider) return `${cleanProvider}/${cleanModel}`;
+          return cleanModel;
+        }
+
+        function parseNewSessionProviderModelInput(value = newSessionModelInput.value) {
+          const raw = String(value || "").trim();
+          const choices = newSessionProviderChoices();
+          const hasProviders = choices.length > 0;
+          const defaults = defaultsForAgentBackend(newSessionBackend);
+          const fallbackModel = typeof defaults.model === "string" && defaults.model.trim() ? defaults.model.trim() : "default";
+          let providerChoice = hasProviders ? defaultNewSessionProviderChoice() : "";
+          let model = raw || fallbackModel;
+          let providerError = "";
+          if (hasProviders && raw.includes("/")) {
+            const slash = raw.indexOf("/");
+            const typedProvider = raw.slice(0, slash).trim();
+            const typedModel = raw.slice(slash + 1).trim();
+            if (typedProvider && choices.includes(typedProvider)) {
+              providerChoice = typedProvider;
+            } else if (typedProvider) {
+              providerError = `Provider must be one of ${choices.join(", ")}.`;
+            }
+            model = typedModel || fallbackModel;
+          }
+          return { providerChoice, model: model || "default", providerError };
+        }
+
+        function syncNewSessionProviderFromModelInput() {
+          const parsed = parseNewSessionProviderModelInput();
+          newSessionModelField.classList.toggle("error", Boolean(parsed.providerError));
+          if (parsed.providerChoice && !parsed.providerError && parsed.providerChoice !== newSessionProvider) {
+            setNewSessionProvider(parsed.providerChoice);
+          }
+          return parsed;
+        }
+
+        function currentNewSessionModelForCapabilities() {
+          const parsed = parseNewSessionProviderModelInput();
+          const model = parsed.model;
           return model && model.toLowerCase() !== "default" ? model : null;
         }
 
         function currentReasoningChoices() {
+          const parsed = parseNewSessionProviderModelInput();
           return reasoningChoicesForBackend(newSessionBackend, {
-            provider: newSessionProvider,
+            provider: parsed.providerChoice || newSessionProvider,
             model: currentNewSessionModelForCapabilities(),
           });
         }
@@ -5644,9 +5692,9 @@
         function syncNewSessionRunConfigUi() {
           const defaults = defaultsForAgentBackend(newSessionBackend);
           const supportsFast = !!defaults.supports_fast;
-          const hasProviders = providerChoicesForBackend(newSessionBackend).length > 0;
-          newSessionProviderField.style.display = hasProviders ? "" : "none";
-          if (!hasProviders) newSessionProviderMenuOpen = false;
+          const hasProviders = newSessionHasProviderChoices();
+          newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model";
+          newSessionModelInput.placeholder = hasProviders ? "provider/model or model" : "Model";
           newSessionFastField.style.display = supportsFast ? "" : "none";
           if (!supportsFast) setNewSessionFast(false);
         }
@@ -5667,7 +5715,8 @@
           }
           const modelDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
           if (resetSelections || previous !== next) {
-            newSessionModelInput.value = modelDefault;
+            newSessionModelInput.value = newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider);
+            newSessionModelField.classList.remove("error");
           }
           const reasoningChoices = currentReasoningChoices();
           const defaultEffort = typeof defaults.reasoning_effort === "string" ? defaults.reasoning_effort.trim().toLowerCase() : "";
@@ -5681,7 +5730,6 @@
           }
           syncNewSessionRunConfigUi();
           renderNewSessionBackendTabs();
-          renderNewSessionProviderMenu();
           renderNewSessionReasoningMenu();
           renderNewSessionModelMenu();
           scheduleNewSessionResumeLoad();
@@ -5693,75 +5741,59 @@
           const next = String(value || "").trim();
           newSessionProvider = options.includes(next) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
           rememberProviderChoice(newSessionBackend, newSessionProvider);
-          setPickerButtonContent(newSessionProviderBtn, newSessionProvider || "Default provider", "", !newSessionProvider);
           setNewSessionReasoningEffort(newSessionReasoningEffort);
           renderNewSessionReasoningMenu();
         }
 
-        function renderNewSessionProviderMenu() {
-          newSessionProviderMenu.innerHTML = "";
-          const items = providerChoicesForBackend(newSessionBackend);
-          if (!items.length) {
-            newSessionProviderMenu.appendChild(el("div", { class: "pickerEmpty", text: "No configured providers" }));
-            return;
-          }
-          for (const provider of items) {
-            const btn = el("button", {
-              class: "fileMenuItem" + (newSessionProvider === provider ? " active" : ""),
-              type: "button",
-              title: provider,
-            });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: provider }));
-            btn.onclick = () => {
-              setNewSessionProvider(provider);
-              newSessionProviderMenuOpen = false;
-              applyDialogMenus();
-            };
-            newSessionProviderMenu.appendChild(btn);
-          }
-        }
-
-        function newSessionModelOption(model, { providerChoice = "", recent = false } = {}) {
-          const cleanModel = String(model || "").trim();
+        function newSessionModelOption(model, { providerChoice = "", recent = false, configured = false } = {}) {
+          const cleanModel = String(model || "").trim() || "default";
           const cleanProvider = String(providerChoice || "").trim();
+          const displayText = newSessionProviderModelDisplay(cleanModel, cleanProvider);
           return {
             model: cleanModel,
             providerChoice: cleanProvider,
             recent: !!recent,
+            configured: !!configured,
+            displayText,
             searchText: cleanProvider ? `${cleanProvider}/${cleanModel} ${cleanModel}` : cleanModel,
           };
+        }
+
+        function addNewSessionModelOption(out, seen, model, opts = {}) {
+          const cleanModel = String(model || "").trim();
+          if (!cleanModel) return;
+          const cleanProvider = String(opts.providerChoice || "").trim();
+          const key = `${cleanProvider}|${cleanModel}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          out.push(newSessionModelOption(cleanModel, opts));
         }
 
         function sessionModelOptions() {
           const seen = new Set();
           const out = [];
           const defaults = defaultsForAgentBackend(newSessionBackend);
-          const providerChoices = providerChoicesForBackend(newSessionBackend);
-          const configured = typeof defaults.model === "string" ? defaults.model.trim() : "";
-          if (configured) {
-            seen.add(`|${configured}`);
-            out.push(newSessionModelOption(configured));
-          }
+          const providerChoices = newSessionProviderChoices();
+          const configuredDefault = typeof defaults.model === "string" ? defaults.model.trim() : "";
+          const activeProvider = providerChoices.length ? defaultNewSessionProviderChoice() : "";
+          if (configuredDefault) addNewSessionModelOption(out, seen, configuredDefault, { providerChoice: activeProvider, configured: true });
           for (const item of latestSessions) {
             if (sessionAgentBackend(item) !== newSessionBackend) continue;
             const model = typeof item.model === "string" ? item.model.trim() : "";
             if (!model) continue;
             const provider = sessionProviderChoice(item);
             const providerChoice = providerChoices.includes(provider) ? provider : "";
-            const key = `${providerChoice}|${model}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            out.push(newSessionModelOption(model, { providerChoice, recent: true }));
+            addNewSessionModelOption(out, seen, model, { providerChoice, recent: true });
           }
-          for (const value of Array.isArray(defaults.models) ? defaults.models : []) {
-            if (typeof value !== "string") continue;
-            const model = value.trim();
-            const key = `|${model}`;
-            if (!model || seen.has(key)) continue;
-            seen.add(key);
-            out.push(newSessionModelOption(model));
+          const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];
+          if (providerChoices.length) {
+            for (const providerChoice of providerChoices) {
+              for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { providerChoice, configured: true });
+            }
+          } else {
+            for (const value of configuredModels) addNewSessionModelOption(out, seen, value, { configured: true });
           }
-          if (!out.length) out.push(newSessionModelOption("default"));
+          if (!out.length) addNewSessionModelOption(out, seen, "default", { providerChoice: activeProvider, configured: true });
           return out;
         }
 
@@ -5874,10 +5906,11 @@
 
         function selectNewSessionModel(option) {
           const item = option && typeof option === "object" ? option : newSessionModelOption(option || "default");
-          newSessionModelInput.value = String(item.model || "default");
-          if (item.providerChoice && providerChoicesForBackend(newSessionBackend).includes(item.providerChoice)) {
+          if (item.providerChoice && newSessionProviderChoices().includes(item.providerChoice)) {
             setNewSessionProvider(item.providerChoice);
           }
+          newSessionModelInput.value = newSessionProviderModelDisplay(item.model || "default", item.providerChoice || newSessionProvider);
+          newSessionModelField.classList.remove("error");
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
           setNewSessionReasoningEffort(newSessionReasoningEffort);
@@ -5899,7 +5932,7 @@
           if (newSessionModelMenuFocus < 0) {
             const selected = raw || configured;
             if (selected) {
-              const selectedIdx = items.findIndex((item) => item.model === selected);
+              const selectedIdx = items.findIndex((item) => item.displayText === selected || item.model === selected);
               if (selectedIdx >= 0) newSessionModelMenuFocus = selectedIdx;
             }
           }
@@ -5911,8 +5944,8 @@
           }
           for (const [idx, item] of items.entries()) {
             const model = item.model;
-            const title = item.providerChoice ? `${item.providerChoice}/${model}` : model;
-            const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && raw === model);
+            const title = item.displayText || newSessionProviderModelDisplay(model, item.providerChoice);
+            const active = newSessionModelMenuFocus === idx || (newSessionModelMenuFocus < 0 && (raw === title || raw === model));
             const btn = el("button", {
               id: `newSessionModelOption-${idx}`,
               class: "fileMenuItem" + (active ? " active" : ""),
@@ -5921,8 +5954,8 @@
               "aria-selected": active ? "true" : "false",
               title,
             });
-            btn.appendChild(el("span", { class: "fileMenuPath", text: model }));
-            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.recent ? `Recent: ${item.providerChoice}` : item.providerChoice }));
+            btn.appendChild(el("span", { class: "fileMenuPath", text: title }));
+            if (item.providerChoice) btn.appendChild(el("span", { class: "fileMenuHint", text: item.recent ? "Recent" : item.configured ? "Configured" : item.providerChoice }));
             btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = () => selectNewSessionModel(item);
             newSessionModelMenu.appendChild(btn);
@@ -5987,7 +6020,6 @@
           editDependencyMenu.classList.toggle("open", editDependencyMenuOpen);
           newSessionCwdMenu.classList.toggle("open", newSessionCwdMenuOpen);
           newSessionModelMenu.classList.toggle("open", newSessionModelMenuOpen);
-          newSessionProviderMenu.classList.toggle("open", newSessionProviderMenuOpen);
           newSessionReasoningMenu.classList.toggle("open", newSessionReasoningMenuOpen);
           newSessionResumeMenu.classList.toggle("open", newSessionResumeMenuOpen);
           editDependencyBtn.setAttribute("aria-expanded", editDependencyMenuOpen ? "true" : "false");
@@ -5995,13 +6027,11 @@
           if (!newSessionCwdMenuOpen && newSessionCwdMenuFocus < 0) newSessionCwdInput.removeAttribute("aria-activedescendant");
           newSessionModelInput.setAttribute("aria-expanded", newSessionModelMenuOpen ? "true" : "false");
           if (!newSessionModelMenuOpen && newSessionModelMenuFocus < 0) newSessionModelInput.removeAttribute("aria-activedescendant");
-          newSessionProviderBtn.setAttribute("aria-expanded", newSessionProviderMenuOpen ? "true" : "false");
           newSessionReasoningBtn.setAttribute("aria-expanded", newSessionReasoningMenuOpen ? "true" : "false");
           newSessionResumeBtn.setAttribute("aria-expanded", newSessionResumeMenuOpen ? "true" : "false");
           if (editDependencyMenuOpen) positionDialogMenu(editDependencyMenu, editDependencyBtn);
           if (newSessionCwdMenuOpen) positionDialogMenu(newSessionCwdMenu, newSessionCwdInput);
           if (newSessionModelMenuOpen) positionDialogMenu(newSessionModelMenu, newSessionModelInput);
-          if (newSessionProviderMenuOpen) positionDialogMenu(newSessionProviderMenu, newSessionProviderBtn);
           if (newSessionReasoningMenuOpen) positionDialogMenu(newSessionReasoningMenu, newSessionReasoningBtn);
           if (newSessionResumeMenuOpen) positionDialogMenu(newSessionResumeMenu, newSessionResumeBtn);
         }
@@ -6070,7 +6100,6 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
@@ -6102,7 +6131,6 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           renderRecentCwdMenu();
           setNewSessionBackend(initialBackend, { resetSelections: true });
@@ -6153,7 +6181,6 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           applyDialogMenus();
         };
@@ -6222,7 +6249,6 @@
           editDependencyMenuOpen = false;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -6234,7 +6260,6 @@
           newSessionCwdMenuOpen = true;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           scheduleNewSessionResumeLoad();
           applyDialogMenus();
         };
@@ -6255,7 +6280,6 @@
             editDependencyMenuOpen = false;
             newSessionModelMenuOpen = false;
             newSessionModelMenuFocus = -1;
-            newSessionProviderMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
             if (newSessionCwdMenuFocus < 0) newSessionCwdMenuFocus = delta > 0 ? 0 : items.length - 1;
@@ -6294,19 +6318,18 @@
           editDependencyMenuOpen = false;
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionReasoningMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
         newSessionModelInput.oninput = () => {
           newSessionModelMenuFocus = -1;
+          syncNewSessionProviderFromModelInput();
           renderNewSessionModelMenu();
           setNewSessionReasoningEffort(newSessionReasoningEffort);
           renderNewSessionReasoningMenu();
           newSessionModelMenuOpen = true;
           newSessionReasoningMenuOpen = false;
-          newSessionProviderMenuOpen = false;
           applyDialogMenus();
         };
         newSessionModelInput.onblur = () => {
@@ -6326,7 +6349,6 @@
             editDependencyMenuOpen = false;
             newSessionCwdMenuOpen = false;
             newSessionCwdMenuFocus = -1;
-            newSessionProviderMenuOpen = false;
             newSessionReasoningMenuOpen = false;
             newSessionResumeMenuOpen = false;
             const delta = e.key === "ArrowDown" ? 1 : -1;
@@ -6364,20 +6386,6 @@
           if (newSessionWorktreeToggle.checked) newSessionWorktreeInput.focus();
         };
         newSessionWorktreeInput.oninput = () => syncNewSessionWorktreeUi();
-        newSessionProviderBtn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          renderNewSessionProviderMenu();
-          newSessionProviderMenuOpen = !newSessionProviderMenuOpen;
-          editDependencyMenuOpen = false;
-          newSessionCwdMenuOpen = false;
-          newSessionCwdMenuFocus = -1;
-          newSessionModelMenuOpen = false;
-          newSessionModelMenuFocus = -1;
-          newSessionReasoningMenuOpen = false;
-          newSessionResumeMenuOpen = false;
-          applyDialogMenus();
-        };
         newSessionFastToggle.onchange = () => setNewSessionFast(newSessionFastToggle.checked);
         newSessionReasoningBtn.onclick = (e) => {
           e.preventDefault();
@@ -6389,7 +6397,6 @@
           newSessionCwdMenuFocus = -1;
           newSessionModelMenuOpen = false;
           newSessionModelMenuFocus = -1;
-          newSessionProviderMenuOpen = false;
           newSessionResumeMenuOpen = false;
           applyDialogMenus();
         };
@@ -6403,8 +6410,13 @@
             return;
           }
           const sessionName = String(newSessionNameInput.value || "").trim();
-          const providerChoice = String(newSessionProvider || "").trim();
-          const model = String(newSessionModelInput.value || "").trim() || "default";
+          const parsedProviderModel = syncNewSessionProviderFromModelInput();
+          if (parsedProviderModel.providerError) {
+            newSessionStatus.textContent = parsedProviderModel.providerError;
+            return;
+          }
+          const providerChoice = String(parsedProviderModel.providerChoice || newSessionProvider || "").trim();
+          const model = String(parsedProviderModel.model || "default").trim() || "default";
           const resumeSessionId = newSessionResumeSelection && newSessionResumeSelection.session_id ? newSessionResumeSelection.session_id : null;
           const createInTmux = !!newSessionTmuxToggle.checked;
           const worktreeBranch = !resumeSessionId && newSessionWorktreeToggle.checked ? String(newSessionWorktreeInput.value || "").trim() : null;
@@ -8740,10 +8752,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (newSessionModelMenuOpen && !t.closest("#newSessionModelField")) {
             newSessionModelMenuOpen = false;
             newSessionModelMenuFocus = -1;
-            applyDialogMenus();
-          }
-          if (newSessionProviderMenuOpen && !t.closest("#newSessionProviderField") && !t.closest("#newSessionProviderMenu")) {
-            newSessionProviderMenuOpen = false;
             applyDialogMenus();
           }
           if (newSessionReasoningMenuOpen && !t.closest("#newSessionReasoningBtn") && !t.closest("#newSessionReasoningMenu")) {

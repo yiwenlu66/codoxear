@@ -598,6 +598,41 @@
         align-items: center;
         gap: 6px;
       }
+      .sessionContextBar {
+        display: none;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.72);
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .sessionContextBar::-webkit-scrollbar {
+        display: none;
+      }
+      .sessionContextBar .icon-btn,
+      .chatNavRail .icon-btn {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+      }
+      .chatNavRail {
+        display: none;
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        z-index: 4;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 13px;
+        background: rgba(255, 255, 255, 0.88);
+        box-shadow: var(--shadow-sm);
+        backdrop-filter: blur(10px);
+      }
       button {
         border: 1px solid var(--border);
         background: #ffffff;
@@ -1757,11 +1792,11 @@ select {
         gap: 10px;
       }
       .newSessionRunConfigRow {
-        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) auto;
         align-items: start;
       }
       .newSessionOptionsRow {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1fr);
         align-items: end;
       }
       .formGrid.twoCol {
@@ -1868,11 +1903,19 @@ select {
         width: 100%;
       }
       @media (max-width: 700px) {
+        .sessionContextBar {
+          justify-content: flex-start;
+          padding: 5px 10px;
+        }
+        .chatNavRail {
+          top: 8px;
+          right: 10px;
+        }
         .newSessionRunConfigRow {
           grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) auto;
         }
         .newSessionOptionsRow {
-          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-columns: minmax(0, 1fr);
         }
         .newSessionOptionsRow #newSessionTmuxField {
           justify-content: flex-start;
