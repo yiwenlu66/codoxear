@@ -9,12 +9,12 @@ from codoxear import server
 from codoxear.server import _download_disposition
 from codoxear.server import _ensure_video_preview
 from codoxear.server import _inspect_client_path
+from codoxear.server import _inspect_downloadable_file
 from codoxear.server import _inspect_openable_file
 from codoxear.server import _read_client_file_view
 from codoxear.server import _read_text_file_for_client
 from codoxear.server import _read_text_file_for_write
 from codoxear.server import _read_text_or_image
-from codoxear.server import _read_downloadable_file
 from codoxear.server import _single_byte_range
 from codoxear.server import _write_new_text_file_atomic
 from codoxear.server import _write_text_file_atomic
@@ -249,13 +249,17 @@ class TestInspectOpenableFile(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "parent directory not found"):
                 _write_new_text_file_atomic(path, text="print('new')\n")
 
-    def test_binary_file_is_downloadable(self) -> None:
+    def test_binary_download_inspection_returns_size_without_buffering(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "blob.bin"
             raw_in = b"\x00\x01\x02\x03"
             path.write_bytes(raw_in)
-            raw_out, size = _read_downloadable_file(path)
-            self.assertEqual(raw_out, raw_in)
+            original_read_bytes = Path.read_bytes
+            try:
+                Path.read_bytes = lambda self: (_ for _ in ()).throw(AssertionError("download inspection must not buffer file bytes"))  # type: ignore[assignment]
+                size = _inspect_downloadable_file(path)
+            finally:
+                Path.read_bytes = original_read_bytes  # type: ignore[assignment]
             self.assertEqual(size, len(raw_in))
 
     def test_download_disposition_uses_utf8_filename(self) -> None:

@@ -37,6 +37,7 @@ from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from . import rollout_log as _rollout_log
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
+from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
 from .file_search import FILE_LIST_IGNORED_DIRS
@@ -55,10 +56,10 @@ from .file_upload import safe_filename as _safe_filename
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
+from .file_view import inspect_downloadable_file as _inspect_downloadable_file
 from .file_view import inspect_openable_file as _inspect_openable_file
 from .file_view import inspect_path_metadata as _inspect_path_metadata
 from .file_view import read_client_file_view as _read_client_file_view
-from .file_view import read_downloadable_file as _read_downloadable_file
 from .file_view import read_text_or_image as _read_text_or_image
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
 from .video_preview import video_preview_path as _video_preview_path_impl
@@ -5905,7 +5906,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     base = base.resolve()
                 p = _resolve_session_path(base, rel)
                 try:
-                    raw, size = _read_downloadable_file(p)
+                    size = _inspect_downloadable_file(p)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5915,15 +5916,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Length", str(size))
-                self.send_header("Content-Disposition", _download_disposition(p))
-                self.send_header("Cache-Control", "no-store")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(raw)
+                _send_attachment_file_response(self, p, size=size, content_disposition=_download_disposition(p))
                 return
 
             session_id = _match_session_route(path, "git", "changed_files")

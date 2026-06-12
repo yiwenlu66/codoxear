@@ -84,16 +84,18 @@ def read_text_or_image(path_obj: Path) -> tuple[str, int, str | None, bytes | No
     return view.kind, view.size, view.content_type, raw
 
 
-def read_downloadable_file(path_obj: Path) -> tuple[bytes, int]:
+def inspect_downloadable_file(path_obj: Path) -> int:
     if not path_obj.exists():
         raise FileNotFoundError("file not found")
     if not path_obj.is_file():
         raise ValueError("path is not a file")
     try:
-        raw = path_obj.read_bytes()
+        size = int(path_obj.stat().st_size)
+        with path_obj.open("rb"):
+            pass
     except PermissionError as e:
         raise PermissionError("permission denied") from e
-    return raw, len(raw)
+    return size
 
 
 def inspect_client_path(path_obj: Path) -> tuple[int, str, str | None]:
