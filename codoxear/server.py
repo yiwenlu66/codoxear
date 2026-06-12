@@ -4526,6 +4526,7 @@ class SessionManager:
         self._update_meta_counters()
         files_dirty = False
         sidebar_dirty = False
+        recent_cwd_dirty = False
         now_ts = time.time()
         with self._lock:
             items: list[dict[str, Any]] = []
@@ -4577,6 +4578,7 @@ class SessionManager:
                     prev_recent_ts = recent_map.get(cwd_recent)
                     if prev_recent_ts is None or prev_recent_ts < updated_ts:
                         recent_map[cwd_recent] = updated_ts
+                        recent_cwd_dirty = True
                 queue_len = 0
                 if isinstance(qmap, dict):
                     q0 = qmap.get(s.session_id)
@@ -4773,6 +4775,8 @@ class SessionManager:
             self._save_files()
         if sidebar_dirty:
             self._save_sidebar_meta()
+        if recent_cwd_dirty:
+            self._save_recent_cwds()
         out.sort(
             key=lambda item: (
                 -float(item.get("final_priority", 0.0)),

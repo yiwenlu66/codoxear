@@ -314,6 +314,20 @@ class TestSessionSidebarPriority(unittest.TestCase):
 
         self.assertEqual(mgr.recent_cwds(limit=4), ["/tmp/current", "/repo/ended"])
 
+    def test_list_sessions_persists_new_recent_cwd_once(self) -> None:
+        mgr = _make_manager()
+        save_calls = []
+        mgr._save_recent_cwds = lambda *args, **kwargs: save_calls.append(True)  # type: ignore[method-assign]
+        now = time.time()
+        current = _session(sid="current", start_ts=now - 100, last_chat_ts=now - 5)
+        mgr._sessions = {current.session_id: current}
+
+        mgr.list_sessions()
+        mgr.list_sessions()
+
+        self.assertEqual(save_calls, [True])
+        self.assertEqual(mgr.recent_cwds(limit=1), ["/tmp/current"])
+
     def test_list_sessions_exposes_model_and_reasoning_effort(self) -> None:
         mgr = _make_manager()
         now = time.time()
