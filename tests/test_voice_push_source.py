@@ -44,20 +44,30 @@ class TestVoicePushSource(unittest.TestCase):
         self.assertIn("return (navigated || client).focus();", sw_source)
         self.assertNotIn("client.navigate(target);\n          return client.focus();", sw_source)
 
-    def test_hashchange_refreshes_missing_notification_target_once(self) -> None:
+    def test_hashchange_refreshes_and_defers_missing_notification_target(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")
-        start = app_source.index("async function selectSessionFromHash")
+        start = app_source.index("function rememberPendingHashSession")
         end = app_source.index("function parseUnattendedDraftInt", start)
         block = app_source[start:end]
+        self.assertIn('let pendingHashSessionId = "";', app_source)
+        self.assertIn("let pendingHashSessionSelectInFlight = false;", app_source)
+        self.assertIn("function maybeSelectPendingHashSession()", block)
+        self.assertIn("if (sessionIdFromHash() !== sid)", block)
+        self.assertIn("const session = sessionIndex.get(sid);", block)
+        self.assertIn("if (!sessionSelectable(session)) return;", block)
+        self.assertIn("pendingHashSessionSelectInFlight = true;", block)
+        self.assertIn("void selectSession(sid)", block)
+        self.assertIn("async function selectSessionFromHash({ refreshIfMissing = false, deferIfMissing = false } = {})", block)
         self.assertIn("const sid = sessionIdFromHash();", block)
         self.assertIn("let session = sessionIndex.get(sid);", block)
         self.assertIn("if (!session && refreshIfMissing) {", block)
         self.assertIn("await refreshSessions();", block)
         self.assertIn("if (e && e.status === 401) handleAppAuthLoss();", block)
         self.assertIn("session = sessionIndex.get(sid);", block)
-        self.assertIn("if (!sessionSelectable(session)) return;", block)
-        self.assertIn("await selectSession(sid);", block)
-        self.assertIn('addAppEvent(window, "hashchange", async () => {\n                await selectSessionFromHash({ refreshIfMissing: true });\n              });', app_source)
+        self.assertIn("if (!sessionSelectable(session)) {\n            if (deferIfMissing) rememberPendingHashSession(sid);\n            return;\n          }", block)
+        self.assertIn("rememberPendingHashSession(\"\");\n          await selectSession(sid);", block)
+        self.assertIn("maybeSelectPendingHashSession();\n          return sessions;", app_source)
+        self.assertIn('addAppEvent(window, "hashchange", async () => {\n                await selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });\n              });', app_source)
 
 
 if __name__ == "__main__":

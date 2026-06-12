@@ -1594,6 +1594,8 @@
         const composer = el("div", { class: "composer" });
 
         let selected = null;
+        let pendingHashSessionId = "";
+        let pendingHashSessionSelectInFlight = false;
         let liveCursor = null;
         const INIT_PAGE_LIMIT_DESKTOP = 60;
         const INIT_PAGE_LIMIT_MOBILE = 24;
@@ -4292,6 +4294,7 @@
           }
           updateUnattendedBtnState();
           updateQueueBadge();
+          maybeSelectPendingHashSession();
           return sessions;
         }
 
@@ -4728,9 +4731,45 @@
           await openSession(id, { useCache: true });
         }
 
-        async function selectSessionFromHash({ refreshIfMissing = false } = {}) {
+        function rememberPendingHashSession(sid) {
+          pendingHashSessionId = String(sid || "").trim();
+        }
+
+        function maybeSelectPendingHashSession() {
+          const sid = pendingHashSessionId;
+          if (!sid || pendingHashSessionSelectInFlight) return;
+          if (sessionIdFromHash() !== sid) {
+            rememberPendingHashSession("");
+            return;
+          }
+          if (sid === selected) {
+            rememberPendingHashSession("");
+            return;
+          }
+          const session = sessionIndex.get(sid);
+          if (!sessionSelectable(session)) return;
+          rememberPendingHashSession("");
+          pendingHashSessionSelectInFlight = true;
+          void selectSession(sid)
+            .catch((e) => {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("pending hash session select failed", e);
+            })
+            .finally(() => {
+              pendingHashSessionSelectInFlight = false;
+            });
+        }
+
+        async function selectSessionFromHash({ refreshIfMissing = false, deferIfMissing = false } = {}) {
           const sid = sessionIdFromHash();
-          if (!sid || sid === selected) return;
+          if (!sid) {
+            rememberPendingHashSession("");
+            return;
+          }
+          if (sid === selected) {
+            rememberPendingHashSession("");
+            return;
+          }
           let session = sessionIndex.get(sid);
           if (!session && refreshIfMissing) {
             try {
@@ -4742,7 +4781,11 @@
             }
             session = sessionIndex.get(sid);
           }
-          if (!sessionSelectable(session)) return;
+          if (!sessionSelectable(session)) {
+            if (deferIfMissing) rememberPendingHashSession(sid);
+            return;
+          }
+          rememberPendingHashSession("");
           await selectSession(sid);
         }
 
@@ -10364,7 +10407,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            scheduleSessionsPoll();
             scheduleSecondaryPoll();
               addAppEvent(window, "hashchange", async () => {
-                await selectSessionFromHash({ refreshIfMissing: true });
+                await selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true });
               });
               addAppEvent(window, "beforeunload", () => {
                 cleanupApp();
