@@ -1608,9 +1608,13 @@
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
+         let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
+         let secondaryPollingEnabled = true;
          const SESSION_POLL_VISIBLE_MS = 2500;
          const SESSION_POLL_HIDDEN_MS = 15000;
+         const SECONDARY_POLL_VISIBLE_MS = 10000;
+         const SECONDARY_POLL_HIDDEN_MS = 60000;
          let currentRunning = false;
          let openSwipeContent = null;
          let openSwipeSessionId = null;
@@ -10078,27 +10082,54 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            function sessionsPollDelayMs() {
               return document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS;
             }
+            function secondaryPollDelayMs() {
+              return document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS;
+            }
             function stopSessionsPolling() {
               if (sessionsTimer) clearTimeout(sessionsTimer);
               sessionsTimer = null;
+            }
+            function stopSecondaryPolling() {
+              if (secondaryPollTimer) clearTimeout(secondaryPollTimer);
+              secondaryPollTimer = null;
+            }
+            function stopAllPolling() {
+              stopSessionsPolling();
+              stopSecondaryPolling();
+            }
+            function handlePollingAuthLoss() {
+              sessionsPollingEnabled = false;
+              secondaryPollingEnabled = false;
+              stopAllPolling();
+              renderLogin(renderApp);
             }
             async function runSessionsPollTick() {
               if (!sessionsPollingEnabled) return;
               try {
                 await refreshSessions();
-                await loadVoiceSettings();
-                await syncNotificationState();
-                if (notificationsEnabledLocally()) await pollNotificationFeed();
               } catch (e2) {
                 if (e2 && e2.status === 401) {
-                  sessionsPollingEnabled = false;
-                  stopSessionsPolling();
-                  renderLogin(renderApp);
+                  handlePollingAuthLoss();
                   return;
                 }
                 console.error("refreshSessions timer failed", e2);
               }
               scheduleSessionsPoll();
+            }
+            async function runSecondaryPollTick() {
+              if (!secondaryPollingEnabled) return;
+              try {
+                await loadVoiceSettings();
+                await syncNotificationState();
+                if (notificationsEnabledLocally()) await pollNotificationFeed();
+              } catch (e2) {
+                if (e2 && e2.status === 401) {
+                  handlePollingAuthLoss();
+                  return;
+                }
+                console.error("secondary poll failed", e2);
+              }
+              scheduleSecondaryPoll();
             }
             function scheduleSessionsPoll(delayMs = sessionsPollDelayMs()) {
               if (!sessionsPollingEnabled) return;
@@ -10108,7 +10139,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 void runSessionsPollTick();
               }, Math.max(0, Number(delayMs) || 0));
             }
+            function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs()) {
+              if (!secondaryPollingEnabled) return;
+              stopSecondaryPolling();
+              secondaryPollTimer = setTimeout(() => {
+                secondaryPollTimer = null;
+                void runSecondaryPollTick();
+              }, Math.max(0, Number(delayMs) || 0));
+            }
             scheduleSessionsPoll();
+            scheduleSecondaryPoll();
               window.addEventListener("hashchange", async () => {
                 const sid = sessionIdFromHash();
                 if (!sid || sid === selected || !sessionIndex.has(sid)) return;
@@ -10116,7 +10156,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               });
               window.addEventListener("beforeunload", () => {
                 sessionsPollingEnabled = false;
-                stopSessionsPolling();
+                secondaryPollingEnabled = false;
+                stopAllPolling();
                 stopAnnouncementHeartbeat();
                 stopLiveAudioWatchdog();
               });
@@ -10124,9 +10165,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (document.visibilityState === "visible") {
                   resumeAnnouncementRuntime({ resetSource: false });
                   scheduleSessionsPoll(0);
+                  scheduleSecondaryPoll(0);
                   return;
                 }
                 scheduleSessionsPoll(sessionsPollDelayMs());
+                scheduleSecondaryPoll(secondaryPollDelayMs());
               });
               window.addEventListener("pageshow", () => {
                 resumeAnnouncementRuntime({ resetSource: false });

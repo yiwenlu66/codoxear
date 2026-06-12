@@ -15,16 +15,39 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("sessionsTimer = setTimeout", source)
         self.assertNotIn("sessionsTimer = setInterval", source)
 
+    def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("const SECONDARY_POLL_VISIBLE_MS = 10000;", source)
+        self.assertIn("const SECONDARY_POLL_HIDDEN_MS = 60000;", source)
+        self.assertIn('document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS', source)
+        self.assertIn("function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs())", source)
+        self.assertIn("secondaryPollTimer = setTimeout", source)
+        session_tick = source[source.index("async function runSessionsPollTick()") : source.index("async function runSecondaryPollTick()")]
+        self.assertIn("await refreshSessions();", session_tick)
+        self.assertNotIn("loadVoiceSettings", session_tick)
+        self.assertNotIn("syncNotificationState", session_tick)
+        self.assertNotIn("pollNotificationFeed", session_tick)
+        secondary_tick = source[source.index("async function runSecondaryPollTick()") : source.index("function scheduleSessionsPoll")]
+        self.assertIn("await loadVoiceSettings();", secondary_tick)
+        self.assertIn("await syncNotificationState();", secondary_tick)
+        self.assertIn("await pollNotificationFeed();", secondary_tick)
+
     def test_visibility_change_refreshes_immediately_when_visible(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('if (document.visibilityState === "visible") {', source)
         self.assertIn("scheduleSessionsPoll(0);", source)
+        self.assertIn("scheduleSecondaryPoll(0);", source)
         self.assertIn("scheduleSessionsPoll(sessionsPollDelayMs());", source)
+        self.assertIn("scheduleSecondaryPoll(secondaryPollDelayMs());", source)
 
     def test_session_polling_stops_on_auth_loss_and_unload(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function handlePollingAuthLoss()", source)
         self.assertIn("sessionsPollingEnabled = false;", source)
+        self.assertIn("secondaryPollingEnabled = false;", source)
+        self.assertIn("stopAllPolling();", source)
         self.assertIn("stopSessionsPolling();", source)
+        self.assertIn("stopSecondaryPolling();", source)
         self.assertIn("renderLogin(renderApp);", source)
 
 
