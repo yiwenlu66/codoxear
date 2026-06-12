@@ -26,10 +26,10 @@ from codoxear.agent_backend import get_agent_backend
 from codoxear.agent_backend import normalize_agent_backend
 from codoxear.cc_log import CC_UNKNOWN_TOOL_USE_ID as _CC_UNKNOWN_TOOL_USE_ID
 from codoxear.cc_log import cc_assistant_is_final_turn_end as _cc_assistant_is_final_turn_end
+from codoxear.cc_log import cc_assistant_pending_tool_use_ids as _cc_assistant_pending_tool_use_ids
 from codoxear.cc_log import cc_assistant_text as _cc_assistant_text
 from codoxear.cc_log import cc_assistant_thinking_count as _cc_assistant_thinking_count
 from codoxear.cc_log import cc_assistant_tool_use_count as _cc_assistant_tool_use_count
-from codoxear.cc_log import cc_assistant_tool_use_ids as _cc_assistant_tool_use_ids
 from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
 from codoxear.cc_log import cc_message_role as _cc_message_role
 from codoxear.cc_log import cc_user_text as _cc_user_text
@@ -754,7 +754,7 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             return
         if tool_count > 0 or thinking_count > 0:
             if tool_count > 0:
-                st.pending_calls.update(_cc_assistant_tool_use_ids(obj) or {_CC_UNKNOWN_TOOL_USE_ID})
+                st.pending_calls.update(_cc_assistant_pending_tool_use_ids(obj))
             _reopen_turn_on_activity(st)
             if st.turn_open:
                 st.turn_has_completion_candidate = False

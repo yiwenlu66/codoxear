@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 
 from codoxear.rollout_log import _compute_idle_from_log
 from codoxear.rollout_log import _extract_chat_events
+from codoxear.rollout_log import _extract_delivery_messages
 from codoxear.rollout_log import _read_chat_events_from_tail
 
 
@@ -39,7 +40,7 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(meta["tool"], 1)
         self.assertEqual(diag["tool_names"], ["Bash"])
         self.assertTrue(flags["turn_start"])
-        self.assertTrue(flags["turn_end"])
+        self.assertFalse(flags["turn_end"])
 
     def test_xml_looking_cc_user_prompt_remains_visible(self) -> None:
         events, _meta, flags, _diag = _extract_chat_events([user("<task>summarize</task>")])
@@ -52,6 +53,26 @@ class TestCcChatAndIdle(unittest.TestCase):
         events, _meta, flags, _diag = _extract_chat_events([user("hello"), assistant([{"type": "text", "text": "done"}], stop_reason="end_turn")])
         self.assertEqual(events[-1]["message_class"], "final_response")
         self.assertTrue(flags["turn_end"])
+
+    def test_cc_final_text_with_pending_tool_is_not_final_response(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+            ]
+        )
+        self.assertEqual(events[-1]["message_class"], "narration")
+        self.assertFalse(flags["turn_end"])
+
+    def test_cc_delivery_final_text_with_pending_tool_is_narration(self) -> None:
+        messages = _extract_delivery_messages(
+            [
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+            ]
+        )
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0].message_class, "narration")
 
     def test_cc_idle_heuristic(self) -> None:
         with TemporaryDirectory() as td:
@@ -89,6 +110,19 @@ class TestCcChatAndIdle(unittest.TestCase):
                     assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
                 ],
             )
+            self.assertFalse(_compute_idle_from_log(path))
+
+    def test_cc_idle_expands_tail_for_final_text_without_context(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                user("hello"),
+                assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+            ]
+            rows.extend({"type": "noop", "x": "x" * 100} for _ in range(4000))
+            rows.append(assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"))
+            write_log(path, rows)
+            self.assertGreater(path.stat().st_size, 256 * 1024)
             self.assertFalse(_compute_idle_from_log(path))
 
     def test_cc_idle_expands_tail_for_turn_duration_without_context(self) -> None:

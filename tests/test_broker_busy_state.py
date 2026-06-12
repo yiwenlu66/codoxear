@@ -508,6 +508,50 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.busy)
         self.assertEqual(st.pending_calls, {"toolu_1"})
 
+    def test_cc_mixed_malformed_tool_use_keeps_unknown_pending_after_known_result(self) -> None:
+        st = _state()
+        _apply_rollout_obj_to_state(
+            st,
+            {"type": "user", "message": {"role": "user", "content": "run pwd"}},
+            now_ts=10.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}},
+                        {"type": "tool_use", "name": "Bad", "input": {}},
+                    ],
+                    "stop_reason": "tool_use",
+                },
+            },
+            now_ts=11.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}],
+                },
+            },
+            now_ts=12.0,
+        )
+        _apply_rollout_obj_to_state(
+            st,
+            {
+                "type": "assistant",
+                "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}], "stop_reason": "end_turn"},
+            },
+            now_ts=13.0,
+        )
+        self.assertTrue(st.busy)
+        self.assertTrue(st.pending_calls)
+
     def test_cc_tool_result_and_final_message_clear_busy(self) -> None:
         st = _state()
         _apply_rollout_obj_to_state(

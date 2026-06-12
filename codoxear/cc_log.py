@@ -131,6 +131,13 @@ def cc_user_tool_result_ids(obj: dict[str, Any]) -> list[str]:
     return ids
 
 
+def cc_assistant_pending_tool_use_ids(obj: dict[str, Any]) -> set[str]:
+    ids = set(cc_assistant_tool_use_ids(obj))
+    if cc_assistant_tool_use_count(obj) > len(ids):
+        ids.add(CC_UNKNOWN_TOOL_USE_ID)
+    return ids
+
+
 def cc_assistant_tool_use_count(obj: dict[str, Any]) -> int:
     return sum(1 for part in cc_assistant_content_parts(obj) if part.get("type") == "tool_use")
 

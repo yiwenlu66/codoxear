@@ -11,11 +11,11 @@ from typing import Any
 from typing import Iterator
 
 from .cc_log import cc_assistant_is_final_turn_end
+from .cc_log import cc_assistant_pending_tool_use_ids
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
 from .cc_log import CC_UNKNOWN_TOOL_USE_ID
-from .cc_log import cc_assistant_tool_use_ids
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
 from .cc_log import cc_user_text
@@ -656,11 +656,13 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
+    cc_pending_tool_ids: set[str] = set()
     for obj in objs:
         typ = obj.get("type")
         if typ == "user":
             user_text = cc_user_text(obj)
             if isinstance(user_text, str) and user_text:
+                cc_pending_tool_ids.clear()
                 turn_start = True
                 ets = _event_ts(obj)
                 evcc: dict[str, Any] = {"role": "user", "text": user_text}
@@ -669,6 +671,12 @@ def _extract_chat_events(
                 events.append(evcc)
                 continue
             if cc_message_role(obj) == "toolResult":
+                result_ids = cc_user_tool_result_ids(obj)
+                if result_ids:
+                    for tool_id in result_ids:
+                        cc_pending_tool_ids.discard(tool_id)
+                else:
+                    cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
                 total_tools += 1
                 continue
 
@@ -679,6 +687,7 @@ def _extract_chat_events(
             if thinking_count > 0:
                 total_thinking += thinking_count
             if tool_count > 0:
+                cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
                 total_tools += tool_count
                 message = obj.get("message")
                 content = message.get("content") if isinstance(message, dict) else None
@@ -690,7 +699,7 @@ def _extract_chat_events(
                             last_tool = name
             if isinstance(assistant_text, str) and assistant_text:
                 ets = _event_ts(obj)
-                message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
+                message_class = "final_response" if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids else "narration"
                 if message_class == "final_response":
                     turn_end = True
                 evcca: dict[str, Any] = {
@@ -705,7 +714,8 @@ def _extract_chat_events(
             continue
 
         if typ == "system" and cc_is_turn_end(obj):
-            turn_end = True
+            if not cc_pending_tool_ids:
+                turn_end = True
             continue
 
         if typ == "message":
@@ -871,6 +881,7 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
     out: list[ClassifiedAssistantMessage] = []
     seen: set[str] = set()
     last_text_key: tuple[str, str] | None = None
+    cc_pending_tool_ids: set[str] = set()
 
     for obj in objs:
         if not isinstance(obj, dict):
@@ -878,6 +889,19 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
         typ = obj.get("type")
         message_class: str | None = None
         text = ""
+        if typ == "user":
+            user_text = cc_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                cc_pending_tool_ids.clear()
+                continue
+            if cc_message_role(obj) == "toolResult":
+                result_ids = cc_user_tool_result_ids(obj)
+                if result_ids:
+                    for tool_id in result_ids:
+                        cc_pending_tool_ids.discard(tool_id)
+                else:
+                    cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
+                continue
         if typ == "message":
             if pi_assistant_is_aborted_turn(obj):
                 continue
@@ -886,10 +910,12 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
                 continue
             message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
         elif typ == "assistant":
+            if cc_assistant_tool_use_count(obj) > 0:
+                cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
             text = cc_assistant_text(obj) or ""
             if not text.strip():
                 continue
-            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
+            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids else "narration"
         elif typ == "event_msg":
             payload = obj.get("payload")
             if not isinstance(payload, dict):
@@ -1106,7 +1132,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         idle = True
         cc_pending_tool_ids: set[str] = set()
         cc_seen_turn_context = False
-        cc_turn_duration_without_context = False
+        cc_terminal_without_context = False
         for obj in objs:
             typ = obj.get("type")
             if typ == "message":
@@ -1153,15 +1179,17 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = False
                     continue
             if typ == "assistant":
-                tool_use_ids = cc_assistant_tool_use_ids(obj)
                 tool_use_count = cc_assistant_tool_use_count(obj)
                 if tool_use_count > 0:
                     cc_seen_turn_context = True
-                    cc_pending_tool_ids.update(tool_use_ids or {CC_UNKNOWN_TOOL_USE_ID})
+                    cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
                 if cc_assistant_text(obj):
+                    had_prior_cc_context = cc_seen_turn_context
                     cc_seen_turn_context = True
                     saw_terminal_signal = True
                     if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids:
+                        if not had_prior_cc_context:
+                            cc_terminal_without_context = True
                         idle = True
                     else:
                         idle = False
@@ -1181,7 +1209,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = False
                 else:
                     if not cc_seen_turn_context:
-                        cc_turn_duration_without_context = True
+                        cc_terminal_without_context = True
                     idle = True
                 continue
             if typ == "event_msg":
@@ -1236,7 +1264,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     idle = False
                     continue
 
-        if saw_terminal_signal and not (cc_turn_duration_without_context and scan < min(sz, max_scan_bytes)):
+        if saw_terminal_signal and not (cc_terminal_without_context and scan < min(sz, max_scan_bytes)):
             break
         if scan >= max_scan_bytes:
             break
