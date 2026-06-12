@@ -446,3 +446,6 @@
 - Architecture cleanup: centralized PTY `write_all` and bracketed-paste injection in `codoxear.pty_util`; broker/sessiond retain local wrapper names but delegate to the shared implementation.
 - Commit: `c4cae80 refactor: share pty write helpers`.
 - Validation: `python3 -m py_compile codoxear/pty_util.py codoxear/broker.py codoxear/sessiond.py` passed; send-ack, PTY source, broker fail-closed, and sessiond fail-closed tests passed (`36 passed in 2.14s`).
+
+## 2026-06-12 14:26
+- Current-head full validation after mobile toast UX and architecture helper refactors: isolated Docker suite passed (`465 passed, 2 skipped in 11.23s`).
