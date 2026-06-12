@@ -576,3 +576,8 @@
 - Full validation after `codoxear/file_search.py` extraction.
 - HEAD: `02b9473`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`479 passed, 2 skipped, 10 subtests passed in 12.75s`).
+
+## 2026-06-12 15:48
+- Backend refactor tranche: extracted pure file/content-type classification constants and helpers into `codoxear/file_types.py`; server imports aliases for existing call sites.
+- Commit: `a791bf8 refactor: extract file type classification`.
+- Validation: `python3 -m py_compile codoxear/file_types.py codoxear/server.py` passed; file type module boundary, file viewer source, file inspect, file upload, and file list tests passed (`51 passed in 2.62s`).

@@ -420,3 +420,6 @@ Commitments:
 
 ## 2026-06-12 15:44
 - Refactor mechanism: file search was a contained server hotspot with pure scoring/search behavior and existing tests. Extracting it reduces `server.py` responsibility without changing HTTP route semantics; the injected `_git_repo_root` callback preserves current git detection behavior.
+
+## 2026-06-12 15:48
+- Refactor mechanism: content-type classification is pure and shared by file viewer/upload/video-preview paths. Moving it out of `server.py` reduces route/module load while preserving server aliases and existing call-site semantics.
