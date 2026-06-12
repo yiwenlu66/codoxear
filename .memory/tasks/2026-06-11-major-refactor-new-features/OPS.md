@@ -1320,3 +1320,11 @@
 - Applied blocker from `/tmp/codoxear-cc-hardening-review11.md`: when a Claude log binds after a turn already completed, broker now applies the idle seed and closes stale pre-bind busy/turn state.
 - Commit: `fix: close stale Claude broker state on idle bind`.
 - Validation: targeted broker bind tests passed (`3 passed`), affected suites passed (`58 passed`), full local suite passed (`647 passed, 25 subtests passed in 11.01s`), isolated Docker suite passed (`646 passed, 1 skipped, 25 subtests passed in 13.86s`).
+
+
+## 2026-06-13 05:34
+- Applied blockers from `/tmp/codoxear-cc-hardening-review12.md`:
+  - idless Claude tool-use sentinels now use UUID components so broker watcher batches cannot collide via Python object-id reuse;
+  - top-level `toolUseResult` rows are classified as tool-result transport, support common ID keys, and can clear a single pending tool when no ID is present and exactly one tool is pending.
+- Commit: `fix: harden Claude malformed result tracking`.
+- Validation: targeted top-level/idless tests passed (`3 passed`), affected suites passed (`61 passed`), full local suite passed (`650 passed, 25 subtests passed in 11.65s`), isolated Docker suite passed (`649 passed, 1 skipped, 25 subtests passed in 13.98s`).

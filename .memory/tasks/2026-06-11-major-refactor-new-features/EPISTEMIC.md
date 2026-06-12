@@ -1126,3 +1126,10 @@ Commitments:
 - Intervention: apply idle seeds as well as active seeds during Claude log bind; a reconstructed idle current turn calls `_close_turn_state()`.
 - Evidence: regression binds a final Claude log to a previously busy broker state and verifies busy/turn_open clear; full local/Docker suites passed.
 - Scoped claim: inspected broker bind now reconciles stale busy, active non-tool, and pending-tool Claude current-turn states.
+
+
+## 2026-06-13 05:34
+- Review anomaly: unknown sentinel uniqueness depended on Python object IDs and could collide across broker watcher batches; top-level `toolUseResult` was hidden as text but not treated as a result.
+- Intervention: generate UUID-backed unknown sentinels; route all result cleanup through a shared top-level-aware helper with ID extraction and safe single-pending cleanup.
+- Evidence: GC/id-reuse regression keeps six idless tools distinct; top-level `toolUseResult` regressions clear pending and allow final response; full local/Docker suites passed.
+- Scoped claim: inspected malformed Claude result handling is more robust, but exact real `toolUseResult` schema still needs live-log confirmation.
