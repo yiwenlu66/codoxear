@@ -46,6 +46,8 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text, \"sync\": True}, timeout_s=timeout_s)", source)
         self.assertIn("except SessionCommitUnknownError as e:", source)
         self.assertIn('"commit_unknown": True', source)
+        self.assertIn('session_id = _match_session_route(path, "pending_attachment", "clear")', source)
+        self.assertIn("res = MANAGER.clear_pending_attachment(session_id)", source)
         self.assertIn("if not s.sync_send_supported:", source)
         self.assertIn("if not (s.sync_send_supported and s.key_write_errors_supported):", source)
         self.assertIn("except SessionNotReadyError as e:\n                    _json_response(self, 409, {\"error\": str(e)})", block)

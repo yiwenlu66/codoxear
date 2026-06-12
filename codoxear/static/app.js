@@ -10545,6 +10545,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
             if (commitUnknown) setToast("send status unknown; check transcript before retrying");
             else setToast(`send error: ${e2.message}`);
+            if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(e2 && e2.message ? e2.message : ""))) {
+              const clearPending = window.confirm("This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?");
+              if (clearPending) {
+                try {
+                  await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
+                  setToast("pending attachment state cleared");
+                  void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+                } catch (clearErr) {
+                  setToast(`clear pending attachment error: ${clearErr && clearErr.message ? clearErr.message : "unknown error"}`);
+                }
+              }
+            }
             if (renderHere) {
               for (let i = pendingUser.length - 1; i >= 0; i -= 1) {
                 const pending = pendingUser[i];

@@ -1400,12 +1400,12 @@ class Broker:
             if sync_commit:
                 if fd is None:
                     restore_state_after_inject_failure()
-                    return {"error": "no pty"}, None
+                    return {"error": "no pty", "commit_unknown": False}, None
                 try:
                     _inject(fd, text=text, suffix=seq)
                 except Exception as e:
                     restore_state_after_inject_failure()
-                    return {"error": str(e)}, None
+                    return {"error": str(e), "commit_unknown": True}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
@@ -1434,7 +1434,7 @@ class Broker:
                 try:
                     _write_all(fd, b)
                 except Exception as e:
-                    return {"error": str(e), "queued": False, "n": 0, "key_queue_len": 0}, None
+                    return {"error": str(e), "queued": False, "n": 0, "key_queue_len": 0, "commit_unknown": True}, None
             return resp, None
 
         def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:

@@ -287,7 +287,7 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "normal prompt")
 
     def test_malformed_parseable_send_responses_are_commit_unknown(self) -> None:
-        for response in [{}, None, {"queued": False, "queue_len": "notint"}]:
+        for response in [{}, None, {"queued": False, "queue_len": "notint"}, {"queued": False, "queue_len": -1}, {"queued": False, "queue_len": True}, {"queued": False, "queue_len": 1.9}, {"queued": False, "queue_len": "0"}]:
             with self.subTest(response=response):
                 sid = "s1"
                 mgr = self._mgr()
@@ -337,6 +337,46 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
         self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
+
+    def test_queue_known_send_failure_clears_pre_dispatch_unknown_marker(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+
+        from codoxear.server import SessionInjectionError
+
+        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionInjectionError("no pty"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=321.0):
+            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
+        self.assertFalse(mgr._queues[sid][0].get("commit_unknown"))
+
+    def test_queue_broker_declared_unknown_keeps_commit_unknown_marker(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("partial write"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=654.0):
+            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+        self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 654.0)
+
+    def test_clear_pending_attachment_clears_persisted_flag(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+
+        self.assertEqual(SessionManager.clear_pending_attachment(mgr, sid), {"ok": True, "pending_attachment": False})
+        self.assertFalse(mgr._sessions[sid].pending_attachment)
+        self.assertNotIn(sid, mgr._pending_attachment_ids)
 
     def test_queue_head_is_durably_unknown_before_dispatch(self) -> None:
         sid = "s1"

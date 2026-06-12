@@ -2470,6 +2470,13 @@ class SessionManager:
                 ids.discard(session_id)
         self._save_pending_attachments()
 
+    def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
+        with self._lock:
+            if session_id not in self._sessions:
+                raise KeyError("unknown session")
+        self._set_pending_attachment(session_id, False)
+        return {"ok": True, "pending_attachment": False}
+
     def _load_recent_cwds(self) -> None:
         obj = _load_json_file(RECENT_CWD_PATH, default=None)
         if obj is None:
@@ -2731,7 +2738,7 @@ class SessionManager:
         self._save_queues()
         try:
             resp = self.send(session_id, text, queue_item_id=head_id)
-        except SessionNotReadyError:
+        except (SessionNotReadyError, SessionInjectionError):
             with self._lock:
                 s0 = self._sessions.get(session_id)
                 if s0 and s0.queue_sending_item_id == head_id:
@@ -4418,13 +4425,15 @@ class SessionManager:
                 err = str(resp.get("error"))
                 if err == "empty response":
                     raise SessionCommitUnknownError("send commit status unknown; broker response was empty")
+                if bool(resp.get("commit_unknown")):
+                    raise SessionCommitUnknownError(f"send commit status unknown; {err}")
                 raise SessionInjectionError(err)
             if "queue_len" not in resp:
                 raise SessionCommitUnknownError("send commit status unknown; broker response was incomplete")
-            try:
-                queue_len = int(resp.get("queue_len"))
-            except (TypeError, ValueError) as e:
-                raise SessionCommitUnknownError("send commit status unknown; broker response was invalid") from e
+            queue_len_raw = resp.get("queue_len")
+            if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
+                raise SessionCommitUnknownError("send commit status unknown; broker response was invalid")
+            queue_len = int(queue_len_raw)
             with self._lock:
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
@@ -4571,6 +4580,8 @@ class SessionManager:
                 raise SessionNotReadyError("session is busy; wait before attaching a file")
             resp = self.inject_keys(session_id, seq)
             if isinstance(resp, dict) and resp.get("error"):
+                if bool(resp.get("commit_unknown")):
+                    raise SessionCommitUnknownError(f"attachment commit status unknown; {resp.get('error')}")
                 raise SessionInjectionError(str(resp.get("error")))
             self._set_pending_attachment(session_id, True)
             return resp
@@ -6447,6 +6458,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, "alias": alias})
                 return
 
+            session_id = _match_session_route(path, "pending_attachment", "clear")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                try:
+                    res = MANAGER.clear_pending_attachment(session_id)
+                except KeyError:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                _json_response(self, 200, res)
+                return
+
             session_id = _match_session_route(path, "send")
             if session_id is not None:
                 if not _require_auth(self):
@@ -6709,6 +6733,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except SessionInjectionError as e:
                     _json_response(self, 502, {"error": str(e)})
+                    return
+                except SessionCommitUnknownError as e:
+                    _json_response(self, 504, {"error": str(e), "commit_unknown": True})
                     return
                 _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
                 return

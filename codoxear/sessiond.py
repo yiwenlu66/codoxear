@@ -299,12 +299,12 @@ class Sessiond:
             if sync_commit:
                 if fd is None:
                     restore_state_after_inject_failure()
-                    return {"error": "no pty"}, None
+                    return {"error": "no pty", "commit_unknown": False}, None
                 try:
                     _inject(fd, text=text, suffix=enter)
                 except Exception as e:
                     restore_state_after_inject_failure()
-                    return {"error": str(e)}, None
+                    return {"error": str(e), "commit_unknown": True}, None
                 return {"queued": False, "queue_len": 0}, None
             def after_reply() -> None:
                 if fd is None:
@@ -330,7 +330,7 @@ class Sessiond:
                     _write_all(st.pty_master_fd, b)
                     return {"ok": True}, None
                 except Exception as e:
-                    return {"error": str(e)}, None
+                    return {"error": str(e), "commit_unknown": True}, None
 
         def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
             return {"ok": True}, self._teardown_managed_process_group
