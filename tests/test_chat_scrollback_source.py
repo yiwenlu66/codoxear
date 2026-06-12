@@ -149,7 +149,8 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_submit_clears_composer_only_after_send_success(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("form.onsubmit = async")
+        send_start = source.index("async function sendText(")
+        start = source.index("form.onsubmit = async", send_start)
         end = source.index("(async () =>", start)
         block = source[start:end]
         self.assertNotIn("clearComposer();\n          await sendText(raw);", block)
