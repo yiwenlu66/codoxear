@@ -1201,3 +1201,10 @@
 - Browser evidence on isolated Docker `:18932`: Chromium reported `video/x-matroska` as playable enough that a `canPlayType()` heuristic chose the original `.mkv`, loaded metadata with width/height `0`, then after the fix the explicit safe-container allowlist chose `/api/files/video_preview` and loaded `160x90` metadata. Artifacts in `/tmp/codoxear-video-transcode-evidence/`.
 - Code commit: `fix: make video preview transcoding usable`.
 - Validation: targeted local checks passed (`5 passed`); targeted Docker checks passed (`4 passed` and ffmpeg-backed transcode test executed); full local suite passed (`613 passed, 25 subtests passed in 9.54s`); full isolated Docker suite passed (`612 passed, 1 skipped, 25 subtests passed in 11.91s`).
+
+
+## 2026-06-13 03:17
+- Investigated user report: Pi sessions can show/stay busy after interruption.
+- Mechanism found: Pi assistant messages with `stopReason: "aborted"` and no text were not treated as terminal turn signals. Log-derived idle stayed non-idle, broker state did not close the turn, and sessiond's lightweight watcher also lacked a Pi aborted branch.
+- Code commit: `fix: clear Pi busy state on abort logs`.
+- Validation: focused abort regressions passed (`4 passed`); broader idle/busy/sessiond suites passed (`76 passed in 2.14s`); full local suite passed (`617 passed, 25 subtests passed in 9.15s`); full isolated Docker suite passed (`616 passed, 1 skipped, 25 subtests passed in 12.00s`).

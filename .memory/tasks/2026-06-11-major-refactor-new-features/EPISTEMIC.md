@@ -1014,3 +1014,11 @@ Commitments:
 - Intervention: install ffmpeg in the isolated Docker sandbox; document ffmpeg/ffprobe as the dependency; use an explicit browser-safe container allowlist (`mp4`, `webm`, `ogg`) so `.mkv`, `.mov`, `.avi`, etc. request the compatible preview first.
 - Prediction now supported: incompatible containers trigger server MP4 preview generation deterministically; browser-native types still load original first and retain error fallback.
 - Scoped claim: ffmpeg-backed compatible preview generation works for the tested synthetic MKV in isolated Docker/browser. Real large videos, unusual codecs, and production hosts without ffmpeg remain separately scoped.
+
+
+## 2026-06-13 03:17
+- Observation: current Pi idle detection required assistant text or error text. A plausible interrupt log shape is `{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}`, which carries no text but is terminal.
+- Interpretation: after interruption, Codoxear could keep Pi busy because neither log idle, broker busy state, nor sessiond's watcher recognized Pi `stopReason: "aborted"` as a turn close.
+- Intervention: added `pi_assistant_is_aborted_turn()` and wired it into chat flags (`turn_aborted`), `_compute_idle_from_log()`, broker `_apply_rollout_obj_to_state()`, and sessiond log busy signals.
+- Evidence: targeted regressions cover all three state paths; full local/Docker suites passed.
+- Scoped claim: Pi logs containing assistant `stopReason: "aborted"` now clear busy/turn state in the tested broker, sessiond, and server log-idle paths. Real live Pi interrupt behavior still needs credentialed/runtime confirmation.
