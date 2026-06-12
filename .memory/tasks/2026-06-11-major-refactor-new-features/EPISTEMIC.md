@@ -453,3 +453,6 @@ Commitments:
 
 ## 2026-06-12 16:35
 - UX observation: the no-session title previously retained edit affordance styling and tooltip even though click returned immediately. The visible affordance now matches the actual selected-session precondition.
+
+## 2026-06-12 16:39
+- UX/accessibility observation: a clickable div without keyboard semantics made the selected-session title edit affordance mouse-only. The updated state model distinguishes selected interactive title from no-session inert title at cursor, title, role, aria label, aria-disabled, and tab order levels.
