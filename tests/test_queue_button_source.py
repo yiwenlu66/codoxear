@@ -16,6 +16,15 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('queueControl.setAttribute("aria-label", queueLabel);', source)
         self.assertIn('syncQueueSubmitState();\n          syncSendButtonState();\n          diagBtn.disabled = !selected;', source)
 
+    def test_commit_unknown_queue_items_are_visible_and_not_mutated(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+
+        self.assertIn('commitUnknown: !!item.commit_unknown', source)
+        self.assertIn('const commitUnknown = !!item.commitUnknown;', source)
+        self.assertIn('if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));', source)
+        self.assertIn('const locked = sending || commitUnknown || queueMutationLocks.has(itemId);', source)
+        self.assertIn('del.disabled = sending || queueMutationLocks.has(itemId);', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -213,6 +213,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertLess(block.index("const res = await api"), block.index("beginTranscriptRenewal(sessionId);"))
         self.assertIn("if (renderHere && !renewsTranscript) {", block)
         self.assertIn("if (!renderedAtLiveTail)", block)
+        self.assertIn("const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);", block)
+        self.assertIn("if (commitUnknown) setToast(\"send status unknown; check transcript before retrying\");", block)
         self.assertIn("pendingUser.splice(i, 1);", block)
         self.assertIn("const pendingRow = pendingEl.closest(\".msg-row\");", block)
         self.assertIn("if (pendingRow) pendingRow.remove();", block)

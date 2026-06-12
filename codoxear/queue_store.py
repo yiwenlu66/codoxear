@@ -31,7 +31,18 @@ def copy_queue_item(item: dict[str, Any]) -> dict[str, Any]:
         ts = time.time()
     if not math.isfinite(ts) or ts <= 0:
         ts = time.time()
-    return {"id": str(item.get("id") or ""), "text": str(item.get("text") or ""), "created_ts": ts}
+    out: dict[str, Any] = {"id": str(item.get("id") or ""), "text": str(item.get("text") or ""), "created_ts": ts}
+    if bool(item.get("commit_unknown")):
+        out["commit_unknown"] = True
+        commit_unknown_ts = item.get("commit_unknown_ts")
+        try:
+            unknown_ts = float(commit_unknown_ts)
+        except (TypeError, ValueError):
+            unknown_ts = time.time()
+        if not math.isfinite(unknown_ts) or unknown_ts <= 0:
+            unknown_ts = time.time()
+        out["commit_unknown_ts"] = unknown_ts
+    return out
 
 
 def coerce_queue_item(raw: Any) -> dict[str, Any] | None:
@@ -55,7 +66,18 @@ def coerce_queue_item(raw: Any) -> dict[str, Any] | None:
         ts = time.time()
     if not math.isfinite(ts) or ts <= 0:
         ts = time.time()
-    return {"id": item_id.strip(), "text": text, "created_ts": ts}
+    out: dict[str, Any] = {"id": item_id.strip(), "text": text, "created_ts": ts}
+    if bool(raw.get("commit_unknown")):
+        out["commit_unknown"] = True
+        commit_unknown_ts = raw.get("commit_unknown_ts")
+        try:
+            unknown_ts = float(commit_unknown_ts)
+        except (TypeError, ValueError):
+            unknown_ts = time.time()
+        if not math.isfinite(unknown_ts) or unknown_ts <= 0:
+            unknown_ts = time.time()
+        out["commit_unknown_ts"] = unknown_ts
+    return out
 
 
 class QueueStore:
@@ -110,6 +132,7 @@ class QueueStore:
         for item in q:
             copied = copy_queue_item(item)
             copied["sending"] = bool(sending_item_id and copied["id"] == sending_item_id)
+            copied["commit_unknown"] = bool(copied.get("commit_unknown"))
             out.append(copied)
         return out
 

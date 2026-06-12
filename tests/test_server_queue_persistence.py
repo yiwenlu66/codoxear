@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.server import Session
+from codoxear.server import SessionCommitUnknownError
 from codoxear.server import SessionManager
 from codoxear.server import SessionNotReadyError
 from codoxear.server import _match_session_route
@@ -235,16 +236,55 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid] = _make_session(sid)
         mgr._record_prelog_user_message = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
         mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
-        seen: list[dict[str, object]] = []
+        seen: list[tuple[dict[str, object], float | None]] = []
 
-        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float = 0) -> dict[str, object]:
-            seen.append(req)
+        def sock_call(_sock: Path, req: dict[str, object], timeout_s: float | None = 0) -> dict[str, object]:
+            seen.append((req, timeout_s))
             return {"queued": False, "queue_len": 0}
 
         mgr._sock_call = sock_call  # type: ignore[method-assign]
 
         self.assertEqual(SessionManager.send(mgr, sid, "normal prompt"), {"queued": False, "queue_len": 0})
-        self.assertEqual(seen, [{"cmd": "send", "text": "normal prompt", "sync": True}])
+        self.assertEqual(seen, [({"cmd": "send", "text": "normal prompt", "sync": True}, 30.0)])
+
+    def test_send_timeout_preserves_pending_attachment_as_unknown(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr._pending_attachment_ids.add(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("unknown commit should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("timed out"))  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "commit status unknown"):
+            SessionManager.send(mgr, sid, "intended prompt", allow_pending_attachment=True)
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+
+    def test_queue_send_timeout_marks_head_commit_unknown(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(SessionCommitUnknownError("unknown"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=123.0):
+            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+
+        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
+        self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
+        self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
+
+    def test_commit_unknown_queue_head_does_not_auto_promote(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [dict(_queue_item("q1", "maybe sent"), commit_unknown=True)]
+        mgr.get_state = lambda _sid: self.fail("commit-unknown head should block before broker state")  # type: ignore[method-assign]
+
+        self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
 
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"

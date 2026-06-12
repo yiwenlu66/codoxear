@@ -9599,13 +9599,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 id: typeof item.id === "string" ? item.id : "",
                 text: typeof item.text === "string" ? item.text : "",
                 sending: !!item.sending,
+                commitUnknown: !!item.commit_unknown,
               }))
               .filter((item) => item.id && item.text.trim());
           }
           if (data && Array.isArray(data.queue)) {
             return data.queue
               .filter((text) => typeof text === "string" && text.trim())
-              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false }));
+              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false, commitUnknown: false }));
           }
           return [];
         }
@@ -9766,7 +9767,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           q.forEach((item, idx) => {
             const itemId = String(item.id || "");
             const sending = !!item.sending;
-            const locked = sending || queueMutationLocks.has(itemId);
+            const commitUnknown = !!item.commitUnknown;
+            const locked = sending || commitUnknown || queueMutationLocks.has(itemId);
             const row = el("div", { class: "queueItem" });
             const editorShell = el("div", { class: "queueEditorShell" });
             const ta = el("textarea", { class: "queueText", "aria-label": `Queued message ${idx + 1}` });
@@ -9783,6 +9785,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             editorShell.appendChild(ta);
             const actions = el("div", { class: "queueActionRail" });
             if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
+            if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));
             const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
             up.disabled = locked || idx <= minMoveIndex;
             up.onclick = (e) => {
@@ -9798,7 +9801,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void moveQueueItem(sid, itemId, idx + 1);
             };
             const del = el("button", { class: "icon-btn queueIconBtn danger", title: "Delete", "aria-label": "Delete", type: "button", html: iconSvg("trash") });
-            del.disabled = locked;
+            del.disabled = sending || queueMutationLocks.has(itemId);
             del.onclick = async (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -10539,7 +10542,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
             return true;
           } catch (e2) {
-            setToast(`send error: ${e2.message}`);
+            const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
+            if (commitUnknown) setToast("send status unknown; check transcript before retrying");
+            else setToast(`send error: ${e2.message}`);
             if (renderHere) {
               for (let i = pendingUser.length - 1; i >= 0; i -= 1) {
                 const pending = pendingUser[i];

@@ -283,6 +283,7 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
         str((4 * ((ATTACH_UPLOAD_MAX_BYTES + 2) // 3)) + (64 * 1024)),
     )
 )
+SEND_COMMIT_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_SEND_COMMIT_TIMEOUT_SECONDS", "30"))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
@@ -880,6 +881,10 @@ class SessionNotReadyError(RuntimeError):
 
 
 class SessionInjectionError(RuntimeError):
+    pass
+
+
+class SessionCommitUnknownError(RuntimeError):
     pass
 
 
@@ -2690,6 +2695,9 @@ class SessionManager:
             if s0.queue_sending_item_id is not None:
                 return None
             head = q[0]
+            if bool(head.get("commit_unknown")):
+                s0.queue_idle_since = None
+                return None
             head_id = str(head.get("id") or "")
             if expected_item_id is not None and head_id != expected_item_id:
                 return None
@@ -2708,6 +2716,21 @@ class SessionManager:
             text = str(head.get("text") or "")
         try:
             resp = self.send(session_id, text, queue_item_id=head_id)
+        except SessionCommitUnknownError:
+            with self._lock:
+                s0 = self._sessions.get(session_id)
+                if s0 and s0.queue_sending_item_id == head_id:
+                    s0.queue_sending_item_id = None
+                    s0.queue_idle_since = None
+                q = self._queues.get(session_id)
+                if isinstance(q, list):
+                    for item in q:
+                        if str(item.get("id") or "") == head_id:
+                            item["commit_unknown"] = True
+                            item["commit_unknown_ts"] = time.time()
+                            break
+            self._save_queues()
+            return None
         except Exception:
             with self._lock:
                 s0 = self._sessions.get(session_id)
@@ -4333,9 +4356,11 @@ class SessionManager:
                 sock = s.sock_path
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
-            self._record_prelog_user_message(s, text, source="send")
             try:
-                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=None)
+                timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
+                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s)
+            except (TimeoutError, socket.timeout) as e:
+                raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
             except Exception:
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
@@ -4348,6 +4373,7 @@ class SessionManager:
             with self._lock:
                 if isinstance(resp, dict) and resp.get("error"):
                     raise SessionInjectionError(str(resp.get("error")))
+                self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:
                     if "busy" in resp:
@@ -6389,6 +6415,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except SessionInjectionError as e:
                     _json_response(self, 502, {"error": str(e)})
+                    return
+                except SessionCommitUnknownError as e:
+                    _json_response(self, 504, {"error": str(e), "commit_unknown": True})
                     return
                 _json_response(self, 200, res)
                 return

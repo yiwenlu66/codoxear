@@ -2194,6 +2194,9 @@ select {
         line-height: 1;
         padding: 0 2px 0 0;
       }
+      .queueSendingTag.warning {
+        color: #92400e;
+      }
       .queueIconBtn {
         width: 32px;
         height: 32px;
