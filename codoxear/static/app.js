@@ -129,7 +129,8 @@
         return `codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}`;
       }
       function loadRememberedBackendChoice() {
-        return normalizeAgentBackendName(localStorage.getItem(LAST_BACKEND_KEY) || "codex");
+        const value = String(localStorage.getItem(LAST_BACKEND_KEY) || "").trim();
+        return value ? normalizeAgentBackendName(value) : "";
       }
       function rememberBackendChoice(backend) {
         localStorage.setItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
@@ -6621,7 +6622,9 @@
           const cur = selected ? sessionIndex.get(selected) : null;
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
           const rememberedBackend = loadRememberedBackendChoice();
-          const initialBackend = rememberedBackend || (cur ? sessionAgentBackend(cur) : normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend));
+          const currentBackend = cur ? sessionAgentBackend(cur) : "";
+          const defaultBackend = normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend);
+          const initialBackend = currentBackend || rememberedBackend || defaultBackend;
           newSessionStatus.textContent = String(statusText || newSessionDefaultsWarningText() || "");
           newSessionCwdInput.value = initialCwd;
           newSessionNameInput.value = "";

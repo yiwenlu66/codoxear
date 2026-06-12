@@ -109,6 +109,19 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         block = source[start:end]
         self.assertLess(block.index("newSessionStartBusy = true;"), block.index("await spawnSessionWithCwd("))
 
+    def test_new_session_initial_backend_prefers_selected_session_when_no_user_choice(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('const value = String(localStorage.getItem(LAST_BACKEND_KEY) || "").trim();', source)
+        self.assertIn('return value ? normalizeAgentBackendName(value) : "";', source)
+        start = source.index("function openNewSessionDialog")
+        end = source.index("editPriorityRange.oninput", start)
+        block = source[start:end]
+        self.assertIn("const rememberedBackend = loadRememberedBackendChoice();", block)
+        self.assertIn('const currentBackend = cur ? sessionAgentBackend(cur) : "";', block)
+        self.assertIn("const defaultBackend = normalizeAgentBackendName(newSessionDefaults && newSessionDefaults.default_backend);", block)
+        self.assertIn("const initialBackend = currentBackend || rememberedBackend || defaultBackend;", block)
+        self.assertNotIn("rememberedBackend || (cur ? sessionAgentBackend(cur)", block)
+
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function lastProviderModelKey(backend)", source)
