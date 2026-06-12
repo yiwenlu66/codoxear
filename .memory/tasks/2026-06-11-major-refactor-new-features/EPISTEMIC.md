@@ -483,3 +483,11 @@ Commitments:
 - Intervention: bound save request target and post-await mutation to the captured session/path snapshot. Success and error responses from stale saves no longer update the visible file state.
 - Evidence: source regression asserts captured `saveSessionId`/`savePath`/draft/version, captured write URL/body, and `saveStillCurrent()` guards on success/error; targeted tests and full Docker suite passed.
 - Scoped claim: stale file-save responses are prevented from mutating a different active file/session. This does not simulate Monaco in-browser interleavings; it constrains the JS ownership boundary by source and suite evidence.
+
+
+## 2026-06-12 17:17
+- Observation: the edit-conversation save handler previously used mutable `editSessionId` and unconditionally hid the edit modal after `await`; it also compared `selected === editSessionId` after `hideEditSession()` had cleared `editSessionId`.
+- Mechanism supported: a save response for session A could close or write error text into a later edit modal for session B if the user reopened the modal while A's request was in flight. Duplicate clicks could also issue duplicate saves.
+- Intervention: captured `sid` at save start, used it for the API URL and selected-title refresh, disabled the save button while pending, and ignored stale success/error/finally updates unless `editSessionId` still equals `sid`.
+- Evidence: source regression constrains the captured id, disabled guard, stale success/error checks, and selected-title update; targeted tests and full Docker suite passed.
+- Scoped claim: edit-save responses are now owned by the edit session that initiated them. This does not prove all edit modal UX semantics on real mobile devices, only the stale-response and duplicate-save boundaries in the current JS.

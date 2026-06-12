@@ -752,3 +752,9 @@
 - UI race fix: file saves now capture `saveSessionId`, `savePath`, draft/version state, and use those captured values for the write request; stale success/error responses are ignored if the active file/session changed while the request was in flight.
 - Commit: `832f893 fix: ignore stale file save responses`.
 - Validation: `node --check codoxear/static/app.js` passed; focused file-viewer/upload/list/session-state tests passed (`32 passed in 2.28s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`496 passed, 2 skipped, 10 subtests passed in 10.84s`).
+
+
+## 2026-06-12 17:17
+- UI race fix: edit-conversation save now captures the edited session id, uses it in the API URL/title update, disables duplicate saves while pending, and ignores stale success/error UI updates if another edit session is opened before the request resolves.
+- Commit: `92fb308 fix: bind edit save responses to the edited session`.
+- Validation: `node --check codoxear/static/app.js` passed; focused edit/title/sidebar tests passed (`19 passed in 1.84s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`498 passed, 2 skipped, 10 subtests passed in 11.25s`).
