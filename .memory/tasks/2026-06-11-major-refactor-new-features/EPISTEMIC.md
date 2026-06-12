@@ -325,3 +325,6 @@ Commitments:
 
 ## 2026-06-12 13:23
 - Evidence update: the shared JSON state IO invariant now covers voice push settings/subscriptions/ledger in addition to server UI state and unattended state. Schema semantics remain owned by each store's cleaner; the common helper owns parent creation and atomic replacement.
+
+## 2026-06-12 13:25
+- Evidence update: another `list_sessions()` lock-held IO source was removed. Log run-settings scans now happen outside the manager lock, with a guarded re-lock to mutate the session only if it is still current. First-history timestamp recovery remains a smaller known lock-held log-read risk.

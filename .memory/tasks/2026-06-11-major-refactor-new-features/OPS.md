@@ -378,3 +378,8 @@
 - Architecture/refactor follow-up: migrated voice push settings, subscriptions, and delivery ledger JSON stores to shared `load_json_file()`/`atomic_write_json()` helpers.
 - Commit: `66a4592 refactor: share voice json state helpers`.
 - Validation: `python3 -m py_compile codoxear/util.py codoxear/voice_push.py codoxear/server.py` passed; targeted voice/helper tests passed (`34 passed in 0.83s`); full isolated Docker suite passed (`453 passed, 2 skipped in 10.33s`).
+
+## 2026-06-12 13:25
+- Architecture/refactor follow-up: moved `_read_run_settings_from_log()` out of `SessionManager.list_sessions()`'s manager lock. `list_sessions()` now snapshots whether settings are needed, scans the log outside the lock, then briefly re-locks to update the still-current session.
+- Commit: `31271fd refactor: read run settings outside manager lock`.
+- Validation: `python3 -m py_compile codoxear/server.py` passed; targeted sidebar/provenance/session tests passed (`54 passed in 1.80s`); full isolated Docker suite passed (`454 passed, 2 skipped in 10.38s`).
