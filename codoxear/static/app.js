@@ -1674,6 +1674,8 @@
          let openSwipeSessionId = null;
          let openSwipeTargetX = 0;
          let swipeRefreshDeferred = false;
+         let sessionsRefreshInFlight = null;
+         let sessionsRefreshQueued = false;
 	        let sessionIndex = new Map(); // session_id -> session info
         const sessionTranscriptSlots = new Map();
         const sessionTailCache = new Map();
@@ -4030,7 +4032,27 @@
           }
         }
 
-	         async function refreshSessions() {
+         async function refreshSessions() {
+           if (sessionsRefreshInFlight) {
+             sessionsRefreshQueued = true;
+             return sessionsRefreshInFlight;
+           }
+           sessionsRefreshInFlight = (async () => {
+             let result = latestSessions;
+             try {
+               do {
+                 sessionsRefreshQueued = false;
+                 result = await refreshSessionsOnce();
+               } while (sessionsRefreshQueued && !appDisposed);
+               return result;
+             } finally {
+               sessionsRefreshInFlight = null;
+             }
+           })();
+           return sessionsRefreshInFlight;
+         }
+
+	         async function refreshSessionsOnce() {
 	           const data = await api("/api/sessions");
           if (appDisposed) return latestSessions;
           const notModified = apiResponseNotModified(data);

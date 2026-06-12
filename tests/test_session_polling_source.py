@@ -29,15 +29,25 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', source)
         self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", source)
 
+    def test_session_refreshes_are_serialized(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("let sessionsRefreshInFlight = null;", source)
+        self.assertIn("let sessionsRefreshQueued = false;", source)
+        self.assertIn("if (sessionsRefreshInFlight) {", source)
+        self.assertIn("sessionsRefreshQueued = true;", source)
+        self.assertIn("result = await refreshSessionsOnce();", source)
+        self.assertIn("while (sessionsRefreshQueued && !appDisposed);", source)
+        self.assertIn("sessionsRefreshInFlight = null;", source)
+
     def test_sessions_304_fast_path_precedes_sidebar_rebuild(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
+        block = source[source.index("async function refreshSessionsOnce()") : source.index("function appendEvent")]
         self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index('sessionsWrap.innerHTML = "";'))
         self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index("newSessionDefaults ="))
 
     def test_sessions_304_preserves_deferred_swipe_refresh(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
+        block = source[source.index("async function refreshSessionsOnce()") : source.index("function appendEvent")]
         self.assertIn("if (notModified && !swipeRefreshDeferred) return latestSessions;", block)
         self.assertIn("if (!notModified) {", block)
         self.assertIn("const applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId;", block)
