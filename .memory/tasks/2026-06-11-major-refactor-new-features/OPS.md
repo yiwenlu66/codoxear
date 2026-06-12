@@ -944,3 +944,9 @@
 - Clean-room rerun repair: direct sends now reject local queued/sending prompts unless called by queue promotion; send readiness refreshes sidecar metadata before log-idle checks; restored-pending confirmation happens before optimistic UI echo; attachment key-injection error responses no longer set pending state.
 - Commit: `fix: harden send and attachment commit boundaries`.
 - Validation: targeted queue/attachment/chat/send tests passed (`61 passed in 3.13s`). Plain full suite passed (`552 passed, 10 subtests passed in 8.76s`). Full isolated Docker suite passed (`550 passed, 2 skipped, 10 subtests passed in 11.16s`).
+
+
+## 2026-06-12 21:09
+- Clean-room rerun repair: broker `keys` now returns errors on PTY write failure; broker/sessiond support synchronous `send` commits for pending-attachment sends; server sends `sync=true` when clearing pending attachments; failed sends roll back optimistic local echo/running state.
+- Commit: `fix: report input commit failures`.
+- Validation: targeted broker/sessiond/attachment/chat tests passed (`65 passed in 3.05s`). Plain full suite passed (`556 passed, 10 subtests passed in 9.35s`). Full isolated Docker suite passed (`554 passed, 2 skipped, 10 subtests passed in 14.37s`).

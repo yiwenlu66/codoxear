@@ -715,3 +715,10 @@ Commitments:
 - Interventions: added local queue/sending guards to direct send with a queue-promotion token, refreshed send log metadata, moved UI confirmation before optimistic echo, and introduced `SessionInjectionError` before pending state is persisted.
 - Evidence: targeted regressions encode all four counterexamples; full local/Docker suites passed.
 - Scoped claim: server-managed direct send now respects local queue order and live log metadata, and attachment-pending state is only created after successful key injection.
+
+
+## 2026-06-12 21:09
+- Observation: clean-room review found control-socket success could precede or mask PTY write failure, causing phantom pending set/clear; failed sends also left phantom optimistic UI rows.
+- Interventions: key writes now return error responses, pending-attachment sends use synchronous broker/sessiond commit ACKs, server preserves pending state on commit error, and frontend removes optimistic rows on send failure.
+- Evidence: targeted tests cover broker/sessiond sync send failures, broker key-write failures, pending-send error preservation, and UI rollback; full local/Docker suites passed.
+- Scoped claim: attachment pending state now tracks successful server-visible PTY writes for broker/sessiond paths; non-pending sends still intentionally ACK before after-reply injection for latency and do not mutate pending state.
