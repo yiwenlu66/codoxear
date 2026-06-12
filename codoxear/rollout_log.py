@@ -202,6 +202,8 @@ def _single_chat_event(obj: dict[str, Any]) -> dict[str, Any] | None:
                 evp["ts"] = ets
             return evp
 
+        if pi_assistant_is_aborted_turn(obj):
+            return None
         assistant_text = pi_assistant_text(obj)
         if isinstance(assistant_text, str) and assistant_text:
             ets = _event_ts(obj)

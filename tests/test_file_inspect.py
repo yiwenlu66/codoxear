@@ -134,6 +134,53 @@ class TestInspectOpenableFile(unittest.TestCase):
             _single_byte_range("bytes=100-110", 100)
 
     @unittest.skipIf(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, "ffmpeg and ffprobe required")
+    def test_video_preview_transcodes_odd_dimensions_to_browser_safe_mp4(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            src = td_path / "odd.mkv"
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=161x91:rate=1",
+                    "-t",
+                    "0.2",
+                    str(src),
+                ],
+                check=True,
+            )
+            old_dir = server.VIDEO_PREVIEW_DIR
+            try:
+                server.VIDEO_PREVIEW_DIR = td_path / "previews"
+                preview = _ensure_video_preview(src)
+                info = subprocess.check_output(
+                    [
+                        "ffprobe",
+                        "-v",
+                        "error",
+                        "-select_streams",
+                        "v:0",
+                        "-show_entries",
+                        "stream=codec_name,pix_fmt,width,height",
+                        "-of",
+                        "default=noprint_wrappers=1",
+                        str(preview),
+                    ],
+                    text=True,
+                )
+                self.assertIn("codec_name=h264", info)
+                self.assertIn("pix_fmt=yuv420p", info)
+                self.assertIn("width=162", info)
+                self.assertIn("height=92", info)
+            finally:
+                server.VIDEO_PREVIEW_DIR = old_dir
+
+    @unittest.skipIf(shutil.which("ffmpeg") is None or shutil.which("ffprobe") is None, "ffmpeg and ffprobe required")
     def test_video_preview_transcodes_to_browser_safe_mp4(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             td_path = Path(td)

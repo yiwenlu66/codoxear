@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from codoxear.sessiond import Sessiond
 from codoxear.sessiond import State
+from codoxear.sessiond import _busy_value_after_log_batch
 from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
 
@@ -48,6 +49,12 @@ class TestSessiondFailClosed(unittest.TestCase):
             _log_busy_signals({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}),
             (True, False),
         )
+
+    def test_log_busy_batch_preserves_record_order(self) -> None:
+        aborted = {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}}
+        user = {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "new turn"}]}}
+        self.assertIs(_busy_value_after_log_batch([aborted, user]), True)
+        self.assertIs(_busy_value_after_log_batch([user, aborted]), False)
 
     def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
         missing = Path(tempfile.gettempdir()) / "codoxear-missing-sessiond-jsonl-for-test.jsonl"

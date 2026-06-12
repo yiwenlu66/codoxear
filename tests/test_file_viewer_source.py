@@ -292,6 +292,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("def _ensure_video_preview(path: Path) -> Path:", server_source)
         self.assertIn("return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)", server_source)
         self.assertIn('"libx264"', module_source)
+        self.assertIn('"scale=ceil(iw/2)*2:ceil(ih/2)*2"', module_source)
         self.assertIn('"-pix_fmt"', module_source)
         self.assertIn('"yuv420p"', module_source)
         self.assertIn('"aac"', module_source)

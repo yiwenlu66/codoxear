@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear.pi_log import pi_token_update
+from codoxear.rollout_log import _single_chat_event
 from codoxear.server import _compute_idle_from_log
 from codoxear.server import _extract_chat_events
 
@@ -227,6 +228,20 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertTrue(flags["turn_aborted"])
         self.assertFalse(flags["turn_end"])
         self.assertEqual([event["role"] for event in events], ["user"])
+
+    def test_pi_aborted_text_is_not_history_final_response(self) -> None:
+        self.assertIsNone(
+            _single_chat_event(
+                {
+                    "type": "message",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "partial"}],
+                        "stopReason": "aborted",
+                    },
+                }
+            )
+        )
 
     def test_compute_idle_from_log_pi_final_message_with_thinking_is_idle(self) -> None:
         with TemporaryDirectory() as td:

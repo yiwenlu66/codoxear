@@ -77,6 +77,8 @@ def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
         "0:v:0",
         "-map",
         "0:a:0?",
+        "-vf",
+        "scale=ceil(iw/2)*2:ceil(ih/2)*2",
         "-c:v",
         "libx264",
         "-preset",

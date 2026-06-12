@@ -112,6 +112,17 @@ def _log_busy_signals(obj: dict[str, Any]) -> tuple[bool, bool]:
     return False, False
 
 
+def _busy_value_after_log_batch(objs: list[dict[str, Any]]) -> bool | None:
+    next_busy: bool | None = None
+    for obj in objs:
+        user_signal, turn_end_signal = _log_busy_signals(obj)
+        if user_signal:
+            next_busy = True
+        if turn_end_signal:
+            next_busy = False
+    return next_busy
+
+
 @dataclass
 class State:
     session_id: str | None
@@ -239,22 +250,11 @@ class Sessiond:
                 continue
             st.log_off = off
 
-            saw_user = False
-            saw_turn_end = False
-            for obj in objs:
-                user_signal, turn_end_signal = _log_busy_signals(obj)
-                saw_user = saw_user or user_signal
-                saw_turn_end = saw_turn_end or turn_end_signal
-
-            if saw_user:
+            next_busy = _busy_value_after_log_batch(objs)
+            if next_busy is not None:
                 with self._lock:
                     if self.state:
-                        self.state.busy = True
-
-            if saw_turn_end:
-                with self._lock:
-                    if self.state:
-                        self.state.busy = False
+                        self.state.busy = next_busy
 
     def _sock_server(self) -> None:
         st = self.state
