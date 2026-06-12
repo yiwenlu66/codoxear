@@ -2900,6 +2900,24 @@ def _read_chat_export_events(log_path: Path, *, max_bytes: int = TRANSCRIPT_EXPO
     return _extract_positioned_chat_events(records)
 
 
+def _parse_bounded_query_int(
+    qs: Mapping[str, list[str]],
+    name: str,
+    *,
+    default: int,
+    min_value: int,
+    max_value: int,
+) -> tuple[int, str | None]:
+    values = qs.get(name)
+    if not values:
+        return default, None
+    try:
+        value = int(values[0])
+    except (TypeError, ValueError):
+        return default, f"{name} must be an integer"
+    return max(min_value, min(max_value, value)), None
+
+
 def _search_chat_events(events: list[dict[str, Any]], query: str, *, limit: int = 20) -> tuple[int, list[dict[str, Any]]]:
     needle = query.strip().casefold()
     if not needle:
@@ -6759,14 +6777,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 qs = urllib.parse.parse_qs(u.query)
                 query = (qs.get("q") or [""])[0]
-                limit_q = qs.get("limit")
-                match_limit = 20
-                if limit_q:
-                    try:
-                        match_limit = max(0, min(100, int(limit_q[0])))
-                    except (TypeError, ValueError):
-                        _json_response(self, 400, {"error": "limit must be an integer"})
-                        return
+                match_limit, limit_error = _parse_bounded_query_int(qs, "limit", default=20, min_value=0, max_value=100)
+                if limit_error is not None:
+                    _json_response(self, 400, {"error": limit_error})
+                    return
                 transcript = _message_transcript_identity(s)
                 if not isinstance(query, str) or not query.strip():
                     _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
@@ -6801,14 +6815,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 qs = urllib.parse.parse_qs(u.query)
-                limit_q = qs.get("limit")
-                if limit_q is None:
-                    limit = 80
-                else:
-                    if not limit_q:
-                        raise ValueError("invalid limit")
-                    limit = int(limit_q[0])
-                limit = max(20, min(200, limit))
+                limit, limit_error = _parse_bounded_query_int(qs, "limit", default=80, min_value=20, max_value=200)
+                if limit_error is not None:
+                    _json_response(self, 400, {"error": limit_error})
+                    return
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                     transcript = _message_transcript_identity(s)
@@ -6867,14 +6877,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if cursor_q is None or not cursor_q or not cursor_q[0].strip():
                     _json_response(self, 400, {"error": "cursor required"})
                     return
-                limit_q = qs.get("limit")
-                if limit_q is None:
-                    limit = 60
-                else:
-                    if not limit_q:
-                        raise ValueError("invalid limit")
-                    limit = int(limit_q[0])
-                limit = max(20, min(200, limit))
+                limit, limit_error = _parse_bounded_query_int(qs, "limit", default=60, min_value=20, max_value=200)
+                if limit_error is not None:
+                    _json_response(self, 400, {"error": limit_error})
+                    return
                 if s.log_path is None or (not s.log_path.exists()):
                     _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
                     transcript = _message_transcript_identity(s)
