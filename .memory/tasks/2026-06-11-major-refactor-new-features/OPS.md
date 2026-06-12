@@ -1402,3 +1402,12 @@
 - Critic validation: `python3 -m pytest tests/test_session_polling_source.py tests/test_session_sidebar_priority.py -q` → `27 passed`; `node --check codoxear/static/app.js` → syntax OK.
 - Review artifact: `/tmp/codoxear-session-refresh-serialization-review.md`.
 - Residual risks noted: tests are source-shape rather than runtime async-race tests; a transient active-refresh failure does not immediately retry a queued refresh in the same loop; future direct `api("/api/sessions")` GET calls would bypass the guard, though none exist now.
+
+## 2026-06-13 06:47 — Transcript loading feedback
+- Added `renderTranscriptLoading(sessionId)` in `codoxear/static/app.js` for no-cache session opens. It renders a non-transcript `msg-row assistant typing-row transcript-loading-row` with `role="status"` / `aria-live="polite"` and text `Loading transcript…`; existing transcript render/reset paths remove it.
+- Cached tails remain immediate: `openSession()` tracks `displayedCachedTail` and only renders the loading row when no valid cached tail was applied.
+- Added muted loading bubble styling in `codoxear/static/app.css` and source tests in `tests/test_chat_scrollback_source.py`.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `29 passed`.
+- Browser evidence on `codoxear-sandbox-18932`: monkeypatched browser `fetch` to delay `/messages/tail`, clicked the `now` session, observed `Loading transcript…` while pending, then observed `loadingRows: 0` and real transcript text after the delayed tail response. Artifacts: `/tmp/codoxear-sidebar-gtd-evidence/transcript-loading-visible.json`, `transcript-loading-after.json`, `transcript-loading-visible.png`.
+- Full local validation: `python3 -m pytest -q` → `659 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `658 passed, 1 skipped, 25 subtests passed`.

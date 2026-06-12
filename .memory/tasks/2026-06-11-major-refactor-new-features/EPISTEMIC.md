@@ -1191,3 +1191,10 @@ Commitments:
 - Observation: Clean-room review found no blockers in the serialized `refreshSessions()` wrapper and confirmed auth failures still propagate to all concurrent waiters.
 - Scoped claim: Current session-list GET callers go through the serialization wrapper, so `/api/sessions` ETag/cache/sidebar updates are applied in a single client-side sequence with queued follow-up refreshes for concurrent demand.
 - Remaining uncertainty: There is no dedicated JS async race harness; if a refresh fails transiently while queued demand exists, recovery depends on the next timer/manual caller rather than an immediate retry.
+
+## 2026-06-13 06:47 — Loading feedback improves perceived transcript latency without changing transcript state
+- Observation: `openSession()` cleared the chat and then awaited `/messages/tail`; without a cached tail, users could see a blank transcript during slow tail fetches.
+- Mechanism: A loading indicator is safe if it is explicitly non-transcript, excluded from message-row calculations, and removed by authoritative transcript rendering.
+- Intervention: Added a `typing-row` loading message only for no-cache opens; cached tails still render immediately, and `renderSessionTail()` / `renderPendingTranscriptSlot()` clear the loading row through existing DOM reset paths.
+- Evidence: Focused tests pin non-transcript class and cache-aware call site; browser evidence with a delayed tail fetch showed the loading row appears while pending and disappears after real transcript content renders; full local/Docker suites passed.
+- Scoped claim: No-cache session opens now provide visible loading feedback without adding transcript events or changing live/history cursor semantics.
