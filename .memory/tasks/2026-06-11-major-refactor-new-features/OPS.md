@@ -1040,3 +1040,9 @@
 - Focused bounded-send clean-room rerun at HEAD `8c89b9e` found no blockers in bounded send/attachment/enqueue commit-unknown paths.
 - Review artifact: `/tmp/codoxear-bounded-send-critic-rerun8.md`.
 - Reviewer targeted validation: `tests/test_server_queue_persistence.py` passed (`44 passed, 11 subtests passed`).
+
+
+## 2026-06-12 23:16
+- Architecture tranche: session read paths no longer promote queued prompts. Removed queue-drain side effect from `list_sessions()` and changed `refresh_session_meta(..., drain_queue=False)` default; queue sends remain owned by enqueue and queue sweep.
+- Commit: `fix: keep session reads non-committing`.
+- Validation: targeted tests passed (`68 passed, 11 subtests passed in 1.90s`). Plain full suite passed (`585 passed, 21 subtests passed in 8.82s`). Full isolated Docker suite passed (`583 passed, 2 skipped, 21 subtests passed in 11.17s`).

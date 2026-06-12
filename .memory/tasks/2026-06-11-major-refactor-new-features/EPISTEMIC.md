@@ -824,3 +824,10 @@ Commitments:
 ## 2026-06-12 23:13
 - Observation: focused adversarial rerun found no demonstrated blockers after explicit `commit_unknown` override handling.
 - Scoped claim: bounded send/attachment/enqueue commit-unknown paths are internally consistent under reviewed source/tests. Non-blocking residual: direct-send unknown has toast-only recovery, and queue pre-dispatch unknown is conservative if a crash occurs before broker request.
+
+
+## 2026-06-12 23:16
+- Observation: architecture review identified `/api/sessions`/metadata refresh as hidden commit paths because reads could drain queues.
+- Intervention: removed queue promotion from `list_sessions()` and made metadata refresh non-draining by default; queue promotion remains in explicit enqueue and queue-sweep mechanisms.
+- Evidence: targeted test asserts `list_sessions()` does not call `_maybe_drain_session_queue`; source tests pin non-draining refresh defaults; full local/Docker suites passed.
+- Scoped claim: session list/metadata reads no longer act as user-input commit paths. Queue draining may now wait for the queue sweep interval rather than piggybacking on session polling.
