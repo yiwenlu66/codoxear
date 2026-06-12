@@ -1022,3 +1022,13 @@ Commitments:
 - Intervention: added `pi_assistant_is_aborted_turn()` and wired it into chat flags (`turn_aborted`), `_compute_idle_from_log()`, broker `_apply_rollout_obj_to_state()`, and sessiond log busy signals.
 - Evidence: targeted regressions cover all three state paths; full local/Docker suites passed.
 - Scoped claim: Pi logs containing assistant `stopReason: "aborted"` now clear busy/turn state in the tested broker, sessiond, and server log-idle paths. Real live Pi interrupt behavior still needs credentialed/runtime confirmation.
+
+
+## 2026-06-13 03:25
+- Review anomaly: video transcode validation used even `160x90`; `libx264` rejects odd dimensions with yuv420p, so valid odd-size videos still failed.
+- Intervention: add `scale=ceil(iw/2)*2:ceil(ih/2)*2` to the ffmpeg path and regress `161x91 -> 162x92` H.264/yuv420p output.
+- Review anomaly: sessiond's batch watcher could invert an abort followed by a user message because it applied aggregated end after aggregated user.
+- Intervention: apply the last busy/end signal in log order; add order regression.
+- Review anomaly: history extraction could classify a text-bearing Pi aborted message differently than live extraction.
+- Intervention: suppress Pi aborted messages before text classification in `_single_chat_event`.
+- Evidence: affected suites and full local/Docker suites passed.

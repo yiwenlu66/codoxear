@@ -1208,3 +1208,12 @@
 - Mechanism found: Pi assistant messages with `stopReason: "aborted"` and no text were not treated as terminal turn signals. Log-derived idle stayed non-idle, broker state did not close the turn, and sessiond's lightweight watcher also lacked a Pi aborted branch.
 - Code commit: `fix: clear Pi busy state on abort logs`.
 - Validation: focused abort regressions passed (`4 passed`); broader idle/busy/sessiond suites passed (`76 passed in 2.14s`); full local suite passed (`617 passed, 25 subtests passed in 9.15s`); full isolated Docker suite passed (`616 passed, 1 skipped, 25 subtests passed in 12.00s`).
+
+
+## 2026-06-13 03:25
+- Applied focused review fixes for video/Pi tranche:
+  - Video preview ffmpeg command now scales odd dimensions to even dimensions before `libx264`/`yuv420p`, fixing valid odd-size videos that previously returned preview 500.
+  - Sessiond log watcher now applies busy signals in record order instead of aggregating user/end flags out of order.
+  - Historical single-event chat extraction now suppresses Pi aborted assistant messages consistently with live abort handling.
+- Commit: `fix: harden video and Pi abort edge cases`.
+- Validation: focused review-blocker tests passed (`4 passed`); affected suites passed (`108 passed`); full local suite passed (`620 passed, 25 subtests passed in 12.60s`); full isolated Docker suite passed (`619 passed, 1 skipped, 25 subtests passed in 12.31s`).
