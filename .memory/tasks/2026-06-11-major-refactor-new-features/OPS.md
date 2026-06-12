@@ -631,3 +631,8 @@
 - Backend refactor tranche: extracted byte-range parsing and inline file response streaming into `codoxear/file_response.py`; server retains aliases used by file/blob/video routes.
 - Commit: `19319a2 refactor: extract inline file response helpers`.
 - Validation: `python3 -m py_compile codoxear/file_response.py codoxear/server.py` passed; focused file response/view/viewer/inspect/static tests passed (`46 passed in 5.75s`).
+
+## 2026-06-12 16:16
+- Full validation after `codoxear/file_response.py` extraction.
+- HEAD: `ac03de9`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`483 passed, 2 skipped, 10 subtests passed in 12.41s`).
