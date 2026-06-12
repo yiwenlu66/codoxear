@@ -523,3 +523,11 @@ Commitments:
 - Intervention: added the `codoxear-sessiond` console script and README examples using the same `CODEX_WEB_AGENT_BACKEND` convention as broker wrappers.
 - Evidence: source test parses `pyproject.toml`, README assertions cover the new examples, `python -m codoxear.sessiond --help` exits successfully, and full Docker suite passed.
 - Scoped claim: installed package metadata and README now expose sessiond. This does not validate real backend startup under `codoxear-sessiond` with Codex/Pi/Claude credentials.
+
+
+## 2026-06-12 17:42
+- Observation: fresh reviewer found browser-compatible MP4 previews were content-hashed under app state and never pruned. Frequently edited or many large videos could silently consume disk.
+- Mechanism supported: `ensure_video_preview()` reused/created hashed files but had no deletion path beyond temporary file cleanup.
+- Intervention: added env-configured file-count and byte-size caps for the preview directory; pruning deletes oldest non-temp previews first while preserving the preview just returned.
+- Evidence: direct tests cover file-count pruning, byte-cap pruning, keep preservation, and temp-file exclusion; targeted tests and full Docker suite passed.
+- Scoped claim: preview cache growth is now bounded by configured caps under normal preview access. It does not proactively prune on server startup or after session deletion unless preview access occurs.

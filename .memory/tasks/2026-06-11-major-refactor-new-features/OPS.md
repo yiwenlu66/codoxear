@@ -782,3 +782,9 @@
 - Reviewer finding #4 fix: packaging now exposes `codoxear-sessiond = codoxear.sessiond:main`, and README quick start documents installed command usage for Codex, Pi, and Claude Code headless helper launches.
 - Commit: `6d3030e feat: expose sessiond as an installed command`.
 - Validation: focused sessiond packaging and sessiond fail-closed tests passed (`7 passed in 0.76s`), including `python -m codoxear.sessiond --help` smoke. Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`508 passed, 2 skipped, 10 subtests passed in 12.12s`).
+
+
+## 2026-06-12 17:42
+- Reviewer finding #5 fix: video previews now prune `VIDEO_PREVIEW_DIR` after preview reuse/creation using `CODEX_WEB_VIDEO_PREVIEW_MAX_FILES` and `CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES` caps, preserving the current preview and ignoring temporary `.tmp.mp4` files.
+- Commit: `cb80a0c fix: prune cached video previews`.
+- Validation: `python3 -m py_compile codoxear/video_preview.py codoxear/server.py` passed; focused video-preview/file-inspect/file-viewer tests passed (`40 passed in 2.05s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`511 passed, 2 skipped, 10 subtests passed in 10.81s`).
