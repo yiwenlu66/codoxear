@@ -301,6 +301,48 @@
         return !!(state && state !== "failed");
       }
 
+      const SESSION_SIDEBAR_GROUPS = [
+        { key: "review", label: "Needs review" },
+        { key: "now", label: "Now" },
+        { key: "waiting", label: "Waiting" },
+        { key: "later", label: "Later" },
+      ];
+
+      function sessionNeedsReview(s) {
+        return !!(s && (sessionLaunchFailed(s) || s.orphan_recovery || s.queue_recovery || s.commit_unknown_send));
+      }
+
+      function sessionSidebarGroupKey(s) {
+        if (sessionNeedsReview(s)) return "review";
+        if (s && s.blocked) return "waiting";
+        if (s && s.snoozed) return "later";
+        return "now";
+      }
+
+      function sidebarSessionEntries(sessions) {
+        const buckets = new Map(SESSION_SIDEBAR_GROUPS.map((group) => [group.key, []]));
+        for (const s of Array.isArray(sessions) ? sessions : []) {
+          const key = sessionSidebarGroupKey(s);
+          const bucket = buckets.get(key) || buckets.get("now");
+          bucket.push(s);
+        }
+        const entries = [];
+        for (const group of SESSION_SIDEBAR_GROUPS) {
+          const items = buckets.get(group.key) || [];
+          if (!items.length) continue;
+          entries.push({ type: "header", key: group.key, label: group.label, count: items.length });
+          for (const session of items) entries.push({ type: "session", session });
+        }
+        return entries;
+      }
+
+      function renderSessionGroupHeader(entry) {
+        return el("div", { class: "sessionGroupHeader", "data-session-group": entry.key }, [
+          el("span", { class: "sessionGroupLabel", text: entry.label }),
+          el("span", { class: "sessionGroupCount", text: String(entry.count) }),
+        ]);
+      }
+
       function sessionSelectable(s) {
         return !!(s && !sessionLaunchPending(s));
       }
@@ -4034,13 +4076,19 @@
                 resetChatRenderState();
               }
               if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+              const sidebarEntries = sidebarSessionEntries(sessions);
 		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 		             swipeRefreshDeferred = true;
 		             return sessions;
 		           }
 		           sessionsWrap.innerHTML = "";
 		           openSwipeContent = null;
-			          for (const s of sessions) {
+			          for (const entry of sidebarEntries) {
+                    if (entry.type === "header") {
+                      sessionsWrap.appendChild(renderSessionGroupHeader(entry));
+                      continue;
+                    }
+                    const s = entry.session;
 			            const card = el("div", { class: "session" + (selected === s.session_id ? " active" : "") });
 
              const title = sessionDisplayName(s);
