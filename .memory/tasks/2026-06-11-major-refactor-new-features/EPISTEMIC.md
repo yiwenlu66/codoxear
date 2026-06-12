@@ -958,3 +958,11 @@ Commitments:
 - Intervention: recovery deletion now propagates recovery state regardless of whether the session still appears active; direct unknown markers mark same-session queues as recovery before cleanup/sweep.
 - Evidence: tests cover stale-active deletion followed by cleanup and direct-unknown orphan queue preservation; full local/Docker suites passed.
 - Scoped claim: queued tails associated with recovery evidence remain protected across session-prune timing races.
+
+
+## 2026-06-13 01:58
+- Observation: review found that direct unknown evidence could be cleared or pruned before a same-session queue tail was durably converted to recovery state, letting later cleanup drop the tail.
+- Mechanism: `queue_list()` exposed recovery on returned copies, but storage still needed an `orphan_recovery` flag before marker removal.
+- Intervention: introduced a shared locked marker helper and invoked it before direct unknown clear, old-marker prune, deleted-session cleanup, and queue sweep; saved queue state whenever marking changed.
+- Evidence: regressions cover direct unknown clear and age prune preserving plain orphan queue tails; full local/Docker suites passed.
+- Scoped claim: direct unknown markers no longer act as ephemeral-only recovery evidence for same-session queued tails at marker removal boundaries.
