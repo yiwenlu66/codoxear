@@ -25,6 +25,9 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('const commitUnknown = !!item.commitUnknown;', source)
         self.assertIn('if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));', source)
         self.assertIn('const locked = sending || commitUnknown || queueMutationLocks.has(itemId);', source)
+        self.assertIn('const firstBarrierIndex = q.findIndex((item) => item && (item.sending || item.commitUnknown));', source)
+        self.assertIn('const blockedByPriorBarrier = firstBarrierIndex >= 0 && idx > firstBarrierIndex && idx - 1 <= firstBarrierIndex;', source)
+        self.assertIn('up.disabled = locked || idx <= 0 || blockedByPriorBarrier;', source)
         self.assertIn('del.disabled = sending || queueMutationLocks.has(itemId);', source)
         self.assertIn('if (res && res.commit_unknown) setToast("send status unknown; queued item needs review");', source)
 

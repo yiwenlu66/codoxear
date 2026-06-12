@@ -76,6 +76,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn('session_id = _match_session_route(path, "commit_unknown_send", "clear")', source)
         self.assertIn("res = MANAGER.clear_commit_unknown_send(session_id)", source)
         self.assertIn("if s.commit_unknown_send:\n                    raise SessionNotReadyError(\"resolve the unknown send before submitting more text\")", source)
+        self.assertIn("if s.commit_unknown_send:\n                raise SessionNotReadyError(\"resolve the unknown send before attaching a file\")", source)
         self.assertIn("if s.commit_unknown_send:\n                    raise SessionNotReadyError(\"resolve the unknown send before queueing another prompt\")", source)
 
     def test_control_sidecars_advertise_sync_send_capability(self) -> None:

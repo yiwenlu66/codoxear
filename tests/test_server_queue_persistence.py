@@ -85,6 +85,20 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._sessions[sid].queue_sending_item_id = None
         self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
 
+    def test_unknown_direct_send_blocks_attachment_injection(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].commit_unknown_send = {"text": "maybe sent", "created_ts": 1.0}
+        mgr._commit_unknown_sends[sid] = {"text": "maybe sent", "created_ts": 1.0}
+        mgr.get_state = lambda _sid: self.fail("unknown send should fail before broker readiness")  # type: ignore[method-assign]
+        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unknown send should not inject attachment keys")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
+            SessionManager.attachment_injection_ready(mgr, sid)
+        with self.assertRaisesRegex(SessionNotReadyError, "unknown send"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+
     def test_attachment_injection_ready_rejects_log_busy_session(self) -> None:
         sid = "s1"
         mgr = self._mgr()

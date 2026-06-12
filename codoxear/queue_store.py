@@ -204,7 +204,12 @@ class QueueStore:
             raise ValueError("item not found")
         if sending_item_id == item_id_clean:
             raise ValueError("item is already sending")
+        if bool(q[idx].get("commit_unknown")):
+            raise ValueError("item commit status is unknown")
         min_index = 1 if sending_item_id else 0
+        barrier_idx = next((i for i, item in enumerate(q) if bool(item.get("commit_unknown"))), None)
+        if barrier_idx is not None and idx > barrier_idx and target <= barrier_idx:
+            raise ValueError("commit-unknown item blocks reordering")
         if target < min_index or target >= len(q):
             raise ValueError("to_index out of range")
         item = q.pop(idx)

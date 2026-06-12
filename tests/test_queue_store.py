@@ -49,6 +49,21 @@ class TestQueueStore(unittest.TestCase):
         self.assertTrue(saved["s1"][0]["commit_unknown"])
         self.assertEqual(saved["s1"][0]["commit_unknown_ts"], 2.0)
 
+    def test_commit_unknown_item_blocks_reordering_past_it(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {
+            "s1": [
+                {"id": "a", "text": "maybe", "created_ts": 1, "commit_unknown": True},
+                {"id": "b", "text": "later", "created_ts": 2},
+            ]
+        }
+
+        with self.assertRaisesRegex(ValueError, "commit-unknown item blocks reordering"):
+            store.move(queues, "s1", "b", 0)
+        with self.assertRaisesRegex(ValueError, "commit status is unknown"):
+            store.move(queues, "s1", "a", 1)
+        self.assertEqual([item["id"] for item in queues["s1"]], ["a", "b"])
+
     def test_drop_missing_sessions_and_save_omit_empty_queues(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"

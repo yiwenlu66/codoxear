@@ -12,6 +12,7 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('attachBtn.disabled = true;', source)
         self.assertIn('function syncAttachButtonState() {', source)
         self.assertIn('"Select a session to attach a file"', source)
+        self.assertIn('"Resolve the unknown send before attaching a file"', source)
         self.assertIn('"Wait for the current response to finish before attaching a file"', source)
         self.assertIn('"Wait for the current send to finish before attaching a file"', source)
         self.assertIn('attachControl.disabled = disabled;', source)

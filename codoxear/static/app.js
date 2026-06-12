@@ -9820,7 +9820,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             ta.style.height = "0px";
             ta.style.height = `${Math.max(58, Math.min(220, ta.scrollHeight))}px`;
           };
-          const minMoveIndex = q[0] && q[0].sending ? 1 : 0;
+          const firstBarrierIndex = q.findIndex((item) => item && (item.sending || item.commitUnknown));
           q.forEach((item, idx) => {
             const itemId = String(item.id || "");
             const sending = !!item.sending;
@@ -9844,7 +9844,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (sending) actions.appendChild(el("div", { class: "queueSendingTag muted", text: "Sending" }));
             if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));
             const up = el("button", { class: "icon-btn queueIconBtn", title: "Move up", "aria-label": "Move up", type: "button", html: iconSvg("up") });
-            up.disabled = locked || idx <= minMoveIndex;
+            const blockedByPriorBarrier = firstBarrierIndex >= 0 && idx > firstBarrierIndex && idx - 1 <= firstBarrierIndex;
+            up.disabled = locked || idx <= 0 || blockedByPriorBarrier;
             up.onclick = (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -10322,6 +10323,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           let disabled = false;
           if (!selected) {
             attachLabel = "Select a session to attach a file";
+            disabled = true;
+          } else if (selectedSessionHasUnknownSend()) {
+            attachLabel = "Resolve the unknown send before attaching a file";
             disabled = true;
           } else if (currentRunning) {
             attachLabel = "Wait for the current response to finish before attaching a file";

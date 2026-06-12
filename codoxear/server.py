@@ -4672,6 +4672,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if s.commit_unknown_send:
+                raise SessionNotReadyError("resolve the unknown send before attaching a file")
             if not (s.sync_send_supported and s.key_write_errors_supported):
                 raise SessionNotReadyError("broker must be restarted before file attachments are available")
             if s.queue_sending_item_id is not None:
@@ -4689,6 +4691,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if s.commit_unknown_send:
+                raise SessionNotReadyError("resolve the unknown send before attaching a file")
             if s.queue_sending_item_id is not None:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
