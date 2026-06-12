@@ -2368,6 +2368,8 @@ class SessionManager:
                     if key in files:
                         files.pop(key, None)
                         changed_files = True
+            unknown_sends = getattr(self, "_commit_unknown_sends", None)
+            has_direct_unknown = isinstance(unknown_sends, dict) and session_id in unknown_sends
             queues = getattr(self, "_queues", None)
             if isinstance(queues, dict) and session_id in queues:
                 q0 = queues.get(session_id)
@@ -2375,6 +2377,11 @@ class SessionManager:
                     isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
                     for item in q0
                 )
+                if isinstance(q0, list) and q0 and has_direct_unknown:
+                    for item in q0:
+                        if isinstance(item, dict):
+                            item["orphan_recovery"] = True
+                    has_queued_recovery = True
                 if clear_recovery or not has_queued_recovery:
                     queues.pop(session_id, None)
                     changed_queues = True
@@ -2384,7 +2391,6 @@ class SessionManager:
             pending_attachment_ids = getattr(self, "_pending_attachment_ids", None)
             if isinstance(pending_attachment_ids, set):
                 pending_attachment_ids.discard(session_id)
-            unknown_sends = getattr(self, "_commit_unknown_sends", None)
             if clear_recovery and isinstance(unknown_sends, dict) and session_id in unknown_sends:
                 unknown_sends.pop(session_id, None)
                 changed_unknown_sends = True
@@ -2691,9 +2697,13 @@ class SessionManager:
         if not isinstance(qmap, dict):
             return False
         q = qmap.get(session_id)
-        return isinstance(q, list) and any(
-            isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-            for item in q
+        has_direct_unknown = session_id in getattr(self, "_commit_unknown_sends", {})
+        return isinstance(q, list) and bool(q) and (
+            has_direct_unknown
+            or any(
+                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                for item in q
+            )
         )
 
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
@@ -2753,7 +2763,7 @@ class SessionManager:
                 allow_commit_unknown=allow_commit_unknown,
                 allow_orphan_recovery=allow_orphan_recovery,
             )
-            if s is None and (allow_commit_unknown or allow_orphan_recovery):
+            if allow_commit_unknown or allow_orphan_recovery:
                 q_after = self._queues.get(session_id)
                 if isinstance(q_after, list):
                     for item in q_after:
@@ -3275,8 +3285,15 @@ class SessionManager:
         self._discover_existing_if_stale()
         self._prune_dead_sessions()
         with self._lock:
-            # Drop queues for sessions that no longer exist unless they contain unresolved commit evidence.
+            # Drop queues for sessions that no longer exist unless they contain recovery evidence.
             active_ids = set(self._sessions.keys())
+            direct_unknown_ids = set(getattr(self, "_commit_unknown_sends", {}).keys())
+            for sid, queue in list(self._queues.items()):
+                if sid in active_ids or sid not in direct_unknown_ids or not isinstance(queue, list):
+                    continue
+                for item in queue:
+                    if isinstance(item, dict):
+                        item["orphan_recovery"] = True
             dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, active_ids)
             session_ids = [sid for sid in self._queue_store_for_manager().nonempty_session_ids(self._queues) if sid in active_ids]
         if dropped:
@@ -3950,9 +3967,12 @@ class SessionManager:
                 for sid, queue in getattr(self, "_queues", {}).items()
                 if str(sid) not in active_ids
                 and isinstance(queue, list)
-                and any(
-                    isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                    for item in queue
+                and (
+                    str(sid) in direct_unknowns
+                    or any(
+                        isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
+                        for item in queue
+                    )
                 )
             }
         existing_out_ids = {str(item.get("session_id")) for item in out if isinstance(item, dict)}

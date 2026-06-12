@@ -659,6 +659,42 @@ class TestServerQueuePersistence(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "blocks reordering"):
             SessionManager.queue_move(mgr, sid, "n", 0)
 
+    def test_recovery_delete_marks_tail_even_before_session_prune(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._unattended = {}
+        mgr._files = {}
+        mgr._input_locks = {}
+        mgr._save_aliases = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_unattended = lambda: None
+        mgr._save_files = lambda: None
+        mgr._queues[sid] = [dict(_queue_item("u", "maybe sent"), commit_unknown=True), _queue_item("n", "plain tail")]
+
+        self.assertEqual(SessionManager.queue_delete(mgr, sid, "u", allow_commit_unknown=True), {"ok": True, "queue_len": 1})
+        self.assertTrue(mgr._queues[sid][0]["orphan_recovery"])
+
+        SessionManager._clear_deleted_session_state(mgr, sid)
+        self.assertIn(sid, mgr._queues)
+        self.assertTrue(mgr._queues[sid][0]["orphan_recovery"])
+
+    def test_direct_unknown_preserves_plain_orphan_queue_tail(self) -> None:
+        mgr = self._mgr()
+        mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._queues["orphan"] = [_queue_item("n", "plain tail")]
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._maybe_drain_session_queue = lambda sid: self.fail("orphan direct unknown queue must not drain")  # type: ignore[method-assign]
+
+        SessionManager._queue_sweep(mgr)
+
+        listed = SessionManager.queue_list(mgr, "orphan")
+        self.assertTrue(listed[0]["orphan_recovery"])
+        self.assertIn("orphan", mgr._queues)
+
     def test_orphan_queue_remains_reviewable_after_recovery_item_delete(self) -> None:
         mgr = self._mgr()
         mgr._queues["orphan"] = [dict(_queue_item("r", "recover"), orphan_recovery=True), _queue_item("n", "plain tail")]
