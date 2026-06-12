@@ -743,3 +743,10 @@ Commitments:
 - Intervention: server-managed sends now request synchronous broker/sessiond commit for all sends. Direct broker control clients can still choose async by omitting `sync`, but Codoxear HTTP success now means the broker/sessiond write completed or returned an error.
 - Evidence: targeted tests assert normal server sends include `sync: true`; full local/Docker suites passed.
 - Scoped claim: HTTP `/send` and queue promotion no longer use fast ACK as the commit boundary; this may add PTY write latency but preserves queue/send correctness.
+
+
+## 2026-06-12 21:35
+- Observation: clean-room review found a remaining split: sync send could write to PTY but exceed the server's 3s socket timeout, causing false failure and queue duplication.
+- Intervention: removed the short socket timeout for server-managed sync sends so the HTTP commit boundary is the broker/sessiond reply after `_inject` returns.
+- Evidence: targeted source test asserts `timeout_s=None`; full local/Docker suites passed.
+- Scoped claim: server-managed sends no longer false-timeout at 3s after committed PTY writes; a genuinely hung broker sync commit can still hang the HTTP request until external cancellation.

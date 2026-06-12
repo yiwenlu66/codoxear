@@ -968,3 +968,9 @@
 - Clean-room rerun repair: `SessionManager.send()` now sends `sync: true` for all server-managed sends, so queue/manual success and queue popping use the PTY-write commit boundary rather than fast ACK.
 - Commit: `fix: make server sends commit synchronously`.
 - Validation: targeted send/queue tests passed (`39 passed in 2.91s`). Plain full suite passed (`559 passed, 10 subtests passed in 8.87s`). Full isolated Docker suite passed (`557 passed, 2 skipped, 10 subtests passed in 10.93s`).
+
+
+## 2026-06-12 21:35
+- Clean-room rerun repair: server-managed synchronous sends no longer use the old 3s socket timeout; `/send` waits for broker/sessiond commit success/error to avoid false failure after PTY write and duplicate queue retries.
+- Commit: `fix: avoid timing out committed sends`.
+- Validation: targeted send/queue tests passed (`39 passed in 2.91s`). Plain full suite passed (`559 passed, 10 subtests passed in 12.86s`). Full isolated Docker suite passed (`557 passed, 2 skipped, 10 subtests passed in 11.20s`).
