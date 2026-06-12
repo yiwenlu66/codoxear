@@ -61,7 +61,7 @@ class TestSendAck(unittest.TestCase):
             writes.append(chunk[:n])
             return n
 
-        with patch("codoxear.broker.os.write", side_effect=fake_write), patch("codoxear.broker.time.sleep"):
+        with patch("codoxear.pty_util.os.write", side_effect=fake_write), patch("codoxear.pty_util.time.sleep"):
             broker_inject(1, text="hello world", suffix=b"\r", delay_s=0.0)
 
         payload = b"".join(writes)
@@ -76,7 +76,7 @@ class TestSendAck(unittest.TestCase):
             writes.append(chunk[:n])
             return n
 
-        with patch("codoxear.sessiond.os.write", side_effect=fake_write), patch("codoxear.sessiond.time.sleep"):
+        with patch("codoxear.pty_util.os.write", side_effect=fake_write), patch("codoxear.pty_util.time.sleep"):
             sessiond_inject(1, text="hello world", suffix=b"\r", delay_s=0.0)
 
         payload = b"".join(writes)

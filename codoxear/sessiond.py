@@ -51,8 +51,6 @@ PREFERRED_AUTH_METHOD_OVERRIDE = os.environ.get("CODEX_WEB_PREFERRED_AUTH_METHOD
 MODEL_OVERRIDE = os.environ.get("CODEX_WEB_MODEL", "").strip()
 REASONING_EFFORT_OVERRIDE = os.environ.get("CODEX_WEB_REASONING_EFFORT", "").strip().lower()
 SERVICE_TIER_OVERRIDE = os.environ.get("CODEX_WEB_SERVICE_TIER", "").strip().lower()
-_BRACKETED_PASTE_START = b"\x1b[200~"
-_BRACKETED_PASTE_END = b"\x1b[201~"
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -68,21 +66,11 @@ def _seq_bytes(raw: str) -> bytes:
 
 
 def _write_all(fd: int, data: bytes) -> None:
-    view = memoryview(data)
-    while view:
-        n = os.write(fd, view)
-        if n <= 0:
-            raise OSError("short write to PTY")
-        view = view[n:]
+    _pty_util.write_all(fd, data)
 
 
 def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
-    _write_all(fd, _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END)
-    if not suffix:
-        return
-    if delay_s > 0:
-        time.sleep(delay_s)
-    _write_all(fd, suffix)
+    _pty_util.inject_bracketed_paste(fd, text=text, suffix=suffix, delay_s=delay_s)
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:

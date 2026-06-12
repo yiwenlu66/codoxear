@@ -93,8 +93,6 @@ SHELL_PRE_EXEC_MARKER = "\x1b]777;codoxear=agent-exec-start\x07"
 SHELL_PRE_EXEC_MARKER_BYTES = SHELL_PRE_EXEC_MARKER.encode("utf-8")
 
 INTERRUPT_HINT_TAIL_MAX = 4096
-_BRACKETED_PASTE_START = b"\x1b[200~"
-_BRACKETED_PASTE_END = b"\x1b[201~"
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _ANSI_OSC_RE = re.compile("\x1B\\][^\x07]*(?:\x07|\x1B\\\\)")
@@ -445,22 +443,11 @@ def _encode_enter() -> bytes:
 
 
 def _write_all(fd: int, data: bytes) -> None:
-    view = memoryview(data)
-    while view:
-        n = os.write(fd, view)
-        if n <= 0:
-            raise OSError("short write to PTY")
-        view = view[n:]
+    _pty_util.write_all(fd, data)
 
 
 def _inject(fd: int, *, text: str, suffix: bytes, delay_s: float = 0.05) -> None:
-    payload = _BRACKETED_PASTE_START + text.encode("utf-8") + _BRACKETED_PASTE_END
-    _write_all(fd, payload)
-    if not suffix:
-        return
-    if delay_s > 0:
-        time.sleep(delay_s)
-    _write_all(fd, suffix)
+    _pty_util.inject_bracketed_paste(fd, text=text, suffix=suffix, delay_s=delay_s)
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
