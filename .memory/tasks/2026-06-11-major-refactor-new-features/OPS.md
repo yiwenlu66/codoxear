@@ -546,3 +546,7 @@
 - Long-chat UX: added guarded `Alt+↑`/`Alt+↓` shortcuts for jumping between loaded user messages, sharing the same no-selected-session/text-entry/sidebar/modal guard as chat search. Help now documents the shortcuts.
 - Commit: `40b71e1 feat: add user turn keyboard shortcuts`.
 - Validation: `node --check codoxear/static/app.js` passed; chat navigation and overlay accessibility source tests passed (`12 passed in 0.49s`).
+
+## 2026-06-12 15:24
+- Browser validation for loaded-user-turn keyboard shortcuts, isolated Docker server on port 18815 with live fixture Unix socket and three user turns.
+- Observation: with chat focused, CDP `Alt+ArrowDown` using Chromium modifier bit pulsed one loaded `data-role=\"user\"` row, kept chat search closed, and produced JS errors `[]`. With composer `#msg` focused, the same shortcut produced `pulseCount=0`, kept focus on `#msg`, left composer text unchanged, and kept search closed.

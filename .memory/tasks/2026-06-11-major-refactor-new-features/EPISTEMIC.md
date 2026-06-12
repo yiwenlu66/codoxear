@@ -411,3 +411,6 @@ Commitments:
 
 ## 2026-06-12 15:21
 - Mechanism: loaded user-turn buttons existed, but keyboard-only navigation still required focus/clicking a rail control. Guarded `Alt+↑/↓` shortcuts improve long-conversation orientation without adding visible UI density and without stealing input from composer/modals/sidebar.
+
+## 2026-06-12 15:24
+- Evidence update: browser validation supports the shortcut guard mechanism for loaded user-turn navigation. Initial CDP attempt without the Alt modifier bit produced no pulse, distinguishing test harness setup from product behavior; rerun with Chromium `modifiers:1` exercised the intended path.
