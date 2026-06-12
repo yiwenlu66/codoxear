@@ -64,6 +64,10 @@ from .util import read_launch_attempts as _read_launch_attempts
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
+from .unattended import UnattendedStore
+from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
+from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
+from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
 from .voice_push import VoicePushCoordinator
 
 
@@ -330,33 +334,19 @@ UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hour
 
 
 def _render_unattended_prompt(request: str | None) -> str:
-    base = UNATTENDED_PROMPT_PREFIX.rstrip()
-    r = (request or "").strip()
-    if not r:
-        return base + "\n"
-    return base + "\n\n---\n\nAdditional request from user: " + r + "\n"
+    return _render_unattended_prompt_impl(request, prompt_prefix=UNATTENDED_PROMPT_PREFIX)
 
 
 def _clean_unattended_cooldown_minutes(raw: Any) -> int:
-    if raw is None:
-        return UNATTENDED_DEFAULT_IDLE_MINUTES
-    if isinstance(raw, bool) or not isinstance(raw, int):
-        raise ValueError("unattended cooldown_minutes must be an integer")
-    if raw < 1:
-        raise ValueError("unattended cooldown_minutes must be at least 1")
-    return raw
+    return _clean_unattended_cooldown_minutes_impl(raw, default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES)
 
 
 def _clean_unattended_remaining_injections(raw: Any, *, allow_zero: bool) -> int:
-    if raw is None:
-        return UNATTENDED_DEFAULT_MAX_INJECTIONS
-    if isinstance(raw, bool) or not isinstance(raw, int):
-        raise ValueError("unattended remaining_injections must be an integer")
-    minimum = 0 if allow_zero else 1
-    if raw < minimum:
-        lower = "0" if allow_zero else "1"
-        raise ValueError(f"unattended remaining_injections must be at least {lower}")
-    return raw
+    return _clean_unattended_remaining_injections_impl(
+        raw,
+        default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+        allow_zero=allow_zero,
+    )
 
 _SESSION_ID_RE = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", re.I)
 _METRICS_LOCK = threading.Lock()
@@ -2819,6 +2809,11 @@ class SessionManager:
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
         self._unattended: dict[str, dict[str, Any]] = {}
+        self._unattended_store = UnattendedStore(
+            path=UNATTENDED_PATH,
+            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+        )
         self._aliases: dict[str, str] = {}
         self._sidebar_meta: dict[str, dict[str, Any]] = {}
         self._hidden_sessions: set[str] = set()
@@ -2914,45 +2909,14 @@ class SessionManager:
             self._discover_existing()
 
     def _load_unattended(self) -> None:
-        try:
-            raw = UNATTENDED_PATH.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return
-        obj = json.loads(raw)
-        if not isinstance(obj, dict):
-            raise ValueError("invalid unattended.json (expected object)")
-        cleaned: dict[str, dict[str, Any]] = {}
-        for sid, v in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(v, dict):
-                continue
-            enabled = bool(v.get("enabled")) if "enabled" in v else False
-            if "text" in v:
-                raise ValueError(f"invalid unattended config for session {sid!r} (use 'request', not 'text')")
-            request = v.get("request")
-            if request is None:
-                request = ""
-            if not isinstance(request, str):
-                raise ValueError(f"invalid unattended request for session {sid!r}")
-            cooldown_minutes = _clean_unattended_cooldown_minutes(v.get("cooldown_minutes"))
-            remaining_injections = _clean_unattended_remaining_injections(v.get("remaining_injections"), allow_zero=True)
-            cleaned[sid] = {
-                "enabled": enabled,
-                "request": request,
-                "cooldown_minutes": cooldown_minutes,
-                "remaining_injections": remaining_injections,
-            }
+        cleaned = self._unattended_store.load()
         with self._lock:
             self._unattended = cleaned
 
     def _save_unattended(self) -> None:
         with self._lock:
             obj = dict(self._unattended)
-        os.makedirs(APP_DIR, exist_ok=True)
-        tmp = UNATTENDED_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-        os.replace(tmp, UNATTENDED_PATH)
+        self._unattended_store.save(obj)
 
     def _load_aliases(self) -> None:
         try:

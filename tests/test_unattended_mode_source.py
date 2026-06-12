@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
+UNATTENDED_PY = ROOT / "codoxear" / "unattended.py"
 README = ROOT / "README.md"
 
 
@@ -46,12 +47,13 @@ class TestUnattendedModeSource(unittest.TestCase):
 
     def test_api_validation_errors_use_unattended_term_for_user_inputs(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn('"unattended cooldown_minutes must be an integer"', source)
-        self.assertIn('"unattended remaining_injections must be an integer"', source)
+        unattended_source = UNATTENDED_PY.read_text(encoding="utf-8")
+        self.assertIn('"unattended cooldown_minutes must be an integer"', unattended_source)
+        self.assertIn('"unattended remaining_injections must be an integer"', unattended_source)
         self.assertIn('APP_DIR / "unattended.json"', source)
         self.assertIn('CODEX_WEB_UNATTENDED_SWEEP_SECONDS', source)
-        self.assertNotIn('"harness cooldown_minutes must', source)
-        self.assertNotIn('"harness remaining_injections must', source)
+        self.assertNotIn('"harness cooldown_minutes must', source + unattended_source)
+        self.assertNotIn('"harness remaining_injections must', source + unattended_source)
         self.assertNotIn('APP_DIR / "harness.json"', source)
         self.assertNotIn('CODEX_WEB_HARNESS_SWEEP_SECONDS', source)
 
