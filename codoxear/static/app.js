@@ -4754,11 +4754,11 @@
           try {
             data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           } catch (e) {
-            if (pollGen !== myGen || selected !== sessionId) return null;
             if (e && e.status === 401) {
               handleAppAuthLoss();
               return null;
             }
+            if (pollGen !== myGen || selected !== sessionId) return null;
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
             return null;
           }
@@ -4847,11 +4847,11 @@
             }
             if (s2) titleLabel.textContent = sessionTitleWithId(s2);
 		          } catch (e) {
-            if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 401) {
               handleAppAuthLoss();
               return;
             }
+            if (gen !== pollGen || sid !== selected) return;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return;

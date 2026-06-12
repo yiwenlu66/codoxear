@@ -73,6 +73,19 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("markClickFirstPaint();", block)
         self.assertIn(".msg.transcript-error", css)
 
+    def test_tail_poll_auth_loss_precedes_stale_generation_guards(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        open_start = source.index("async function openSession(")
+        open_end = source.index("async function pollMessages(", open_start)
+        open_block = source[open_start:open_end]
+        open_catch = open_block[open_block.index("} catch (e) {") : open_block.index("renderTranscriptLoadError(sessionId, e", open_block.index("} catch (e) {"))]
+        self.assertLess(open_catch.index("if (e && e.status === 401)"), open_catch.index("if (pollGen !== myGen || selected !== sessionId) return null;"))
+        poll_start = source.index("async function pollMessages(")
+        poll_end = source.index("async function pollLoop()", poll_start)
+        poll_block = source[poll_start:poll_end]
+        poll_catch = poll_block[poll_block.rindex("} catch (e) {") :]
+        self.assertLess(poll_catch.index("if (e && e.status === 401)"), poll_catch.index("if (gen !== pollGen || sid !== selected) return;"))
+
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function refreshSessions() {")
