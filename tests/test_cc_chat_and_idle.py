@@ -80,6 +80,16 @@ class TestCcChatAndIdle(unittest.TestCase):
                 ],
             )
             self.assertFalse(_compute_idle_from_log(path))
+            write_log(
+                path,
+                [
+                    user("hello"),
+                    assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use"),
+                    {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "content": "ok"}]}},
+                    assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+                ],
+            )
+            self.assertFalse(_compute_idle_from_log(path))
 
     def test_cc_idle_expands_tail_for_turn_duration_without_context(self) -> None:
         with TemporaryDirectory() as td:
@@ -93,6 +103,15 @@ class TestCcChatAndIdle(unittest.TestCase):
             write_log(path, rows)
             self.assertGreater(path.stat().st_size, 256 * 1024)
             self.assertFalse(_compute_idle_from_log(path))
+
+    def test_cc_idle_scan_budget_includes_record_on_exact_line_boundary(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            first = json.dumps({"type": "noop", "pad": "x"}) + "\n"
+            tool = json.dumps(assistant([{"type": "tool_use", "name": "Bash", "id": "toolu_1", "input": {}}], stop_reason="tool_use")) + "\n"
+            duration = json.dumps({"type": "system", "subtype": "turn_duration", "durationMs": 10}) + "\n"
+            path.write_text(first + tool + duration, encoding="utf-8")
+            self.assertFalse(_compute_idle_from_log(path, max_scan_bytes=len(tool) + len(duration)))
 
     def test_tail_reader_returns_cc_events(self) -> None:
         with TemporaryDirectory() as td:

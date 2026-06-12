@@ -14,6 +14,7 @@ from .cc_log import cc_assistant_is_final_turn_end
 from .cc_log import cc_assistant_text
 from .cc_log import cc_assistant_thinking_count
 from .cc_log import cc_assistant_tool_use_count
+from .cc_log import CC_UNKNOWN_TOOL_USE_ID
 from .cc_log import cc_assistant_tool_use_ids
 from .cc_log import cc_is_turn_end
 from .cc_log import cc_message_role
@@ -362,12 +363,16 @@ def _read_jsonl_tail(path: Path, max_bytes: int) -> list[dict[str, Any]]:
         f.seek(0, os.SEEK_END)
         size = f.tell()
         start = max(0, size - max_bytes)
+        starts_at_line_boundary = start == 0
+        if start > 0:
+            f.seek(start - 1)
+            starts_at_line_boundary = f.read(1) == b"\n"
         f.seek(start)
         data = f.read()
 
     if not data:
         return []
-    if start > 0:
+    if start > 0 and not starts_at_line_boundary:
         nl = data.find(b"\n")
         if nl >= 0:
             data = data[nl + 1 :]
@@ -1139,7 +1144,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                         for tool_id in result_ids:
                             cc_pending_tool_ids.discard(tool_id)
                     else:
-                        cc_pending_tool_ids.clear()
+                        cc_pending_tool_ids.discard(CC_UNKNOWN_TOOL_USE_ID)
                     saw_terminal_signal = True
                     idle = False
                     continue
@@ -1152,7 +1157,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 tool_use_count = cc_assistant_tool_use_count(obj)
                 if tool_use_count > 0:
                     cc_seen_turn_context = True
-                    cc_pending_tool_ids.update(tool_use_ids or {"__codoxear_cc_unknown_tool_use__"})
+                    cc_pending_tool_ids.update(tool_use_ids or {CC_UNKNOWN_TOOL_USE_ID})
                 if cc_assistant_text(obj):
                     cc_seen_turn_context = True
                     saw_terminal_signal = True

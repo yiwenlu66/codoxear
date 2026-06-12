@@ -6,6 +6,7 @@ from typing import Any
 
 
 CC_SUPPORTED_REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CC_UNKNOWN_TOOL_USE_ID = "__codoxear_cc_unknown_tool_use__"
 
 
 def _read_jsonl_first_object_with_session_id(path: Path) -> dict[str, Any] | None:
