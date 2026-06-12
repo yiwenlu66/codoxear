@@ -889,3 +889,11 @@ Commitments:
 - Intervention: sweep now filters drain candidates to active session ids after cleanup preservation; orphan unknown queues remain reviewable through queue list/delete APIs with explicit confirmation.
 - Evidence: tests cover sweep skipping an orphan unknown queue while still considering a live queue, and full local/Docker suites passed.
 - Scoped claim: missing-session queued unknown evidence no longer crashes or blocks the queue sweeper, and can be explicitly deleted via API if needed.
+
+
+## 2026-06-13 00:46
+- Observation: review found preserved orphan direct unknown markers were stranded: retained on disk but absent from `/api/sessions` and not clearable while the session was missing.
+- Mechanism: cleanup preservation outlived the active `Session` object, while recovery endpoints and UI were keyed only to active sessions.
+- Intervention: direct orphan markers can now be cleared by id; orphan direct/queue markers are surfaced as recovery rows; opening a recovery row avoids transcript fetch and only exposes review/clear affordances.
+- Evidence: tests cover orphan list rows and orphan direct clear; full local/Docker suites passed; browser validation showed direct and queued orphan recovery controls.
+- Scoped claim: preserved unknown evidence is no longer stranded solely in JSON files when its session disappears.

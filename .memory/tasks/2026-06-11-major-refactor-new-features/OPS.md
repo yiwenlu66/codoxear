@@ -1097,3 +1097,10 @@
 - Repaired orphan unknown queue blocker: queue sweep now drains only active-session queues, preserving but skipping missing-session queues that contain `commit_unknown`; orphan unknown queues are listable/deletable through the queue API with the same explicit confirmation rules.
 - Commit: `fix: skip orphan unknown queues during sweep`.
 - Validation: targeted tests passed (`59 passed, 11 subtests passed in 1.82s`). Plain full suite passed (`593 passed, 21 subtests passed in 8.92s`). Full isolated Docker suite passed (`591 passed, 2 skipped, 21 subtests passed in 10.98s`).
+
+
+## 2026-06-13 00:46
+- Repaired orphan direct unknown blocker and made orphan recovery discoverable: `/commit_unknown_send/clear` now clears orphan direct markers; `/api/sessions` emits synthetic `orphan_recovery` rows for orphan direct/queued unknown evidence; orphan rows do not fetch transcript tails, disable new send/attach/enqueue, and allow queued recovery review.
+- Commit: `fix: expose orphan unknown recovery rows`.
+- Validation: targeted tests passed (`83 passed, 11 subtests passed in 2.14s`). Plain full suite passed (`596 passed, 21 subtests passed in 9.17s`). Full isolated Docker suite passed (`594 passed, 2 skipped, 21 subtests passed in 11.22s`).
+- Browser evidence: isolated Docker `:18917` seeded only orphan direct/queued unknown records. `/tmp/codoxear-orphan-recovery-evidence/codoxear_orphan_direct_browser.json` shows direct orphan row exposes clear badge and disables attach/queue/send; `/tmp/codoxear-orphan-recovery-evidence/codoxear_orphan_queue_controls.json` and `codoxear_orphan_queue_rows.json` show queued orphan row enables review queue, disables send/attach, and renders the `Commit unknown` row. Screenshot: `/tmp/codoxear-orphan-recovery-evidence/queue-orphan.png`.
