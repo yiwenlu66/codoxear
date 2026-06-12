@@ -1312,6 +1312,8 @@ class Broker:
             "tmux_session": (os.environ.get("CODEX_WEB_TMUX_SESSION") or "").strip() or None,
             "tmux_window": (os.environ.get("CODEX_WEB_TMUX_WINDOW") or "").strip() or None,
             "spawn_nonce": (os.environ.get("CODEX_WEB_SPAWN_NONCE") or "").strip() or None,
+            "control_protocol_version": 2,
+            "control_capabilities": {"sync_send": True, "key_write_errors": True},
         }
         meta_path = st.sock_path.with_suffix(".json")
         SOCK_DIR.mkdir(parents=True, exist_ok=True)

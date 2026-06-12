@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
+BROKER_PY = ROOT / "codoxear" / "broker.py"
+SESSIOND_PY = ROOT / "codoxear" / "sessiond.py"
 
 
 class TestFileUploadModuleSource(unittest.TestCase):
@@ -44,10 +46,11 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("resp = self._sock_call(sock, {\"cmd\": \"send\", \"text\": text, \"sync\": True}, timeout_s=timeout_s)", source)
         self.assertIn("except SessionCommitUnknownError as e:", source)
         self.assertIn('"commit_unknown": True', source)
+        self.assertIn("if not s.sync_send_supported:", source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertIn("self._record_prelog_user_message(s, text, source=\"enqueue\")\n            item, ql = self._queue_append_item_local(session_id, text)", source)
         self.assertIn("if isinstance(resp, dict) and resp.get(\"error\"):", source)
-        self.assertIn("raise SessionInjectionError(str(resp.get(\"error\")))", source)
+        self.assertIn("raise SessionInjectionError(err)", source)
         self.assertIn("except SessionInjectionError as e:", block)
         self.assertIn("self._set_pending_attachment(session_id, True)", source)
         self.assertIn("self._set_pending_attachment(session_id, False)", source)
@@ -55,6 +58,14 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("if s.pending_attachment and not allow_pending_attachment:", source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
         self.assertIn('"pending_attachment": bool(s.pending_attachment)', source)
+
+    def test_control_sidecars_advertise_sync_send_capability(self) -> None:
+        broker_source = BROKER_PY.read_text(encoding="utf-8")
+        sessiond_source = SESSIOND_PY.read_text(encoding="utf-8")
+
+        for source in [broker_source, sessiond_source]:
+            self.assertIn('"control_protocol_version": 2', source)
+            self.assertIn('"control_capabilities": {"sync_send": True, "key_write_errors": True}', source)
 
 
 if __name__ == "__main__":

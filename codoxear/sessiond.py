@@ -188,6 +188,8 @@ class Sessiond:
             "model": MODEL_OVERRIDE or None,
             "reasoning_effort": REASONING_EFFORT_OVERRIDE or None,
             "service_tier": SERVICE_TIER_OVERRIDE or None,
+            "control_protocol_version": 2,
+            "control_capabilities": {"sync_send": True, "key_write_errors": True},
         }
         SOCK_META_DIR.mkdir(parents=True, exist_ok=True)
         meta_path = st.sock_path.with_suffix(".json")

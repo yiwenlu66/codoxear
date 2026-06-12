@@ -24,6 +24,7 @@ def _make_session(sid: str) -> Session:
         cwd="/tmp",
         log_path=None,
         sock_path=Path(f"/tmp/{sid}.sock"),
+        sync_send_supported=True,
     )
 
 
@@ -247,6 +248,17 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.send(mgr, sid, "normal prompt"), {"queued": False, "queue_len": 0})
         self.assertEqual(seen, [({"cmd": "send", "text": "normal prompt", "sync": True}, 30.0)])
 
+    def test_send_rejects_broker_without_sync_capability(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].sync_send_supported = False
+        mgr.get_state = lambda _sid: self.fail("unsupported broker should fail before readiness")  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: self.fail("unsupported broker should not receive send")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
+            SessionManager.send(mgr, sid, "normal prompt")
+
     def test_send_timeout_preserves_pending_attachment_as_unknown(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -262,6 +274,17 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(mgr._sessions[sid].pending_attachment)
         self.assertIn(sid, mgr._pending_attachment_ids)
 
+    def test_send_empty_response_is_commit_unknown(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("empty response should not be recorded as submitted")  # type: ignore[method-assign]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr._sock_call = lambda *_args, **_kwargs: {"error": "empty response"}  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "empty"):
+            SessionManager.send(mgr, sid, "normal prompt")
+
     def test_queue_send_timeout_marks_head_commit_unknown(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -276,6 +299,25 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
         self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
+
+    def test_queue_head_is_durably_unknown_before_dispatch(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        observed: list[bool] = []
+
+        def send(_sid: str, _text: str, **_kwargs: object) -> dict[str, object]:
+            observed.append(bool(mgr._queues[sid][0].get("commit_unknown")))
+            return {"queued": False, "queue_len": 0}
+
+        mgr.send = send  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=456.0):
+            self.assertEqual(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"), {"queued": False, "queue_len": 0})
+        self.assertEqual(observed, [True])
+        self.assertNotIn(sid, mgr._queues)
 
     def test_commit_unknown_queue_head_does_not_auto_promote(self) -> None:
         sid = "s1"

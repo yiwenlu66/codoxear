@@ -1944,6 +1944,7 @@ class Session:
     spawn_nonce: str | None = None
     resume_session_id: str | None = None
     pending_attachment: bool = False
+    sync_send_supported: bool = False
 
 
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
@@ -1973,6 +1974,11 @@ def _metadata_ignored_rollout_paths(meta: dict[str, Any], *, sock: Path) -> set[
             raise ValueError(f"invalid ignored_rollout_paths entry in metadata for socket {sock}")
         out.add(Path(item))
     return out
+
+
+def _metadata_sync_send_supported(meta: dict[str, Any]) -> bool:
+    caps = meta.get("control_capabilities")
+    return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("sync_send") is True
 
 
 def _metadata_detaches_current_log(meta: dict[str, Any], current_log_path: Path | None) -> bool:
@@ -2713,9 +2719,27 @@ class SessionManager:
                     return None
             s0.queue_idle_since = None
             s0.queue_sending_item_id = head_id
+            head["commit_unknown"] = True
+            head["commit_unknown_ts"] = time.time()
             text = str(head.get("text") or "")
+        self._save_queues()
         try:
             resp = self.send(session_id, text, queue_item_id=head_id)
+        except SessionNotReadyError:
+            with self._lock:
+                s0 = self._sessions.get(session_id)
+                if s0 and s0.queue_sending_item_id == head_id:
+                    s0.queue_sending_item_id = None
+                    s0.queue_idle_since = None
+                q = self._queues.get(session_id)
+                if isinstance(q, list):
+                    for item in q:
+                        if str(item.get("id") or "") == head_id:
+                            item.pop("commit_unknown", None)
+                            item.pop("commit_unknown_ts", None)
+                            break
+            self._save_queues()
+            return None
         except SessionCommitUnknownError:
             with self._lock:
                 s0 = self._sessions.get(session_id)
@@ -3102,6 +3126,7 @@ class SessionManager:
             agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+            sync_send_supported = _metadata_sync_send_supported(meta)
             launch_id = _clean_optional_text(meta.get("launch_id"))
             spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
             cwd_raw = meta.get("cwd")
@@ -3248,6 +3273,7 @@ class SessionManager:
                 spawn_nonce=spawn_nonce,
                 resume_session_id=resume_session_id,
                 pending_attachment=session_id in getattr(self, "_pending_attachment_ids", set()),
+                sync_send_supported=sync_send_supported,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -3286,6 +3312,7 @@ class SessionManager:
                     prev.spawn_nonce = spawn_nonce
                     prev.resume_session_id = resume_session_id
                     prev.pending_attachment = bool(prev.pending_attachment or session_id in getattr(self, "_pending_attachment_ids", set()))
+                    prev.sync_send_supported = sync_send_supported
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -3757,6 +3784,7 @@ class SessionManager:
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
         agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
         transport, tmux_session, tmux_window = self._session_transport(meta=meta)
+        sync_send_supported = _metadata_sync_send_supported(meta)
         cwd_raw = meta.get("cwd")
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
@@ -3830,6 +3858,7 @@ class SessionManager:
             s2.tmux_session = tmux_session
             s2.tmux_window = tmux_window
             s2.resume_session_id = resume_session_id
+            s2.sync_send_supported = sync_send_supported
         if drain_queue and self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -4353,6 +4382,8 @@ class SessionManager:
                     raise SessionNotReadyError("send queued prompts before submitting new text")
                 if queue_item_id is not None and s.queue_sending_item_id != queue_item_id:
                     raise SessionNotReadyError("queued prompt is no longer active")
+                if not s.sync_send_supported:
+                    raise SessionNotReadyError("broker must be restarted before confirmed sends are available")
                 sock = s.sock_path
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
@@ -4361,7 +4392,7 @@ class SessionManager:
                 resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s)
             except (TimeoutError, socket.timeout) as e:
                 raise SessionCommitUnknownError("send commit status unknown; broker did not reply before timeout") from e
-            except Exception:
+            except Exception as e:
                 if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
                     with self._lock:
                         self._sessions.pop(session_id, None)
@@ -4369,10 +4400,13 @@ class SessionManager:
                     _unlink_quiet(sock)
                     _unlink_quiet(sock.with_suffix(".json"))
                     raise KeyError("unknown session")
-                raise
+                raise SessionCommitUnknownError("send commit status unknown; broker response failed") from e
             with self._lock:
                 if isinstance(resp, dict) and resp.get("error"):
-                    raise SessionInjectionError(str(resp.get("error")))
+                    err = str(resp.get("error"))
+                    if err == "empty response":
+                        raise SessionCommitUnknownError("send commit status unknown; broker response was empty")
+                    raise SessionInjectionError(err)
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:

@@ -45,6 +45,7 @@ class TestQueueStore(unittest.TestCase):
         self.assertTrue(queues["s1"][0]["commit_unknown"])
         self.assertEqual(queues["s1"][0]["commit_unknown_ts"], 2.0)
         self.assertTrue(listed[0]["commit_unknown"])
+        self.assertFalse(store.list_items(queues, "s1", sending_item_id="a")[0]["commit_unknown"])
         self.assertTrue(saved["s1"][0]["commit_unknown"])
         self.assertEqual(saved["s1"][0]["commit_unknown_ts"], 2.0)
 

@@ -132,7 +132,7 @@ class QueueStore:
         for item in q:
             copied = copy_queue_item(item)
             copied["sending"] = bool(sending_item_id and copied["id"] == sending_item_id)
-            copied["commit_unknown"] = bool(copied.get("commit_unknown"))
+            copied["commit_unknown"] = bool(copied.get("commit_unknown")) and not bool(copied["sending"])
             out.append(copied)
         return out
 
