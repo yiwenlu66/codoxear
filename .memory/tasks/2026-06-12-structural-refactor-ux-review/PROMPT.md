@@ -1,6 +1,8 @@
 ## Objective
 Refactor Codoxear's architecture and frontend structure after the major feature branch, using the current `develop` state as the base. The goal is not to add broad new product features; it is to make the implementation easier to reason about, safer to change, and better aligned with the product invariants while preserving user-visible behavior unless a refactor exposes a clear user-experience defect that should be fixed.
 
+Pause correction, 2026-06-12: this structural refactor task is parked. User review found that the older major feature task was overclaimed and still has real product gaps. Do not continue structural refactor as the active objective until the older feature task is repaired and accepted. Refactor work may resume only after provider/model selection, UI action placement/topbar cleanup, long-chat ergonomics, responsiveness evidence, file-viewer polish, and scoped backend/capability claims are addressed or explicitly parked by the user.
+
 Done means:
 - A single reviewable refactor acceptance branch exists, based on current `develop`; prefer `refactor/structural-ux-review` unless a better branch name is explicitly recorded. `main` remains untouched and no merge to `main` happens without explicit user approval.
 - The refactor removes meaningful structural coupling from the current monoliths, especially `codoxear/server.py` and `codoxear/static/app.js`, without changing public API semantics, runtime state formats, or UX behavior accidentally.
@@ -10,9 +12,11 @@ Done means:
 - The final report states what was refactored, what behavior was proven preserved, what UX/UE issues were found by browser use, which were fixed, which were parked, and why.
 
 ## Workbench
-Current base state:
-- Start from current `develop`, whose prior acceptance evidence includes full isolated Docker suite `429 passed, 2 skipped`, Docker editable install, isolated server smoke, JS parse checks, and isolated browser validations.
-- Previous feature/refactor-lite work added: selected PR-compatible fixes, Docker sandbox, Unattended rename, Pi model-aware reasoning constraints, minimal Claude Code backend support, file/new-session ergonomics, long-chat loaded navigation/search, assistant adjacent dedupe, and acceptance docs.
+Current state correction:
+- This refactor branch exists as preserved work/evidence, but it is not the active acceptance path.
+- The older major feature task must be repaired first. Its prior `develop` acceptance claim is invalidated by product gaps, especially the missing real provider/model selector and the cluttered top-bar/action-placement design.
+- Live checkout `/home/yiwen/codex-web` must remain on `main` unless the user explicitly asks otherwise. All recovery/refactor work must use an isolated worktree.
+- Previous refactor work may be mined later, but do not treat it as progress that compensates for missing feature-task behavior.
 
 Known structural observations from the pre-prompt inspection:
 - `codoxear/server.py` is about 7,839 lines. `SessionManager` is about 2,579 lines with 86 methods. `Handler.do_GET` is about 1,192 lines; `Handler.do_POST` is about 980 lines.
@@ -22,11 +26,13 @@ Known structural observations from the pre-prompt inspection:
 - `server.py`, `broker.py`, `sessiond.py`, `util.py`, and `pty_util.py` contain overlapping low-level helpers.
 - Existing recon files are useful but may contain superseded details from before the Unattended rename; prefer `recon/final-acceptance-summary.md` and this prompt for current scope.
 
-Initial next actions:
-1. Create `refactor/structural-ux-review` from `develop` (or record a deliberate alternate name) and record branch/dirty-state evidence before edits.
-2. Run or confirm a fast baseline validation in the isolated Docker sandbox before the first structural change.
-3. Refactor in small, reviewable phases. Do not begin high-risk semantic refactors until behavior-preserving seams and tests are in place.
-4. After substantial refactoring, deploy the branch in a standalone Docker sandbox and use `agent-browser` as a real user to inspect the product deeply, with screenshots and written UX reasoning.
+Refactor is parked. Required next actions before resuming this prompt:
+1. Return to `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` and execute the product recovery tasks there.
+2. Fix the real new-session provider/model selector gap rather than preserving the old separate/fake selector.
+3. Redesign top-bar/action placement according to Codoxear's minimal UI model rather than adding a generic overflow menu.
+4. Browser-validate the repaired product in isolated Docker on desktop and mobile-ish viewports.
+5. Record which original feature gaps are fixed, which are honestly scoped/parked, and why.
+6. Only then resume structural refactor phases from this prompt.
 
 Observed failure modes to guard against:
 - Treating "tests pass" as sufficient even if the UI becomes awkward, visually broken, confusing, or slow.

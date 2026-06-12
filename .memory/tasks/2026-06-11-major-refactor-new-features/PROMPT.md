@@ -1,6 +1,8 @@
 ## Objective
 Create and execute a major refactoring/new-features program for Codoxear with one acceptance target: a single `develop` branch containing the integrated candidate work. Workstreams are interacting and need not be forced into independent final branches. The agent should determine the branch topology that best preserves evidence and reviewability, but the user should only need to evaluate one `develop` branch for acceptance. Nothing may merge to `main` until the user explicitly approves.
 
+Correction, 2026-06-12: the prior `develop` acceptance claim was overbroad. The branch contains useful work, but the original feature task is not product-complete. Do not proceed to structural refactor as the main task until the real product gaps from this task are fixed, browser-validated, and honestly scoped. The current priority is feature recovery and UX/product completion, not more architectural motion.
+
 Done means:
 - A single `develop` branch exists as the acceptance candidate and contains the integrated, reviewable result.
 - Temporary topic branches/worktrees may be used for exploration, PR cherry-picks, or risky changes, but they are implementation scaffolding, not the final deliverable.
@@ -11,9 +13,19 @@ Done means:
 - The user receives evidence for what changed, what was tested, what remains uncertain, which PRs were accepted/rejected/deferred, and why.
 
 ## Workbench
-Current status: `develop` is the integrated acceptance candidate; `main` remains untouched. The branch contains the selected PR-compatible fixes, isolated Docker validation sandbox, responsiveness and long-chat navigation changes, clean public Unattended-mode rename, internal Unattended naming cleanup, Pi model-aware thinking-effort constraints, minimal shared-broker Claude Code support, file picker/search ergonomics, recent provider/model reuse, and deterministic pressure-test regressions.
+Current status correction: `develop` was previously labeled as the integrated acceptance candidate, but user review invalidated that claim. `main` must remain the live-safe branch unless explicitly approved. The current recovery work must happen in an isolated worktree/branch and must fix product gaps before any structural refactor is resumed.
 
-Current evidence base:
+Known overclaimed or under-completed product gaps that must be addressed before refactor:
+1. New-session provider/model ergonomics: only recent provider/model reuse was implemented; a real combined provider/model selector and keyboard/mobile flow are still required.
+2. Overall UI cleanliness: the top bar became a collection of unrelated feature buttons, contradicting the minimal/sparse UI invariant. Action placement must be redesigned, not hidden behind an indiscriminate “More” menu.
+3. Long-conversation navigation: loaded search/jump mechanics exist, but their placement and mobile ergonomics are not a finished design.
+4. Responsiveness/network evidence: hidden-tab polling was implemented, but the broader responsiveness workstream lacks real browser/network evidence under realistic conditions.
+5. File viewer/search: local-first search improved perceived latency, but combobox/editor/file-picker UX still needs product-level review and polish.
+6. Git-history pressure testing: some deterministic regressions were added, but multiple mined historical bug classes remain unexercised or only documented.
+7. Claude Code support: minimal shared-broker plumbing exists, but it remains scoped and not live-like validated.
+8. Thinking/reasoning capability semantics: Pi is improved; Codex per-model reasoning authority and the provider/model capability interaction remain unresolved.
+
+Historical evidence base that remains useful but is not acceptance proof:
 1. Full isolated Docker suite is green after the latest code changes: `429 passed, 2 skipped`.
 2. JS parse checks passed for `codoxear/static/app.js` in local and Docker contexts.
 3. Browser validation ran only against isolated Docker servers and synthetic state: Claude/new-session controls on port 18791, long-chat loaded search/navigation/history on port 18792, and renamed Unattended menu/API/sweep behavior on port 18793.
@@ -21,11 +33,15 @@ Current evidence base:
 5. Implementation/source files no longer contain Harness terminology; remaining Harness strings in tests are negative assertions guarding against old public compatibility.
 6. Isolated packaging/runtime smoke evidence now covers `python3 -m pip install -e .` from a writable source copy, console-script installation, and Docker server login/session API startup on non-live port 18794 with app state under `/home/tester/.local/share/codoxear` inside the container.
 
-Selected next tasks, if the user asks to continue beyond this acceptance candidate:
-1. Run live-like backend session creation tests for Codex/Pi/Claude in isolated sandbox state, if the user authorizes use of required binaries/credentials and confirms no live sessions should be touched.
-2. Add deeper browser/device pressure tests for mobile network/performance, Monaco/file-viewer races, and full long-transcript interaction if the user wants more acceptance evidence.
-3. Pressure-test shell startup variants such as zsh/oh-my-zsh in an isolated environment if those environments are available.
-4. Otherwise, await the user's acceptance decision for `develop`; do not merge to `main` without explicit approval.
+Recovery next tasks, in order:
+1. Design and implement a real combined provider/model selector for new-session creation, including configured pairs, recent pairs, keyboard search, mobile usability, and reasoning-effort capability updates.
+2. Redesign action placement so the top bar remains sparse and semantically coherent. Session utilities belong in session context/details surfaces; chat navigation belongs near the chat/scroll context. Do not use a generic “More” menu as a dumping ground.
+3. Rework long-chat navigation/search placement and mobile ergonomics against realistic synthetic long chats.
+4. Revisit file viewer/search/editor UX with browser evidence, including empty/loading/error states and mobile touch behavior.
+5. Gather real browser/network responsiveness evidence in the isolated Docker deployment and fix the dominant mechanisms found.
+6. Reassess git-history regression mining and either reproduce/fix the important classes or explicitly preserve why they remain out of scope.
+7. Keep Claude Code and Codex reasoning claims scoped unless user authorizes live-like sandbox validation or an authoritative capability source is established.
+8. Only after these product gaps are fixed and validated should the structural refactor prompt become active again.
 
 Observed failures / negative evidence:
 - An initial Python 3.11 sandbox image could not collect tests using newer f-string syntax; switching the sandbox to Python 3.13 fixed the measurement artifact.
@@ -82,7 +98,8 @@ Design philosophy that must constrain PR acceptance and new implementation:
 The workstreams below are interacting areas of investigation and implementation, not an exhaustive checklist or branch map. They should inform each other, and branch topology should follow the evidence rather than the numbered list. Additional product improvements are allowed when they are causally motivated, validated, and compatible with the design philosophy.
 
 1. Architecture review and refactoring
-   - Review current server/broker/log/UI architecture and identify mechanisms that are semantically confused or overly patched.
+   - Defer structural refactor as a primary workstream until the product gaps above are fixed.
+   - Review current server/broker/log/UI architecture when it is necessary to implement or validate a product gap, but do not let refactor activity substitute for missing user-facing behavior.
    - Refactor only where a clearer invariant is identified and validation can show preservation of behavior.
    - Avoid broad rewrites without evidence that they reduce complexity or fix a real mechanism.
 
