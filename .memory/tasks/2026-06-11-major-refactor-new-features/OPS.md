@@ -1191,3 +1191,13 @@
 - Repaired queue-wide mutation blocker: queue listing now marks unflagged items as recovery-protected whenever the queue has recovery evidence; update/move reject the whole recovery queue; delete of any item in such a queue requires explicit recovery confirmation; queue promotion checks the recovery barrier before broker readiness I/O.
 - Commit: `fix: protect every item in recovery queues`.
 - Validation: targeted tests passed (`70 passed, 15 subtests passed in 1.80s`). Plain full suite passed (`612 passed, 25 subtests passed in 12.63s`). Full isolated Docker suite passed (`610 passed, 2 skipped, 25 subtests passed in 11.18s`).
+
+
+## 2026-06-13 03:08
+- Investigated user report: ffmpeg video transcoding does not work / never worked.
+- Observation: host has `/usr/bin/ffmpeg` and `/usr/bin/ffprobe`; direct helper test passed locally (`tests/test_file_inspect.py::TestInspectOpenableFile::test_video_preview_transcodes_to_browser_safe_mp4`, `1 passed`).
+- Observation: standard Docker sandbox previously lacked ffmpeg, so the transcode test was skipped there and prior Docker validation did not constrain this workflow.
+- Isolated route evidence with ffmpeg installed: `/api/files/video_preview` for synthetic `.mkv` returned HTTP 200 MP4; `ffprobe` showed `codec_name=h264`, `pix_fmt=yuv420p`.
+- Browser evidence on isolated Docker `:18932`: Chromium reported `video/x-matroska` as playable enough that a `canPlayType()` heuristic chose the original `.mkv`, loaded metadata with width/height `0`, then after the fix the explicit safe-container allowlist chose `/api/files/video_preview` and loaded `160x90` metadata. Artifacts in `/tmp/codoxear-video-transcode-evidence/`.
+- Code commit: `fix: make video preview transcoding usable`.
+- Validation: targeted local checks passed (`5 passed`); targeted Docker checks passed (`4 passed` and ffmpeg-backed transcode test executed); full local suite passed (`613 passed, 25 subtests passed in 9.54s`); full isolated Docker suite passed (`612 passed, 1 skipped, 25 subtests passed in 11.91s`).

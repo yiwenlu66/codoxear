@@ -1005,3 +1005,12 @@ Commitments:
 - Intervention: queue listing and mutation paths now treat every item in a recovery queue as protected; promotion checks the queue-wide barrier before touching broker state.
 - Evidence: regressions cover direct-unknown queues, recovery tails, unflagged item mutation attempts, and no broker polling under recovery tails; full local/Docker suites passed.
 - Scoped claim: once an active queue contains recovery evidence, every queued item is preserved from silent mutation until explicit recovery deletion.
+
+
+## 2026-06-13 03:08
+- Claim investigated: ffmpeg video transcoding never worked.
+- Mechanisms considered: missing ffmpeg dependency; server transcode failure; route failure; browser choosing the original unsupported container and never invoking preview.
+- Evidence: server helper and HTTP route produce H.264/yuv420p MP4 when ffmpeg exists, so the core ffmpeg command/route is viable. Standard Docker lacked ffmpeg, so validation was previously blind. Browser evidence showed `canPlayType("video/x-matroska")` was not discriminating: it led to original MKV metadata with zero dimensions instead of preview use.
+- Intervention: install ffmpeg in the isolated Docker sandbox; document ffmpeg/ffprobe as the dependency; use an explicit browser-safe container allowlist (`mp4`, `webm`, `ogg`) so `.mkv`, `.mov`, `.avi`, etc. request the compatible preview first.
+- Prediction now supported: incompatible containers trigger server MP4 preview generation deterministically; browser-native types still load original first and retain error fallback.
+- Scoped claim: ffmpeg-backed compatible preview generation works for the tested synthetic MKV in isolated Docker/browser. Real large videos, unusual codecs, and production hosts without ffmpeg remain separately scoped.
