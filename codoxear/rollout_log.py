@@ -20,6 +20,7 @@ from .cc_log import cc_user_text
 from .pi_log import pi_assistant_thinking_count
 from .pi_log import pi_assistant_tool_use_count
 from .pi_log import pi_assistant_error_text
+from .pi_log import pi_assistant_is_aborted_turn
 from .pi_log import pi_assistant_text
 from .pi_log import pi_assistant_is_final_turn_end
 from .pi_log import pi_message_role
@@ -716,7 +717,9 @@ def _extract_chat_events(
                 total_tools += tool_count
                 tool_names.add("pi_tool")
                 last_tool = "pi_tool"
-            if isinstance(assistant_text, str) and assistant_text:
+            if pi_assistant_is_aborted_turn(obj):
+                turn_aborted = True
+            elif isinstance(assistant_text, str) and assistant_text:
                 ets = _event_ts(obj)
                 message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
                 if message_class == "final_response":
@@ -1094,6 +1097,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if pi_user_text(obj):
                     saw_terminal_signal = True
                     idle = False
+                    continue
+                if pi_assistant_is_aborted_turn(obj):
+                    saw_terminal_signal = True
+                    idle = True
                     continue
                 if pi_assistant_text(obj):
                     saw_terminal_signal = True

@@ -337,6 +337,15 @@ def pi_assistant_error_text(obj: dict[str, Any]) -> str | None:
     return "Pi turn failed without errorMessage in log"
 
 
+def pi_assistant_is_aborted_turn(obj: dict[str, Any]) -> bool:
+    if obj.get("type") != "message":
+        return False
+    message = obj.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return False
+    return message.get("stopReason") == "aborted"
+
+
 def pi_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
     if obj.get("type") != "message":
         return False

@@ -216,6 +216,18 @@ class TestServerChatFlags(unittest.TestCase):
         self.assertEqual(events[-1]["text"], "401 Invalid API key")
         self.assertEqual(events[-1]["ts"], 1777165323.0)
 
+    def test_pi_aborted_message_sets_turn_aborted(self) -> None:
+        events, _meta, flags, _diag = _extract_chat_events(
+            [
+                {"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "test"}]}},
+                {"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}},
+            ]
+        )
+        self.assertTrue(flags["turn_start"])
+        self.assertTrue(flags["turn_aborted"])
+        self.assertFalse(flags["turn_end"])
+        self.assertEqual([event["role"] for event in events], ["user"])
+
     def test_compute_idle_from_log_pi_final_message_with_thinking_is_idle(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "pi.jsonl"

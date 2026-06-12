@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from codoxear.sessiond import Sessiond
 from codoxear.sessiond import State
+from codoxear.sessiond import _log_busy_signals
 from codoxear.sessiond import _read_jsonl_from_offset
 
 
@@ -38,6 +39,16 @@ class _AcceptCrashSocket:
 
 
 class TestSessiondFailClosed(unittest.TestCase):
+    def test_log_busy_signals_treat_pi_aborted_as_turn_end(self) -> None:
+        self.assertEqual(
+            _log_busy_signals({"type": "message", "message": {"role": "assistant", "content": [], "stopReason": "aborted"}}),
+            (False, True),
+        )
+        self.assertEqual(
+            _log_busy_signals({"type": "message", "message": {"role": "user", "content": [{"type": "text", "text": "hi"}]}}),
+            (True, False),
+        )
+
     def test_sessiond_reader_preserves_missing_file_contract(self) -> None:
         missing = Path(tempfile.gettempdir()) / "codoxear-missing-sessiond-jsonl-for-test.jsonl"
         try:

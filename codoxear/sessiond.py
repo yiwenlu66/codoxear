@@ -22,6 +22,11 @@ from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
+from .pi_log import pi_assistant_error_text as _pi_assistant_error_text
+from .pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
+from .pi_log import pi_assistant_is_final_turn_end as _pi_assistant_is_final_turn_end
+from .pi_log import pi_assistant_text as _pi_assistant_text
+from .pi_log import pi_user_text as _pi_user_text
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
 from .util import process_group_alive as _process_group_alive
@@ -78,6 +83,33 @@ def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024
     if not path.exists():
         return [], offset
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
+
+
+def _log_busy_signals(obj: dict[str, Any]) -> tuple[bool, bool]:
+    if obj.get("type") == "event_msg":
+        p = obj.get("payload")
+        if not isinstance(p, dict):
+            raise ValueError("invalid rollout event_msg payload")
+        pt = p.get("type")
+        if pt == "user_message":
+            return True, False
+        if pt in {"turn_aborted", "thread_rolled_back", "task_complete", "turn_complete"}:
+            return False, True
+        if pt == "token_count":
+            info = p.get("info")
+            if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
+                return False, True
+        return False, False
+    if obj.get("type") == "message":
+        if _pi_user_text(obj):
+            return True, False
+        if _pi_assistant_is_aborted_turn(obj):
+            return False, True
+        if _pi_assistant_error_text(obj):
+            return False, True
+        if _pi_assistant_text(obj) and _pi_assistant_is_final_turn_end(obj):
+            return False, True
+    return False, False
 
 
 @dataclass
@@ -210,18 +242,9 @@ class Sessiond:
             saw_user = False
             saw_turn_end = False
             for obj in objs:
-                if obj.get("type") == "event_msg":
-                    p = obj.get("payload")
-                    if not isinstance(p, dict):
-                        raise ValueError("invalid rollout event_msg payload")
-                    if p.get("type") == "user_message":
-                        saw_user = True
-                    if p.get("type") == "token_count":
-                        info = p.get("info")
-                        if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
-                            saw_turn_end = True
-                elif obj.get("type") == "response_item":
-                    continue
+                user_signal, turn_end_signal = _log_busy_signals(obj)
+                saw_user = saw_user or user_signal
+                saw_turn_end = saw_turn_end or turn_end_signal
 
             if saw_user:
                 with self._lock:
