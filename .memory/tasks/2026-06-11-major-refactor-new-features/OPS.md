@@ -741,3 +741,8 @@
 - API hardening from reviewer finding: malformed JSON/object bodies now raise `BadRequestError` and return 400 without trace; oversized bodies return `RequestPayloadTooLargeError`/413; generic 500 responses omit trace unless `CODEX_WEB_DEBUG_ERRORS=1`.
 - Commit: `a06d362 fix: return bad request for malformed JSON bodies`.
 - Validation: `python3 -m py_compile codoxear/server.py` passed; focused client-disconnect/json-body/auth/upload/queue tests passed (`25 passed in 2.11s`). Live isolated Docker curl on `:18826`: malformed `/api/login` and authenticated malformed `/api/sessions/fake/inject_file` both returned 400 with `{"error":"invalid json body"}` and no `trace` field.
+
+## 2026-06-12 17:08
+- Full validation after malformed JSON hardening.
+- HEAD: `875e87d`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`495 passed, 2 skipped, 10 subtests passed in 12.00s`).
