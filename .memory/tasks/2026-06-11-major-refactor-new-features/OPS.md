@@ -886,3 +886,7 @@
 - Architecture tranche: extracted queue item cleaning, persistence, local list/append/update/delete/move, stale-session pruning, and successful-send removal into `codoxear/queue_store.py`; `SessionManager` still owns broker readiness, idle grace, sending transient fields, and scheduler orchestration.
 - Commit: `57e25dd refactor: extract queue store ownership`.
 - Validation: direct/integration queue tests passed (`21 passed in 2.40s`). Plain full suite passed (`537 passed, 10 subtests passed in 12.14s`). Full isolated Docker suite passed (`535 passed, 2 skipped, 10 subtests passed in 11.27s`).
+
+
+## 2026-06-12 19:41
+- Runtime CSP header evidence: isolated Docker server on `:18882` returned `HTTP/1.0 200 OK`, `Content-Security-Policy: default-src 'self'; ... frame-ancestors 'none'`, and `X-Frame-Options: DENY` for `GET /`. Initial `HEAD /` returned `501` and was discarded as invalid evidence because the handler does not implement HEAD.

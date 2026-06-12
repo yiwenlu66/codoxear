@@ -648,3 +648,7 @@ Commitments:
 - Intervention: introduced `QueueStore` for durable item ownership and local mutation semantics, preserving `SessionManager._queues` as compatibility map and leaving drain/send orchestration in `SessionManager`.
 - Evidence: new QueueStore tests cover legacy string migration, duplicate id repair, sending-item mutation rejection, successful-send removal by id (not duplicate text), and stale-session pruning; existing queue/unattended tests and full suites pass.
 - Scoped claim: queue item storage/mutation has a dedicated owner. Live scheduling, idle gating, and send failure handling remain SessionManager responsibilities.
+
+
+## 2026-06-12 19:41
+- Observation: runtime GET evidence confirms CSP/X-Frame-Options are delivered as HTTP headers for `/`, satisfying the critic's enforcement concern. The failed HEAD probe was invalid because the handler does not implement HEAD.
