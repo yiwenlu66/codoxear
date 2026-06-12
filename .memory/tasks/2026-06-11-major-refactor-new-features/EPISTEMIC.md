@@ -1039,3 +1039,11 @@ Commitments:
 - Intervention: suppress `pi_assistant_is_aborted_turn()` before Pi assistant text handling in delivery extraction, sidebar conversation timestamps, and last-chat role timestamps.
 - Evidence: targeted regressions and full local/Docker suites passed.
 - Scoped claim: text-bearing Pi aborts are no longer treated as final assistant output by the inspected chat, delivery, and timestamp consumers.
+
+
+## 2026-06-13 03:52
+- Observation: clean Claude review found two falsifiable synthetic bugs: `cc_user_text()` treated arbitrary XML-looking user prompts as non-chat, and `turn_duration` could close an unmatched Claude tool-use turn.
+- Mechanism: the first bug came from a broad `text.startswith("<") ...` heuristic; the second came from treating Claude `system/turn_duration` as unconditional turn end without tracking tool-use/result pairing.
+- Intervention: remove the arbitrary XML suppression while retaining meta/tool-result filtering; add Claude tool-use/result ID tracking in log-idle and broker busy paths.
+- Evidence: targeted tests now preserve `<task>summarize</task>` in chat and keep unmatched `tool_use` + `turn_duration` busy; full local and Docker suites passed.
+- Scoped claim: synthetic Claude transcript/busy invariants are stronger, but real credentialed Claude sessions and TUI injection/interrupt behavior remain unproven.

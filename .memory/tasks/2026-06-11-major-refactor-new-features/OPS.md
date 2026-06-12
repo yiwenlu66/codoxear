@@ -1223,3 +1223,12 @@
 - Applied non-blocking focused review follow-up for Pi abort consistency: text-bearing Pi aborted messages are now suppressed in voice/push delivery extraction and sidebar/last-chat timestamp accounting, matching live/history chat extraction.
 - Commit: `fix: suppress Pi aborts in adjacent consumers`.
 - Validation: targeted adjacent-consumer tests passed (`3 passed`); affected suites passed (`140 passed`); full local suite passed (`622 passed, 25 subtests passed in 9.33s`); full isolated Docker suite passed (`621 passed, 1 skipped, 25 subtests passed in 11.88s`).
+
+
+## 2026-06-13 03:52
+- Audited Claude Code integration using read-only critic artifact `/tmp/codoxear-cc-gap-review.md`.
+- Fixed two synthetic blockers that do not require live credentials:
+  - literal XML/HTML-looking Claude user prompts are preserved in transcripts instead of being hidden by a broad markup heuristic;
+  - Claude `system/turn_duration` no longer marks a turn idle while an assistant `tool_use` lacks a matching user `tool_result`; broker busy state now tracks Claude tool-use IDs too.
+- Commit: `fix: harden Claude transcript and tool busy state`.
+- Validation: targeted Claude suites passed (`42 passed`); full local suite passed (`625 passed, 25 subtests passed in 9.21s`); isolated Docker suite passed (`624 passed, 1 skipped, 25 subtests passed in 12.50s`).
