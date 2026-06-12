@@ -50,7 +50,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn(".msg-row.nav-pulse .msg", css)
         self.assertIn("@keyframes navPulse", css)
 
-    def test_loaded_chat_search_is_rendered_row_scoped(self) -> None:
+    def test_loaded_chat_search_is_rendered_row_scoped_with_all_transcript_count(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('id: "chatSearchBtn"', source)
         self.assertIn('title: "Search loaded messages"', source)
@@ -59,6 +59,9 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('chatSearchMatches = renderedMessageRows().filter', source)
         self.assertIn('rowSearchText(row).toLowerCase().includes(query)', source)
         self.assertIn('setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search")', source)
+        self.assertIn('function refreshAllChatSearchCount(query)', source)
+        self.assertIn('messages/search?q=${encodeURIComponent(cleanQuery)}&limit=0', source)
+        self.assertIn('`${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}`', source)
 
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")

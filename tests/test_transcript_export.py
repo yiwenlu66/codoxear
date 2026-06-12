@@ -4,6 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codoxear.server import _read_chat_export_events
+from codoxear.server import _search_chat_events
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
@@ -49,10 +50,26 @@ class TestTranscriptExport(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "too large to export"):
                 _read_chat_export_events(path, max_bytes=1)
 
-    def test_server_exposes_messages_export_route(self) -> None:
+    def test_search_counts_all_matching_chat_events(self) -> None:
+        events = [
+            {"role": "user", "text": "Needle in first user turn", "_before_byte": 1},
+            {"role": "assistant", "text": "no match", "_before_byte": 2},
+            {"role": "assistant", "text": "another NEEDLE appears", "_before_byte": 3},
+            {"role": "system", "text": "needle ignored", "_before_byte": 4},
+        ]
+
+        count, matches = _search_chat_events(events, "needle", limit=1)
+
+        self.assertEqual(count, 2)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["_before_byte"], 1)
+
+    def test_server_exposes_messages_export_and_search_routes(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
         self.assertIn('_match_session_route(path, "messages", "export")', source)
+        self.assertIn('_match_session_route(path, "messages", "search")', source)
         self.assertIn('"event_count": len(events)', source)
+        self.assertIn('"match_count": match_count', source)
         self.assertIn('_json_response(self, 413', source)
 
     def test_ui_has_copy_conversation_action(self) -> None:

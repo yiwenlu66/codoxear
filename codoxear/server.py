@@ -2753,6 +2753,28 @@ def _read_chat_export_events(log_path: Path, *, max_bytes: int = TRANSCRIPT_EXPO
     return _extract_positioned_chat_events(records)
 
 
+def _search_chat_events(events: list[dict[str, Any]], query: str, *, limit: int = 20) -> tuple[int, list[dict[str, Any]]]:
+    needle = query.strip().casefold()
+    if not needle:
+        return 0, []
+    max_matches = max(0, int(limit))
+    count = 0
+    matches: list[dict[str, Any]] = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        role = event.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        text = event.get("text")
+        if not isinstance(text, str) or needle not in text.casefold():
+            continue
+        count += 1
+        if len(matches) < max_matches:
+            matches.append(event)
+    return count, matches
+
+
 def _event_ts(obj: dict[str, Any]) -> float | None:
     return _rollout_log._event_ts(obj)
 
@@ -6551,6 +6573,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 events = MANAGER._attach_notification_texts(events)
                 _json_response(self, 200, {**transcript, "events": events, "event_count": len(events)})
+                return
+
+            session_id = _match_session_route(path, "messages", "search")
+            if session_id is not None:
+                if not _require_auth(self):
+                    self._unauthorized()
+                    return
+                MANAGER.refresh_session_meta(session_id)
+                s = MANAGER.get_session(session_id)
+                if not s:
+                    _json_response(self, 404, {"error": "unknown session"})
+                    return
+                qs = urllib.parse.parse_qs(u.query)
+                query = (qs.get("q") or [""])[0]
+                limit_q = qs.get("limit")
+                match_limit = 20
+                if limit_q:
+                    match_limit = max(0, min(100, int(limit_q[0])))
+                transcript = _message_transcript_identity(s)
+                if not isinstance(query, str) or not query.strip():
+                    _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
+                    return
+                if s.log_path is None or (not s.log_path.exists()):
+                    _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "matches": []})
+                    return
+                try:
+                    events = _read_chat_export_events(s.log_path)
+                except ValueError as e:
+                    _json_response(self, 413, {"error": str(e), "max_bytes": int(TRANSCRIPT_EXPORT_MAX_BYTES)})
+                    return
+                events = MANAGER._attach_notification_texts(events)
+                match_count, matches = _search_chat_events(events, query, limit=match_limit)
+                _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "matches": matches})
                 return
 
             session_id = _match_session_route(path, "messages", "tail")

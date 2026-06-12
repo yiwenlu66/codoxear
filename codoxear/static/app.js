@@ -1589,6 +1589,9 @@
         let chatSearchQuery = "";
         let chatSearchMatches = [];
         let chatSearchIndex = -1;
+        let chatSearchAllCount = null;
+        let chatSearchAllRequestId = 0;
+        let chatSearchAllAbort = null;
         let hasOlder = false;
         let renderedAtLiveTail = true;
         let loadingOlder = false;
@@ -2855,9 +2858,45 @@
 
         function syncChatSearchStatus() {
           const total = chatSearchMatches.length;
-          chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded` : "Loaded";
+          const allSuffix = chatSearchQuery && Number.isFinite(chatSearchAllCount) ? ` · ${chatSearchAllCount} all` : "";
+          chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
           chatSearchPrevBtn.disabled = total <= 0;
           chatSearchNextBtn.disabled = total <= 0;
+        }
+
+        function resetAllChatSearchCount() {
+          chatSearchAllCount = null;
+          chatSearchAllRequestId += 1;
+          if (chatSearchAllAbort) chatSearchAllAbort.abort();
+          chatSearchAllAbort = null;
+        }
+
+        async function refreshAllChatSearchCount(query) {
+          const cleanQuery = String(query || "").trim();
+          if (!selected || !cleanQuery) {
+            resetAllChatSearchCount();
+            syncChatSearchStatus();
+            return;
+          }
+          const sid = selected;
+          const reqId = chatSearchAllRequestId + 1;
+          chatSearchAllRequestId = reqId;
+          if (chatSearchAllAbort) chatSearchAllAbort.abort();
+          const ctl = new AbortController();
+          chatSearchAllAbort = ctl;
+          try {
+            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=0`, { signal: ctl.signal });
+            if (selected !== sid || reqId !== chatSearchAllRequestId || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
+            chatSearchAllCount = Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0;
+            syncChatSearchStatus();
+          } catch (e) {
+            if (e && e.name === "AbortError") return;
+            if (selected !== sid || reqId !== chatSearchAllRequestId) return;
+            chatSearchAllCount = null;
+            syncChatSearchStatus();
+          } finally {
+            if (chatSearchAllAbort === ctl) chatSearchAllAbort = null;
+          }
         }
 
         function focusChatSearchMatch(index, { jump = true } = {}) {
@@ -2886,9 +2925,11 @@
           if (!query) {
             chatSearchMatches = [];
             chatSearchIndex = -1;
+            resetAllChatSearchCount();
             syncChatSearchStatus();
             return;
           }
+          void refreshAllChatSearchCount(query);
           const previous = preserveCurrent && chatSearchIndex >= 0 ? chatSearchMatches[chatSearchIndex] : null;
           chatSearchMatches = renderedMessageRows().filter((row) => rowSearchText(row).toLowerCase().includes(query));
           if (!chatSearchMatches.length) {
@@ -2913,6 +2954,7 @@
           chatSearchOpen = false;
           chatSearchBar.style.display = "none";
           clearChatSearchMarks();
+          resetAllChatSearchCount();
         }
 
         function stepChatSearch(delta) {
