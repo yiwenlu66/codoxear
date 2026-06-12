@@ -32,7 +32,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)", block)
         self.assertIn("resp = MANAGER.inject_attachment_keys(session_id, seq)", block)
-        self.assertIn("self._refresh_session_meta_if_sidecar_exists(session_id)", source)
+        self.assertIn("self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)", source)
         self.assertIn("except SessionNotReadyError as e:", block)
         self.assertIn('{"error": "session is busy; wait before attaching a file"}', block)
         self.assertLess(block.index("ready_for_attachment = MANAGER.attachment_injection_ready(session_id)"), block.index("raw = base64.b64decode"))

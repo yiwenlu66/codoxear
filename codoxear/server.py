@@ -3638,7 +3638,7 @@ class SessionManager:
         with self._lock:
             return self._sessions.get(session_id)
 
-    def refresh_session_meta(self, session_id: str) -> None:
+    def refresh_session_meta(self, session_id: str, *, drain_queue: bool = True) -> None:
         # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
         # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
         with self._lock:
@@ -3732,7 +3732,7 @@ class SessionManager:
             s2.tmux_session = tmux_session
             s2.tmux_window = tmux_window
             s2.resume_session_id = resume_session_id
-        if self._queue_len(session_id) > 0:
+        if drain_queue and self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
     def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -4357,17 +4357,17 @@ class SessionManager:
             raise ValueError("invalid broker tail response")
         return tail
 
-    def _refresh_session_meta_if_sidecar_exists(self, session_id: str) -> None:
+    def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = True) -> None:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             meta_path = s.sock_path.with_suffix(".json")
         if meta_path.exists():
-            self.refresh_session_meta(session_id)
+            self.refresh_session_meta(session_id, drain_queue=drain_queue)
 
     def attachment_injection_ready(self, session_id: str) -> bool:
-        self._refresh_session_meta_if_sidecar_exists(session_id)
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -4382,7 +4382,7 @@ class SessionManager:
             raise ValueError("invalid broker state response")
         if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
             return False
-        self._refresh_session_meta_if_sidecar_exists(session_id)
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:

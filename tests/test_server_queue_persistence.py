@@ -136,13 +136,38 @@ class TestServerQueuePersistence(unittest.TestCase):
             mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
             mgr.idle_from_log = lambda _sid: mgr._sessions[sid].log_path != new_busy_log  # type: ignore[method-assign]
 
-            def refresh(_sid: str) -> None:
+            drain_flags: list[bool] = []
+
+            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
+                drain_flags.append(drain_queue)
                 mgr._sessions[sid].log_path = new_busy_log
 
             mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
 
             self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
             self.assertEqual(mgr._sessions[sid].log_path, new_busy_log)
+            self.assertEqual(drain_flags, [False, False])
+
+    def test_attachment_readiness_refresh_does_not_drain_queue(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            session = _make_session(sid)
+            session.sock_path = root / "s1.sock"
+            mgr._sessions[sid] = session
+            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+            mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr._maybe_drain_session_queue = lambda _sid: self.fail("attachment readiness must not drain queue")  # type: ignore[attr-defined]
+
+            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
+                if drain_queue:
+                    mgr._maybe_drain_session_queue(_sid)  # type: ignore[attr-defined]
+                mgr._queues[sid] = [_queue_item("q1", "queued")]
+
+            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
 
     def test_inject_attachment_keys_rechecks_readiness_under_input_lock(self) -> None:
         sid = "s1"
