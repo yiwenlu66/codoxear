@@ -2168,6 +2168,7 @@
   <li>If the selected session is idle, <b>Send</b> submits immediately. If it is busy, choose <b>Send after current</b> to queue the prompt.</li>
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
+  <li>Use <b>/</b> to search the loaded chat; Previous/Next can page older history when the transcript count shows more matches.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">

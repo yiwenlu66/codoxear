@@ -86,6 +86,7 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;', source)
         self.assertIn('if (chatSearchShortcutBlocked(e.target)) return;', source)
         self.assertIn('openChatSearch();', source)
+        self.assertIn('Use <b>/</b> to search the loaded chat; Previous/Next can page older history when the transcript count shows more matches.', source)
 
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")
