@@ -957,6 +957,12 @@
         padding: 10px 12px;
         min-width: 54px;
       }
+      .msg.loading {
+        padding: 9px 12px;
+        color: var(--muted);
+        box-shadow: none;
+        background: rgba(255, 255, 255, 0.68);
+      }
       .typingDots {
         display: inline-flex;
         align-items: center;

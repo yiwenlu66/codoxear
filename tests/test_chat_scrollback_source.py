@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
 
 class TestChatScrollbackSource(unittest.TestCase):
@@ -25,8 +26,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });", block)
         self.assertIn("setTyping(optimisticBusy);", block)
         self.assertIn("const cachedTail = s ? sessionTailCache.get(sessionId) : null;", block)
+        self.assertIn("let displayedCachedTail = false;", block)
         self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
         self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
+        self.assertIn("displayedCachedTail = true;", block)
+        self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
         self.assertIn("const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
@@ -34,6 +38,18 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state !== "failed") kickPoll(900);', block)
         self.assertNotIn("refreshInitPageState", block)
+
+    def test_transcript_loading_row_is_non_transcript_feedback(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        start = source.index("function renderTranscriptLoading(sessionId)")
+        end = source.index("function applyCachedTail", start)
+        block = source[start:end]
+        self.assertIn('class: "msg-row assistant typing-row transcript-loading-row"', block)
+        self.assertIn('role: "status", "aria-live": "polite", text: "Loading transcript…"', block)
+        self.assertIn("chatInner.insertBefore(row, bottomSentinel);", block)
+        self.assertIn(".msg.loading", css)
+        self.assertIn("color: var(--muted);", css)
 
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

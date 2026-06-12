@@ -4631,6 +4631,18 @@
           syncJumpButton();
         }
 
+        function renderTranscriptLoading(sessionId) {
+          clearTranscriptDom();
+          setOlderState({ hasMore: false, isLoading: false });
+          renderedAtLiveTail = true;
+          restorePendingUserRowsForSession(sessionId);
+          const row = el("div", { class: "msg-row assistant typing-row transcript-loading-row" });
+          row.dataset.role = "assistant";
+          row.appendChild(el("div", { class: "msg assistant loading", role: "status", "aria-live": "polite", text: "Loading transcript…" }));
+          chatInner.insertBefore(row, bottomSentinel);
+          syncJumpButton();
+        }
+
         function applyCachedTail(sessionId, cache, sessionMeta) {
           updateSessionTranscriptSlot(sessionId, {
             transcript_state: "bound",
@@ -4706,9 +4718,12 @@
           }
 
           const cachedTail = s ? sessionTailCache.get(sessionId) : null;
+          let displayedCachedTail = false;
           if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
             applyCachedTail(sessionId, cachedTail, s);
+            displayedCachedTail = true;
           }
+          if (!displayedCachedTail) renderTranscriptLoading(sessionId);
 
           const data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);
           if (pollGen !== myGen || selected !== sessionId) return null;
