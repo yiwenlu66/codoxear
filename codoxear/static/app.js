@@ -5676,6 +5676,7 @@
         function hideEditSession() {
           editSessionId = null;
           editStatus.textContent = "";
+          editSaveBtn.disabled = false;
           editDependencyMenuOpen = false;
           applyDialogMenus();
           if (editViewer.open) editViewer.close();
@@ -6371,6 +6372,7 @@
           if (!s) return;
           editSessionId = sid;
           editStatus.textContent = "";
+          editSaveBtn.disabled = false;
           editNameInput.value = typeof s.alias === "string" ? s.alias : "";
           editNameInput.placeholder = sessionDisplayName(s) || "Conversation title";
           editPriorityRange.value = String(Number(s.priority_offset || 0));
@@ -6492,7 +6494,8 @@
           if (e.target === editViewer) hideEditSession();
         };
         editSaveBtn.onclick = async () => {
-          if (!editSessionId) return;
+          const sid = editSessionId;
+          if (!sid || editSaveBtn.disabled) return;
           let snoozeUntil = null;
           const snoozeMode = editSnoozeMode;
           if (snoozeMode === "4h") {
@@ -6514,8 +6517,9 @@
             snoozeUntil = Math.floor(parsed / 1000);
           }
           try {
+            editSaveBtn.disabled = true;
             editStatus.textContent = "Saving...";
-            await api(`/api/sessions/${editSessionId}/edit`, {
+            await api(`/api/sessions/${sid}/edit`, {
               method: "POST",
               body: {
                 name: String(editNameInput.value || ""),
@@ -6524,15 +6528,19 @@
                 dependency_session_id: String(editDependencyBtn.dataset.value || "") || null,
               },
             });
-            hideEditSession();
             await refreshSessions();
-            if (selected === editSessionId) {
-              const s2 = sessionIndex.get(editSessionId);
+            if (editSessionId !== sid) return;
+            hideEditSession();
+            if (selected === sid) {
+              const s2 = sessionIndex.get(sid);
               if (s2) titleLabel.textContent = sessionTitleWithId(s2);
             }
             setToast("conversation updated");
           } catch (e) {
+            if (editSessionId !== sid) return;
             editStatus.textContent = e && e.message ? e.message : "Save failed";
+          } finally {
+            if (editSessionId === sid) editSaveBtn.disabled = false;
           }
         };
 
