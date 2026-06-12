@@ -438,3 +438,6 @@ Commitments:
 
 ## 2026-06-12 16:15
 - Refactor mechanism: byte-range parsing and inline response streaming are route-shared HTTP mechanics. Moving them as a unit preserves 416 handling, cache headers, and range semantics while reducing repeated file-route coupling in `server.py`.
+
+## 2026-06-12 16:19
+- Observation: upload tests patch `server.UPLOAD_DIR` and `server._now`, so a direct imported staging helper would silently change test/runtime override behavior. The accepted extraction keeps server as authority over those mutable values and injects them into the pure module implementation.
