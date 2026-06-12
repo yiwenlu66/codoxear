@@ -4016,6 +4016,23 @@
                });
               sessionIndex = new Map();
 		          for (const s of sessions) sessionIndex.set(s.session_id, s);
+              if (selected && !sessionIndex.has(selected)) {
+                selected = null;
+                activeTranscriptState = "pending_bind";
+                activeLogPath = null;
+                activeThreadId = null;
+                liveCursor = null;
+                clearRenderedTranscriptRange();
+                turnOpen = false;
+                localStorage.removeItem("codexweb.selected");
+                setSessionHash("");
+                titleLabel.textContent = "No session selected";
+                setStatus({ running: false, queueLen: 0 });
+                setContext(null);
+                setTyping(false);
+                setAttachCount(0);
+                resetChatRenderState();
+              }
               if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
 		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 		             swipeRefreshDeferred = true;
@@ -10072,8 +10089,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueBtn.onclick = (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (sessionLaunchFailed(sessionIndex.get(selected))) {
+            const selectedInfo = sessionIndex.get(selected);
+            if (sessionLaunchFailed(selectedInfo)) {
               setToast("failed session cannot receive messages");
+              return;
+            }
+            if (selectedInfo && selectedInfo.orphan_recovery) {
+              showQueueViewer();
               return;
             }
             const raw = $("#msg") ? $("#msg").value : "";
