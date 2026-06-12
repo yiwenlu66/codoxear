@@ -716,3 +716,8 @@
 - Full validation after New Session duplicate-start guard.
 - HEAD: `49fee05`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`490 passed, 2 skipped, 10 subtests passed in 10.99s`).
+
+## 2026-06-12 16:54
+- UI correctness fix from reviewer finding: diagnostics modal now captures `sid` before fetching, uses `sid` in the request, and skips both success and error rendering if selected session changed before the response.
+- Commit: `c61002f fix: ignore stale diagnostics responses after session switch`.
+- Validation: `node --check codoxear/static/app.js` passed; focused diagnostics/chat-navigation/static tests passed (`18 passed in 4.76s`).

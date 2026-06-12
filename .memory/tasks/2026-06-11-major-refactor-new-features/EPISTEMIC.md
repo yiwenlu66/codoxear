@@ -462,3 +462,6 @@ Commitments:
 
 ## 2026-06-12 16:50
 - Race mechanism fixed: repeated taps on New Session could reach multiple awaited `spawnSessionWithCwd` calls because no in-flight guard existed. The guard starts after local validation and before the network launch request, so invalid forms remain editable while valid launches are single-flight.
+
+## 2026-06-12 16:54
+- Race mechanism fixed: diagnostics previously read `selected` at request time but rendered after await without checking whether selection changed. Rendering is now scoped to the captured session id.
