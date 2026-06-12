@@ -310,3 +310,9 @@
 - Provider/model selector recovery follow-up: added per-backend remembered provider/model pair storage under `codoxear.newSessionProviderModel.<backend>` so the combined selector restores the actual chosen pair, not just the provider.
 - Browser validation in isolated sandbox on port 18812: cleared Codex provider/provider-model localStorage, opened New Session, searched `chatgpt/gpt`, selected `chatgpt/gpt-5.4-mini`, observed localStorage `codoxear.newSessionProviderModel.codex = chatgpt/gpt-5.4-mini`, closed/reopened New Session, and observed input restored to `chatgpt/gpt-5.4-mini`; provider-only DOM count remained 0 and modal app isolation stayed active.
 - Validation: local `node --check codoxear/static/app.js` passed; targeted frontend/source tests passed (`23 passed in 0.55s`); full isolated Docker suite passed (`444 passed, 2 skipped in 10.11s`).
+
+## 2026-06-12 12:29
+- Deep UX follow-up: measured chat navigation rail geometry in the isolated long-chat browser fixture. The absolute rail overlapped visible messages on desktop and mobile.
+- Intervention: changed `chatWrap` to flex-column layout and `chatNavRail` to an in-flow static toolbar above the scroll area; kept it contextual but no longer overlaying message content. Added source regression coverage that the rail is in layout flow rather than `position:absolute`.
+- Browser recheck: fresh browser session showed `#chatNavRail` computed `position: static`; strict visible-overlap calculation returned `[]` on desktop 1280x900 and mobile 390x844. Screenshot saved as `recovery-mobile-chat-rail-flow.png`.
+- Validation: local `node --check codoxear/static/app.js` passed; targeted chat tests passed (`30 passed in 0.61s`); full isolated Docker suite passed (`445 passed, 2 skipped in 10.32s`).

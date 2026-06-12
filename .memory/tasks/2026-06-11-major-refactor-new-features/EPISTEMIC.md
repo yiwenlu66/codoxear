@@ -281,3 +281,8 @@ Commitments:
 - Mechanism: previous persistence key stored only provider choice. Recent sessions could suggest pairs, but the user's explicit selected pair was not the remembered launch default.
 - Intervention: added a separate per-backend provider/model memory key, wrote it on valid menu selection and valid start attempts, and restored it through the same provider/model parser so stale provider names are ignored loudly/safely.
 - Evidence: browser showed the selected pair persisted and restored exactly; deterministic frontend tests and full Docker passed.
+
+## 2026-06-12 12:29
+- Observation: moving chat navigation out of the topbar was not sufficient; the initial rail placement was still an overlay and geometrically covered message rows. This was a product invariant failure for sparse/readable chat, not cosmetic polish.
+- Mechanism: `#chatNavRail` was absolutely positioned over the chat scroll viewport. On scroll positions near the tail, visible rows could pass underneath the control cluster.
+- Intervention/evidence: placing the rail in normal flex layout above the scroll area removed visible overlap while keeping navigation contextual to chat. Browser geometry on desktop and mobile found no strict visible overlap after the change.

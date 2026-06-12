@@ -67,6 +67,15 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn(".chatNavRail", css)
         self.assertIn(".msg-row.chat-search-current .msg", css)
 
+    def test_chat_navigation_rail_is_in_layout_flow(self) -> None:
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn(".chatWrap {\n        flex: 1;", css)
+        self.assertIn("display: flex;\n        flex-direction: column;", css)
+        self.assertIn(".chatNavRail {\n        display: none;\n        order: 0;", css)
+        rail_block = css[css.index(".chatNavRail {"):css.index("      button {", css.index(".chatNavRail {"))]
+        self.assertNotIn("position: absolute;", rail_block)
+        self.assertNotIn("top: 10px;", rail_block)
+
 
 if __name__ == "__main__":
     unittest.main()
