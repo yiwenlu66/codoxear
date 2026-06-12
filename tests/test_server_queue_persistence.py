@@ -623,6 +623,11 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_recent_cwds = lambda: None
         mgr._queues["orphan"] = [dict(_queue_item("u", "maybe sent"), commit_unknown=True), _queue_item("n", "later unsent")]
 
+        before = SessionManager.queue_list(mgr, "orphan")
+        self.assertTrue(before[1]["orphan_recovery"])
+        with self.assertRaisesRegex(ValueError, "explicit confirmation"):
+            SessionManager.queue_delete(mgr, "orphan", "n")
+
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 1})
 
         remaining = SessionManager.queue_list(mgr, "orphan")

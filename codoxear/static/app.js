@@ -9798,9 +9798,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           renderQueueList();
           try {
             await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
-            await refreshQueueViewer();
             await refreshSessions();
             updateQueueBadge();
+            if (queueViewer.style.display === "flex") {
+              if (sessionIndex.has(sid)) await refreshQueueViewer();
+              else hideQueueViewer();
+            }
           } catch (e) {
             await refreshQueueViewer();
             setToast(`queue delete error: ${e && e.message ? e.message : "unknown error"}`);

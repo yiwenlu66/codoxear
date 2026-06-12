@@ -2705,7 +2705,12 @@ class SessionManager:
             if s is None and not self._queue_has_recovery_items_locked(session_id):
                 raise KeyError("unknown session")
             sending_id = s.queue_sending_item_id if s else None
-            return self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
+            items = self._queue_store_for_manager().list_items(qmap, session_id, sending_item_id=sending_id)
+            if s is None and self._queue_has_recovery_items_locked(session_id):
+                for item in items:
+                    if not bool(item.get("commit_unknown")):
+                        item["orphan_recovery"] = True
+            return items
 
     def _queue_append_item_local(self, session_id: str, text: str) -> tuple[dict[str, Any], int]:
         t = str(text)
@@ -2730,6 +2735,15 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if s is None and not self._queue_has_recovery_items_locked(session_id):
                 raise KeyError("unknown session")
+            target_item = None
+            q_before = self._queues.get(session_id)
+            if isinstance(q_before, list):
+                target_item = next((item for item in q_before if isinstance(item, dict) and item.get("id") == item_id_clean), None)
+            if s is None and self._queue_has_recovery_items_locked(session_id) and isinstance(target_item, dict):
+                if not bool(target_item.get("commit_unknown")) and not bool(target_item.get("orphan_recovery")):
+                    if not allow_orphan_recovery:
+                        raise ValueError("orphan recovery item requires explicit confirmation")
+                    target_item["orphan_recovery"] = True
             sending_id = s.queue_sending_item_id if s else None
             ql = self._queue_store_for_manager().delete(
                 self._queues,
@@ -6866,7 +6880,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    status = 409 if "commit" in str(e).lower() else 502
+                    err_text = str(e).lower()
+                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
                     _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
@@ -6892,7 +6907,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    status = 409 if "commit" in str(e).lower() else 502
+                    err_text = str(e).lower()
+                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
                     _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
@@ -6918,7 +6934,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 except ValueError as e:
-                    status = 409 if "commit" in str(e).lower() else 502
+                    err_text = str(e).lower()
+                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
                     _json_response(self, status, {"error": str(e)})
                     return
                 _json_response(self, 200, res)
