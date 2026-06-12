@@ -705,6 +705,38 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual([item["id"] for item in remaining], ["n"])
         self.assertTrue(remaining[0]["orphan_recovery"])
 
+    def test_clear_direct_unknown_preserves_plain_orphan_queue_tail(self) -> None:
+        mgr = self._mgr()
+        saved_queues: list[list[dict[str, object]]] = []
+        mgr._save_queues = lambda: saved_queues.append([dict(item) for item in mgr._queues.get("orphan", [])])  # type: ignore[method-assign]
+        mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._queues["orphan"] = [_queue_item("n", "plain tail")]
+
+        self.assertEqual(SessionManager.clear_commit_unknown_send(mgr, "orphan"), {"ok": True, "commit_unknown_send": False})
+        dropped = mgr._queue_store_for_manager().drop_missing_sessions(mgr._queues, set())
+
+        self.assertFalse(dropped)
+        self.assertIn("orphan", mgr._queues)
+        self.assertTrue(mgr._queues["orphan"][0]["orphan_recovery"])
+        self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
+
+    def test_prune_old_direct_unknown_preserves_plain_orphan_queue_tail(self) -> None:
+        mgr = self._mgr()
+        saved_queues: list[list[dict[str, object]]] = []
+        mgr._save_queues = lambda: saved_queues.append([dict(item) for item in mgr._queues.get("orphan", [])])  # type: ignore[method-assign]
+        mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
+        mgr._queues["orphan"] = [_queue_item("n", "plain tail")]
+
+        with patch("codoxear.server.time.time", return_value=10_000_000.0):
+            self.assertTrue(SessionManager._prune_missing_commit_unknown_sends(mgr, max_age_seconds=7 * 24 * 3600))
+        dropped = mgr._queue_store_for_manager().drop_missing_sessions(mgr._queues, set())
+
+        self.assertFalse(dropped)
+        self.assertNotIn("orphan", mgr._commit_unknown_sends)
+        self.assertIn("orphan", mgr._queues)
+        self.assertTrue(mgr._queues["orphan"][0]["orphan_recovery"])
+        self.assertEqual(saved_queues[-1][0]["orphan_recovery"], True)
+
     def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
         mgr = self._mgr()
         mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}

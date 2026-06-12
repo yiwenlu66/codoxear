@@ -2378,9 +2378,8 @@ class SessionManager:
                     for item in q0
                 )
                 if isinstance(q0, list) and q0 and has_direct_unknown:
-                    for item in q0:
-                        if isinstance(item, dict):
-                            item["orphan_recovery"] = True
+                    if self._mark_queue_orphan_recovery_locked(session_id):
+                        changed_queues = True
                     has_queued_recovery = True
                 if clear_recovery or not has_queued_recovery:
                     queues.pop(session_id, None)
@@ -2568,16 +2567,22 @@ class SessionManager:
         self._save_commit_unknown_sends()
 
     def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
+        queue_changed = False
         with self._lock:
             unknown_sends = getattr(self, "_commit_unknown_sends", None)
             has_orphan_marker = isinstance(unknown_sends, dict) and session_id in unknown_sends
             if session_id not in self._sessions and not has_orphan_marker:
                 raise KeyError("unknown session")
+            if has_orphan_marker:
+                queue_changed = self._mark_queue_orphan_recovery_locked(session_id)
+        if queue_changed:
+            self._save_queues()
         self._set_commit_unknown_send(session_id, None)
         return {"ok": True, "commit_unknown_send": False}
 
     def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
         changed = False
+        queue_changed = False
         now_ts = time.time()
         with self._lock:
             unknown_sends = getattr(self, "_commit_unknown_sends", None)
@@ -2595,8 +2600,12 @@ class SessionManager:
                     created_ts = now_ts
                 if math.isfinite(created_ts) and created_ts > 0 and (now_ts - created_ts) < max_age_seconds:
                     continue
+                if self._mark_queue_orphan_recovery_locked(str(sid)):
+                    queue_changed = True
                 unknown_sends.pop(sid, None)
                 changed = True
+        if queue_changed:
+            self._save_queues()
         if changed:
             self._save_commit_unknown_sends()
         return changed
@@ -2692,6 +2701,20 @@ class SessionManager:
                 return 0
             return self._queue_store_for_manager().queue_len(qmap, session_id)
 
+    def _mark_queue_orphan_recovery_locked(self, session_id: str) -> bool:
+        qmap = getattr(self, "_queues", None)
+        if not isinstance(qmap, dict):
+            return False
+        q = qmap.get(session_id)
+        if not isinstance(q, list) or not q:
+            return False
+        changed = False
+        for item in q:
+            if isinstance(item, dict) and not bool(item.get("orphan_recovery")):
+                item["orphan_recovery"] = True
+                changed = True
+        return changed
+
     def _queue_has_recovery_items_locked(self, session_id: str) -> bool:
         qmap = getattr(self, "_queues", None)
         if not isinstance(qmap, dict):
@@ -2763,12 +2786,11 @@ class SessionManager:
                 allow_commit_unknown=allow_commit_unknown,
                 allow_orphan_recovery=allow_orphan_recovery,
             )
-            if allow_commit_unknown or allow_orphan_recovery:
-                q_after = self._queues.get(session_id)
-                if isinstance(q_after, list):
-                    for item in q_after:
-                        if isinstance(item, dict):
-                            item["orphan_recovery"] = True
+            deleted_recovery = isinstance(target_item, dict) and (
+                bool(target_item.get("commit_unknown")) or bool(target_item.get("orphan_recovery"))
+            )
+            if deleted_recovery and (allow_commit_unknown or allow_orphan_recovery):
+                self._mark_queue_orphan_recovery_locked(session_id)
         self._save_queues()
         return {"ok": True, "queue_len": int(ql)}
 
@@ -3288,15 +3310,15 @@ class SessionManager:
             # Drop queues for sessions that no longer exist unless they contain recovery evidence.
             active_ids = set(self._sessions.keys())
             direct_unknown_ids = set(getattr(self, "_commit_unknown_sends", {}).keys())
+            marked_recovery = False
             for sid, queue in list(self._queues.items()):
                 if sid in active_ids or sid not in direct_unknown_ids or not isinstance(queue, list):
                     continue
-                for item in queue:
-                    if isinstance(item, dict):
-                        item["orphan_recovery"] = True
+                if self._mark_queue_orphan_recovery_locked(str(sid)):
+                    marked_recovery = True
             dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, active_ids)
             session_ids = [sid for sid in self._queue_store_for_manager().nonempty_session_ids(self._queues) if sid in active_ids]
-        if dropped:
+        if dropped or marked_recovery:
             self._save_queues()
         for sid in session_ids:
             if self._maybe_drain_session_queue(sid):
