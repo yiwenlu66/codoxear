@@ -565,14 +565,14 @@ def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str
     return out
 
 
-def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: int = 8 * 1024 * 1024) -> set[str]:
+def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: int | None = None) -> set[str]:
     before = max(0, int(before))
-    if before <= 0 or max_scan_bytes <= 0:
+    if before <= 0 or (max_scan_bytes is not None and max_scan_bytes <= 0):
         return set()
-    lower_bound = max(0, before - int(max_scan_bytes))
+    lower_bound = max(0, before - int(max_scan_bytes)) if max_scan_bytes is not None else 0
     newest_first: list[JsonlRecord] = []
     for record in _iter_jsonl_records_reverse(log_path, before=before):
-        if record.end <= lower_bound:
+        if max_scan_bytes is not None and record.end <= lower_bound:
             break
         newest_first.append(record)
         if record.obj.get("type") == "user" and cc_user_text(record.obj):
@@ -1323,8 +1323,12 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     continue
 
         if saw_terminal_signal and not (cc_terminal_without_context and scan < min(sz, max_scan_bytes)):
+            if cc_terminal_without_context and scan >= min(sz, max_scan_bytes):
+                idle = False
             break
         if scan >= max_scan_bytes:
+            if cc_terminal_without_context:
+                idle = False
             break
         scan *= 2
 

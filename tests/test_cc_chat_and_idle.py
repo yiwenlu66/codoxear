@@ -158,6 +158,31 @@ class TestCcChatAndIdle(unittest.TestCase):
             self.assertGreater(path.stat().st_size, 256 * 1024)
             self.assertFalse(_compute_idle_from_log(path))
 
+    def test_cc_large_tool_result_does_not_hide_older_pending_tool(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                user("hello"),
+                assistant(
+                    [
+                        {"type": "tool_use", "name": "Bash", "id": "toolu_a", "input": {}},
+                        {"type": "tool_use", "name": "Bash", "id": "toolu_b", "input": {}},
+                    ],
+                    stop_reason="tool_use",
+                ),
+                {"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_a", "content": "x" * (9 * 1024 * 1024)}]}},
+                assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+            ]
+            encoded = [json.dumps(row) + "\n" for row in rows]
+            path.write_text("".join(encoded), encoding="utf-8")
+            final_offset = sum(len(item.encode("utf-8")) for item in encoded[:3])
+            self.assertEqual(_cc_pending_tool_ids_before(path, final_offset), {"toolu_b"})
+            self.assertEqual(_cc_pending_tool_ids_before(path, final_offset, max_scan_bytes=8 * 1024 * 1024), set())
+            self.assertFalse(_compute_idle_from_log(path))
+            live_events, _next, _meta, flags, _diag, _token = _read_chat_live_delta(path, after_byte=final_offset)
+            self.assertEqual(live_events[-1]["message_class"], "narration")
+            self.assertFalse(flags["turn_end"])
+
     def test_cc_idle_expands_tail_for_later_context_without_user_start(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "session.jsonl"
