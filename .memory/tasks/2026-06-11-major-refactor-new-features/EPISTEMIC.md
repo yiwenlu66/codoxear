@@ -680,3 +680,10 @@ Commitments:
 - Intervention: attachment readiness now refreshes sidecar metadata when available before checking local/log state and again after broker state refresh; tests simulate sidecar refresh rebinding to a busy log.
 - Evidence: targeted stale-metadata regression plus full local/Docker suites passed.
 - Scoped claim: attachment readiness now uses current sidecar-bound log metadata for the known stale-log bypass; it still cannot cover unreported physical-terminal keystrokes before backend state/logs observe them.
+
+
+## 2026-06-12 20:23
+- Observation: metadata refresh inside attachment readiness had an unintended side effect: it could drain a local queue, reenter `send()`, and self-deadlock on the same per-session input lock.
+- Intervention: made queue draining explicit in `refresh_session_meta(drain_queue=True)` and disabled it for attachment-readiness metadata refresh.
+- Evidence: targeted tests verify attachment metadata refresh uses `drain_queue=False` and does not drain queues; full local/Docker suites passed.
+- Scoped claim: attachment readiness metadata refresh is now side-effect-free with respect to queue promotion, closing the observed self-deadlock mechanism.

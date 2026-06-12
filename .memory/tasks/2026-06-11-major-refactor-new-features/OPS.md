@@ -914,3 +914,9 @@
 - Final clean-room rerun stale-log repair: attachment readiness refreshes broker sidecar metadata when present before and after broker state, so log-idle veto uses current `log_path` rather than stale in-memory binding.
 - Commit: `fix: refresh attachment log metadata`.
 - Validation: targeted attachment/sessiond/send tests passed (`26 passed in 2.85s`). Plain full suite passed (`544 passed, 10 subtests passed in 9.73s`). Full isolated Docker suite passed (`542 passed, 2 skipped, 10 subtests passed in 10.68s`).
+
+
+## 2026-06-12 20:23
+- Clean-room rerun deadlock repair: `refresh_session_meta()` now accepts `drain_queue`; attachment readiness refreshes sidecar metadata with `drain_queue=False`, preventing queue-drain/send reentry while `inject_attachment_keys()` holds the per-session input lock.
+- Commit: `fix: avoid attachment readiness queue drain`.
+- Validation: targeted attachment/sessiond/send tests passed (`27 passed in 2.95s`). Plain full suite passed (`545 passed, 10 subtests passed in 9.14s`). Full isolated Docker suite passed (`543 passed, 2 skipped, 10 subtests passed in 11.33s`).
