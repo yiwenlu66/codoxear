@@ -364,3 +364,7 @@ Commitments:
 ## 2026-06-12 14:17
 - Observation: prior mobile CSS explicitly hid `.toast` at <=520px. Because send/queue/copy/search/file operations report transient status through `setToast()`, mobile users could lose feedback for successful or failed actions.
 - Intervention/evidence: mobile toast now uses a sparse snackbar style that remains absent when empty via existing `.toast:empty`, but visible when populated. Browser measurement at 390px width showed it does not overlap the composer and remains pointer-transparent.
+
+## 2026-06-12 14:19
+- Observation: duplicate JSONL tail wrappers mostly already shared the safe util reader, but sessiond still differed from broker on missing files. A disappearing pending/session log could terminate the sessiond watcher rather than preserving the current offset and retrying.
+- Intervention/evidence: sessiond now mirrors broker's missing-file behavior. Regression test covers the contract directly.

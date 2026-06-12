@@ -431,3 +431,8 @@
 - Mobile UX follow-up: toast feedback was hidden at widths <=520px even though many mobile actions rely on `setToast()`. Changed mobile toast to a compact fixed bottom snackbar and made the toast element an ARIA live status region.
 - Commit: `2d208e3 fix: show toast feedback on mobile`.
 - Validation: `node --check codoxear/static/app.js` passed; mobile toast source/tooling tests passed (`2 passed in 0.47s`). Browser validation at 390x844 in isolated Docker: non-empty toast computed `display: block`, `position: fixed`, `bottom: 76px`, `pointer-events: none`, role `status`, aria-live `polite`, no composer overlap, JS errors `[]`.
+
+## 2026-06-12 14:19
+- Architecture robustness follow-up: broker/server/sessiond all delegate JSONL tail parsing to the shared safe util reader, but sessiond's local wrapper lacked broker's missing-file contract. Aligned sessiond so missing logs return `([], offset)` instead of killing the watcher thread.
+- Commit: `e6d38d6 fix: keep sessiond jsonl tailing fail-closed`.
+- Validation: `python3 -m py_compile codoxear/sessiond.py` passed; targeted sessiond/broker/shared JSONL reader tests passed (`8 passed in 0.71s`).
