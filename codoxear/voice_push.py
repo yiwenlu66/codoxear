@@ -7,7 +7,6 @@ import math
 import os
 import shutil
 import subprocess
-import tempfile
 import threading
 import time
 import urllib.error
@@ -20,6 +19,9 @@ from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
 from pywebpush import WebPushException
 from pywebpush import webpush
+
+from .util import atomic_write_json
+from .util import load_json_file
 
 
 DEFAULT_SUMMARIZATION_MODEL = "gpt-4.1-mini"
@@ -1392,26 +1394,16 @@ class VoicePushCoordinator:
                 self._delivery_ledger.pop(message_id, None)
 
     def _load_settings(self) -> None:
-        try:
-            raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
+        raw = load_json_file(self._settings_path, default={})
         self._voice_settings = _clean_voice_settings(raw)
 
     def _save_settings(self) -> None:
-        os.makedirs(self._settings_path.parent, exist_ok=True)
         with self._lock:
             payload = dict(self._voice_settings)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._settings_path.parent, prefix=self._settings_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._settings_path)
+        atomic_write_json(self._settings_path, payload)
 
     def _load_subscriptions(self) -> None:
-        try:
-            raw = json.loads(self._subscriptions_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = []
+        raw = load_json_file(self._subscriptions_path, default=[])
         cleaned: dict[str, dict[str, Any]] = {}
         if isinstance(raw, list):
             for item in raw:
@@ -1421,27 +1413,16 @@ class VoicePushCoordinator:
         self._subscriptions = cleaned
 
     def _save_subscriptions(self) -> None:
-        os.makedirs(self._subscriptions_path.parent, exist_ok=True)
         with self._lock:
             payload = list(self._subscriptions.values())
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._subscriptions_path.parent, prefix=self._subscriptions_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._subscriptions_path)
+        atomic_write_json(self._subscriptions_path, payload)
 
     def _load_delivery_ledger(self) -> None:
-        try:
-            raw = json.loads(self._delivery_ledger_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            raw = {}
+        raw = load_json_file(self._delivery_ledger_path, default={})
         self._delivery_ledger = _clean_ledger(raw)
 
     def _save_delivery_ledger(self) -> None:
-        os.makedirs(self._delivery_ledger_path.parent, exist_ok=True)
         with self._lock:
             self._trim_locked()
             payload = dict(self._delivery_ledger)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=self._delivery_ledger_path.parent, prefix=self._delivery_ledger_path.name + ".", suffix=".tmp", delete=False) as tmp:
-            tmp.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
-            tmp_path = Path(tmp.name)
-        os.replace(tmp_path, self._delivery_ledger_path)
+        atomic_write_json(self._delivery_ledger_path, payload)
