@@ -40,8 +40,20 @@ class TestSessionPollingSource(unittest.TestCase):
         block = source[source.index("async function refreshSessions()") : source.index("function appendEvent")]
         self.assertIn("if (notModified && !swipeRefreshDeferred) return latestSessions;", block)
         self.assertIn("if (!notModified) {", block)
+        self.assertIn("const applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId;", block)
         self.assertIn("const sessions = latestSessions", block)
+        self.assertIn("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;", block)
         self.assertLess(block.index("const sessions = latestSessions"), block.index("if (swipeActions && openSwipeSessionId"))
+        self.assertLess(block.index('sessionsWrap.innerHTML = "";'), block.index("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;"))
+
+    def test_closing_swipe_keeps_deferred_refresh_flag_until_render(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        close_start = source.index("function closeOpenSwipe()")
+        close_end = source.index("async function doDelete", close_start)
+        block = source[close_start:close_end]
+        self.assertIn("if (swipeRefreshDeferred) {", block)
+        self.assertIn("void refreshSessions().catch", block)
+        self.assertNotIn("swipeRefreshDeferred = false;", block)
 
     def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

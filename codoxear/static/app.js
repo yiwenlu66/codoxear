@@ -4063,6 +4063,7 @@
             fileRefCandidateCache.clear();
           }
           const swipeActions = !useDesktopSessionActions();
+          const applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId;
             const sessions = latestSessions
                .slice()
                .sort((a, b) => {
@@ -4101,6 +4102,7 @@
 		           }
 		           sessionsWrap.innerHTML = "";
 		           openSwipeContent = null;
+              if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;
 			          for (const entry of sidebarEntries) {
                     if (entry.type === "header") {
                       sessionsWrap.appendChild(renderSessionGroupHeader(entry));
@@ -4152,7 +4154,6 @@
 	              openSwipeSessionId = null;
 	              openSwipeTargetX = 0;
 	              if (swipeRefreshDeferred) {
-	                swipeRefreshDeferred = false;
 	                void refreshSessions().catch((e) => console.error("refreshSessions failed after swipe close", e));
 	              }
 	            }
