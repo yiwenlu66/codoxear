@@ -951,3 +951,10 @@ Commitments:
 - Intervention: any explicit recovery deletion in a missing-session queue now propagates `orphan_recovery` to all remaining items.
 - Evidence: regression test covers deletion of a persisted recovery item with a plain tail; full local/Docker suites passed.
 - Scoped claim: missing-session recovery queues retain queue-level recovery protection until all queued prompts are explicitly resolved.
+
+
+## 2026-06-13 01:49
+- Observation: review found a stale-active race: deleting a recovery head before the session was pruned left a plain tail that cleanup could later drop. It also noted direct unknown markers did not preserve same-session plain queued tails.
+- Intervention: recovery deletion now propagates recovery state regardless of whether the session still appears active; direct unknown markers mark same-session queues as recovery before cleanup/sweep.
+- Evidence: tests cover stale-active deletion followed by cleanup and direct-unknown orphan queue preservation; full local/Docker suites passed.
+- Scoped claim: queued tails associated with recovery evidence remain protected across session-prune timing races.
