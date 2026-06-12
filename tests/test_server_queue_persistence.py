@@ -366,6 +366,19 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertTrue(mgr._queues[sid][0].get("commit_unknown"))
         self.assertEqual(mgr._queues[sid][0].get("commit_unknown_ts"), 123.0)
 
+    def test_queue_generic_pre_dispatch_failure_clears_pre_dispatch_unknown_marker(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._queues[sid] = [_queue_item("q1", "queued first")]
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.send = lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("pre-send readiness exploded"))  # type: ignore[method-assign]
+
+        with patch("codoxear.server.time.time", return_value=111.0):
+            self.assertIsNone(SessionManager._promote_queue_head_if_sendable(mgr, sid, require_idle_grace=False, expected_item_id="q1"))
+        self.assertIsNone(mgr._sessions[sid].queue_sending_item_id)
+        self.assertFalse(mgr._queues[sid][0].get("commit_unknown"))
+
     def test_queue_known_send_failure_clears_pre_dispatch_unknown_marker(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -524,6 +537,18 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr.inject_keys = lambda _sid, _seq, **_kwargs: {"error": "empty response"}  # type: ignore[method-assign]
 
         with self.assertRaisesRegex(SessionCommitUnknownError, "attachment commit status unknown"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+        self.assertTrue(mgr._sessions[sid].pending_attachment)
+        self.assertIn(sid, mgr._pending_attachment_ids)
+
+    def test_attachment_malformed_response_sets_pending_and_reports_unknown(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr.attachment_injection_ready = lambda _sid: True  # type: ignore[method-assign]
+        mgr.inject_keys = lambda _sid, _seq, **_kwargs: None  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionCommitUnknownError, "malformed"):
             SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
         self.assertTrue(mgr._sessions[sid].pending_attachment)
         self.assertIn(sid, mgr._pending_attachment_ids)

@@ -10480,7 +10480,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		              kickPoll(0);
 		            }
 		          } catch (e) {
-	            if (selected === sid) setToast(`attach error: ${e.message}`);
+	            if (selected === sid) {
+	              const commitUnknown = Boolean(e && e.obj && e.obj.commit_unknown);
+	              if (commitUnknown) {
+	                setToast("attachment status unknown; check before retrying");
+	                pollFastUntilMs = Date.now() + 4000;
+	                kickPoll(0);
+	                void refreshSessions().catch((refreshErr) => console.error("refreshSessions failed", refreshErr));
+	              } else {
+	                setToast(`attach error: ${e.message}`);
+	              }
+	            }
 	          }
 	        });
 

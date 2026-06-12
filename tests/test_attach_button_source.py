@@ -28,7 +28,9 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('attachment_index: attachmentIndex', source)
         self.assertIn('if (selected === sid) {', source)
         self.assertIn('setAttachCount(attachmentIndex);', source)
-        self.assertIn('if (selected === sid) setToast(`attach error: ${e.message}`);', source)
+        self.assertIn('const commitUnknown = Boolean(e && e.obj && e.obj.commit_unknown);', source)
+        self.assertIn('setToast("attachment status unknown; check before retrying");', source)
+        self.assertIn('setToast(`attach error: ${e.message}`);', source)
 
     def test_running_turn_cannot_split_attachments_into_queue(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

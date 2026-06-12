@@ -2784,6 +2784,14 @@ class SessionManager:
                 if s0 and s0.queue_sending_item_id == head_id:
                     s0.queue_sending_item_id = None
                     s0.queue_idle_since = None
+                q = self._queues.get(session_id)
+                if isinstance(q, list):
+                    for item in q:
+                        if str(item.get("id") or "") == head_id:
+                            item.pop("commit_unknown", None)
+                            item.pop("commit_unknown_ts", None)
+                            break
+            self._save_queues()
             return None
         with self._lock:
             s0 = self._sessions.get(session_id)
@@ -4603,12 +4611,18 @@ class SessionManager:
             except SessionCommitUnknownError:
                 self._set_pending_attachment(session_id, True)
                 raise
-            if isinstance(resp, dict) and resp.get("error"):
+            if not isinstance(resp, dict):
+                self._set_pending_attachment(session_id, True)
+                raise SessionCommitUnknownError("attachment commit status unknown; broker response was malformed")
+            if resp.get("error"):
                 err = str(resp.get("error"))
                 if bool(resp.get("commit_unknown")) or err == "empty response":
                     self._set_pending_attachment(session_id, True)
                     raise SessionCommitUnknownError(f"attachment commit status unknown; {err}")
                 raise SessionInjectionError(err)
+            if not resp.get("ok"):
+                self._set_pending_attachment(session_id, True)
+                raise SessionCommitUnknownError("attachment commit status unknown; broker response was incomplete")
             self._set_pending_attachment(session_id, True)
             return resp
 
