@@ -483,12 +483,13 @@
 
       function providerChoiceToSettings(choice, agentBackend = "codex") {
         const backend = normalizeAgentBackendName(agentBackend);
-        const value = String(choice || "").trim() || "chatgpt";
-        if (backend === "pi") return { model_provider: value || null, preferred_auth_method: null };
+        const rawChoice = String(choice || "").trim();
+        if (backend === "pi") return { model_provider: rawChoice || null, preferred_auth_method: null };
         if (backend === "cc") return { model_provider: null, preferred_auth_method: null };
-        if (value === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
-        if (value === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
-        return { model_provider: value, preferred_auth_method: "apikey" };
+        const codexChoice = rawChoice || "chatgpt";
+        if (codexChoice === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
+        if (codexChoice === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
+        return { model_provider: codexChoice, preferred_auth_method: "apikey" };
       }
 
       function sessionProviderChoice(s) {

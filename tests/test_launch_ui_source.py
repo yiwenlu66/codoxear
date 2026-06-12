@@ -1,7 +1,35 @@
+import json
+import subprocess
+import textwrap
 from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+
+
+def eval_provider_choice_to_settings() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function normalizeAgentBackendName(value) {")
+    end = source.index("function sessionProviderChoice(s) {", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{}};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_providerChoiceToSettings = providerChoiceToSettings;\n")}, ctx);
+        process.stdout.write(JSON.stringify({{
+          codexDefault: ctx.__test_providerChoiceToSettings("", "codex"),
+          codexApi: ctx.__test_providerChoiceToSettings("openai-api", "codex"),
+          codexCustom: ctx.__test_providerChoiceToSettings("crs", "codex"),
+          piEmpty: ctx.__test_providerChoiceToSettings("", "pi"),
+          piExplicit: ctx.__test_providerChoiceToSettings("macaron", "pi"),
+          ccIgnored: ctx.__test_providerChoiceToSettings("macaron", "cc"),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 def test_launch_failure_sidebar_uses_single_visible_failure_marker() -> None:
@@ -31,3 +59,13 @@ def test_failed_launch_rows_are_clickable_transcripts() -> None:
     assert 'if (slotChange.current.state !== "failed") kickPoll(900);' in source
     assert 'if (activeTranscriptState === "failed") return;' in source
     assert 'failed session cannot receive messages' in source
+
+
+def test_provider_choice_mapping_is_backend_specific() -> None:
+    result = eval_provider_choice_to_settings()
+    assert result["codexDefault"] == {"model_provider": "openai", "preferred_auth_method": "chatgpt"}
+    assert result["codexApi"] == {"model_provider": "openai", "preferred_auth_method": "apikey"}
+    assert result["codexCustom"] == {"model_provider": "crs", "preferred_auth_method": "apikey"}
+    assert result["piEmpty"] == {"model_provider": None, "preferred_auth_method": None}
+    assert result["piExplicit"] == {"model_provider": "macaron", "preferred_auth_method": None}
+    assert result["ccIgnored"] == {"model_provider": None, "preferred_auth_method": None}
