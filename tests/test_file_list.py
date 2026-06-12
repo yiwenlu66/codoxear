@@ -3,9 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from codoxear.server import _file_search_score
+from codoxear.file_search import file_search_score
+from codoxear.file_search import search_session_relative_files
 from codoxear.server import _list_session_relative_files
-from codoxear.server import _search_session_relative_files
 
 
 class TestSessionFileList(unittest.TestCase):
@@ -29,8 +29,8 @@ class TestSessionFileList(unittest.TestCase):
             self.assertEqual(_list_session_relative_files(root), ["README.md"])
 
     def test_search_score_prefers_closer_basename_matches(self) -> None:
-        best = _file_search_score("src/app.py", "app")
-        worse = _file_search_score("docs/reference/application-notes.md", "app")
+        best = file_search_score("src/app.py", "app")
+        worse = file_search_score("docs/reference/application-notes.md", "app")
 
         self.assertGreater(best, worse)
 
@@ -43,7 +43,7 @@ class TestSessionFileList(unittest.TestCase):
             (root / "docs" / "app-notes.md").write_text("# app\n", encoding="utf-8")
             (root / "docs" / "misc.txt").write_text("misc\n", encoding="utf-8")
 
-            result = _search_session_relative_files(root, query="app")
+            result = search_session_relative_files(root, query="app")
 
             self.assertEqual(result["mode"], "walk")
             self.assertFalse(result["truncated"])
@@ -56,7 +56,7 @@ class TestSessionFileList(unittest.TestCase):
             (root / ".git" / "config").write_text("[core]\n", encoding="utf-8")
             (root / "README.md").write_text("# repo\n", encoding="utf-8")
 
-            result = _search_session_relative_files(root, query="config")
+            result = search_session_relative_files(root, query="config")
 
             self.assertEqual(result["mode"], "walk")
             self.assertEqual(result["matches"], [])
@@ -73,7 +73,7 @@ class TestSessionFileList(unittest.TestCase):
             (root / "ignored.txt").write_text("ignored\n", encoding="utf-8")
             subprocess.run(["git", "add", ".gitignore", "src/app.py"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-            result = _search_session_relative_files(root, query="app")
+            result = search_session_relative_files(root, query="app")
 
             self.assertEqual(result["mode"], "git")
             self.assertFalse(result["truncated"])

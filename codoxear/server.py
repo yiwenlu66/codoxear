@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import errno
 import hashlib
-import heapq
 import hmac
 import http.server
 import io
@@ -41,6 +40,10 @@ from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from . import rollout_log as _rollout_log
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
+from .file_search import FILE_LIST_IGNORED_DIRS
+from .file_search import FILE_SEARCH_LIMIT
+from .file_search import file_search_score as _file_search_score
+from .file_search import search_session_relative_files as _search_session_relative_files_impl
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
@@ -213,9 +216,6 @@ DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INT
 METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
 FILE_READ_MAX_BYTES = int(os.environ.get("CODEX_WEB_FILE_READ_MAX_BYTES", str(2 * 1024 * 1024)))
 FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
-FILE_SEARCH_LIMIT = int(os.environ.get("CODEX_WEB_FILE_SEARCH_LIMIT", "120"))
-FILE_SEARCH_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_FILE_SEARCH_TIMEOUT_SECONDS", "0.75"))
-FILE_SEARCH_MAX_CANDIDATES = int(os.environ.get("CODEX_WEB_FILE_SEARCH_MAX_CANDIDATES", "200000"))
 GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
 GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
 GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
@@ -227,7 +227,6 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
         str((4 * ((ATTACH_UPLOAD_MAX_BYTES + 2) // 3)) + (64 * 1024)),
     )
 )
-FILE_LIST_IGNORED_DIRS = frozenset({".git", ".hg", ".mypy_cache", ".pytest_cache", ".svn", "__pycache__", "build", "dist", "node_modules", "venv", ".venv"})
 MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
 VIDEO_CONTENT_TYPES = {
     ".3gp": "video/3gpp",
@@ -1512,152 +1511,8 @@ def _git_repo_root(cwd: Path) -> Path | None:
     return Path(root).resolve()
 
 
-def _file_search_score(candidate: str, query: str) -> int:
-    text = str(candidate or "")
-    raw = str(query or "").strip().lower()
-    if not raw:
-        return 0
-    lower = text.lower()
-    if lower == raw:
-        return 12000
-    base = Path(text).name.lower()
-    if base == raw:
-        return 10000
-    total = 0
-    for token in [part for part in raw.split() if part]:
-        exact_idx = lower.find(token)
-        if exact_idx >= 0:
-            prev = lower[exact_idx - 1] if exact_idx > 0 else ""
-            boundary_bonus = 24 if (not prev or prev in "/._-") else 0
-            base_idx = base.find(token)
-            total += 240 - exact_idx * 2 + boundary_bonus + (44 - base_idx if base_idx >= 0 else 0)
-            continue
-        pos = -1
-        first = -1
-        last = -1
-        consecutive = 0
-        boundaries = 0
-        for ch in token:
-            pos = lower.find(ch, pos + 1)
-            if pos < 0:
-                return -1
-            if first < 0:
-                first = pos
-            if last >= 0 and pos == last + 1:
-                consecutive += 1
-            if pos == 0 or lower[pos - 1] in "/._-":
-                boundaries += 1
-            last = pos
-        span = last - first + 1
-        total += 120 - first - max(0, span - len(token)) * 4 + consecutive * 10 + boundaries * 8
-    return total
-
-
-def _push_file_search_match(heap: list[tuple[int, str]], *, path: str, score: int, limit: int) -> None:
-    item = (score, path)
-    if len(heap) < limit:
-        heapq.heappush(heap, item)
-        return
-    if item > heap[0]:
-        heapq.heapreplace(heap, item)
-
-
-def _finish_file_search(heap: list[tuple[int, str]], *, mode: str, query: str, scanned: int, truncated: bool) -> dict[str, Any]:
-    matches = [{"path": path, "score": score} for score, path in sorted(heap, key=lambda item: (-item[0], item[1]))]
-    return {
-        "mode": mode,
-        "query": query,
-        "matches": matches,
-        "scanned": scanned,
-        "truncated": truncated,
-    }
-
-
-def _search_walk_relative_files(root: Path, *, query: str, limit: int) -> dict[str, Any]:
-    deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
-    heap: list[tuple[int, str]] = []
-    scanned = 0
-    truncated = False
-
-    def _onerror(err: OSError) -> None:
-        raise err
-
-    for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=_onerror, followlinks=False):
-        dirnames[:] = [name for name in sorted(dirnames) if name not in FILE_LIST_IGNORED_DIRS]
-        current_path = Path(current_root)
-        for name in sorted(filenames):
-            scanned += 1
-            if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
-                truncated = True
-                return _finish_file_search(heap, mode="walk", query=query, scanned=scanned - 1, truncated=truncated)
-            rel = (current_path / name).relative_to(root).as_posix()
-            score = _file_search_score(rel, query)
-            if score < 0:
-                continue
-            _push_file_search_match(heap, path=rel, score=score, limit=limit)
-    return _finish_file_search(heap, mode="walk", query=query, scanned=scanned, truncated=truncated)
-
-
-def _search_git_relative_files(cwd: Path, *, query: str, limit: int) -> dict[str, Any]:
-    deadline = time.monotonic() + FILE_SEARCH_TIMEOUT_SECONDS
-    heap: list[tuple[int, str]] = []
-    scanned = 0
-    truncated = False
-    proc = subprocess.Popen(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    try:
-        assert proc.stdout is not None
-        for raw_line in proc.stdout:
-            path = raw_line.rstrip("\n")
-            if not path:
-                continue
-            scanned += 1
-            if scanned > FILE_SEARCH_MAX_CANDIDATES or time.monotonic() > deadline:
-                truncated = True
-                proc.kill()
-                break
-            score = _file_search_score(path, query)
-            if score < 0:
-                continue
-            _push_file_search_match(heap, path=path, score=score, limit=limit)
-        stderr = proc.stderr.read() if proc.stderr is not None else ""
-        return_code = proc.wait()
-    finally:
-        if proc.stdout is not None:
-            proc.stdout.close()
-        if proc.stderr is not None:
-            proc.stderr.close()
-    if truncated:
-        return _finish_file_search(heap, mode="git", query=query, scanned=scanned - 1, truncated=True)
-    if return_code != 0:
-        err = stderr.strip()
-        raise RuntimeError(err or f"git ls-files failed with code {return_code}")
-    return _finish_file_search(heap, mode="git", query=query, scanned=scanned, truncated=False)
-
-
 def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_SEARCH_LIMIT) -> dict[str, Any]:
-    root = base.expanduser()
-    if not root.is_absolute():
-        root = root.resolve()
-    if not root.exists():
-        raise FileNotFoundError("session cwd not found")
-    if not root.is_dir():
-        raise ValueError("session cwd is not a directory")
-    raw_query = str(query).strip()
-    if not raw_query:
-        raise ValueError("query required")
-    clamped_limit = max(1, min(int(limit), FILE_SEARCH_LIMIT))
-    repo_root = _git_repo_root(root)
-    if repo_root is not None:
-        return _search_git_relative_files(root, query=raw_query, limit=clamped_limit)
-    return _search_walk_relative_files(root, query=raw_query, limit=clamped_limit)
+    return _search_session_relative_files_impl(base, query=query, limit=limit, git_root_func=_git_repo_root)
 
 
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
