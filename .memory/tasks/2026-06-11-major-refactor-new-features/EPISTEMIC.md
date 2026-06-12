@@ -335,3 +335,6 @@ Commitments:
 ## 2026-06-12 13:34
 - Observation: launch request semantics were spread through the HTTP handler. This increased drift risk across Codex/Pi/Claude provider/model/reasoning validation.
 - Intervention/evidence: a normalized launch request parser now owns backend-specific validation while the route preserves response/spawn behavior. Tests cover Codex custom provider, providerless Pi, Claude field rejection, cwd field errors, and Pi model-specific reasoning coupling.
+
+## 2026-06-12 13:36
+- Browser evidence update: the all-transcript search paging mechanism was tested through normal session discovery, message tail/history routes, and a real broker control socket in the isolated Docker app dir. The observed transition from `0/0 loaded · 1 all` to `1/1 loaded · 1 all` supports the mechanism that bounded contiguous history paging can materialize older search matches without creating a separate jump/page model.

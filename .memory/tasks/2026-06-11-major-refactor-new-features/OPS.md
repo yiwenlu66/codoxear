@@ -393,3 +393,7 @@
 - Architecture/refactor follow-up: extracted `/api/sessions` POST launch validation into `NewSessionLaunchRequest` and `_parse_new_session_launch_request()`. The HTTP route now handles auth/body/error response and calls `spawn_web_session()` with the normalized request; backend-specific provider/reasoning/service-tier validation lives in one parser.
 - Commit: `36cd30f refactor: parse new session launch requests`.
 - Validation: targeted parser/reasoning/launch tests passed (`62 passed in 1.79s`); full isolated Docker suite passed (`458 passed, 2 skipped in 10.22s`).
+
+## 2026-06-12 13:36
+- Reliability follow-up: committed `3fc9082 fix: avoid masking json temp cleanup errors` so `atomic_write_json()` cleanup catches all `OSError` and cannot mask the original write/replace exception. Validation before commit: helper/store tests passed (`34 passed in 0.83s`) and full isolated Docker suite passed (`454 passed, 2 skipped in 11.26s`).
+- Browser UX validation for chat-search paging: restarted isolated Docker sandbox on port 18812, created synthetic long Codex session `ux-search-long` with a real Unix control socket and a 160-turn log. Searching `DEEP-NEEDLE-SEARCH` initially showed `0/0 loaded · 1 all` with the Next button enabled; pressing Next loaded older history contiguously and then showed `1/1 loaded · 1 all`, one highlighted hit, body contained the needle, and captured JS errors were `[]`.
