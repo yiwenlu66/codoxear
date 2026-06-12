@@ -1945,6 +1945,7 @@ class Session:
     resume_session_id: str | None = None
     pending_attachment: bool = False
     sync_send_supported: bool = False
+    key_write_errors_supported: bool = False
 
 
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
@@ -1979,6 +1980,11 @@ def _metadata_ignored_rollout_paths(meta: dict[str, Any], *, sock: Path) -> set[
 def _metadata_sync_send_supported(meta: dict[str, Any]) -> bool:
     caps = meta.get("control_capabilities")
     return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("sync_send") is True
+
+
+def _metadata_key_write_errors_supported(meta: dict[str, Any]) -> bool:
+    caps = meta.get("control_capabilities")
+    return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("key_write_errors") is True
 
 
 def _metadata_detaches_current_log(meta: dict[str, Any], current_log_path: Path | None) -> bool:
@@ -3127,6 +3133,7 @@ class SessionManager:
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
             sync_send_supported = _metadata_sync_send_supported(meta)
+            key_write_errors_supported = _metadata_key_write_errors_supported(meta)
             launch_id = _clean_optional_text(meta.get("launch_id"))
             spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
             cwd_raw = meta.get("cwd")
@@ -3274,6 +3281,7 @@ class SessionManager:
                 resume_session_id=resume_session_id,
                 pending_attachment=session_id in getattr(self, "_pending_attachment_ids", set()),
                 sync_send_supported=sync_send_supported,
+                key_write_errors_supported=key_write_errors_supported,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -3313,6 +3321,7 @@ class SessionManager:
                     prev.resume_session_id = resume_session_id
                     prev.pending_attachment = bool(prev.pending_attachment or session_id in getattr(self, "_pending_attachment_ids", set()))
                     prev.sync_send_supported = sync_send_supported
+                    prev.key_write_errors_supported = key_write_errors_supported
         if recent_cwd_dirty:
             self._save_recent_cwds()
         with self._lock:
@@ -3785,6 +3794,7 @@ class SessionManager:
         agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
         transport, tmux_session, tmux_window = self._session_transport(meta=meta)
         sync_send_supported = _metadata_sync_send_supported(meta)
+        key_write_errors_supported = _metadata_key_write_errors_supported(meta)
         cwd_raw = meta.get("cwd")
         if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
             raise ValueError(f"invalid cwd in metadata for socket {sock}")
@@ -3859,6 +3869,7 @@ class SessionManager:
             s2.tmux_window = tmux_window
             s2.resume_session_id = resume_session_id
             s2.sync_send_supported = sync_send_supported
+            s2.key_write_errors_supported = key_write_errors_supported
         if drain_queue and self._queue_len(session_id) > 0:
             self._maybe_drain_session_queue(session_id)
 
@@ -4401,20 +4412,26 @@ class SessionManager:
                     _unlink_quiet(sock.with_suffix(".json"))
                     raise KeyError("unknown session")
                 raise SessionCommitUnknownError("send commit status unknown; broker response failed") from e
+            if not isinstance(resp, dict):
+                raise SessionCommitUnknownError("send commit status unknown; broker response was malformed")
+            if resp.get("error"):
+                err = str(resp.get("error"))
+                if err == "empty response":
+                    raise SessionCommitUnknownError("send commit status unknown; broker response was empty")
+                raise SessionInjectionError(err)
+            if "queue_len" not in resp:
+                raise SessionCommitUnknownError("send commit status unknown; broker response was incomplete")
+            try:
+                queue_len = int(resp.get("queue_len"))
+            except (TypeError, ValueError) as e:
+                raise SessionCommitUnknownError("send commit status unknown; broker response was invalid") from e
             with self._lock:
-                if isinstance(resp, dict) and resp.get("error"):
-                    err = str(resp.get("error"))
-                    if err == "empty response":
-                        raise SessionCommitUnknownError("send commit status unknown; broker response was empty")
-                    raise SessionInjectionError(err)
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:
                     if "busy" in resp:
                         s2.busy = bool(resp.get("busy"))
-                    if "queue_len" not in resp:
-                        raise ValueError("invalid broker send response")
-                    s2.queue_len = int(resp.get("queue_len"))
+                    s2.queue_len = queue_len
             self._set_pending_attachment(session_id, False)
         return resp
 
@@ -4521,6 +4538,8 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
+            if not (s.sync_send_supported and s.key_write_errors_supported):
+                raise SessionNotReadyError("broker must be restarted before file attachments are available")
             if s.queue_sending_item_id is not None:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
@@ -6650,6 +6669,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     ready_for_attachment = MANAGER.attachment_injection_ready(session_id)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
+                    return
+                except SessionNotReadyError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 except Exception:
                     _json_response(self, 409, {"error": "session state unavailable; wait before attaching a file"})

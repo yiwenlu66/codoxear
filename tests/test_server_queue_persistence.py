@@ -25,6 +25,7 @@ def _make_session(sid: str) -> Session:
         log_path=None,
         sock_path=Path(f"/tmp/{sid}.sock"),
         sync_send_supported=True,
+        key_write_errors_supported=True,
     )
 
 
@@ -284,6 +285,43 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(SessionCommitUnknownError, "empty"):
             SessionManager.send(mgr, sid, "normal prompt")
+
+    def test_malformed_parseable_send_responses_are_commit_unknown(self) -> None:
+        for response in [{}, None, {"queued": False, "queue_len": "notint"}]:
+            with self.subTest(response=response):
+                sid = "s1"
+                mgr = self._mgr()
+                mgr._sessions[sid] = _make_session(sid)
+                mgr._record_prelog_user_message = lambda *_args, **_kwargs: self.fail("malformed response should not be recorded as submitted")  # type: ignore[method-assign]
+                mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+                mgr._sock_call = lambda *_args, _response=response, **_kwargs: _response  # type: ignore[method-assign]
+
+                with self.assertRaisesRegex(SessionCommitUnknownError, "commit status unknown"):
+                    SessionManager.send(mgr, sid, "normal prompt")
+
+    def test_attachment_rejects_broker_without_confirmed_send_capabilities(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].sync_send_supported = False
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unsupported broker should not receive attachment keys")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
+            SessionManager.attachment_injection_ready(mgr, sid)
+        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
+            SessionManager.inject_attachment_keys(mgr, sid, "ATTACH")
+
+    def test_attachment_rejects_broker_without_key_error_capability(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].key_write_errors_supported = False
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+        mgr.inject_keys = lambda *_args, **_kwargs: self.fail("unsupported broker should not receive attachment keys")  # type: ignore[method-assign]
+
+        with self.assertRaisesRegex(SessionNotReadyError, "broker must be restarted"):
+            SessionManager.attachment_injection_ready(mgr, sid)
 
     def test_queue_send_timeout_marks_head_commit_unknown(self) -> None:
         sid = "s1"
