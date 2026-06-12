@@ -2,7 +2,9 @@ import unittest
 from pathlib import Path
 
 
-SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
+ROOT = Path(__file__).resolve().parents[1]
+SERVER_PY = ROOT / "codoxear" / "server.py"
+MESSAGE_CURSOR_PY = ROOT / "codoxear" / "message_cursor.py"
 
 
 class TestMessageRouteSource(unittest.TestCase):
@@ -14,9 +16,10 @@ class TestMessageRouteSource(unittest.TestCase):
 
     def test_tail_live_history_routes_use_opaque_cursors(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
+        cursor_source = MESSAGE_CURSOR_PY.read_text(encoding="utf-8")
         self.assertIn('"live_cursor": live_cursor', source)
         self.assertIn('"history_cursor": history_cursor', source)
-        self.assertIn('ev2["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=pos)', source)
+        self.assertIn('ev2["history_cursor"] = encode_cursor(kind="history", session=session, pos=pos)', cursor_source)
         self.assertIn('events = _attach_history_cursors(events, session=s)', source)
         self.assertIn('{"error": "cursor required"}', source)
         self.assertIn('_decode_message_cursor(cursor_q[0], kind="live", session=s)', source)

@@ -37,6 +37,12 @@ from . import rollout_log as _rollout_log
 from .cc_log import CC_SUPPORTED_REASONING_EFFORTS
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
+from .message_cursor import MessageCursorError
+from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
+from .message_cursor import decode_message_cursor as _decode_message_cursor_impl
+from .message_cursor import encode_message_cursor as _encode_message_cursor_impl
+from .message_cursor import sign_message_cursor as _sign_message_cursor_impl
+from .message_cursor import verify_message_cursor as _verify_message_cursor_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .util import append_launch_attempt as _append_launch_attempt
@@ -1093,10 +1099,6 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
         return None
 
 
-class MessageCursorError(ValueError):
-    pass
-
-
 class SessionLaunchError(RuntimeError):
     def __init__(self, record: dict[str, Any]):
         msg = str(record.get("error") or record.get("message") or "session launch failed")
@@ -1105,70 +1107,23 @@ class SessionLaunchError(RuntimeError):
 
 
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    sig = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
-    return f"{_b64u(raw)}.{_b64u(sig)}"
+    return _sign_message_cursor_impl(payload, secret=HMAC_SECRET)
 
 
 def _verify_message_cursor(token: str) -> dict[str, Any]:
-    try:
-        a, b = token.split(".", 1)
-        raw = _b64u_dec(a)
-        sig = _b64u_dec(b)
-        want = hmac.new(HMAC_SECRET, raw, hashlib.sha256).digest()
-        if not hmac.compare_digest(sig, want):
-            raise MessageCursorError("cursor_invalid")
-        payload = json.loads(raw.decode("utf-8"))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        raise MessageCursorError("cursor_invalid")
-    if not isinstance(payload, dict):
-        raise MessageCursorError("cursor_invalid")
-    return payload
+    return _verify_message_cursor_impl(token, secret=HMAC_SECRET)
 
 
 def _encode_message_cursor(*, kind: str, session: "Session", pos: int) -> str:
-    return _sign_message_cursor(
-        {
-            "v": 1,
-            "kind": kind,
-            "thread_id": session.thread_id,
-            "log_path": str(session.log_path) if session.log_path is not None else None,
-            "pos": int(pos),
-        }
-    )
+    return _encode_message_cursor_impl(kind=kind, session=session, pos=pos, secret=HMAC_SECRET)
 
 
 def _decode_message_cursor(token: str, *, kind: str, session: "Session") -> int:
-    payload = _verify_message_cursor(token)
-    if payload.get("v") != 1 or payload.get("kind") != kind:
-        raise MessageCursorError("cursor_invalid")
-    if payload.get("thread_id") != session.thread_id:
-        raise MessageCursorError("cursor_invalid")
-    expected_log_path = str(session.log_path) if session.log_path is not None else None
-    if payload.get("log_path") != expected_log_path:
-        raise MessageCursorError("cursor_invalid")
-    pos = payload.get("pos")
-    if not isinstance(pos, int) or pos < 0:
-        raise MessageCursorError("cursor_invalid")
-    if session.log_path is not None and session.log_path.exists():
-        size = int(session.log_path.stat().st_size)
-        if pos > size:
-            raise MessageCursorError("cursor_invalid")
-    return int(pos)
+    return _decode_message_cursor_impl(token, kind=kind, session=session, secret=HMAC_SECRET)
 
 
 def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session") -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for ev in events:
-        if not isinstance(ev, dict):
-            out.append(ev)
-            continue
-        pos = ev.get("_before_byte")
-        ev2 = {k: v for k, v in ev.items() if k != "_before_byte"}
-        if isinstance(pos, int) and pos >= 0:
-            ev2["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=pos)
-        out.append(ev2)
-    return out
+    return _attach_history_cursors_impl(events, session=session, encode_cursor=_encode_message_cursor)
 
 
 def _parse_cookies(header: str | None) -> dict[str, str]:
