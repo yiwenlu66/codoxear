@@ -981,3 +981,11 @@ Commitments:
 - Intervention: server enqueue path now rejects when queue recovery evidence is present; active `queue_recovery` reports both `commit_unknown` and `orphan_recovery` queue items.
 - Evidence: regressions cover both flags and full local/Docker suites passed.
 - Scoped claim: queue recovery barriers are authoritative for enqueue, not merely a browser affordance.
+
+
+## 2026-06-13 02:25
+- Observation: review found a check-then-append race where the queue sweeper could mark a head `commit_unknown` between enqueue's first barrier check and append.
+- Mechanism: `enqueue()` held the input lock but the sweeper's promotion path marks queue items under `self._lock` before entering `send()`, so `input_lock` alone was not the commit boundary.
+- Intervention: `_queue_append_item_local(..., reject_recovery_barrier=True)` now performs the authoritative recovery check under the same `self._lock` critical section as append.
+- Evidence: regression simulates a barrier appearing between the first enqueue check and append; full local/Docker suites passed.
+- Scoped claim: enqueue cannot append after a recovery barrier has become visible in the queue state before the append lock is acquired.

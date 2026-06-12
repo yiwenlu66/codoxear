@@ -1173,3 +1173,9 @@
 - Repaired active recovery visibility review blockers: `/enqueue` now rejects active queues containing recovery/commit-unknown barriers before appending; active `queue_recovery` now includes queued `commit_unknown` items as well as `orphan_recovery` items.
 - Commit: `fix: block enqueue behind recovery queues`.
 - Validation: targeted tests passed (`66 passed, 13 subtests passed in 1.85s`). Plain full suite passed (`608 passed, 23 subtests passed in 9.31s`). Full isolated Docker suite passed (`606 passed, 2 skipped, 23 subtests passed in 11.21s`).
+
+
+## 2026-06-13 02:25
+- Repaired atomicity blocker: enqueue now rechecks recovery/unknown queue barriers inside the append lock, closing the interleaving where a queue sweep could mark a head `commit_unknown` after enqueue's first check but before append.
+- Commit: `fix: recheck recovery barrier before enqueue append`.
+- Validation: targeted `tests/test_server_queue_persistence.py` passed (`64 passed, 13 subtests passed in 1.80s`). Plain full suite passed (`609 passed, 23 subtests passed in 9.20s`). Full isolated Docker suite passed (`607 passed, 2 skipped, 23 subtests passed in 11.09s`).
