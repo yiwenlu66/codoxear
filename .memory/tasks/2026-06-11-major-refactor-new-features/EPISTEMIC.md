@@ -1133,3 +1133,9 @@ Commitments:
 - Intervention: generate UUID-backed unknown sentinels; route all result cleanup through a shared top-level-aware helper with ID extraction and safe single-pending cleanup.
 - Evidence: GC/id-reuse regression keeps six idless tools distinct; top-level `toolUseResult` regressions clear pending and allow final response; full local/Docker suites passed.
 - Scoped claim: inspected malformed Claude result handling is more robust, but exact real `toolUseResult` schema still needs live-log confirmation.
+
+
+## 2026-06-13 05:39
+- Observation: focused adversarial review of Claude synthetic hardening at `089a485` found no blockers after many prior falsifications.
+- Supported claim: under inspected synthetic Claude log shapes, pending/active current-turn state now gates final/idle semantics across broker, log idle, chat helpers, positioned live/tail/history, actual live route, and delivery split deltas.
+- Scope limit: this is not live credentialed battle-testing. Real Claude `toolUseResult` schema and large-turn performance remain uncertain and need live-log or profiling evidence.

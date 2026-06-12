@@ -1328,3 +1328,9 @@
   - top-level `toolUseResult` rows are classified as tool-result transport, support common ID keys, and can clear a single pending tool when no ID is present and exactly one tool is pending.
 - Commit: `fix: harden Claude malformed result tracking`.
 - Validation: targeted top-level/idless tests passed (`3 passed`), affected suites passed (`61 passed`), full local suite passed (`650 passed, 25 subtests passed in 11.65s`), isolated Docker suite passed (`649 passed, 1 skipped, 25 subtests passed in 13.98s`).
+
+
+## 2026-06-13 05:39
+- Ran focused clean-room Claude hardening review at HEAD `089a485`: `/tmp/codoxear-cc-hardening-review13.md`.
+- Result: no demonstrated blocker in scoped synthetic Claude hardening paths. Reviewer independently ran targeted coverage `tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_broker_busy_state.py -q` with `65 passed`.
+- Remaining non-blocking risks require live/schema/performance evidence: unbounded current-turn scan cost on huge active Claude turns, real `toolUseResult` schema variants, and whether live Claude ever omits `tool_use_id` for explicit tool results.
