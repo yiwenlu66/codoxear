@@ -10,11 +10,14 @@ class TestQueueButtonSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn('function selectedSessionHasUnknownSend() {', source)
+        self.assertIn('function selectedSessionIsOrphanRecovery() {', source)
         self.assertIn('function syncQueueSubmitState() {', source)
         self.assertIn('const queueControl = $("#queueBtn");', source)
         self.assertIn('const unknownSend = selectedSessionHasUnknownSend();', source)
         self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected || unknownSend;', source)
         self.assertIn('Resolve the unknown send before queueing', source)
+        self.assertIn('Review preserved queued recovery items', source)
+        self.assertIn('missing session can only be reviewed', source)
         self.assertIn('queueControl.setAttribute("aria-label", queueLabel);', source)
         self.assertIn('syncQueueSubmitState();\n          syncSendButtonState();\n          diagBtn.disabled = !selected;', source)
 

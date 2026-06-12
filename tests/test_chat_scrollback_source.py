@@ -194,6 +194,18 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('messageClass === "error" || messageClass === "warning"', block)
         self.assertIn("bubble.classList.add(messageClass);", block)
 
+    def test_orphan_recovery_session_does_not_fetch_transcript_tail(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("async function openSession(")
+        end = source.index("const cachedTail =", start)
+        block = source[start:end]
+        self.assertIn("if (s && s.orphan_recovery) {", block)
+        self.assertIn("activeTranscriptState = \"failed\";", block)
+        self.assertIn("syncAttachButtonState();", block)
+        self.assertIn("syncQueueSubmitState();", block)
+        self.assertIn("syncSendButtonState();", block)
+        self.assertIn("return { events: [], busy: false, queue_len: optimisticQueueLen, token: null, transcript_state: \"failed\" };", block)
+
     def test_new_command_begins_transcript_renewal_after_send_ack(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function sendText(")

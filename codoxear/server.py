@@ -2560,7 +2560,9 @@ class SessionManager:
 
     def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
         with self._lock:
-            if session_id not in self._sessions:
+            unknown_sends = getattr(self, "_commit_unknown_sends", None)
+            has_orphan_marker = isinstance(unknown_sends, dict) and session_id in unknown_sends
+            if session_id not in self._sessions and not has_orphan_marker:
                 raise KeyError("unknown session")
         self._set_commit_unknown_send(session_id, None)
         return {"ok": True, "commit_unknown_send": False}
@@ -3905,6 +3907,85 @@ class SessionManager:
                 if isinstance(nonce, str) and nonce and nonce in active_spawn_nonces:
                     continue
                 out.append(row)
+        with self._lock:
+            active_ids = set(self._sessions.keys())
+            direct_unknowns = {
+                str(sid): dict(record)
+                for sid, record in getattr(self, "_commit_unknown_sends", {}).items()
+                if str(sid) not in active_ids and isinstance(record, dict)
+            }
+            orphan_queues = {
+                str(sid): list(queue)
+                for sid, queue in getattr(self, "_queues", {}).items()
+                if str(sid) not in active_ids
+                and isinstance(queue, list)
+                and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in queue)
+            }
+        existing_out_ids = {str(item.get("session_id")) for item in out if isinstance(item, dict)}
+        for sid in sorted(set(direct_unknowns) | set(orphan_queues)):
+            if sid in existing_out_ids:
+                continue
+            direct_record = direct_unknowns.get(sid) or {}
+            queue = orphan_queues.get(sid) or []
+            ts_candidates: list[float] = []
+            if isinstance(direct_record.get("created_ts"), (int, float)):
+                ts_candidates.append(float(direct_record.get("created_ts")))
+            for item in queue:
+                if isinstance(item, dict) and isinstance(item.get("commit_unknown_ts"), (int, float)):
+                    ts_candidates.append(float(item.get("commit_unknown_ts")))
+                elif isinstance(item, dict) and isinstance(item.get("created_ts"), (int, float)):
+                    ts_candidates.append(float(item.get("created_ts")))
+            ts = max([t for t in ts_candidates if math.isfinite(t) and t > 0], default=now_ts)
+            out.append(
+                {
+                    "session_id": sid,
+                    "thread_id": sid,
+                    "pid": 0,
+                    "broker_pid": 0,
+                    "agent_backend": "codex",
+                    "owned": False,
+                    "transport": None,
+                    "cwd": "recovery needed",
+                    "start_ts": ts,
+                    "updated_ts": ts,
+                    "log_path": None,
+                    "queue_len": len(queue),
+                    "pending_attachment": False,
+                    "commit_unknown_send": bool(direct_record),
+                    "commit_unknown_send_text": (str(direct_record.get("text")) if isinstance(direct_record.get("text"), str) else None),
+                    "commit_unknown_send_ts": (float(direct_record.get("created_ts")) if isinstance(direct_record.get("created_ts"), (int, float)) else None),
+                    "token": None,
+                    "thinking": 0,
+                    "tools": 0,
+                    "system": 0,
+                    "unattended_enabled": False,
+                    "unattended_cooldown_minutes": UNATTENDED_DEFAULT_IDLE_MINUTES,
+                    "unattended_remaining_injections": UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                    "alias": "Recovery needed",
+                    "files": [],
+                    "model_provider": None,
+                    "preferred_auth_method": None,
+                    "provider_choice": "openai-api",
+                    "model": None,
+                    "reasoning_effort": None,
+                    "service_tier": None,
+                    "tmux_session": None,
+                    "tmux_window": None,
+                    "launch_id": None,
+                    "spawn_nonce": None,
+                    "priority_offset": 0.0,
+                    "snooze_until": None,
+                    "dependency_session_id": None,
+                    "time_priority": 1.0,
+                    "base_priority": 1.0,
+                    "final_priority": 1.0,
+                    "blocked": False,
+                    "snoozed": False,
+                    "busy": False,
+                    "git_branch": None,
+                    "orphan_recovery": True,
+                }
+            )
         if files_dirty:
             self._save_files()
         if sidebar_dirty:

@@ -577,6 +577,39 @@ class TestServerQueuePersistence(unittest.TestCase):
         self.assertEqual(SessionManager.queue_delete(mgr, "orphan", "u", allow_commit_unknown=True), {"ok": True, "queue_len": 0})
         self.assertNotIn("orphan", mgr._queues)
 
+    def test_orphan_direct_unknown_can_be_cleared_without_active_session(self) -> None:
+        mgr = self._mgr()
+        mgr._commit_unknown_sends["orphan"] = {"text": "maybe direct", "created_ts": 1.0}
+
+        self.assertEqual(SessionManager.clear_commit_unknown_send(mgr, "orphan"), {"ok": True, "commit_unknown_send": False})
+        self.assertNotIn("orphan", mgr._commit_unknown_sends)
+
+    def test_list_sessions_exposes_orphan_unknown_recovery_rows(self) -> None:
+        mgr = self._mgr()
+        mgr._discover_existing_if_stale = lambda: None  # type: ignore[method-assign]
+        mgr._prune_dead_sessions = lambda: None  # type: ignore[method-assign]
+        mgr._update_meta_counters = lambda: None  # type: ignore[method-assign]
+        mgr._include_launch_attempts = False
+        mgr._unattended = {}
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._files = {}
+        mgr._recent_cwds = {}
+        mgr._save_files = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_recent_cwds = lambda: None
+        mgr._commit_unknown_sends["direct-orphan"] = {"text": "maybe direct", "created_ts": 10.0}
+        mgr._queues["queue-orphan"] = [dict(_queue_item("u", "maybe queued"), commit_unknown=True, commit_unknown_ts=20.0)]
+
+        rows = SessionManager.list_sessions(mgr)
+        by_id = {row["session_id"]: row for row in rows}
+
+        self.assertTrue(by_id["direct-orphan"]["orphan_recovery"])
+        self.assertTrue(by_id["direct-orphan"]["commit_unknown_send"])
+        self.assertEqual(by_id["direct-orphan"]["commit_unknown_send_text"], "maybe direct")
+        self.assertTrue(by_id["queue-orphan"]["orphan_recovery"])
+        self.assertEqual(by_id["queue-orphan"]["queue_len"], 1)
+
     def test_send_rechecks_pending_attachment_after_waiting_for_input_lock(self) -> None:
         sid = "s1"
         mgr = self._mgr()

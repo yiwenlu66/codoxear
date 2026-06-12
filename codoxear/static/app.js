@@ -4584,6 +4584,20 @@
           setContext(s ? s.token || null : null);
           setTyping(optimisticBusy);
 
+          if (s && s.orphan_recovery) {
+            renderPendingTranscriptSlot(sessionId);
+            activeTranscriptState = "failed";
+            setStatus({ running: false, queueLen: optimisticQueueLen });
+            setContext(null);
+            setTyping(false);
+            syncAttachButtonState();
+            syncQueueSubmitState();
+            syncSendButtonState();
+            updateUnattendedBtnState();
+            if (isMobile()) setSidebarOpen(false);
+            return { events: [], busy: false, queue_len: optimisticQueueLen, token: null, transcript_state: "failed" };
+          }
+
           const cachedTail = s ? sessionTailCache.get(sessionId) : null;
           if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
             applyCachedTail(sessionId, cachedTail, s);
@@ -9655,16 +9669,24 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return Boolean(s && s.commit_unknown_send);
         }
 
+        function selectedSessionIsOrphanRecovery() {
+          const s = selected ? sessionIndex.get(selected) : null;
+          return Boolean(s && s.orphan_recovery);
+        }
+
         function syncQueueSubmitState() {
           const queueControl = $("#queueBtn");
           if (!queueControl) return;
           const unknownSend = selectedSessionHasUnknownSend();
+          const orphanRecovery = selectedSessionIsOrphanRecovery();
           queueControl.disabled = !!queueSubmitBusy || !selected || unknownSend;
           const queueLabel = !selected
             ? "Select a session to view queued messages"
             : unknownSend
               ? "Resolve the unknown send before queueing"
-              : "Queued messages";
+              : orphanRecovery
+                ? "Review preserved queued recovery items"
+                : "Queued messages";
           queueControl.title = queueLabel;
           queueControl.setAttribute("aria-label", queueLabel);
         }
@@ -9673,8 +9695,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sendControl = $("#sendBtn");
           if (!sendControl) return;
           const unknownSend = selectedSessionHasUnknownSend();
-          sendControl.disabled = !!sending || !selected || unknownSend;
-          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : "Send";
+          const orphanRecovery = selectedSessionIsOrphanRecovery();
+          sendControl.disabled = !!sending || !selected || unknownSend || orphanRecovery;
+          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
         }
@@ -9684,6 +9707,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const text = String(raw || "");
           if (!sessionId || !text.trim()) return false;
           const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionInfo.orphan_recovery) {
+            setToast("missing session can only be reviewed");
+            return false;
+          }
           if (sessionInfo && sessionInfo.commit_unknown_send) {
             setToast("resolve the unknown send before queueing");
             void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
@@ -10345,6 +10372,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } else if (selectedSessionHasUnknownSend()) {
             attachLabel = "Resolve the unknown send before attaching a file";
             disabled = true;
+          } else if (selectedSessionIsOrphanRecovery()) {
+            attachLabel = "Missing session can only be reviewed";
+            disabled = true;
           } else if (currentRunning) {
             attachLabel = "Wait for the current response to finish before attaching a file";
             disabled = true;
@@ -10585,6 +10615,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const renderHere = sessionId === selected;
           const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
           const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionInfo.orphan_recovery) {
+            setToast("missing session can only be reviewed");
+            return false;
+          }
           if (sessionInfo && sessionInfo.commit_unknown_send) {
             setToast("resolve the unknown send before sending again");
             void clearCommitUnknownSend(sessionId, sessionInfo.commit_unknown_send_text || "");
