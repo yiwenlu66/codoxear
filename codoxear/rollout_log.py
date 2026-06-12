@@ -644,31 +644,13 @@ def _extract_chat_events(
     turn_aborted = False
     tool_names: set[str] = set()
     last_tool: str | None = None
-    def event_ts(o: dict[str, Any]) -> float | None:
-        ts = o.get("ts")
-        if isinstance(ts, (int, float)):
-            return float(ts)
-        ts2 = o.get("timestamp")
-        if isinstance(ts2, (int, float)):
-            return float(ts2)
-        if isinstance(ts2, str):
-            v = _parse_iso8601_to_epoch(ts2)
-            if v is not None:
-                return float(v)
-        return None
-
-    def text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
-        ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
-        payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
     for obj in objs:
         typ = obj.get("type")
         if typ == "user":
             user_text = cc_user_text(obj)
             if isinstance(user_text, str) and user_text:
                 turn_start = True
-                ets = event_ts(obj)
+                ets = _event_ts(obj)
                 evcc: dict[str, Any] = {"role": "user", "text": user_text}
                 if ets is not None:
                     evcc["ts"] = ets
@@ -695,7 +677,7 @@ def _extract_chat_events(
                             tool_names.add(name)
                             last_tool = name
             if isinstance(assistant_text, str) and assistant_text:
-                ets = event_ts(obj)
+                ets = _event_ts(obj)
                 message_class = "final_response" if cc_assistant_is_final_turn_end(obj) else "narration"
                 if message_class == "final_response":
                     turn_end = True
@@ -703,7 +685,7 @@ def _extract_chat_events(
                     "role": "assistant",
                     "text": assistant_text,
                     "message_class": message_class,
-                    "message_id": text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
                 }
                 if ets is not None:
                     evcca["ts"] = ets
@@ -718,7 +700,7 @@ def _extract_chat_events(
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
                 turn_start = True
-                ets = event_ts(obj)
+                ets = _event_ts(obj)
                 evp: dict[str, Any] = {"role": "user", "text": user_text}
                 if ets is not None:
                     evp["ts"] = ets
@@ -735,7 +717,7 @@ def _extract_chat_events(
                 tool_names.add("pi_tool")
                 last_tool = "pi_tool"
             if isinstance(assistant_text, str) and assistant_text:
-                ets = event_ts(obj)
+                ets = _event_ts(obj)
                 message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
                 if message_class == "final_response":
                     turn_end = True
@@ -743,7 +725,7 @@ def _extract_chat_events(
                     "role": "assistant",
                     "text": assistant_text,
                     "message_class": message_class,
-                    "message_id": text_message_id(message_class=message_class, text=assistant_text, ts=ets),
+                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
                 }
                 if ets is not None:
                     eva["ts"] = ets
@@ -751,13 +733,13 @@ def _extract_chat_events(
             else:
                 error_text = pi_assistant_error_text(obj)
                 if isinstance(error_text, str) and error_text:
-                    ets = event_ts(obj)
+                    ets = _event_ts(obj)
                     events.append(
                         {
                             "role": "assistant",
                             "text": error_text,
                             "message_class": "error",
-                            "message_id": text_message_id(message_class="error", text=error_text, ts=ets),
+                            "message_id": _text_message_id(message_class="error", text=error_text, ts=ets),
                             **({"ts": ets} if ets is not None else {}),
                         }
                     )
@@ -773,7 +755,7 @@ def _extract_chat_events(
                 msg = p.get("message")
                 if isinstance(msg, str):
                     turn_start = True
-                    ets = event_ts(obj)
+                    ets = _event_ts(obj)
                     ev: dict[str, Any] = {"role": "user", "text": msg}
                     if ets is not None:
                         ev["ts"] = ets
@@ -788,13 +770,13 @@ def _extract_chat_events(
             if pt in ("error", "stream_error", "warning"):
                 text = _codex_event_text(p)
                 if text is not None:
-                    ets = event_ts(obj)
+                    ets = _event_ts(obj)
                     message_class = "warning" if pt == "warning" else "error"
                     ev_err: dict[str, Any] = {
                         "role": "assistant",
                         "text": text,
                         "message_class": message_class,
-                        "message_id": text_message_id(message_class=message_class, text=text, ts=ets),
+                        "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
                     }
                     if ets is not None:
                         ev_err["ts"] = ets
@@ -830,13 +812,13 @@ def _extract_chat_events(
                             out_text_parts.append(part["text"])
                     if out_text_parts:
                         text = "".join(out_text_parts)
-                        ets = event_ts(obj)
+                        ets = _event_ts(obj)
                         message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
                         ev2: dict[str, Any] = {
                             "role": "assistant",
                             "text": text,
                             "message_class": message_class,
-                            "message_id": text_message_id(message_class=message_class, text=text, ts=ets),
+                            "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
                         }
                         if ets is not None:
                             ev2["ts"] = ets
@@ -875,11 +857,6 @@ def _extract_delivery_messages(objs: list[dict[str, Any]]) -> list[ClassifiedAss
     out: list[ClassifiedAssistantMessage] = []
     seen: set[str] = set()
     last_text_key: tuple[str, str] | None = None
-
-    def _text_message_id(*, message_class: str, text: str, ts: float | None) -> str:
-        ts_ms = int(round(ts * 1000.0)) if isinstance(ts, (int, float)) else None
-        payload = json.dumps({"class": message_class, "text": " ".join(text.split()), "ts_ms": ts_ms}, ensure_ascii=False, sort_keys=True)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     for obj in objs:
         if not isinstance(obj, dict):
@@ -1222,19 +1199,6 @@ def _last_chat_role_ts_from_tail(
     *,
     max_scan_bytes: int,
 ) -> tuple[str, float] | None:
-    def event_ts(o: dict[str, Any]) -> float | None:
-        ts = o.get("ts")
-        if isinstance(ts, (int, float)):
-            return float(ts)
-        ts2 = o.get("timestamp")
-        if isinstance(ts2, (int, float)):
-            return float(ts2)
-        if isinstance(ts2, str):
-            v = _parse_iso8601_to_epoch(ts2)
-            if v is not None:
-                return float(v)
-        return None
-
     scan = 256 * 1024
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(path, scan)
@@ -1244,21 +1208,21 @@ def _last_chat_role_ts_from_tail(
             typ = obj.get("type")
             if typ == "message":
                 if pi_user_text(obj):
-                    last_user = (i, event_ts(obj))
+                    last_user = (i, _event_ts(obj))
                     continue
                 if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
-                    last_assistant = (i, event_ts(obj))
+                    last_assistant = (i, _event_ts(obj))
                     continue
             if typ == "user":
                 if cc_user_text(obj):
-                    last_user = (i, event_ts(obj))
+                    last_user = (i, _event_ts(obj))
                     continue
                 if _cc_message_keeps_turn_busy(obj):
-                    last_assistant = (i, event_ts(obj))
+                    last_assistant = (i, _event_ts(obj))
                     continue
             if typ == "assistant":
                 if cc_assistant_text(obj) or _cc_message_keeps_turn_busy(obj):
-                    last_assistant = (i, event_ts(obj))
+                    last_assistant = (i, _event_ts(obj))
                     continue
             if typ == "event_msg":
                 p = obj.get("payload")
@@ -1266,15 +1230,15 @@ def _last_chat_role_ts_from_tail(
                     raise ValueError("invalid event_msg payload")
                 pt = p.get("type")
                 if pt == "user_message" and isinstance(p.get("message"), str):
-                    last_user = (i, event_ts(obj))
+                    last_user = (i, _event_ts(obj))
                     continue
                 if pt == "agent_message":
                     msg = p.get("message")
                     if isinstance(msg, str) and msg.strip():
-                        last_assistant = (i, event_ts(obj))
+                        last_assistant = (i, _event_ts(obj))
                         continue
             if typ == "response_item" and _has_assistant_output_text(obj):
-                last_assistant = (i, event_ts(obj))
+                last_assistant = (i, _event_ts(obj))
 
         best: tuple[str, tuple[int, float | None]] | None = None
         if last_user is not None:
