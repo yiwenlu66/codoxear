@@ -9193,8 +9193,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (typeof res.video_url !== "string" || !res.video_url) throw new Error("invalid video response");
                 const previewUrl = typeof res.video_preview_url === "string" ? res.video_preview_url : "";
                 const size = typeof res.size === "number" ? res.size : 0;
+                const contentType = typeof res.content_type === "string" ? res.content_type.split(";", 1)[0].trim().toLowerCase() : "";
                 const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
+                const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
+                const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
                 activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false } : null;
+                const usePreview = () => {
+                  const state = activeVideoFallback;
+                  if (!state || state.token !== videoToken) return false;
+                  state.used = true;
+                  fileStatus.textContent = `${rel} - building compatible video preview...`;
+                  fileVideo.src = resolveAppUrl(state.previewUrl);
+                  fileVideo.load();
+                  return true;
+                };
                 fileVideo.onerror = () => {
                   const state = activeVideoFallback;
                   if (!state || state.token !== videoToken) {
@@ -9208,10 +9220,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                     fileStatus.textContent = `${rel} - video preview unavailable (ffmpeg missing or conversion failed)`;
                     return;
                   }
-                  state.used = true;
-                  fileStatus.textContent = `${rel} - building compatible video preview...`;
-                  fileVideo.src = resolveAppUrl(state.previewUrl);
-                  fileVideo.load();
+                  usePreview();
                 };
                 fileVideo.onloadedmetadata = () => {
                   const state = activeVideoFallback;
@@ -9220,9 +9229,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   }
                 };
                 fileDiff.style.display = "none";
-                fileVideo.src = resolveAppUrl(res.video_url);
                 fileVideo.style.display = "block";
-                fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
+                if (shouldPreviewFirst) {
+                  usePreview();
+                } else {
+                  fileVideo.src = resolveAppUrl(res.video_url);
+                  fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
+                }
               } else if (res.kind === "download_only") {
                 activeFileKind = "download_only";
                 const size = typeof res.size === "number" ? res.size : 0;

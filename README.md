@@ -33,6 +33,8 @@ Not supported:
 
 Requires Python 3.10+.
 
+Optional but recommended: install `ffmpeg` / `ffprobe` if you want incompatible local videos (`.mkv`, `.mov`, `.avi`, etc.) transcoded into browser-safe MP4 previews in the file viewer. Without ffmpeg, browser-native videos can still play, but compatible preview generation fails explicitly.
+
 Install Codoxear (installs `codoxear-server`, `codoxear-broker`, and `codoxear-sessiond`):
 
 - `python3 -m pip install .`

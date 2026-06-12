@@ -10,6 +10,7 @@ RUN apt-get update \
         bash \
         ca-certificates \
         curl \
+        ffmpeg \
         git \
         lsof \
         nodejs \
