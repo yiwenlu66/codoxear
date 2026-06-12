@@ -802,3 +802,9 @@
 - Review artifact: `/tmp/codoxear-final-cleanroom-critic-rerun.md`.
 - Reviewer evidence: critic independently inspected latest source/tests and reran isolated Docker validation with `CODOXEAR_DOCKER_PORT=18877 CODOXEAR_DOCKER_ROOT=/tmp/codoxear-final-cleanroom-docker-18877 scripts/codoxear-docker-sandbox test`, passing (`511 passed, 2 skipped, 10 subtests passed in 19.57s`).
 - Residual risks noted as non-blocking: concurrent truncation during file download can still emit fewer bytes than precomputed `Content-Length`; real backend startup via installed `codoxear-sessiond` remains outside deterministic evidence.
+
+
+## 2026-06-12 18:04
+- UX/lifecycle tranche: notification hash targets are now retained across later session refreshes while the URL hash still names that session; async polling/settings paths now bail after cleanup if their requests complete after logout/auth loss.
+- Commits: `7b673d3 fix: retry notification hash targets after session refresh`, `d660723 fix: ignore async poll results after app cleanup`.
+- Validation: targeted source/syntax checks passed (`15 passed in 0.52s` for notification hash; `20 passed in 0.68s` for cleanup guards). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`512 passed, 2 skipped, 10 subtests passed in 11.54s`).

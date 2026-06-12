@@ -544,3 +544,11 @@ Commitments:
 - Observation: final clean-room critic rerun at `fe170b5` found no blockers after the blocker repairs.
 - Evidence: review artifact `/tmp/codoxear-final-cleanroom-critic-rerun.md`; independent full isolated Docker validation passed (`511 passed, 2 skipped, 10 subtests passed in 19.57s`).
 - Scoped claim: the recovery branch is at a defensible yield point for the reviewed product-gap tranche. Remaining uncertainties are explicitly bounded to live backend startup/credentials, mobile-device/browser push behavior, mutable-file truncation during streaming downloads, slow networks, and very large real transcripts.
+
+
+## 2026-06-12 18:04
+- Observation: previous notification fallback still selected only once; if server-side session discovery lagged beyond that refresh, the target hash could be dropped. Previous cleanup also stopped future timers/listeners but could not stop already-in-flight async polling results from mutating UI after cleanup.
+- Mechanisms supported: session-list state can lag notification hash targets, and async functions can cross logout/auth-loss boundaries unless they check ownership after awaits.
+- Interventions: added a pending hash-session target that is retried after subsequent `refreshSessions()` while the hash still matches; added post-await `appDisposed` guards in session refresh, voice settings, notification state, notification feed, and desktop notification resolution paths.
+- Evidence: source regressions assert deferred hash target ownership and post-cleanup async guards; full isolated Docker suite passed.
+- Scoped claim: open tabs no longer drop notification hash targets solely because target session discovery lags one refresh, and selected async poll paths no longer apply results after app cleanup. Real service-worker click behavior and mobile push timing remain outside deterministic evidence.
