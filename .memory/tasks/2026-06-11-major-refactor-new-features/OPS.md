@@ -316,3 +316,7 @@
 - Intervention: changed `chatWrap` to flex-column layout and `chatNavRail` to an in-flow static toolbar above the scroll area; kept it contextual but no longer overlaying message content. Added source regression coverage that the rail is in layout flow rather than `position:absolute`.
 - Browser recheck: fresh browser session showed `#chatNavRail` computed `position: static`; strict visible-overlap calculation returned `[]` on desktop 1280x900 and mobile 390x844. Screenshot saved as `recovery-mobile-chat-rail-flow.png`.
 - Validation: local `node --check codoxear/static/app.js` passed; targeted chat tests passed (`30 passed in 0.61s`); full isolated Docker suite passed (`445 passed, 2 skipped in 10.32s`).
+
+## 2026-06-12 12:31
+- Final validation after provider/model pair memory, chat rail flow fix, and Help copy alignment: local `node --check codoxear/static/app.js` passed; full isolated Docker suite passed (`445 passed, 2 skipped in 10.17s`).
+- Current recovery branch head before clean-room review: `recovery/product-gaps` at `a70ab96`. Live checkout `/home/yiwen/codex-web` remains on `main` at `82f13ef`.

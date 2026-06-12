@@ -286,3 +286,7 @@ Commitments:
 - Observation: moving chat navigation out of the topbar was not sufficient; the initial rail placement was still an overlay and geometrically covered message rows. This was a product invariant failure for sparse/readable chat, not cosmetic polish.
 - Mechanism: `#chatNavRail` was absolutely positioned over the chat scroll viewport. On scroll positions near the tail, visible rows could pass underneath the control cluster.
 - Intervention/evidence: placing the rail in normal flex layout above the scroll area removed visible overlap while keeping navigation contextual to chat. Browser geometry on desktop and mobile found no strict visible overlap after the change.
+
+## 2026-06-12 12:31
+- Evidence update: final deterministic validation still passes after the latest UX/memory polish. No new local deterministic failure is known before clean-room review.
+- Remaining uncertainty remains scoped to live-like backend launches, real mobile/slow-network performance, full real transcripts, and Codex authoritative per-model reasoning semantics.
