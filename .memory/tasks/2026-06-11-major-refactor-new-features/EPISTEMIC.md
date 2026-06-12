@@ -1055,3 +1055,10 @@ Commitments:
 - Intervention: expand ambiguous `turn_duration` tails up to the configured scan budget, refuse final-answer closure while known Claude pending tool IDs remain, and classify any user row containing `tool_result` as transport rather than chat.
 - Evidence: targeted regressions cover the 504 KiB tail case, final-without-tool-result, and mixed tool-result/text; full local and Docker suites passed.
 - Scoped claim: synthetic Claude log normalization and busy/idle handling now preserve the inspected tool pairing invariants; live Claude credentials/TUI behavior remain unproven.
+
+
+## 2026-06-13 04:06
+- Review residual risks: no-id Claude `tool_result` rows cleared all pending known tool IDs, and exact scan-boundary tail reads could drop a complete first record.
+- Intervention: fail closed for known pending Claude tool IDs on malformed result rows; only an unknown-id tool-use sentinel can be cleared by a no-id result. Tail reads now check whether the start offset is already a line boundary before discarding the first line.
+- Evidence: targeted regressions cover no-id result after known `tool_use` and exact-boundary scan budget; full local and Docker suites passed.
+- Scoped claim: Claude synthetic tool-pairing invariant is now stricter under malformed data and tail-boundary conditions.

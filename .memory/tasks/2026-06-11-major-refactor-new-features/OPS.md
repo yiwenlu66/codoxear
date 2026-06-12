@@ -1241,3 +1241,11 @@
   - User rows containing Claude `tool_result` are hidden from chat even if schema drift adds sibling text parts.
 - Commit: `fix: close Claude tool idle edge cases`.
 - Validation: targeted Claude suites passed (`44 passed`); full local suite passed (`627 passed, 25 subtests passed in 10.13s`); isolated Docker suite passed (`626 passed, 1 skipped, 25 subtests passed in 11.46s`).
+
+
+## 2026-06-13 04:06
+- Applied non-blocking follow-up from `/tmp/codoxear-cc-hardening-review2.md`:
+  - malformed Claude `tool_result` rows without `tool_use_id` no longer clear known pending tool IDs; they only clear the unknown-tool sentinel;
+  - `_read_jsonl_tail()` now preserves a complete first record when the scan starts exactly on a line boundary.
+- Commit: `fix: fail closed on malformed Claude tool results`.
+- Validation: targeted Claude/tail suites passed (`46 passed`); full local suite passed (`629 passed, 25 subtests passed in 12.32s`); isolated Docker suite passed (`628 passed, 1 skipped, 25 subtests passed in 11.57s`).
