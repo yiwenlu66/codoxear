@@ -62,6 +62,11 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('function refreshAllChatSearchCount(query)', source)
         self.assertIn('messages/search?q=${encodeURIComponent(cleanQuery)}&limit=0', source)
         self.assertIn('`${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}`', source)
+        self.assertIn('function loadOlderUntilChatSearchMatch()', source)
+        self.assertIn('const maxPages = 12;', source)
+        self.assertIn('const loaded = await loadOlderMessages({ auto: false });', source)
+        self.assertIn('refreshLoadedChatSearch({ jump: false, preserveCurrent: false });', source)
+        self.assertIn('void stepChatSearch(1);', source)
 
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")

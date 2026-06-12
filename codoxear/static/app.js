@@ -1592,6 +1592,7 @@
         let chatSearchAllCount = null;
         let chatSearchAllRequestId = 0;
         let chatSearchAllAbort = null;
+        let chatSearchLoadingOlder = false;
         let hasOlder = false;
         let renderedAtLiveTail = true;
         let loadingOlder = false;
@@ -2858,10 +2859,17 @@
 
         function syncChatSearchStatus() {
           const total = chatSearchMatches.length;
-          const allSuffix = chatSearchQuery && Number.isFinite(chatSearchAllCount) ? ` · ${chatSearchAllCount} all` : "";
+          const allSuffix = chatSearchQuery
+            ? chatSearchLoadingOlder
+              ? " · loading older"
+              : Number.isFinite(chatSearchAllCount)
+                ? ` · ${chatSearchAllCount} all`
+                : ""
+            : "";
+          const canLoadOlderMatch = Boolean(chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > total && hasOlder && !chatSearchLoadingOlder && !loadingOlder);
           chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
           chatSearchPrevBtn.disabled = total <= 0;
-          chatSearchNextBtn.disabled = total <= 0;
+          chatSearchNextBtn.disabled = total <= 0 && !canLoadOlderMatch;
         }
 
         function resetAllChatSearchCount() {
@@ -2955,12 +2963,46 @@
           chatSearchBar.style.display = "none";
           clearChatSearchMarks();
           resetAllChatSearchCount();
+          chatSearchLoadingOlder = false;
         }
 
-        function stepChatSearch(delta) {
+        async function loadOlderUntilChatSearchMatch() {
+          if (!selected || !chatSearchQuery || chatSearchLoadingOlder) return false;
+          const sid = selected;
+          const gen = pollGen;
+          const query = chatSearchQuery;
+          const maxPages = 12;
+          chatSearchLoadingOlder = true;
+          syncChatSearchStatus();
+          try {
+            for (let i = 0; i < maxPages; i += 1) {
+              if (selected !== sid || pollGen !== gen || chatSearchQuery !== query || !hasOlder) return false;
+              const loaded = await loadOlderMessages({ auto: false });
+              if (selected !== sid || pollGen !== gen || chatSearchQuery !== query) return false;
+              refreshLoadedChatSearch({ jump: false, preserveCurrent: false });
+              if (chatSearchMatches.length) {
+                focusChatSearchMatch(0, { jump: true });
+                return true;
+              }
+              if (!loaded || !hasOlder) return false;
+            }
+            return false;
+          } finally {
+            chatSearchLoadingOlder = false;
+            syncChatSearchStatus();
+          }
+        }
+
+        async function stepChatSearch(delta) {
           if (!chatSearchOpen) openChatSearch();
           refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
           if (!chatSearchMatches.length) {
+            if (chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > 0 && hasOlder) {
+              const found = await loadOlderUntilChatSearchMatch();
+              if (found) return;
+              setToast("No loaded matches after loading older messages");
+              return;
+            }
             setToast(chatSearchQuery ? "No loaded matches" : "Enter a loaded-chat search");
             return;
           }
@@ -2980,18 +3022,18 @@
             closeChatSearch();
           } else if (e.key === "Enter") {
             e.preventDefault();
-            stepChatSearch(e.shiftKey ? -1 : 1);
+            void stepChatSearch(e.shiftKey ? -1 : 1);
           }
         };
         chatSearchPrevBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          stepChatSearch(-1);
+          void stepChatSearch(-1);
         };
         chatSearchNextBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          stepChatSearch(1);
+          void stepChatSearch(1);
         };
         chatSearchCloseBtn.onclick = (e) => {
           e.preventDefault();
@@ -4117,10 +4159,10 @@
         }
 
         async function loadOlderMessages({ auto = false } = {}) {
-          if (!selected || !hasOlder || loadingOlder) return;
+          if (!selected || !hasOlder || loadingOlder) return false;
           if (auto) {
             const now = performance.now();
-            if (now - olderAutoTriggerAt < OLDER_AUTO_COOLDOWN_MS) return;
+            if (now - olderAutoTriggerAt < OLDER_AUTO_COOLDOWN_MS) return false;
             olderAutoTriggerAt = now;
           }
           const sid = selected;
@@ -4136,18 +4178,23 @@
             const data = await api(`/api/sessions/${sid}/messages/history?cursor=${encodeURIComponent(reqCursor)}&limit=${olderPageLimit()}`, {
               signal: ctl.signal,
             });
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
+            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
             const evs = Array.isArray(data.events) ? data.events : [];
             const nextHasOlder = Boolean(data.has_older);
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
-            if (evs.length) prependOlderEvents(evs, { preserveViewport: auto });
+            if (evs.length) {
+              prependOlderEvents(evs, { preserveViewport: auto });
+              return true;
+            }
+            return false;
           } catch (e) {
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return;
+            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
-              return;
+              return false;
             }
             setOlderState({ hasMore: hasOlder, isLoading: false });
+            return false;
           } finally {
             if (olderLoadController === ctl) olderLoadController = null;
           }
