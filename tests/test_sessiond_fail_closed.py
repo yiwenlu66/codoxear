@@ -73,6 +73,33 @@ class TestSessiondFailClosed(unittest.TestCase):
 
         teardown.assert_called_once_with()
 
+    def test_discover_log_binds_pi_open_log(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            pi_log = root / "pi-session.jsonl"
+            pi_log.write_text('{"type":"session","id":"pi-sid","cwd":"/repo"}\n', encoding="utf-8")
+            pending = root / "pending.jsonl"
+            pending.write_text("", encoding="utf-8")
+            sock_path = root / "sessiond.sock"
+            sessiond = Sessiond(cwd="/repo", codex_args=[])
+            sessiond.state = _sessiond_state(codex_pid=1234, sock_path=sock_path)
+            sessiond.state.log_path = pending
+
+            with patch("codoxear.sessiond.AGENT_BACKEND", "pi"):
+                with patch("codoxear.sessiond.PENDING_DIR", root):
+                    with patch("codoxear.sessiond._proc_find_open_rollout_log", return_value=pi_log) as find_log:
+                        with patch("codoxear.sessiond._read_session_meta_payload", return_value={"id": "pi-sid", "cwd": "/repo"}):
+                            with patch.object(sessiond, "_write_meta") as write_meta:
+                                sessiond._discover_log()
+
+            find_log.assert_called_once()
+            self.assertEqual(find_log.call_args.kwargs["agent_backend"], "pi")
+            self.assertEqual(find_log.call_args.kwargs["cwd"], "/repo")
+            self.assertEqual(sessiond.state.session_id, "pi-sid")
+            self.assertEqual(sessiond.state.log_path, pi_log)
+            self.assertFalse(pending.exists())
+            write_meta.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
