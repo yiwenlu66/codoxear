@@ -538,3 +538,9 @@ Commitments:
 - Intervention: capped attachment streaming to the inspected size and corrected README/tests to document backend options after `--`, not backend executable names.
 - Evidence: unit test now writes a larger file than the declared size and asserts only the declared prefix is emitted; sessiond packaging test rejects the duplicated-executable examples; targeted tests and full Docker suite passed.
 - Scoped claim: the append-side `Content-Length` mismatch blocker is fixed. Concurrent truncation of a mutable file during download remains a general static-file streaming residual risk; the response will not emit more than the declared length.
+
+
+## 2026-06-12 17:54
+- Observation: final clean-room critic rerun at `fe170b5` found no blockers after the blocker repairs.
+- Evidence: review artifact `/tmp/codoxear-final-cleanroom-critic-rerun.md`; independent full isolated Docker validation passed (`511 passed, 2 skipped, 10 subtests passed in 19.57s`).
+- Scoped claim: the recovery branch is at a defensible yield point for the reviewed product-gap tranche. Remaining uncertainties are explicitly bounded to live backend startup/credentials, mobile-device/browser push behavior, mutable-file truncation during streaming downloads, slow networks, and very large real transcripts.
