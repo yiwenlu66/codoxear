@@ -938,3 +938,9 @@
 - Clean-room rerun repair: pending-attachment UI recovery now asks explicit confirmation when server metadata says an attachment is pending; `send()` now checks live broker/log readiness under the input lock before socket send so a second send cannot pass during post-ACK PTY commit.
 - Commit: `fix: gate pending sends on live readiness`.
 - Validation: targeted attachment/chat/send tests passed (`54 passed in 3.09s`). Plain full suite passed (`549 passed, 10 subtests passed in 10.42s`). Full isolated Docker suite passed (`547 passed, 2 skipped, 10 subtests passed in 11.34s`).
+
+
+## 2026-06-12 21:01
+- Clean-room rerun repair: direct sends now reject local queued/sending prompts unless called by queue promotion; send readiness refreshes sidecar metadata before log-idle checks; restored-pending confirmation happens before optimistic UI echo; attachment key-injection error responses no longer set pending state.
+- Commit: `fix: harden send and attachment commit boundaries`.
+- Validation: targeted queue/attachment/chat/send tests passed (`61 passed in 3.13s`). Plain full suite passed (`552 passed, 10 subtests passed in 8.76s`). Full isolated Docker suite passed (`550 passed, 2 skipped, 10 subtests passed in 11.16s`).

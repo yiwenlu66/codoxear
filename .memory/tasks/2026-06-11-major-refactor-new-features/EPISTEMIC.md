@@ -708,3 +708,10 @@ Commitments:
 - Interventions: UI now requires explicit confirmation to send restored pending attachments; server `send()` checks remote/log readiness under the input lock before calling broker/sessiond.
 - Evidence: targeted tests cover remote-busy send rejection before broker call and frontend confirmation flow; full local/Docker suites passed.
 - Scoped claim: recovered pending attachments have an explicit UI consent path, and server-managed sends fail closed while broker/sessiond report the previous send as busy during post-ACK PTY commit.
+
+
+## 2026-06-12 21:01
+- Observation: clean-room review found direct send could overtake local queues, send readiness used stale log metadata, canceling pending-attachment confirmation left a phantom local echo, and failed key injection created phantom pending state.
+- Interventions: added local queue/sending guards to direct send with a queue-promotion token, refreshed send log metadata, moved UI confirmation before optimistic echo, and introduced `SessionInjectionError` before pending state is persisted.
+- Evidence: targeted regressions encode all four counterexamples; full local/Docker suites passed.
+- Scoped claim: server-managed direct send now respects local queue order and live log metadata, and attachment-pending state is only created after successful key injection.
