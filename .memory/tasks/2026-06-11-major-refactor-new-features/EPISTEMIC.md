@@ -866,3 +866,10 @@ Commitments:
 - Intervention: generalized queue move barrier to any crossed unknown item, locally marked direct unknown state in the browser immediately after a 504, and pruned commit-unknown direct-send records without active sessions after discovery.
 - Evidence: targeted, full local, and isolated Docker suites passed.
 - Scoped claim: unknown recovery barriers are now stronger against corrupted/recovered queue order, stale browser metadata during immediate retry windows, and stale disk records after restart.
+
+
+## 2026-06-13 00:17
+- Observation: review found no blockers but identified error-classification and safety-marker lifetime edge cases.
+- Intervention: boolean queue move indices now fail at route validation; out-of-range queue moves report range before unknown barriers; startup/direct-unknown pruning uses an age threshold so recent missing-session markers survive transient sidecar absence.
+- Evidence: targeted, full local, and isolated Docker suites passed.
+- Scoped claim: unknown recovery behavior now preserves safety markers more conservatively and reports malformed queue move requests as client errors.

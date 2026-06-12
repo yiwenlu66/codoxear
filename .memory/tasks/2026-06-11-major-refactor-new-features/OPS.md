@@ -1079,3 +1079,9 @@
 - Hardened non-blocking unknown recovery edges from clean-room review: queue move now blocks crossing any persisted `commit_unknown` item in either direction; queue UI one-step moves mirror that barrier; direct send `commit_unknown` immediately patches local session metadata so Send/Queue/Attach disable before the next `/api/sessions` refresh; stale `commit_unknown_sends.json` records are pruned after startup discovery when no active session exists.
 - Commit: `fix: harden unknown queue recovery edges`.
 - Validation: targeted tests passed (`80 passed, 11 subtests passed in 1.90s`). Plain full suite passed (`591 passed, 21 subtests passed in 8.76s`). Full isolated Docker suite passed (`589 passed, 2 skipped, 21 subtests passed in 10.85s`).
+
+
+## 2026-06-13 00:17
+- Repaired non-blocking findings from unknown-hardening review: `queue/move` rejects boolean `to_index` as a 400 client error; queue move validates out-of-range before barrier checks; missing-session direct unknown pruning now keeps recent orphan markers and only prunes old records, preserving safety through transient discovery gaps.
+- Commit: `fix: refine unknown recovery edge handling`.
+- Validation: targeted tests passed (`74 passed, 11 subtests passed in 1.81s`). Plain full suite passed (`591 passed, 21 subtests passed in 8.86s`). Full isolated Docker suite passed (`589 passed, 2 skipped, 21 subtests passed in 10.99s`).
