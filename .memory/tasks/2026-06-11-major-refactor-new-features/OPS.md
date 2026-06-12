@@ -681,3 +681,8 @@
 - UI/UX fix: top title no longer shows pointer cursor or `Edit conversation` tooltip when no session is selected; title affordance now tracks selected-session state.
 - Commit: `b2aadd7 fix: gate title edit affordance on selected session`.
 - Validation: `node --check codoxear/static/app.js` passed; focused title/send/queue/attach/static tests passed (`12 passed in 5.53s`). Browser validation on isolated Docker server `:18824` after login observed title text `No session selected`, title attribute `No session selected`, cursor `default`, and JS errors `[]`.
+
+## 2026-06-12 16:37
+- Full validation after no-session title affordance fix.
+- HEAD: `0ba30d6`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`488 passed, 2 skipped, 10 subtests passed in 16.30s`).
