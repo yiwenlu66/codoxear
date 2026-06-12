@@ -48,13 +48,14 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertIn('handler.send_header("Accept-Ranges", "bytes")', module_source)
         self.assertIn('handler.send_header("Cache-Control", "no-store")', module_source)
         self.assertIn('handler.send_header("Content-Disposition", content_disposition)', module_source)
-        self.assertIn("_stream_file_bytes(handler, path)", module_source)
+        self.assertIn("_stream_file_bytes(handler, path, length=size)", module_source)
 
-    def test_attachment_response_streams_without_read_bytes(self) -> None:
+    def test_attachment_response_streams_without_read_bytes_and_caps_to_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "blob.bin"
             raw = (b"0123456789abcdef" * 1024) + b"tail"
             path.write_bytes(raw)
+            declared_size = len(raw) - 4
             handler = FakeHandler()
             original_read_bytes = Path.read_bytes
             try:
@@ -62,15 +63,15 @@ class TestFileResponseModuleSource(unittest.TestCase):
                 send_attachment_file_response(
                     handler,
                     path,
-                    size=len(raw),
+                    size=declared_size,
                     content_disposition="attachment; filename*=UTF-8''blob.bin",
                 )
             finally:
                 Path.read_bytes = original_read_bytes  # type: ignore[assignment]
             self.assertEqual(handler.status, 200)
-            self.assertIn(("Content-Length", str(len(raw))), handler.sent_headers)
+            self.assertIn(("Content-Length", str(declared_size)), handler.sent_headers)
             self.assertIn(("Content-Disposition", "attachment; filename*=UTF-8''blob.bin"), handler.sent_headers)
-            self.assertEqual(handler.wfile.getvalue(), raw)
+            self.assertEqual(handler.wfile.getvalue(), raw[:declared_size])
 
 
 if __name__ == "__main__":

@@ -88,4 +88,4 @@ def send_attachment_file_response(
     handler.send_header("Pragma", "no-cache")
     handler.send_header("Expires", "0")
     handler.end_headers()
-    _stream_file_bytes(handler, path)
+    _stream_file_bytes(handler, path, length=size)
