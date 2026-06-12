@@ -264,3 +264,8 @@ Commitments:
 - Interventions: added provider/model error clearing on valid input/backend reset; added a shared modal isolation boundary and closed transient overlays before opening custom/native modals.
 - Evidence: browser rechecks showed providerless Pi had no stale error and modal-open accessibility snapshots exposed only modal controls; Docker suite passed after changes.
 - Scoped claim: combined provider/model selection, sparse/contextual action placement, loaded-chat rail navigation, and modal isolation are supported for the isolated synthetic desktop/mobile workflows. This does not yet prove real-device performance or live backend startup behavior.
+
+## 2026-06-12 12:07
+- Observation: file/context workflow is reachable from the new session utilities rail, preserves modal isolation, and can search/open README.md in the isolated repo. Initial one-second read observation was still `Loading...`; after waiting, content and status appeared, so the issue was latency/async completion rather than a stuck viewer.
+- Observation: bounded responsiveness measurements in the synthetic long-chat browser session were small for the tested rendered window: tail API resource about 5 ms, loaded search about 23 ms, user jump about 33 ms.
+- Scoped claim: these measurements support that the redesigned contextual controls are usable in the isolated synthetic desktop browser and do not obviously regress loaded-window search/jump latency. They do not prove real mobile device performance, slow network behavior, or full unbounded transcript scalability.

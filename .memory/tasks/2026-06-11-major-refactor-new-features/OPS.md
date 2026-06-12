@@ -292,3 +292,9 @@
 - Browser-discovered recovery-branch gap: custom modals did not isolate background `.app`; ported modal isolation (`inert` + `aria-hidden`) and transient overlay closure into recovery. Rechecked mobile New Session: `.app` had `inert` and `aria-hidden="true"`; accessibility snapshot contained only modal controls.
 - Screenshots saved under `.memory/tasks/2026-06-11-major-refactor-new-features/browser-artifacts/`: recovery desktop/mobile main, new-session, providerless, chat-search, and modal-isolated images.
 - Validation after modal fix: local `node --check codoxear/static/app.js` passed; frontend/source subset passed (`89 passed in 1.13s`); full isolated Docker suite passed (`435 passed, 2 skipped in 10.11s`).
+
+## 2026-06-12 12:07
+- Additional browser UX validation in isolated sandbox `codoxear-sandbox-recovery-18812`:
+  - File/context workflow: opened file viewer from `#sessionContextBar`; `.app` was inert/aria-hidden while viewer was open; searching `README` returned create-new, `README.md`, and matching repo files; selecting `README.md` loaded file content and status `README.md - 8.72 KB` after wait.
+  - Responsiveness sample on long Codex fixture: 60 rendered rows / 30 user rows; latest `/messages/tail` resource duration approximately 5.0 ms with transfer size 32892 bytes; loaded-chat search for `UNIQUE-RECOVERY-NEEDLE` completed in approximately 23.2 ms; user jump completed in approximately 33.1 ms and pulsed a user row.
+- Additional screenshots saved: `recovery-desktop-file-search.png`, `recovery-desktop-file-read.png`.
