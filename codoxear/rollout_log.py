@@ -1189,6 +1189,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
         idle = True
         cc_pending_tool_ids: set[str] = set()
         cc_seen_turn_context = False
+        cc_seen_user_turn_start = False
         cc_terminal_without_context = False
         for obj in objs:
             typ = obj.get("type")
@@ -1216,6 +1217,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
             if typ == "user":
                 if cc_user_text(obj):
                     cc_seen_turn_context = True
+                    cc_seen_user_turn_start = True
                     cc_pending_tool_ids.clear()
                     saw_terminal_signal = True
                     idle = False
@@ -1241,11 +1243,10 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                     cc_seen_turn_context = True
                     cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
                 if cc_assistant_text(obj):
-                    had_prior_cc_context = cc_seen_turn_context
                     cc_seen_turn_context = True
                     saw_terminal_signal = True
                     if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids:
-                        if not had_prior_cc_context:
+                        if not cc_seen_user_turn_start:
                             cc_terminal_without_context = True
                         idle = True
                     else:
@@ -1265,7 +1266,7 @@ def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) ->
                 if cc_pending_tool_ids:
                     idle = False
                 else:
-                    if not cc_seen_turn_context:
+                    if not cc_seen_user_turn_start:
                         cc_terminal_without_context = True
                     idle = True
                 continue

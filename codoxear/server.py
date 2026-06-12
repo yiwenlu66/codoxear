@@ -1801,12 +1801,14 @@ def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Pat
 
 def _extract_chat_events(
     objs: list[dict[str, Any]],
+    *,
+    initial_cc_pending_tool_ids: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
-    return _rollout_log._extract_chat_events(objs)
+    return _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
 
 
-def _extract_positioned_chat_events(records: list[Any]) -> list[dict[str, Any]]:
-    return _rollout_log._extract_positioned_chat_events(records)
+def _extract_positioned_chat_events(records: list[Any], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[dict[str, Any]]:
+    return _rollout_log._extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
 
 
 def _extract_delivery_messages(objs: list[dict[str, Any]], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[Any]:
@@ -6355,9 +6357,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 records, next_after = _read_jsonl_records_from_offset(s.log_path, after_byte)
                 objs = [record.obj for record in records]
-                events, meta_delta, flags, diag = _extract_chat_events(objs)
+                initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if after_byte > 0 else set()
+                events, meta_delta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
                 token_update = _extract_token_update(objs)
-                events = _extract_positioned_chat_events(records)
+                events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending)
                 if objs:
                     MANAGER.mark_log_delta(session_id, objs=objs, new_off=next_after)
                 s2 = MANAGER.get_session(session_id)

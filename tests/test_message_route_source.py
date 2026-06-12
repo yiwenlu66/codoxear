@@ -24,6 +24,9 @@ class TestMessageRouteSource(unittest.TestCase):
         self.assertIn('{"error": "cursor required"}', source)
         self.assertIn('_decode_message_cursor(cursor_q[0], kind="live", session=s)', source)
         self.assertIn('_decode_message_cursor(cursor_q[0], kind="history", session=s)', source)
+        self.assertIn('initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if after_byte > 0 else set()', source)
+        self.assertIn('events, meta_delta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)', source)
+        self.assertIn('events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending)', source)
 
 
 if __name__ == "__main__":
