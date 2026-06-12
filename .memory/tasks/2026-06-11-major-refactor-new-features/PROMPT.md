@@ -3,6 +3,8 @@ Create and execute a major refactoring/new-features program for Codoxear with on
 
 Correction, 2026-06-12: the prior `develop` acceptance claim was overbroad. The branch contains useful work, but the original feature task is not product-complete. Do not proceed to structural refactor as the main task until the real product gaps from this task are fixed, browser-validated, and honestly scoped. The current priority is feature recovery and UX/product completion, not more architectural motion.
 
+Ontology correction: acceptance is organized by product promises and user workflows, not by implementation workstreams, patches, or test-count progress. A request is not done because a mechanism exists; it is done only when the relevant workflow works end-to-end, preserves Codoxear's invariants, and has evidence scoped to the promise. Product invariants such as sparse UI and shared broker semantics are first-class acceptance criteria, not optional polish.
+
 Done means:
 - A single `develop` branch exists as the acceptance candidate and contains the integrated, reviewable result.
 - Temporary topic branches/worktrees may be used for exploration, PR cherry-picks, or risky changes, but they are implementation scaffolding, not the final deliverable.
@@ -14,6 +16,14 @@ Done means:
 
 ## Workbench
 Current status correction: `develop` was previously labeled as the integrated acceptance candidate, but user review invalidated that claim. `main` must remain the live-safe branch unless explicitly approved. The current recovery work must happen in an isolated worktree/branch and must fix product gaps before any structural refactor is resumed.
+
+Product promises that now define recovery acceptance:
+1. New-session creation promise: the user can choose a backend and a coherent provider/model pair through one discoverable selector; defaults, recent pairs, search, keyboard use, mobile use, and reasoning-effort availability all update from the selected pair.
+2. Sparse-control promise: the main chat top bar exposes only identity/state and immediate chat actions. Session utilities, files, details, Unattended controls, search, and navigation live where their workflow context makes sense; no generic overflow dumping ground.
+3. Long-session orientation promise: in a large loaded session, the user can search, jump between relevant turns, and recover position without visual clutter or losing scroll state.
+4. File/context promise: file picker/viewer/search workflows feel local, understandable, and recoverable in empty/loading/error/mobile states.
+5. Responsiveness promise: under realistic isolated browser/session conditions, the UI remains usable and polling/network behavior does not create avoidable busywork or stale confusion.
+6. Backend/capability promise: Claude, Codex, Pi, provider, model, and reasoning controls say only what the evidence supports; unsupported or unknown combinations fail loudly or are explicitly scoped.
 
 Known overclaimed or under-completed product gaps that must be addressed before refactor:
 1. New-session provider/model ergonomics: only recent provider/model reuse was implemented; a real combined provider/model selector and keyboard/mobile flow are still required.

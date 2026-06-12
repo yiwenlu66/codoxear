@@ -3,6 +3,8 @@ Refactor Codoxear's architecture and frontend structure after the major feature 
 
 Pause correction, 2026-06-12: this structural refactor task is parked. User review found that the older major feature task was overclaimed and still has real product gaps. Do not continue structural refactor as the active objective until the older feature task is repaired and accepted. Refactor work may resume only after provider/model selection, UI action placement/topbar cleanup, long-chat ergonomics, responsiveness evidence, file-viewer polish, and scoped backend/capability claims are addressed or explicitly parked by the user.
 
+Ontology correction: refactor is not an acceptance object by itself. It is permitted only when it clarifies or preserves a product promise, workflow, source of truth, or invariant. Refactor progress must not be used to offset missing user-facing behavior.
+
 Done means:
 - A single reviewable refactor acceptance branch exists, based on current `develop`; prefer `refactor/structural-ux-review` unless a better branch name is explicitly recorded. `main` remains untouched and no merge to `main` happens without explicit user approval.
 - The refactor removes meaningful structural coupling from the current monoliths, especially `codoxear/server.py` and `codoxear/static/app.js`, without changing public API semantics, runtime state formats, or UX behavior accidentally.
