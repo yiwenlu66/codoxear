@@ -1130,3 +1130,9 @@
 - Repaired orphan recovery deletion/mutation blocker: `orphan_recovery` queue items now require explicit `allow_orphan_recovery` confirmation for deletion, block update/move/reorder barriers server-side, and show a Recovery tag/confirmation in the queue UI.
 - Commit: `fix: require explicit orphan recovery deletion`.
 - Validation: targeted tests passed (`68 passed, 11 subtests passed in 1.94s`). Plain full suite passed (`601 passed, 21 subtests passed in 9.22s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 11.53s`).
+
+
+## 2026-06-13 01:29
+- Repaired orphan later-item blocker: when a missing-session queue has recovery evidence, all listed items are exposed as recovery-protected; deleting any later item requires `allow_orphan_recovery`; queue route recovery errors now map to 409; after deleting the last recovery row the queue viewer hides instead of surfacing a false 404 error.
+- Commit: `fix: protect all orphan recovery queue items`.
+- Validation: targeted tests passed (`68 passed, 11 subtests passed in 2.43s`). Plain full suite passed (`601 passed, 21 subtests passed in 11.22s`). Full isolated Docker suite passed (`599 passed, 2 skipped, 21 subtests passed in 15.22s`).

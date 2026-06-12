@@ -929,3 +929,11 @@ Commitments:
 - Intervention: added strict `allow_orphan_recovery` confirmation, server-side update/move/reorder barriers for recovery rows, and UI confirmation/tagging for recovery deletion.
 - Evidence: targeted/full/Docker suites passed.
 - Scoped claim: preserved orphan recovery prompts cannot be silently edited, moved, auto-sent, or deleted without explicit recovery confirmation.
+
+
+## 2026-06-13 01:29
+- Observation: a missing-session queue with an unknown head and later normal prompts still allowed one-click/API deletion of the later prompts before resolving the head.
+- Mechanism: recovery protection was per item, but orphan recovery is a queue-level state once the session is missing and any recovery evidence exists.
+- Intervention: queue listing marks all items in a missing-session recovery queue as recovery-protected; delete requires explicit orphan recovery confirmation for those later items too; recovery conflict errors map to 409.
+- Evidence: tests cover later-item protection before and after unknown deletion; full local/Docker suites passed.
+- Scoped claim: every prompt in a missing-session recovery queue is protected from silent deletion/mutation while the queue remains in recovery state.
