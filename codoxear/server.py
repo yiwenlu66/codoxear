@@ -44,6 +44,11 @@ from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
 from .file_search import search_session_relative_files as _search_session_relative_files_impl
+from .file_types import MARKDOWN_EXTENSIONS
+from .file_types import TEXTUAL_EXTENSIONS
+from .file_types import TEXTUAL_FILENAMES
+from .file_types import file_kind as _file_kind
+from .file_types import sniff_image_ext as _sniff_image_ext
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
@@ -227,65 +232,6 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
         str((4 * ((ATTACH_UPLOAD_MAX_BYTES + 2) // 3)) + (64 * 1024)),
     )
 )
-MARKDOWN_EXTENSIONS = frozenset({"md", "markdown", "mdown", "mkd"})
-VIDEO_CONTENT_TYPES = {
-    ".3gp": "video/3gpp",
-    ".avi": "video/x-msvideo",
-    ".flv": "video/x-flv",
-    ".m4v": "video/mp4",
-    ".mkv": "video/x-matroska",
-    ".mov": "video/quicktime",
-    ".mp4": "video/mp4",
-    ".mpeg": "video/mpeg",
-    ".mpg": "video/mpeg",
-    ".ogv": "video/ogg",
-    ".webm": "video/webm",
-    ".wmv": "video/x-ms-wmv",
-}
-TEXTUAL_EXTENSIONS = frozenset(
-    {
-        "bash",
-        "c",
-        "cc",
-        "cfg",
-        "conf",
-        "cpp",
-        "css",
-        "csv",
-        "diff",
-        "go",
-        "h",
-        "hpp",
-        "htm",
-        "html",
-        "ini",
-        "java",
-        "js",
-        "json",
-        "jsonl",
-        "log",
-        "md",
-        "markdown",
-        "mdown",
-        "mkd",
-        "patch",
-        "py",
-        "rs",
-        "scss",
-        "sh",
-        "sql",
-        "svg",
-        "toml",
-        "ts",
-        "tsx",
-        "txt",
-        "xml",
-        "yaml",
-        "yml",
-        "zsh",
-    }
-)
-TEXTUAL_FILENAMES = frozenset({"dockerfile", "license", "makefile", "readme"})
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
 SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
@@ -739,61 +685,6 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
 
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return _rollout_log._extract_token_update(objs)
-
-
-def _sniff_image_ext(raw: bytes) -> str | None:
-    if len(raw) >= 8 and raw[:8] == b"\x89PNG\r\n\x1a\n":
-        return ".png"
-    if len(raw) >= 3 and raw[:3] == b"\xff\xd8\xff":
-        return ".jpg"
-    if len(raw) >= 12 and raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
-        return ".webp"
-    return None
-
-
-def _image_content_type(path: Path, raw: bytes) -> str | None:
-    if path.suffix.lower() == ".svg":
-        return "image/svg+xml; charset=utf-8"
-    ext = _sniff_image_ext(raw)
-    if ext == ".png":
-        return "image/png"
-    if ext == ".jpg":
-        return "image/jpeg"
-    if ext == ".webp":
-        return "image/webp"
-    return None
-
-
-def _pdf_content_type(path: Path, raw: bytes) -> str | None:
-    if path.suffix.lower() == ".pdf" or raw.startswith(b"%PDF-"):
-        return "application/pdf"
-    return None
-
-
-def _video_content_type(path: Path, raw: bytes) -> str | None:
-    ctype = VIDEO_CONTENT_TYPES.get(path.suffix.lower())
-    if ctype is not None:
-        return ctype
-    if len(raw) >= 12 and raw[4:8] == b"ftyp":
-        return "video/mp4"
-    if raw.startswith(b"\x1a\x45\xdf\xa3"):
-        return "video/webm"
-    if raw.startswith(b"OggS"):
-        return "video/ogg"
-    return None
-
-
-def _file_kind(path: Path, raw: bytes) -> tuple[str, str | None]:
-    ctype = _image_content_type(path, raw)
-    if ctype is not None:
-        return "image", ctype
-    ctype = _pdf_content_type(path, raw)
-    if ctype is not None:
-        return "pdf", ctype
-    ctype = _video_content_type(path, raw)
-    if ctype is not None:
-        return "video", ctype
-    return "text", None
 
 
 def _single_byte_range(header: str | None, size: int) -> tuple[int, int] | None:
