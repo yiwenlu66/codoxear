@@ -423,3 +423,6 @@ Commitments:
 
 ## 2026-06-12 15:48
 - Refactor mechanism: content-type classification is pure and shared by file viewer/upload/video-preview paths. Moving it out of `server.py` reduces route/module load while preserving server aliases and existing call-site semantics.
+
+## 2026-06-12 15:54
+- Refactor mechanism: text-file decoding/edit/write behavior is a pure helper cluster with direct tests. Extracting it further reduces `server.py` surface while preserving imported function names at existing call sites.

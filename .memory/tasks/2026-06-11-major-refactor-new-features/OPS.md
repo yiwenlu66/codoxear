@@ -586,3 +586,8 @@
 - Full validation after `codoxear/file_types.py` extraction.
 - HEAD: `2ea6413`.
 - Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`480 passed, 2 skipped, 10 subtests passed in 13.18s`).
+
+## 2026-06-12 15:54
+- Backend refactor tranche: extracted text file decoding, strict read, edit-read, and atomic write helpers into `codoxear/file_text.py`; server imports aliases for existing call sites.
+- Commit: `e5d045e refactor: extract file text helpers`.
+- Validation: `python3 -m py_compile codoxear/file_text.py codoxear/server.py` passed; file text/type module boundary, file viewer source, file inspect, file upload, file list, and transcript export tests passed (`58 passed, 3 subtests passed in 2.57s`).
