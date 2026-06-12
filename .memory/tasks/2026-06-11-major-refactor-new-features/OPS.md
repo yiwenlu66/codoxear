@@ -962,3 +962,9 @@
 - Clean-room rerun repair: default async broker/sessiond send failures now restore previous busy/turn state after deferred `_inject` failure while preserving fast ACK behavior.
 - Commit: `fix: rollback failed async input commits`.
 - Validation: targeted send/attachment/source tests passed (`52 passed in 3.12s`). Plain full suite passed (`558 passed, 10 subtests passed in 8.87s`). Full isolated Docker suite passed (`556 passed, 2 skipped, 10 subtests passed in 11.07s`).
+
+
+## 2026-06-12 21:28
+- Clean-room rerun repair: `SessionManager.send()` now sends `sync: true` for all server-managed sends, so queue/manual success and queue popping use the PTY-write commit boundary rather than fast ACK.
+- Commit: `fix: make server sends commit synchronously`.
+- Validation: targeted send/queue tests passed (`39 passed in 2.91s`). Plain full suite passed (`559 passed, 10 subtests passed in 8.87s`). Full isolated Docker suite passed (`557 passed, 2 skipped, 10 subtests passed in 10.93s`).

@@ -736,3 +736,10 @@ Commitments:
 - Intervention: broker/sessiond async `after_reply()` now restores pre-send busy/turn state if `_inject` fails or no PTY fd is available.
 - Evidence: targeted tests assert async send failure returns fast success but leaves broker/sessiond idle/retryable; full local/Docker suites passed.
 - Scoped claim: both sync and async server-visible send paths now roll back broker/sessiond busy state on local PTY injection failure; async callers still cannot be told the already-ACKed send failed.
+
+
+## 2026-06-12 21:28
+- Observation: clean-room review found async ACK still let queued/manual server sends be reported and popped before delivery; deferred inject failure was invisible to server.
+- Intervention: server-managed sends now request synchronous broker/sessiond commit for all sends. Direct broker control clients can still choose async by omitting `sync`, but Codoxear HTTP success now means the broker/sessiond write completed or returned an error.
+- Evidence: targeted tests assert normal server sends include `sync: true`; full local/Docker suites passed.
+- Scoped claim: HTTP `/send` and queue promotion no longer use fast ACK as the commit boundary; this may add PTY write latency but preserves queue/send correctness.
