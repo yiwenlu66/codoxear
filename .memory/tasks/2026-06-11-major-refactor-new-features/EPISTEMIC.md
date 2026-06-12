@@ -567,3 +567,9 @@ Commitments:
 - Intervention: introduced `handle_control_socket_connection()` with per-command callbacks; broker/sessiond now provide local callbacks for state/tail/send/keys/shutdown. Send still replies before slow injection; keys retains each process's existing response shape.
 - Evidence: new protocol-helper tests cover known/unknown/invalid/exception cases; existing send-ack and fail-closed tests pass; full isolated Docker suite passed.
 - Scoped claim: duplicated dispatch mechanics were reduced without changing intended wire semantics. This is not a full control-protocol abstraction of state machines or busy/idle authority.
+
+
+## 2026-06-12 18:25
+- Observation: Settings modal semantics were improved earlier but focus restoration had not been proven. Browser evidence now shows focus returns to the Settings opener after Escape-close.
+- Evidence: source tests constrain showModal/cancel/Escape/focus restoration; full isolated Docker suite passed; browser runtime evidence confirmed focus transition and redacted empty API-key field.
+- Scoped claim: Settings behaves as a keyboard-modal dialog in the current browser runtime. This does not exhaustively prove every assistive technology path.

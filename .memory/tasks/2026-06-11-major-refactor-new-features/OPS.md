@@ -820,3 +820,9 @@
 - Architecture tranche from fresh architect review: broker and sessiond now share `codoxear/control_socket.py` for JSON-line control-socket dispatch/exception/close handling while retaining backend-specific state, PTY injection, and response payload callbacks.
 - Commit: `e2e0f00 refactor: share control socket dispatch`.
 - Validation: `python3 -m py_compile codoxear/control_socket.py codoxear/broker.py codoxear/sessiond.py` passed; targeted protocol/broker/sessiond tests passed (`39 passed in 2.14s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`523 passed, 2 skipped, 10 subtests passed in 14.28s`).
+
+
+## 2026-06-12 18:25
+- Settings UX completion: Settings now restores focus to the opener after close, completing the keyboard-modal behavior.
+- Commit: `6618ad2 fix: restore focus after settings dialog closes`.
+- Validation: targeted overlay/voice source tests passed (`11 passed in 0.48s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`523 passed, 2 skipped, 10 subtests passed in 11.20s`). Browser evidence on isolated Docker `:18879`: Settings opened with `open=true`, focus moved inside dialog, API key value empty/placeholder `Enter API key`, Escape closed it, and focus returned to `settingsBtnSide`.
