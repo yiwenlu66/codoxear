@@ -419,6 +419,33 @@ class TestBrokerBusyState(unittest.TestCase):
         self.assertTrue(st.turn_open)
         self.assertFalse(st.turn_has_completion_candidate)
 
+    def test_cc_log_bind_seeds_busy_turn_without_pending_tool(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "cc.jsonl"
+            rows = [
+                {"type": "user", "sessionId": "cc-session", "cwd": str(root), "message": {"role": "user", "content": "run"}},
+                {
+                    "type": "assistant",
+                    "sessionId": "cc-session",
+                    "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "working"}], "stop_reason": None},
+                },
+            ]
+            log_path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            st = State(codex_pid=1, pty_master_fd=1, cwd=str(root), start_ts=0.0, codex_home=root, sessions_dir=root, sock_path=root / "broker.sock")
+            broker = Broker.__new__(Broker)
+            broker.sessions_dir = root
+            broker.state = st
+            broker._lock = threading.Lock()
+            broker._write_meta = lambda: None  # type: ignore[method-assign]
+
+            with patch.object(broker_mod, "AGENT_BACKEND", "cc"):
+                broker._maybe_register_or_switch_rollout(log_path=log_path)
+
+            self.assertEqual(st.pending_calls, set())
+            self.assertTrue(st.busy)
+            self.assertTrue(st.turn_open)
+
     def test_cc_log_bind_seeds_pending_tool_state(self) -> None:
         with TemporaryDirectory() as td:
             root = Path(td)

@@ -215,18 +215,55 @@ def _iter_jsonl_objects_reverse(path: Path, *, before: int | None = None, block_
                     yield obj
 
 
-def cc_pending_tool_ids_before(log_path: Path, before: int) -> set[str]:
+def cc_current_turn_state_before(log_path: Path, before: int) -> tuple[set[str], bool | None]:
     before = max(0, int(before))
     if before <= 0:
-        return set()
+        return set(), None
     newest_first: list[dict[str, Any]] = []
     for obj in _iter_jsonl_objects_reverse(log_path, before=before):
         newest_first.append(obj)
         if obj.get("type") == "user" and cc_user_text(obj):
             break
+
     pending: set[str] = set()
+    saw_signal = False
+    idle = True
     for obj in reversed(newest_first):
-        cc_update_pending_tool_ids(obj, pending)
+        typ = obj.get("type")
+        if typ == "user":
+            user_text = cc_user_text(obj)
+            if isinstance(user_text, str) and user_text:
+                pending.clear()
+                saw_signal = True
+                idle = False
+                continue
+            if cc_message_role(obj) == "toolResult":
+                cc_update_pending_tool_ids(obj, pending)
+                saw_signal = True
+                idle = False
+                continue
+        if typ == "assistant":
+            tool_count = cc_assistant_tool_use_count(obj)
+            if tool_count > 0:
+                pending.update(cc_assistant_pending_tool_use_ids(obj))
+            assistant_text = cc_assistant_text(obj)
+            if isinstance(assistant_text, str) and assistant_text:
+                saw_signal = True
+                idle = bool(cc_assistant_is_final_turn_end(obj) and not pending)
+                continue
+            if tool_count > 0 or cc_assistant_thinking_count(obj) > 0:
+                saw_signal = True
+                idle = False
+                continue
+        if typ == "system" and cc_is_turn_end(obj):
+            saw_signal = True
+            idle = not pending
+            continue
+    return pending, (idle if saw_signal else None)
+
+
+def cc_pending_tool_ids_before(log_path: Path, before: int) -> set[str]:
+    pending, _idle = cc_current_turn_state_before(log_path, before)
     return pending
 
 

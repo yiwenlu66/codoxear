@@ -31,8 +31,8 @@ from codoxear.cc_log import cc_assistant_text as _cc_assistant_text
 from codoxear.cc_log import cc_assistant_thinking_count as _cc_assistant_thinking_count
 from codoxear.cc_log import cc_assistant_tool_use_count as _cc_assistant_tool_use_count
 from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
+from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.cc_log import cc_message_role as _cc_message_role
-from codoxear.cc_log import cc_pending_tool_ids_before as _cc_pending_tool_ids_before
 from codoxear.cc_log import cc_user_text as _cc_user_text
 from codoxear.cc_log import cc_user_tool_result_ids as _cc_user_tool_result_ids
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
@@ -1535,11 +1535,13 @@ class Broker:
         except Exception:
             log_size = 0
         seed_pending: set[str] = set()
+        seed_idle: bool | None = None
         if AGENT_BACKEND == "cc" and log_size > 0:
             try:
-                seed_pending = _cc_pending_tool_ids_before(lp, log_size)
+                seed_pending, seed_idle = _cc_current_turn_state_before(lp, log_size)
             except Exception:
                 seed_pending = set()
+                seed_idle = None
 
         with self._lock:
             st = self.state
@@ -1557,6 +1559,7 @@ class Broker:
             st.log_off = log_size
             if seed_pending:
                 st.pending_calls.update(seed_pending)
+            if seed_pending or seed_idle is False:
                 st.busy = True
                 st.turn_open = True
                 st.turn_has_completion_candidate = False
