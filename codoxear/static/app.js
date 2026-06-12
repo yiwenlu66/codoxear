@@ -4728,6 +4728,24 @@
           await openSession(id, { useCache: true });
         }
 
+        async function selectSessionFromHash({ refreshIfMissing = false } = {}) {
+          const sid = sessionIdFromHash();
+          if (!sid || sid === selected) return;
+          let session = sessionIndex.get(sid);
+          if (!session && refreshIfMissing) {
+            try {
+              await refreshSessions();
+            } catch (e) {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("hash session refresh failed", e);
+              return;
+            }
+            session = sessionIndex.get(sid);
+          }
+          if (!sessionSelectable(session)) return;
+          await selectSession(sid);
+        }
+
         function parseUnattendedDraftInt(name) {
           const raw = String(unattendedNumberDraft[name] ?? "").trim();
           if (!raw) return null;
@@ -10346,9 +10364,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	            scheduleSessionsPoll();
             scheduleSecondaryPoll();
               addAppEvent(window, "hashchange", async () => {
-                const sid = sessionIdFromHash();
-                if (!sid || sid === selected || !sessionIndex.has(sid)) return;
-                await selectSession(sid);
+                await selectSessionFromHash({ refreshIfMissing: true });
               });
               addAppEvent(window, "beforeunload", () => {
                 cleanupApp();

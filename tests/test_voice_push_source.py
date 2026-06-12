@@ -2,8 +2,10 @@ import unittest
 from pathlib import Path
 
 
-VOICE_PUSH = Path(__file__).resolve().parents[1] / "codoxear" / "voice_push.py"
-SERVICE_WORKER = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "service-worker.js"
+ROOT = Path(__file__).resolve().parents[1]
+VOICE_PUSH = ROOT / "codoxear" / "voice_push.py"
+SERVICE_WORKER = ROOT / "codoxear" / "static" / "service-worker.js"
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
 
 class TestVoicePushSource(unittest.TestCase):
@@ -33,6 +35,29 @@ class TestVoicePushSource(unittest.TestCase):
         self.assertNotIn('"preview_text": notification_text', source)
         sw_source = SERVICE_WORKER.read_text(encoding="utf-8")
         self.assertIn("payload.notification_text", sw_source)
+
+    def test_notification_click_awaits_navigation_before_focus(self) -> None:
+        sw_source = SERVICE_WORKER.read_text(encoding="utf-8")
+        self.assertIn('clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {', sw_source)
+        self.assertIn('if ("navigate" in client) {', sw_source)
+        self.assertIn("const navigated = await client.navigate(target);", sw_source)
+        self.assertIn("return (navigated || client).focus();", sw_source)
+        self.assertNotIn("client.navigate(target);\n          return client.focus();", sw_source)
+
+    def test_hashchange_refreshes_missing_notification_target_once(self) -> None:
+        app_source = APP_JS.read_text(encoding="utf-8")
+        start = app_source.index("async function selectSessionFromHash")
+        end = app_source.index("function parseUnattendedDraftInt", start)
+        block = app_source[start:end]
+        self.assertIn("const sid = sessionIdFromHash();", block)
+        self.assertIn("let session = sessionIndex.get(sid);", block)
+        self.assertIn("if (!session && refreshIfMissing) {", block)
+        self.assertIn("await refreshSessions();", block)
+        self.assertIn("if (e && e.status === 401) handleAppAuthLoss();", block)
+        self.assertIn("session = sessionIndex.get(sid);", block)
+        self.assertIn("if (!sessionSelectable(session)) return;", block)
+        self.assertIn("await selectSession(sid);", block)
+        self.assertIn('addAppEvent(window, "hashchange", async () => {\n                await selectSessionFromHash({ refreshIfMissing: true });\n              });', app_source)
 
 
 if __name__ == "__main__":
