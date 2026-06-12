@@ -69,6 +69,26 @@ class TestAuthCookie(unittest.TestCase):
         refreshed_token = refreshed_cookie.split("codoxear_auth=", 1)[1].split(";", 1)[0]
         self.assertEqual(server._verify_cookie(refreshed_token), {"v": 1})
 
+    def test_json_response_with_etag_returns_304_for_matching_if_none_match(self) -> None:
+        first = _Handler()
+        payload = {"sessions": [], "recent_cwds": []}
+
+        server._json_response_with_etag(first, payload)  # type: ignore[arg-type]
+
+        self.assertEqual(first.status, 200)
+        etag = next(value for name, value in first.sent if name == "ETag")
+        self.assertTrue(first.wfile.getvalue())
+
+        second = _Handler()
+        second.headers["If-None-Match"] = etag
+
+        server._json_response_with_etag(second, payload)  # type: ignore[arg-type]
+
+        self.assertEqual(second.status, 304)
+        self.assertEqual(second.wfile.getvalue(), b"")
+        self.assertIn(("ETag", etag), second.sent)
+        self.assertIn(("Content-Length", "0"), second.sent)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1010,6 +1010,36 @@ def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj
     handler.wfile.write(body)
 
 
+def _if_none_match_contains(header_value: str | None, etag: str) -> bool:
+    if header_value is None:
+        return False
+    values = [part.strip() for part in str(header_value).split(",")]
+    return "*" in values or etag in values
+
+
+def _json_response_with_etag(handler: http.server.BaseHTTPRequestHandler, obj: Any) -> None:
+    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    etag = '"' + _sha256_hex(body) + '"'
+    if _if_none_match_contains(handler.headers.get("If-None-Match"), etag):
+        handler.send_response(304)
+        if getattr(handler, "_codoxear_refresh_auth_cookie", False):
+            _set_auth_cookie(handler)
+        handler.send_header("ETag", etag)
+        handler.send_header("Cache-Control", "private, no-cache")
+        handler.send_header("Content-Length", "0")
+        handler.end_headers()
+        return
+    handler.send_response(200)
+    if getattr(handler, "_codoxear_refresh_auth_cookie", False):
+        _set_auth_cookie(handler)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("ETag", etag)
+    handler.send_header("Cache-Control", "private, no-cache")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
 def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
     cl = handler.headers.get("Content-Length")
     if cl is None:
@@ -6019,9 +6049,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 new_session_defaults = _read_new_session_defaults()
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 _record_metric("api_sessions_ms", dt_ms)
-                _json_response(
+                _json_response_with_etag(
                     self,
-                    200,
                     {
                         "app_version": _static_asset_version(),
                         "sessions": sessions,

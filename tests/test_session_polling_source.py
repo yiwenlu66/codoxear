@@ -15,6 +15,16 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("sessionsTimer = setTimeout", source)
         self.assertNotIn("sessionsTimer = setInterval", source)
 
+    def test_sessions_api_uses_etag_cache_for_unchanged_polls(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("const apiEtags = new Map();", source)
+        self.assertIn('const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";', source)
+        self.assertIn('opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;', source)
+        self.assertIn("if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {", source)
+        self.assertIn("return JSON.parse(apiEtags.get(rawPath).text);", source)
+        self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', source)
+        self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", source)
+
     def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("const SECONDARY_POLL_VISIBLE_MS = 10000;", source)
