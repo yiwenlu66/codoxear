@@ -435,3 +435,6 @@ Commitments:
 
 ## 2026-06-12 16:11
 - Refactor mechanism: file-view interpretation (directory, media, too-large, binary, text/markdown) is pure path/byte classification. Route-specific byte-range streaming remains in `server.py`, avoiding a false abstraction over HTTP handler behavior.
+
+## 2026-06-12 16:15
+- Refactor mechanism: byte-range parsing and inline response streaming are route-shared HTTP mechanics. Moving them as a unit preserves 416 handling, cache headers, and range semantics while reducing repeated file-route coupling in `server.py`.
