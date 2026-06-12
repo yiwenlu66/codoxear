@@ -1,8 +1,8 @@
 # Codoxear Architecture Review
 
-**Branch:** `develop`  
-**Date:** 2026-06-12  
-**Scope:** server.py, broker.py, sessiond.py, rollout_log.py, pi_log.py, agent_backend.py, util.py, voice_push.py  
+**Branch:** `develop`
+**Date:** 2026-06-12
+**Scope:** server.py, broker.py, sessiond.py, rollout_log.py, pi_log.py, agent_backend.py, util.py, voice_push.py
 **Constraints:** Read-only. No process interaction, no file edits.
 
 ---

@@ -1,7 +1,7 @@
 # Codoxear Bug/Regression Ledger — Git History Mining
 
-Generated: 2026-06-12  
-Source: 200+ commits on `develop` (current HEAD `b003da6`), plus branches.  
+Generated: 2026-06-12
+Source: 200+ commits on `develop` (current HEAD `b003da6`), plus branches.
 Test suite status: **359 passed, 0 failed** (at HEAD).
 
 ---
@@ -126,7 +126,7 @@ Test suite status: **359 passed, 0 failed** (at HEAD).
 
 **Mechanism:** `_agent_shell_command()` generates a Python-in-shell bootstrap that writes a `SHELL_PRE_EXEC_MARKER` to the PTY, then `_observe_shell_pre_exec_marker()` waits for it before proceeding. The broker restores the PTY slave fd mapping before exec'ing the agent.
 
-**Current test coverage:** `test_broker_fail_closed.py` (tests the command generation, marker observation, login shell argv, teardown). 
+**Current test coverage:** `test_broker_fail_closed.py` (tests the command generation, marker observation, login shell argv, teardown).
 
 **Gap:** The tests mock the PTY and don't exercise a real zsh/bash startup. A Codoxear instance launched in a Docker container with zsh + oh-my-zsh would be the true regression test.
 
