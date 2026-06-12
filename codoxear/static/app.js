@@ -4627,6 +4627,13 @@
             syncUnattendedNumberInputs();
             if (enabledEl) enabledEl.checked = Boolean(selected && on);
           }
+          const attachControl = $("#attachBtn");
+          if (attachControl) {
+            attachControl.disabled = !selected;
+            const attachLabel = selected ? `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})` : "Select a session to attach a file";
+            attachControl.title = attachLabel;
+            attachControl.setAttribute("aria-label", attachLabel);
+          }
           fileBtn.disabled = !selected;
           copyConversationBtn.disabled = !selected;
           chatSearchBtn.disabled = !selected;
@@ -9801,6 +9808,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         const attachHint = `Attach file (max ${fmtBytes(ATTACH_UPLOAD_MAX_BYTES)})`;
         attachBtn.title = attachHint;
         attachBtn.setAttribute("aria-label", attachHint);
+        if (!selected) {
+          attachBtn.disabled = true;
+          attachBtn.title = "Select a session to attach a file";
+          attachBtn.setAttribute("aria-label", "Select a session to attach a file");
+        }
         updateQueueBadge();
 	        function autoGrow() {
 	          const basePx = parseFloat(getComputedStyle(textarea).minHeight || "0") || 32;
