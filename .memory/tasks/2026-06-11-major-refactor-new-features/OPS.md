@@ -1449,3 +1449,11 @@
 - Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `31 passed`; `node --check codoxear/static/app.js` → passed.
 - Review artifact: `/tmp/codoxear-transcript-tail-failure-review.md`.
 - Residual risks noted: tests are source-structure rather than a full async browser race harness; `openSession(..., { useCache: false })` paths such as jump-to-latest can still clear visible transcript before a failed tail fetch; tail cache is not a durable full scrollback/search snapshot.
+
+## 2026-06-13 07:17 — Forced tail refresh failure fallback
+- Implemented fallback for `openSession(..., { useCache: false })` tail failures: after a non-auth, non-stale `/messages/tail` failure, if a matching `sessionTailCache` exists and was not already displayed, `openSession()` applies that cached tail before appending non-transcript error feedback.
+- This addresses the residual Jump-to-latest/no-cache refresh case where a failed authoritative fetch could otherwise leave only an error row even though a valid cached transcript was available.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `31 passed`.
+- Browser evidence on isolated `codoxear-sandbox-18934`: populated cache with a successful transcript load, monkeypatched `/messages/tail` to synthetic 503, clicked Jump to latest (`openSession(..., { useCache: false })`), and observed cached transcript row preserved (`nonTypingRows: 1`), no loading rows, and one non-transcript error row. Artifacts: `/tmp/codoxear-forced-refresh-evidence/before-jump-fail.json`, `after-jump-fail.json`, `after-jump-fail.png`.
+- Full local validation: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.

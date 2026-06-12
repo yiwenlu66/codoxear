@@ -1229,3 +1229,10 @@ Commitments:
 - Observation: Final clean-room review found no blockers after cached-tail preservation and stale-401 ordering repairs.
 - Scoped claim: Initial tail failures now have three separated outcomes: auth loss triggers global login cleanup; stale non-auth failures are ignored; active non-auth failures render explicit non-transcript error feedback, preserving cached transcript evidence when present.
 - Remaining uncertainty: Jump-to-latest/no-cache refreshes intentionally do not preserve current visible transcript on failure; if that becomes a UX issue it should be treated as a separate tranche.
+
+## 2026-06-13 07:17 — Forced refresh failure can fall back to last valid tail evidence
+- Observation: The previous fix preserved cached transcript rows only when `useCache: true` had already displayed the cache. Forced refresh paths such as Jump to latest intentionally bypassed cache display before fetch, so a failed authoritative tail request could still leave only an error row.
+- Mechanism: Bypassing cache on the way to an authoritative refresh does not mean the cache loses evidential value if the authoritative measurement fails. A matching cached tail is the best available transcript evidence and should be restored with explicit stale/error context.
+- Intervention: On active non-auth tail failure, `openSession()` applies a matching cached tail when no cache was displayed because `useCache` was false, then appends the non-transcript error row in preserve mode.
+- Evidence: Browser Jump-to-latest failure reproduction preserved the cached transcript row and added one error row; focused/full local/Docker validations passed.
+- Scoped claim: Forced transcript refresh failures now degrade to the last matching cached tail when available rather than blanking the transcript.
