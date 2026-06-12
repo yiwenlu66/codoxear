@@ -550,3 +550,8 @@
 ## 2026-06-12 15:24
 - Browser validation for loaded-user-turn keyboard shortcuts, isolated Docker server on port 18815 with live fixture Unix socket and three user turns.
 - Observation: with chat focused, CDP `Alt+ArrowDown` using Chromium modifier bit pulsed one loaded `data-role=\"user\"` row, kept chat search closed, and produced JS errors `[]`. With composer `#msg` focused, the same shortcut produced `pulseCount=0`, kept focus on `#msg`, left composer text unchanged, and kept search closed.
+
+## 2026-06-12 15:26
+- Full validation after loaded-user-turn shortcut implementation and browser evidence.
+- HEAD: `b0d1a15`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`476 passed, 2 skipped, 10 subtests passed in 12.95s`).
