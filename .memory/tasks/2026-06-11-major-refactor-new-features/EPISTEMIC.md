@@ -611,3 +611,11 @@ Commitments:
 - Intervention: pyproject now sets pytest `pythonpath = ["."]` and a source test locks the contract.
 - Evidence: targeted and full plain-pytest runs passed without manually exporting `PYTHONPATH`.
 - Scoped claim: local pytest now resolves the active checkout by default. Docker sandbox still sets `PYTHONPATH=/workspace`, which remains compatible.
+
+
+## 2026-06-12 19:06
+- Observation: fresh review found core file viewing depended on external CDN scripts; if Monaco loader or pdf.js failed/hung, the viewer could remain stuck at loading.
+- Mechanism: waiting indefinitely for `window.require` or dynamic pdf.js imports makes local/LAN use fragile under offline, captive-portal, or CDN-blocked conditions.
+- Intervention: added bounded loader timeouts with retry, read-only plain-text fallback for Monaco file/diff views, and PDF open/download fallback for pdf.js/IntersectionObserver failure.
+- Evidence: source tests constrain timeout constants, fallback renderers, PDF fallback path, and CSS; full local and isolated Docker suites passed.
+- Scoped claim: CDN failure no longer leaves the file viewer with an unbounded loading state for text/diff/PDF paths. Monaco/pdf.js are still CDN-hosted; full vendoring is a separate larger change.

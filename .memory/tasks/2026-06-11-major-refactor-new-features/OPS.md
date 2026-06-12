@@ -856,3 +856,9 @@
 - Validation ownership fix: added `[tool.pytest.ini_options] pythonpath = ["."]` so plain pytest imports the active checkout instead of a stale installed `codoxear` package.
 - Commit: `test: make pytest import current checkout`.
 - Validation: `python3 -m pytest tests/test_pytest_config.py tests/test_backend_launch_adapter.py -q` passed (`5 passed in 0.48s`); plain full suite `python3 -m pytest -q` passed (`531 passed, 10 subtests passed in 8.98s`).
+
+
+## 2026-06-12 19:06
+- Offline/local UX tranche: Monaco and pdf.js CDN loaders now have bounded timeouts/retry behavior; text/diff file views fall back to a read-only plain-text renderer, and PDF preview failures fall back to an authenticated open/download link.
+- Commit: `49bd595 fix: add offline file viewer fallbacks`.
+- Validation: targeted file-viewer/static tests passed (`24 passed in 5.04s`). Plain full suite passed (`531 passed, 10 subtests passed in 10.64s`). Full isolated Docker suite passed (`529 passed, 2 skipped, 10 subtests passed in 11.45s`).
