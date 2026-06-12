@@ -9489,7 +9489,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function showDiagViewer() {
-          if (!selected) return;
+          const sid = selected;
+          if (!sid) return;
           prepareModalOpen();
           diagContent.innerHTML = "";
           diagStatus.textContent = "Loading...";
@@ -9497,7 +9498,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           diagViewer.style.display = "flex";
           afterModalVisibilityChanged();
           try {
-            const d = await api(`/api/sessions/${selected}/diagnostics`);
+            const d = await api(`/api/sessions/${sid}/diagnostics`);
+            if (selected !== sid) return;
             diagStatus.textContent = "";
             const now = Date.now() / 1000;
             const addRow = (label, value, { mono = false } = {}) => {
@@ -9555,6 +9557,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }
             }
           } catch (e) {
+            if (selected !== sid) return;
             diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
         }
