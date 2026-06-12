@@ -397,3 +397,8 @@
 ## 2026-06-12 13:36
 - Reliability follow-up: committed `3fc9082 fix: avoid masking json temp cleanup errors` so `atomic_write_json()` cleanup catches all `OSError` and cannot mask the original write/replace exception. Validation before commit: helper/store tests passed (`34 passed in 0.83s`) and full isolated Docker suite passed (`454 passed, 2 skipped in 11.26s`).
 - Browser UX validation for chat-search paging: restarted isolated Docker sandbox on port 18812, created synthetic long Codex session `ux-search-long` with a real Unix control socket and a 160-turn log. Searching `DEEP-NEEDLE-SEARCH` initially showed `0/0 loaded · 1 all` with the Next button enabled; pressing Next loaded older history contiguously and then showed `1/1 loaded · 1 all`, one highlighted hit, body contained the needle, and captured JS errors were `[]`.
+
+## 2026-06-12 13:38
+- Consistency fix after launch parser refactor: POST `/api/sessions` parser now uses safe fallback launch defaults when backend config readers fail, matching the degraded-default semantics already used by GET `/api/sessions` and the New Session warning.
+- Commit: `3b44ad5 fix: use safe defaults for launch request parsing`.
+- Validation: targeted launch/default/reasoning/provenance tests passed (`32 passed in 1.81s`); full isolated Docker suite passed (`459 passed, 2 skipped in 10.52s`).

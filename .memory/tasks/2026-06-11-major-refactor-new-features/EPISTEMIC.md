@@ -338,3 +338,7 @@ Commitments:
 
 ## 2026-06-12 13:36
 - Browser evidence update: the all-transcript search paging mechanism was tested through normal session discovery, message tail/history routes, and a real broker control socket in the isolated Docker app dir. The observed transition from `0/0 loaded · 1 all` to `1/1 loaded · 1 all` supports the mechanism that bounded contiguous history paging can materialize older search matches without creating a separate jump/page model.
+
+## 2026-06-12 13:38
+- Observation: after extracting launch parsing, GET launch defaults could degrade safely while POST launch validation still depended on raw backend config readers. This could make the UI truthfully say safe defaults are in use but still fail to start a safe-default session.
+- Intervention/evidence: request parsing now uses fallback defaults for provider validation when backend config readers fail. Parser tests simulate malformed Codex/Pi config readers and still parse safe launch requests.
