@@ -511,3 +511,8 @@
 - Browser validation after malformed-log discovery fix and warning rate-limit, isolated Docker server on port 18813 with a live fixture Unix control socket and Codex log intentionally missing session metadata.
 - API evidence: `/api/sessions` listed the fixture session instead of failing; browser/CDP evidence at 390px viewport: before slash `sessionCount=1`, `selected=sidebar-shortcut-fixture`, `sidebarOpen=false`, `searchDisplay=none`; after opening sidebar and pressing `/`: `sidebarOpen=true`, `searchDisplay=none`, `searchValue=\"\"`, `chatRows=2`, JS errors `[]`.
 - Sandbox log observation: malformed log metadata produced bounded warnings, not traceback/sweep crash loops.
+
+## 2026-06-12 15:06
+- Latest-head full validation after malformed-log discovery fix, invalid-metadata warning rate-limit, and mobile sidebar shortcut browser evidence.
+- HEAD: `705fe07`.
+- Validation: isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`472 passed, 2 skipped, 3 subtests passed in 11.12s`).
