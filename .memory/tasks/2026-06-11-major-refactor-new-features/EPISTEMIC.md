@@ -1062,3 +1062,10 @@ Commitments:
 - Intervention: fail closed for known pending Claude tool IDs on malformed result rows; only an unknown-id tool-use sentinel can be cleared by a no-id result. Tail reads now check whether the start offset is already a line boundary before discarding the first line.
 - Evidence: targeted regressions cover no-id result after known `tool_use` and exact-boundary scan budget; full local and Docker suites passed.
 - Scoped claim: Claude synthetic tool-pairing invariant is now stricter under malformed data and tail-boundary conditions.
+
+
+## 2026-06-13 04:15
+- Review anomaly: final Claude assistant text could be treated as idle/final when a preceding unmatched tool-use was outside the initial tail scan; chat and delivery extraction also ignored pending tool IDs.
+- Intervention: treat final text without prior tail context as an ambiguous terminal requiring scan expansion; carry Claude pending tool IDs through chat and delivery extraction; classify final-looking text as narration and keep `turn_end` false while pending IDs remain.
+- Evidence: regressions cover large-gap final text, chat final classification, delivery classification, and mixed malformed tool-use; full local and Docker suites passed.
+- Scoped claim: inspected synthetic Claude log consumers now agree that known pending tool-use state blocks final/idle semantics.

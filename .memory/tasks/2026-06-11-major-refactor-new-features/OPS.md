@@ -1249,3 +1249,12 @@
   - `_read_jsonl_tail()` now preserves a complete first record when the scan starts exactly on a line boundary.
 - Commit: `fix: fail closed on malformed Claude tool results`.
 - Validation: targeted Claude/tail suites passed (`46 passed`); full local suite passed (`629 passed, 25 subtests passed in 12.32s`); isolated Docker suite passed (`628 passed, 1 skipped, 25 subtests passed in 11.57s`).
+
+
+## 2026-06-13 04:15
+- Applied blocker fixes from `/tmp/codoxear-cc-hardening-review3.md`:
+  - Claude final assistant text now triggers tail expansion when it appears without prior turn context, matching `turn_duration` ambiguity handling.
+  - Chat extraction and delivery extraction now track Claude pending tool IDs, so final text while a known tool-use is pending is classified as narration and does not set `turn_end`.
+  - Mixed known/malformed tool-use parts now retain the unknown pending sentinel after the known result arrives.
+- Commit: `fix: align Claude final extraction with tool state`.
+- Validation: targeted Claude suites passed (`50 passed`); full local suite passed (`633 passed, 25 subtests passed in 9.10s`); isolated Docker suite passed (`632 passed, 1 skipped, 25 subtests passed in 11.86s`).
