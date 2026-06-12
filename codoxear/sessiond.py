@@ -20,6 +20,7 @@ from typing import Any
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
+from .control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from . import pty_util as _pty_util
 from .util import default_app_dir as _default_app_dir
 from .util import now as _now
@@ -262,99 +263,68 @@ class Sessiond:
             traceback.print_exc()
 
     def _handle_conn(self, conn: socket.socket) -> None:
-        f = None
-        try:
-            f = conn.makefile("rb")
-            line = f.readline()
-            if not line:
-                return
-            req = json.loads(line.decode("utf-8"))
-            cmd = req.get("cmd")
-            if cmd == "state":
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        resp = {"busy": st.busy, "queue_len": 0}
-                _send_socket_json_line(conn, resp)
-                return
+        def state_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                return {"busy": st.busy, "queue_len": 0}, None
 
-            if cmd == "tail":
-                with self._lock:
-                    st = self.state
-                    resp = {"tail": st.output_tail if st else ""}
-                _send_socket_json_line(conn, resp)
-                return
+        def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            with self._lock:
+                st = self.state
+                return {"tail": st.output_tail if st else ""}, None
 
-            if cmd == "send":
-                text = req.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    resp = {"error": "text required"}
-                    _send_socket_json_line(conn, resp)
+        def send_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            text = req.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return {"error": "text required"}, None
+            fd: int | None = None
+            enter = _encode_enter()
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                fd = st.pty_master_fd
+            def after_reply() -> None:
+                if fd is None:
                     return
-                fd: int | None = None
-                enter = _encode_enter()
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        fd = st.pty_master_fd
-                        resp = {"queued": False, "queue_len": 0}
-                _send_socket_json_line(conn, resp)
-                if fd is not None:
-                    try:
-                        _inject(fd, text=text, suffix=enter)
-                    except Exception:
-                        traceback.print_exc()
-                return
-
-            if cmd == "keys":
-                seq = req.get("seq")
-                if not isinstance(seq, str) or not seq:
-                    resp = {"error": "seq required"}
-                else:
-                    b = _seq_bytes(seq)
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            try:
-                                _write_all(st.pty_master_fd, b)
-                                resp = {"ok": True}
-                            except Exception as e:
-                                resp = {"error": str(e)}
-                _send_socket_json_line(conn, resp)
-                return
-
-            if cmd == "shutdown":
-                _send_socket_json_line(conn, {"ok": True})
-                self._teardown_managed_process_group()
-                return
-
-            _send_socket_json_line(conn, {"error": "unknown cmd"})
-        except Exception as exc:
-            if _socket_peer_disconnected(exc):
-                return
-            try:
-                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
-            except Exception as send_exc:
-                if not _socket_peer_disconnected(send_exc):
-                    traceback.print_exc()
-        finally:
-            if f is not None:
                 try:
-                    f.close()
-                except Exception as close_exc:
-                    if not _socket_peer_disconnected(close_exc):
-                        traceback.print_exc()
-            try:
-                conn.close()
-            except Exception as close_exc:
-                if not _socket_peer_disconnected(close_exc):
+                    _inject(fd, text=text, suffix=enter)
+                except Exception:
                     traceback.print_exc()
+            return {"queued": False, "queue_len": 0}, after_reply
+
+        def keys_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            seq = req.get("seq")
+            if not isinstance(seq, str) or not seq:
+                return {"error": "seq required"}, None
+            b = _seq_bytes(seq)
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                try:
+                    _write_all(st.pty_master_fd, b)
+                    return {"ok": True}, None
+                except Exception as e:
+                    return {"error": str(e)}, None
+
+        def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            return {"ok": True}, self._teardown_managed_process_group
+
+        _handle_control_socket_connection(
+            conn,
+            handlers={
+                "state": state_handler,
+                "tail": tail_handler,
+                "send": send_handler,
+                "keys": keys_handler,
+                "shutdown": shutdown_handler,
+            },
+            send_json_line=_send_socket_json_line,
+            socket_peer_disconnected=_socket_peer_disconnected,
+        )
 
     def _ensure_root_repo(self) -> None:
         if (ROOT_REPO_DIR / ".git").exists():

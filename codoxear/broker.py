@@ -41,6 +41,7 @@ from codoxear.pi_log import pi_context_token_update as _pi_context_token_update
 from codoxear.pi_log import pi_token_update as _pi_token_update
 from codoxear.pi_log import pi_user_text as _pi_user_text
 from codoxear import pty_util as _pty_util
+from codoxear.control_socket import handle_control_socket_connection as _handle_control_socket_connection
 from codoxear.util import append_launch_attempt as _append_launch_attempt
 from codoxear.util import default_app_dir as _default_app_dir
 from codoxear.util import find_new_session_log as _find_new_session_log
@@ -1347,111 +1348,81 @@ class Broker:
         s.close()
 
     def _handle_conn(self, conn: socket.socket) -> None:
-        f = None
-        try:
-            f = conn.makefile("rb")
-            line = f.readline()
-            if not line:
-                return
-            req = json.loads(line.decode("utf-8"))
-            cmd = req.get("cmd")
-            if cmd == "state":
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        resp = {"busy": st.busy, "queue_len": 0, "token": st.token}
-                _send_socket_json_line(conn, resp)
-                return
+        def state_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                return {"busy": st.busy, "queue_len": 0, "token": st.token}, None
 
-            if cmd == "tail":
-                with self._lock:
-                    st = self.state
-                    resp = {"tail": st.output_tail if st else ""}
-                _send_socket_json_line(conn, resp)
-                return
+        def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            with self._lock:
+                st = self.state
+                return {"tail": st.output_tail if st else ""}, None
 
-            if cmd == "send":
-                text = req.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    resp = {"error": "text required"}
-                    _send_socket_json_line(conn, resp)
+        def send_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            text = req.get("text")
+            if not isinstance(text, str) or not text.strip():
+                return {"error": "text required"}, None
+            seq_raw = req.get("enter_seq")
+            seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
+            fd: int | None = None
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                now_ts = _now()
+                st.pending_calls.clear()
+                st.busy = True
+                st.turn_open = True
+                st.turn_has_completion_candidate = False
+                st.last_interrupt_hint_ts = 0.0
+                if now_ts > st.last_turn_activity_ts:
+                    st.last_turn_activity_ts = now_ts
+                fd = st.pty_master_fd
+            def after_reply() -> None:
+                if fd is None:
                     return
-                seq_raw = req.get("enter_seq")
-                seq = _seq_bytes(seq_raw) if isinstance(seq_raw, str) else _encode_enter()
-                fd: int | None = None
-                with self._lock:
-                    st = self.state
-                    if not st:
-                        resp = {"error": "no state"}
-                    else:
-                        now_ts = _now()
-                        st.pending_calls.clear()
-                        st.busy = True
-                        st.turn_open = True
-                        st.turn_has_completion_candidate = False
-                        st.last_interrupt_hint_ts = 0.0
-                        if now_ts > st.last_turn_activity_ts:
-                            st.last_turn_activity_ts = now_ts
-                        fd = st.pty_master_fd
-                        resp = {"queued": False, "queue_len": 0}
-                _send_socket_json_line(conn, resp)
-                if fd is not None:
-                    try:
-                        _inject(fd, text=text, suffix=seq)
-                    except Exception:
-                        traceback.print_exc()
-                return
-
-            if cmd == "keys":
-                seq_raw = req.get("seq")
-                if not isinstance(seq_raw, str) or not seq_raw:
-                    resp = {"error": "seq required"}
-                else:
-                    b = _seq_bytes(seq_raw)
-                    fd: int | None = None
-                    with self._lock:
-                        st = self.state
-                        if not st:
-                            resp = {"error": "no state"}
-                        else:
-                            fd = st.pty_master_fd
-                            resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
-                    if fd is not None:
-                        try:
-                            _write_all(fd, b)
-                        except Exception:
-                            traceback.print_exc()
-                _send_socket_json_line(conn, resp)
-                return
-
-            if cmd == "shutdown":
-                _send_socket_json_line(conn, {"ok": True})
-                self._teardown_managed_process_group()
-                return
-
-            _send_socket_json_line(conn, {"error": "unknown cmd"})
-        except Exception as exc:
-            if _socket_peer_disconnected(exc):
-                return
-            try:
-                _send_socket_json_line(conn, {"error": "exception", "trace": traceback.format_exc()})
-            except Exception as send_exc:
-                if not _socket_peer_disconnected(send_exc):
-                    traceback.print_exc()
-        finally:
-            if f is not None:
                 try:
-                    f.close()
-                except Exception as close_exc:
-                    if not _socket_peer_disconnected(close_exc):
-                        traceback.print_exc()
-            try:
-                conn.close()
-            except Exception as close_exc:
-                if not _socket_peer_disconnected(close_exc):
+                    _inject(fd, text=text, suffix=seq)
+                except Exception:
                     traceback.print_exc()
+            return {"queued": False, "queue_len": 0}, after_reply
+
+        def keys_handler(req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            seq_raw = req.get("seq")
+            if not isinstance(seq_raw, str) or not seq_raw:
+                return {"error": "seq required"}, None
+            b = _seq_bytes(seq_raw)
+            fd: int | None = None
+            with self._lock:
+                st = self.state
+                if not st:
+                    return {"error": "no state"}, None
+                fd = st.pty_master_fd
+                resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
+            if fd is not None:
+                try:
+                    _write_all(fd, b)
+                except Exception:
+                    traceback.print_exc()
+            return resp, None
+
+        def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
+            return {"ok": True}, self._teardown_managed_process_group
+
+        _handle_control_socket_connection(
+            conn,
+            handlers={
+                "state": state_handler,
+                "tail": tail_handler,
+                "send": send_handler,
+                "keys": keys_handler,
+                "shutdown": shutdown_handler,
+            },
+            send_json_line=_send_socket_json_line,
+            socket_peer_disconnected=_socket_peer_disconnected,
+        )
 
     def _session_id_from_rollout_path(self, log_path: Path) -> str | None:
         # Codex stores rollout logs under date-based directories (e.g. ~/.codex/sessions/2026/01/22/rollout-...-<id>.jsonl),
