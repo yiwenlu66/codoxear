@@ -2182,12 +2182,18 @@ def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> d
     return payload
 
 
+_INVALID_SESSION_META_WARNINGS: set[tuple[str, str]] = set()
+
+
 def _read_session_meta_or_none(log_path: Path, *, agent_backend: str | None = None, context: str) -> dict[str, Any] | None:
     try:
         return _read_session_meta(log_path, agent_backend=agent_backend)
     except (FileNotFoundError, ValueError) as e:
-        sys.stderr.write(f"warning: {context}: ignoring invalid session metadata in {log_path}: {type(e).__name__}: {e}\n")
-        sys.stderr.flush()
+        warning_key = (context, str(log_path))
+        if warning_key not in _INVALID_SESSION_META_WARNINGS:
+            _INVALID_SESSION_META_WARNINGS.add(warning_key)
+            sys.stderr.write(f"warning: {context}: ignoring invalid session metadata in {log_path}: {type(e).__name__}: {e}\n")
+            sys.stderr.flush()
         return None
 
 

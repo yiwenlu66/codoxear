@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import threading
 import time
@@ -119,6 +121,24 @@ class TestStaleSidecars(unittest.TestCase):
             self.assertIn("fixture", mgr._sessions)
             self.assertEqual(mgr._sessions["fixture"].thread_id, "sidecar-thread")
             self.assertEqual(mgr._sessions["fixture"].log_path, log_path)
+
+    def test_invalid_session_meta_warning_is_once_per_context_path(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout-no-session-meta.jsonl"
+            log_path.write_text(
+                json.dumps({"type": "event_msg", "payload": {"type": "user_message", "message": "hello"}}) + "\n",
+                encoding="utf-8",
+            )
+            server._INVALID_SESSION_META_WARNINGS.clear()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                first = server._read_session_meta_or_none(log_path, agent_backend="codex", context="test")
+                second = server._read_session_meta_or_none(log_path, agent_backend="codex", context="test")
+
+            self.assertIsNone(first)
+            self.assertIsNone(second)
+            self.assertEqual(stderr.getvalue().count("ignoring invalid session metadata"), 1)
 
     def test_refresh_keeps_sidecar_log_without_codex_session_metadata(self) -> None:
         with TemporaryDirectory() as td:
