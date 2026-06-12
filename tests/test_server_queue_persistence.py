@@ -47,6 +47,32 @@ class TestServerQueuePersistence(unittest.TestCase):
         mgr._save_commit_unknown_sends = lambda: None
         return mgr
 
+    def test_deleted_state_cleanup_preserves_recovery_markers_unless_explicit(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._aliases = {}
+        mgr._sidebar_meta = {}
+        mgr._unattended = {}
+        mgr._files = {}
+        mgr._input_locks = {}
+        mgr._save_aliases = lambda: None
+        mgr._save_sidebar_meta = lambda: None
+        mgr._save_unattended = lambda: None
+        mgr._save_files = lambda: None
+        mgr._queues[sid] = [dict(_queue_item("q1", "maybe sent"), commit_unknown=True)]
+        mgr._commit_unknown_sends[sid] = {"text": "maybe direct", "created_ts": 1.0}
+
+        SessionManager._clear_deleted_session_state(mgr, sid)
+
+        self.assertIn(sid, mgr._queues)
+        self.assertIn(sid, mgr._commit_unknown_sends)
+
+        SessionManager._clear_deleted_session_state(mgr, sid, clear_recovery=True)
+
+        self.assertNotIn(sid, mgr._queues)
+        self.assertNotIn(sid, mgr._commit_unknown_sends)
+
     def test_prune_missing_commit_unknown_sends_keeps_recent_orphans(self) -> None:
         mgr = self._mgr()
         mgr._sessions["live"] = _make_session("live")

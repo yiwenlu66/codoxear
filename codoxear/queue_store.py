@@ -237,7 +237,14 @@ class QueueStore:
 
     def drop_missing_sessions(self, queues: QueueMap, active_session_ids: Iterable[str]) -> bool:
         active = set(active_session_ids)
-        drop = [sid for sid in queues.keys() if sid not in active]
+        drop = []
+        for sid, q in queues.items():
+            if sid in active:
+                continue
+            has_unknown_queue_item = isinstance(q, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q)
+            if has_unknown_queue_item:
+                continue
+            drop.append(sid)
         for sid in drop:
             queues.pop(sid, None)
         return bool(drop)

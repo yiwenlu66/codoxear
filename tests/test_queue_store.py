@@ -91,17 +91,23 @@ class TestQueueStore(unittest.TestCase):
         self.assertEqual(store.move(queues, "s1", "c", 2), 4)
         self.assertEqual([item["id"] for item in queues["s1"]], ["a", "u", "c", "b"])
 
-    def test_drop_missing_sessions_and_save_omit_empty_queues(self) -> None:
+    def test_drop_missing_sessions_preserves_unknown_queue_evidence(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"
             store = QueueStore(path)
-            queues = {"live": [{"id": "a", "text": "one", "created_ts": 1}], "dead": [{"id": "b", "text": "two", "created_ts": 2}], "empty": []}
+            queues = {
+                "live": [{"id": "a", "text": "one", "created_ts": 1}],
+                "dead": [{"id": "b", "text": "two", "created_ts": 2}],
+                "unknown_dead": [{"id": "u", "text": "maybe", "created_ts": 3, "commit_unknown": True}],
+                "empty": [],
+            }
 
             self.assertTrue(store.drop_missing_sessions(queues, {"live", "empty"}))
             store.save(queues)
             saved = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(set(saved), {"live"})
+        self.assertEqual(set(saved), {"live", "unknown_dead"})
+        self.assertTrue(saved["unknown_dead"][0]["commit_unknown"])
 
 
 if __name__ == "__main__":

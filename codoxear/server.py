@@ -2336,11 +2336,12 @@ class SessionManager:
         _unlink_quiet(sock)
         _unlink_quiet(sock.with_suffix(".json"))
 
-    def _clear_deleted_session_state(self, session_id: str) -> None:
+    def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False) -> None:
         changed_sidebar = False
         changed_unattended = False
         changed_files = False
         changed_queues = False
+        changed_unknown_sends = False
         with self._lock:
             aliases = getattr(self, "_aliases", None)
             if isinstance(aliases, dict):
@@ -2369,8 +2370,11 @@ class SessionManager:
                         changed_files = True
             queues = getattr(self, "_queues", None)
             if isinstance(queues, dict) and session_id in queues:
-                queues.pop(session_id, None)
-                changed_queues = True
+                q0 = queues.get(session_id)
+                has_unknown_queue_item = isinstance(q0, list) and any(isinstance(item, dict) and bool(item.get("commit_unknown")) for item in q0)
+                if clear_recovery or not has_unknown_queue_item:
+                    queues.pop(session_id, None)
+                    changed_queues = True
             input_locks = getattr(self, "_input_locks", None)
             if isinstance(input_locks, dict):
                 input_locks.pop(session_id, None)
@@ -2378,10 +2382,12 @@ class SessionManager:
             if isinstance(pending_attachment_ids, set):
                 pending_attachment_ids.discard(session_id)
             unknown_sends = getattr(self, "_commit_unknown_sends", None)
-            if isinstance(unknown_sends, dict):
+            if clear_recovery and isinstance(unknown_sends, dict) and session_id in unknown_sends:
                 unknown_sends.pop(session_id, None)
+                changed_unknown_sends = True
         self._save_pending_attachments()
-        self._save_commit_unknown_sends()
+        if changed_unknown_sends:
+            self._save_commit_unknown_sends()
         self._save_aliases()
         if changed_sidebar:
             self._save_sidebar_meta()
@@ -4486,7 +4492,7 @@ class SessionManager:
                 self._sessions.pop(session_id, None)
             if launch_id:
                 self._hide_session(launch_id)
-            self._clear_deleted_session_state(session_id)
+            self._clear_deleted_session_state(session_id, clear_recovery=True)
         return ok
 
     def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
@@ -6733,7 +6739,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not isinstance(item_id, str) or not item_id.strip():
                     _json_response(self, 400, {"error": "id required"})
                     return
-                allow_commit_unknown = bool(obj.get("allow_commit_unknown"))
+                allow_commit_unknown_raw = obj.get("allow_commit_unknown", False)
+                if not isinstance(allow_commit_unknown_raw, bool):
+                    _json_response(self, 400, {"error": "allow_commit_unknown must be a boolean"})
+                    return
+                allow_commit_unknown = allow_commit_unknown_raw is True
                 try:
                     res = MANAGER.queue_delete(session_id, item_id, allow_commit_unknown=allow_commit_unknown)
                 except KeyError:
