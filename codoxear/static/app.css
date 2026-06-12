@@ -2267,7 +2267,20 @@ select {
           flex: 1 1 auto;
         }
         .toast {
-          display: none;
+          position: fixed;
+          left: 50%;
+          bottom: calc(76px + env(safe-area-inset-bottom));
+          transform: translateX(-50%);
+          z-index: 95;
+          max-width: min(88vw, 360px);
+          padding: 7px 11px;
+          border-radius: 999px;
+          color: #fff;
+          background: rgba(15, 23, 42, 0.9);
+          box-shadow: 0 10px 30px rgba(15, 23, 42, 0.28);
+          text-align: center;
+          white-space: normal;
+          pointer-events: none;
         }
         button {
           padding: 9px 10px;

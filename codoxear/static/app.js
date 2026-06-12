@@ -1737,7 +1737,7 @@
           html: iconSvg("stop"),
         });
         interruptBtn.style.display = "none";
-        const toast = el("div", { class: "muted toast", id: "toast" });
+        const toast = el("div", { class: "muted toast", id: "toast", role: "status", "aria-live": "polite" });
 			        const toggleSidebarBtn = el("button", {
 	          id: "toggleSidebarBtn",
 	          class: "icon-btn",
