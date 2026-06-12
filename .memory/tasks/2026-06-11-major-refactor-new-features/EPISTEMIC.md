@@ -1105,3 +1105,10 @@ Commitments:
 - Intervention: include the parsed row identity in unknown sentinel IDs and add split-row regressions across chat/delivery/positioned/idle and broker paths.
 - Evidence: targeted regressions and full local/Docker suites passed.
 - Scoped claim: malformed idless tool-use tracking is count-like across the inspected per-scan/per-process state, not just within a single row.
+
+
+## 2026-06-13 05:08
+- Review anomaly: broker pending-call state was memory-only and could miss tool-use rows written before log registration; default log idle also failed closed forever for large but fully resolved Claude turns.
+- Intervention: move a lightweight Claude current-turn scanner into `cc_log`, seed broker pending state at log bind, and make `_compute_idle_from_log()` use exact current-turn reconstruction for Claude-shaped logs.
+- Evidence: broker bind regression remains busy after a pre-bind unresolved tool; 9 MiB resolved output is idle, while 9 MiB output with unresolved sibling remains busy; full local/Docker suites passed.
+- Scoped claim: inspected synthetic broker/log-idle Claude paths now reconstruct current-turn tool state from logs rather than depending only on in-memory observation or small tails.

@@ -1298,3 +1298,11 @@
   - malformed/idless Claude tool-use sentinels are now unique per parsed assistant row and part, so split-row idless tool calls do not collapse into one pending item.
 - Commit: `fix: avoid Claude unknown tool sentinel collisions`.
 - Validation: targeted split-row idless tests passed (`54 passed`); full local suite passed (`643 passed, 25 subtests passed in 13.35s`); isolated Docker suite passed (`642 passed, 1 skipped, 25 subtests passed in 14.12s`).
+
+
+## 2026-06-13 05:08
+- Applied blockers from `/tmp/codoxear-cc-hardening-review9.md`:
+  - broker now seeds Claude pending tool IDs when binding an existing log, without importing `rollout_log`/voice dependencies;
+  - log idle now reconstructs the exact current Claude turn instead of relying only on an 8 MiB tail, so large resolved tool outputs can become idle while unresolved sibling tools remain busy.
+- Commit: `fix: seed Claude broker and exact idle state`.
+- Validation: targeted broker/large-idle tests passed (`57 passed`); full local suite passed (`645 passed, 25 subtests passed in 10.88s`); isolated Docker suite passed (`644 passed, 1 skipped, 25 subtests passed in 12.92s`).
