@@ -1,3 +1,4 @@
+import os
 import stat
 import threading
 import unittest
@@ -199,6 +200,24 @@ class TestOpenAICompatibleClient(unittest.TestCase):
 
 
 class TestVoicePushCoordinator(unittest.TestCase):
+    def test_existing_voice_settings_permissions_are_repaired_on_load(self) -> None:
+        with TemporaryDirectory() as td:
+            settings_path = Path(td) / "voice_settings.json"
+            settings_path.write_text('{"tts_api_key":"secret-key"}\n', encoding="utf-8")
+            os.chmod(settings_path, 0o644)
+
+            coord = VoicePushCoordinator(
+                app_dir=Path(td),
+                settings_path=settings_path,
+                vapid_private_key_path=Path(td) / "vapid.pem",
+                subscriptions_path=Path(td) / "subs.json",
+                delivery_ledger_path=Path(td) / "ledger.json",
+                stop_event=threading.Event(),
+            )
+
+            self.assertEqual(coord.settings_snapshot()["tts_api_key"], "secret-key")
+            self.assertEqual(stat.S_IMODE(settings_path.stat().st_mode), 0o600)
+
     def test_settings_snapshot_redacts_api_key_for_browser_and_preserves_blank_save(self) -> None:
         with TemporaryDirectory() as td:
             stop_event = threading.Event()

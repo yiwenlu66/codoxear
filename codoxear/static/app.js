@@ -7768,7 +7768,7 @@
                 fail(new Error("monaco loader unavailable"));
                 return;
               }
-              const base = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs";
+              const base = resolveAppUrl("monaco/vs");
               window.MonacoEnvironment = {
                 getWorkerUrl(_moduleId, _label) {
                   const src = `
@@ -7838,12 +7838,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         async function ensurePdfJs() {
           if (pdfjsReadyPromise) return pdfjsReadyPromise;
-          pdfjsReadyPromise = timeoutPromise(
-            import("https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.mjs"),
-            PDFJS_LOADER_TIMEOUT_MS,
-            "PDF renderer timed out"
-          ).then((pdfjs) => {
-            pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.394/build/pdf.worker.mjs";
+          if (window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function") {
+            pdfjsReadyPromise = Promise.resolve(window.pdfjsLib);
+          } else {
+            pdfjsReadyPromise = timeoutPromise(import(resolveAppUrl("pdf.mjs")), PDFJS_LOADER_TIMEOUT_MS, "PDF renderer timed out");
+          }
+          pdfjsReadyPromise = pdfjsReadyPromise.then((pdfjs) => {
+            if (pdfjs.GlobalWorkerOptions) pdfjs.GlobalWorkerOptions.workerSrc = resolveAppUrl("pdf.worker.mjs");
             return pdfjs;
           });
           pdfjsReadyPromise.catch(() => {

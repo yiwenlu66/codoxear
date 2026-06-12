@@ -20,9 +20,19 @@ class CookieAuthSettings:
     secret: bytes
 
 
+def _chmod_private_file(path: Path) -> None:
+    try:
+        os.chmod(path, 0o600)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
 def load_or_create_hmac_secret(*, app_dir: Path, secret_path: Path) -> bytes:
     app_dir.mkdir(parents=True, exist_ok=True)
     if secret_path.exists():
+        _chmod_private_file(secret_path)
         b = secret_path.read_bytes()
         if len(b) < 32:
             raise ValueError(f"invalid hmac secret (too short): {secret_path}")

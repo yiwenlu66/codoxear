@@ -23,6 +23,20 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app.css?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
 
+    def test_app_shell_does_not_execute_third_party_assets(self) -> None:
+        index = INDEX_HTML.read_text(encoding="utf-8")
+        app = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("Content-Security-Policy", index)
+        for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com"]:
+            self.assertNotIn(forbidden, index)
+            self.assertNotIn(forbidden, app)
+        self.assertNotIn('src="https://', index)
+        self.assertNotIn('href="https://', index)
+        self.assertIn("script-src 'self' 'unsafe-inline'", index)
+        self.assertIn("connect-src 'self'", index)
+        self.assertIn('const base = resolveAppUrl("monaco/vs");', app)
+        self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
+
     def test_static_asset_version_changes_when_app_js_changes(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

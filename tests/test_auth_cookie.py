@@ -1,7 +1,12 @@
+import os
+import stat
 import unittest
 from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from codoxear import auth
 from codoxear import server
 
 
@@ -24,6 +29,17 @@ class _Handler:
 
 
 class TestAuthCookie(unittest.TestCase):
+    def test_existing_hmac_secret_permissions_are_repaired_on_load(self) -> None:
+        with TemporaryDirectory() as td:
+            secret_path = Path(td) / "hmac_secret"
+            secret_path.write_bytes(b"x" * 64)
+            os.chmod(secret_path, 0o644)
+
+            secret = auth.load_or_create_hmac_secret(app_dir=Path(td), secret_path=secret_path)
+
+            self.assertEqual(secret, b"x" * 64)
+            self.assertEqual(stat.S_IMODE(secret_path.stat().st_mode), 0o600)
+
     def test_login_cookie_has_no_ttl_and_verifies_across_time(self) -> None:
         handler = _Handler()
 

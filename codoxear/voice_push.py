@@ -1424,6 +1424,7 @@ class VoicePushCoordinator:
                 self._delivery_ledger.pop(message_id, None)
 
     def _load_settings(self) -> None:
+        _chmod_private_file(self._settings_path)
         raw = load_json_file(self._settings_path, default={})
         self._voice_settings = _clean_voice_settings(raw)
 
