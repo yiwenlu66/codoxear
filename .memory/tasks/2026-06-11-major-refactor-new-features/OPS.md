@@ -1434,3 +1434,12 @@
 - Browser reproduction of the critic path on isolated `codoxear-sandbox-18933`: populated cache with a successful tail load, forced the next `/messages/tail` to synthetic 503, reselected the session, and observed the original non-typing transcript row remained (`nonTypingRows: 1`) while one `.transcript-error-row` was appended and no loading rows remained. Artifacts: `/tmp/codoxear-tail-error-evidence/cache-before-fail.json`, `cache-fail-after.json`, `cache-fail-after.png`.
 - Full local validation after repair: `python3 -m pytest -q` → `660 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `659 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 07:10 — Stale 401 auth-loss ordering repair
+- Second clean-room critic review found a blocker in the tail failure catch ordering: stale-generation guards ran before `e.status === 401`, so an expired-auth response from an older in-flight tail request could be ignored after a newer session selection changed `pollGen`.
+- Reordered 401 handling before stale-generation guards in both `openSession()` initial tail catch and `pollMessages()` catch.
+- Added source-order test coverage in `tests/test_chat_scrollback_source.py`.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `31 passed`.
+- Browser evidence on isolated `codoxear-sandbox-18933`: monkeypatched first `/messages/tail` request to return delayed 401, clicked the same session again before it resolved so the first request became stale, and observed `handleAppAuthLoss()` cleanup to the login screen. Artifact: `/tmp/codoxear-tail-error-evidence/stale-401-after.json`.
+- Full local validation after auth-order repair: `python3 -m pytest -q` → `661 passed, 25 subtests passed`.
+- Full isolated Docker validation after auth-order repair: `scripts/codoxear-docker-sandbox test` → `660 passed, 1 skipped, 25 subtests passed`.

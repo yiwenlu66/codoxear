@@ -1217,3 +1217,10 @@ Commitments:
 - Intervention: `renderTranscriptLoadError()` now accepts `preserveTranscript`; `openSession()` passes the flag based on whether `applyCachedTail()` ran. Preserve mode appends an excluded error row without clearing transcript DOM or older-state.
 - Evidence: Browser reproduction of cached-success -> failed-refresh now preserves one non-typing transcript row and appends exactly one non-transcript error row; focused/full local/Docker tests passed.
 - Scoped claim: Initial tail failures are explicit without hiding already-rendered cached transcript evidence.
+
+## 2026-06-13 07:10 — Auth loss outranks stale generation
+- Observation: Clean-room review identified that a stale in-flight tail request returning 401 could be ignored before auth cleanup because generation checks ran first.
+- Mechanism: Authentication state is global, not scoped to the selected transcript generation. A 401 from any app-owned request is evidence that the browser session is no longer authorized and must trigger cleanup even if the UI moved on.
+- Intervention: In initial tail loading and live polling catches, handle `e.status === 401` before checking `pollGen`/selected staleness.
+- Evidence: Browser reproduction with delayed stale 401 reached the login screen; focused/full local/Docker validation passed.
+- Scoped claim: Tail and live-message polling no longer suppress auth-loss cleanup merely because the request became stale by UI generation.
