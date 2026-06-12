@@ -295,3 +295,9 @@ Commitments:
 - Observation: after the rail was fixed, the search bar still used absolute positioning and covered message content while search was open. This preserved a weaker version of the same readability failure.
 - Mechanism: `#chatSearchBar` was removed from layout flow, so chat rows continued under it. It did not overlap the rail, but it did overlap visible rows.
 - Intervention/evidence: placing search in the same flex flow as the rail created explicit vertical space for both controls. Browser geometry showed no visible row overlap and retained search function (`1/1 loaded`).
+
+## 2026-06-12 12:50
+- Observation: fresh review found a stale runtime call that static selector tests had missed. Browser validation confirmed no errors after replacing it, but full Docker later found a stale invariant test. Mechanism: the provider-only menu was removed from the UI but not from every refresh/test path; tests still encoded the old internal provider-menu stage.
+- Observation: `providerChoiceToSettings()` used a Codex default before branching by backend. Mechanism: empty provider choices for providerless Pi launches were converted into `chatgpt`, leaking Codex semantics into Pi. Browser POST interception after the fix showed no `model_provider` for providerless Pi.
+- Observation: backend config readers could raise from malformed local files while composing `/api/sessions`. Mechanism: launch-default discovery was coupled to the main session list response. Intervention isolated each backend reader behind safe defaults plus warnings, preserving existing session visibility/control when launch defaults are degraded.
+- Confidence update: core New Session provider/model workflow is stronger after runtime, HTTP, and full Docker evidence. Remaining larger risks are scoped to all-transcript search, route exactness, list_sessions lock-held IO, and broader launch config normalization; these are not falsified by the current tests.

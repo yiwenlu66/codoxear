@@ -326,3 +326,17 @@
 - Intervention: moved `#chatSearchBar` into normal chatWrap flex layout above `#chatNavRail`; made the input flex-shrink within the toolbar and added source regression coverage that search is in-flow rather than absolute.
 - Browser recheck: fresh browser session showed `#chatSearchBar` computed `position: static`; strict visible-overlap calculation returned `[]` for visible rows on desktop 1280x900 and mobile 390x844; search status remained `1/1 loaded`; screenshot saved as `recovery-mobile-chat-search-flow.png`.
 - Validation: local `node --check codoxear/static/app.js` passed; targeted chat tests passed (`30 passed in 0.63s`); full isolated Docker suite passed (`445 passed, 2 skipped in 10.71s`).
+
+## 2026-06-12 12:50
+- Fresh clean-room product/UX and architecture reviews completed. Accepted findings: stale `renderNewSessionProviderMenu()` call in `refreshSessions()` while New Session is open; Pi launch mapping could turn an empty provider into Codex's `chatgpt`; malformed backend config could make `/api/sessions` fail.
+- Interventions committed:
+  - `6ed4dfa fix: remove stale provider menu refresh`: replaces stale provider-menu refresh with combined model-menu refresh and adds source guard.
+  - `1a47f2e fix: keep pi launches providerless by default`: makes `providerChoiceToSettings()` backend-specific; executable Node test verifies Codex/Pi/Claude mappings.
+  - `bd207a4 fix: degrade launch defaults per backend`: adds per-backend safe defaults, warning metadata, and nonblocking New Session warning text for degraded launch defaults.
+  - `e72b330 test: align modal refresh invariant`: updates older static invariant test to the combined model-menu workflow.
+- Browser/API evidence on restarted isolated Docker server `codoxear-sandbox-recovery-18812`:
+  - `/api/sessions` returned all backend defaults `['cc', 'codex', 'pi']` with no warnings under clean isolated config.
+  - New Session stayed open through a poll interval with captured `errors: []` and provider-only DOM count `0`.
+  - Intercepted Pi new-session POST body omitted `model_provider` for providerless Pi: `{'agent_backend':'pi','cwd':'/tmp/codoxear-pi-provider-null-current','model':'default','reasoning_effort':'high','create_in_tmux':true}`.
+  - With isolated container `/home/tester/.pi/agent/settings.json` malformed, authenticated `/api/sessions` still returned 200 with all backends and `warnings.pi`; New Session status showed `Launch defaults degraded for Pi; using safe defaults.`.
+- Validation: local targeted checks passed (`35 passed in 1.76s` before full Docker). First full Docker surfaced a stale test expecting `renderNewSessionProviderMenu`; after updating that invariant, full isolated Docker passed (`449 passed, 2 skipped in 10.15s`).
