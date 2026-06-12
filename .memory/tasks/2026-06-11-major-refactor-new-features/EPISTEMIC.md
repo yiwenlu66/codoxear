@@ -531,3 +531,10 @@ Commitments:
 - Intervention: added env-configured file-count and byte-size caps for the preview directory; pruning deletes oldest non-temp previews first while preserving the preview just returned.
 - Evidence: direct tests cover file-count pruning, byte-cap pruning, keep preservation, and temp-file exclusion; targeted tests and full Docker suite passed.
 - Scoped claim: preview cache growth is now bounded by configured caps under normal preview access. It does not proactively prune on server startup or after session deletion unless preview access occurs.
+
+
+## 2026-06-12 17:50
+- Observation: final clean-room critic found two blockers: the new streaming attachment response could write more bytes than `Content-Length` if a file was appended after inspection, and README `codoxear-sessiond` examples repeated backend executable names even though sessiond prepends the selected backend binary itself.
+- Intervention: capped attachment streaming to the inspected size and corrected README/tests to document backend options after `--`, not backend executable names.
+- Evidence: unit test now writes a larger file than the declared size and asserts only the declared prefix is emitted; sessiond packaging test rejects the duplicated-executable examples; targeted tests and full Docker suite passed.
+- Scoped claim: the append-side `Content-Length` mismatch blocker is fixed. Concurrent truncation of a mutable file during download remains a general static-file streaming residual risk; the response will not emit more than the declared length.

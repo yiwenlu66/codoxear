@@ -788,3 +788,9 @@
 - Reviewer finding #5 fix: video previews now prune `VIDEO_PREVIEW_DIR` after preview reuse/creation using `CODEX_WEB_VIDEO_PREVIEW_MAX_FILES` and `CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES` caps, preserving the current preview and ignoring temporary `.tmp.mp4` files.
 - Commit: `cb80a0c fix: prune cached video previews`.
 - Validation: `python3 -m py_compile codoxear/video_preview.py codoxear/server.py` passed; focused video-preview/file-inspect/file-viewer tests passed (`40 passed in 2.05s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`511 passed, 2 skipped, 10 subtests passed in 10.81s`).
+
+
+## 2026-06-12 17:50
+- Clean-room critic blocker repair: attachment streaming now caps emitted bytes to the declared inspected size, and README sessiond examples no longer pass the backend executable as an extra sessiond argument.
+- Commit: `a47b4cd fix: address final review blockers`.
+- Validation: `python3 -m py_compile codoxear/file_response.py codoxear/server.py` passed; focused file-response/file-inspect/file-view/sessiond-packaging tests passed (`27 passed in 2.07s`). Full isolated Docker suite `scripts/codoxear-docker-sandbox test` passed (`511 passed, 2 skipped, 10 subtests passed in 10.97s`).
