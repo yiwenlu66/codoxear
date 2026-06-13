@@ -1716,3 +1716,9 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `42 passed`.
 - Full local validation: `python3 -m pytest -q` → `679 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `678 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 10:59 — Older-history retry final re-review
+- Final clean-room review of older-history retry/auth handling found no blockers.
+- Critic validation: `node --check codoxear/static/app.js`; focused sets → `39 passed` and `49 passed`; full pytest → `679 passed, 25 subtests passed`.
+- Review confirmed: history 401 now outranks stale guards; stale non-auth responses remain suppressed; active 409 still reopens; active non-401/non-409 preserves rows/hasOlder and shows retry; Retry calls guarded `loadOlderMessages({ auto: false })`.
+- Residual accepted risk: a truly stale history 401 can force login, intentionally matching auth-loss-as-global semantics.

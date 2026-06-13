@@ -1449,3 +1449,8 @@ Commitments:
 - Intervention: Moved history 401 handling before stale request suppression.
 - Evidence: Runtime stale-401 test confirms auth loss is triggered and retry UI is not shown; focused/full/Docker validation passed.
 - Scoped claim: `/messages/history` now treats 401 consistently with other transcript fetches: auth loss is handled even if the request is otherwise stale.
+
+## 2026-06-13 10:59 — Older-history retry accepted
+- Observation: Final review found no blocker after moving 401 ahead of stale guards.
+- Scoped claim: Older-history page failures now have a correct user-visible recovery path for retryable errors while preserving global auth-loss behavior.
+- Remaining uncertainty: Browser proof covers the retryable 503 path; 401 behavior is pinned by source/runtime tests, not browser automation.
