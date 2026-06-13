@@ -1817,3 +1817,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_server_queue_persistence.py -q` → `75 passed, 15 subtests passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:09 — Auth-loss stale closure guard
+- Re-review found the queue-update-specific late-401 race fix did not address the root class: any disposed app closure could call `handleAppAuthLoss()` and have its `renderLogin()` tear down a fresh app after re-login.
+- Repaired by making `handleAppAuthLoss()` return immediately when its app instance has already been disposed.
+- Updated auth cleanup source coverage for the app-disposed guard.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_send_ack.py tests/test_attach_button_source.py -q` → `22 passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

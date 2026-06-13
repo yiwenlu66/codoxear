@@ -1914,6 +1914,7 @@
           if (activeAppCleanup === cleanupApp) activeAppCleanup = null;
         }
         function handleAppAuthLoss() {
+          if (appDisposed) return;
           cleanupApp();
           renderLogin(renderApp);
         }

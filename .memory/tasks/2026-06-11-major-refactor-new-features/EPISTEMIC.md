@@ -1527,3 +1527,9 @@ Commitments:
 - Intervention: In the queue update timer catch, check `appDisposed` before handling 401.
 - Evidence: Source catch-order test and focused/full/Docker validation passed.
 - Scoped claim: Active queue-update 401s still route to login, while late 401s from disposed queue-update work are suppressed.
+
+## 2026-06-13 12:09 — Auth-loss handlers are instance-local
+- Observation: The real stale-async hazard was not limited to queue updates. A disposed app closure's `handleAppAuthLoss()` could still call `renderLogin()`, whose global cleanup would remove a newer active app.
+- Intervention: Guarded `handleAppAuthLoss()` with `if (appDisposed) return;`.
+- Evidence: Source coverage and focused/full/Docker validation passed.
+- Scoped claim: Late 401s from disposed app instances no longer tear down a fresh app through stale auth-loss closures.

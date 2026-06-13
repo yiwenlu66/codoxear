@@ -67,7 +67,7 @@ class TestAuthCleanupSource(unittest.TestCase):
 
     def test_auth_loss_and_logout_use_shared_cleanup(self) -> None:
         app = render_app_block()
-        self.assertIn("function handleAppAuthLoss() {\n          cleanupApp();\n          renderLogin(renderApp);\n        }", app)
+        self.assertIn("function handleAppAuthLoss() {\n          if (appDisposed) return;\n          cleanupApp();\n          renderLogin(renderApp);\n        }", app)
         self.assertIn("if (e && e.status === 401) {\n              handleAppAuthLoss();\n              return;\n            }", app)
         logout_start = app.index('$("#logoutBtnSide").onclick = async () => {')
         logout_end = app.index("toggleSidebarBtn.onclick", logout_start)
