@@ -111,7 +111,7 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
 
     def test_new_session_initial_backend_prefers_selected_session_when_no_user_choice(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('const value = String(localStorage.getItem(LAST_BACKEND_KEY) || "").trim();', source)
+        self.assertIn('const value = String(storageGetItem(LAST_BACKEND_KEY) || "").trim();', source)
         self.assertIn('return value ? normalizeAgentBackendName(value) : "";', source)
         start = source.index("function openNewSessionDialog")
         end = source.index("editPriorityRange.oninput", start)

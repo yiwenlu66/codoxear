@@ -111,6 +111,44 @@
         return new URL(rel, appBaseUrl).toString();
       }
 
+      function optionalLocalStorage() {
+        try {
+          const store = window.localStorage;
+          return store && typeof store.getItem === "function" ? store : null;
+        } catch (_) {
+          return null;
+        }
+      }
+      function storageGetItem(key) {
+        const store = optionalLocalStorage();
+        if (!store) return null;
+        try {
+          return store.getItem(String(key));
+        } catch (_) {
+          return null;
+        }
+      }
+      function storageSetItem(key, value) {
+        const store = optionalLocalStorage();
+        if (!store) return false;
+        try {
+          store.setItem(String(key), String(value));
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+      function storageRemoveItem(key) {
+        const store = optionalLocalStorage();
+        if (!store) return false;
+        try {
+          store.removeItem(String(key));
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
+
       let newSessionBackend = "codex";
       let newSessionDefaults = {
         default_backend: "codex",
@@ -129,29 +167,29 @@
         return `codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}`;
       }
       function loadRememberedBackendChoice() {
-        const value = String(localStorage.getItem(LAST_BACKEND_KEY) || "").trim();
+        const value = String(storageGetItem(LAST_BACKEND_KEY) || "").trim();
         return value ? normalizeAgentBackendName(value) : "";
       }
       function rememberBackendChoice(backend) {
-        localStorage.setItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
+        storageSetItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
       }
       function loadRememberedProviderChoice(backend) {
-        return String(localStorage.getItem(lastProviderKey(backend)) || "").trim();
+        return String(storageGetItem(lastProviderKey(backend)) || "").trim();
       }
       function rememberProviderChoice(backend, provider) {
         const value = String(provider || "").trim();
-        if (value) localStorage.setItem(lastProviderKey(backend), value);
-        else localStorage.removeItem(lastProviderKey(backend));
+        if (value) storageSetItem(lastProviderKey(backend), value);
+        else storageRemoveItem(lastProviderKey(backend));
       }
       function loadRememberedProviderModelChoice(backend) {
-        return String(localStorage.getItem(lastProviderModelKey(backend)) || "").trim();
+        return String(storageGetItem(lastProviderModelKey(backend)) || "").trim();
       }
       function rememberProviderModelChoice(backend, provider, model) {
         const providerValue = String(provider || "").trim();
         const modelValue = String(model || "").trim() || "default";
         const value = providerValue ? `${providerValue}/${modelValue}` : modelValue;
-        if (value) localStorage.setItem(lastProviderModelKey(backend), value);
-        else localStorage.removeItem(lastProviderModelKey(backend));
+        if (value) storageSetItem(lastProviderModelKey(backend), value);
+        else storageRemoveItem(lastProviderModelKey(backend));
       }
 
       const apiEtags = new Map();
@@ -1732,17 +1770,17 @@
           notifications: { enabled_devices: 0, total_devices: 0, vapid_public_key: "" },
           has_tts_api_key: false,
         };
-        let localAnnouncementEnabled = localStorage.getItem("codoxear.announcementEnabled") === "1";
-        let localNotificationEnabled = localStorage.getItem("codoxear.notificationEnabled") === "1";
+        let localAnnouncementEnabled = storageGetItem("codoxear.announcementEnabled") === "1";
+        let localNotificationEnabled = storageGetItem("codoxear.notificationEnabled") === "1";
         const desktopNotificationTimers = new Map();
         const deliveredDesktopNotificationIds = new Set();
         let notificationFeedSinceTs = Date.now() / 1000;
         const announcementClientId = (() => {
           const key = "codoxear.announcementClientId";
-          const current = localStorage.getItem(key);
+          const current = storageGetItem(key);
           if (current) return current;
           const next = (window.crypto && crypto.randomUUID ? crypto.randomUUID() : `ann-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-          localStorage.setItem(key, next);
+          storageSetItem(key, next);
           return next;
         })();
         let announcementHeartbeatTimer = null;
@@ -4014,20 +4052,20 @@
         function setSidebarOpen(open) {
           if (open) {
             document.body.classList.add("sidebar-open");
-            localStorage.setItem("codexweb.sidebarOpen", "1");
+            storageSetItem("codexweb.sidebarOpen", "1");
           } else {
             document.body.classList.remove("sidebar-open");
-            localStorage.removeItem("codexweb.sidebarOpen");
+            storageRemoveItem("codexweb.sidebarOpen");
           }
         }
 
         function setSidebarCollapsed(collapsed) {
           if (collapsed) {
             document.body.classList.add("sidebar-collapsed");
-            localStorage.setItem("codexweb.sidebarCollapsed", "1");
+            storageSetItem("codexweb.sidebarCollapsed", "1");
           } else {
             document.body.classList.remove("sidebar-collapsed");
-            localStorage.removeItem("codexweb.sidebarCollapsed");
+            storageRemoveItem("codexweb.sidebarCollapsed");
           }
         }
 
@@ -4127,7 +4165,7 @@
                 liveCursor = null;
                 clearRenderedTranscriptRange();
                 turnOpen = false;
-                localStorage.removeItem("codexweb.selected");
+                storageRemoveItem("codexweb.selected");
                 setSessionHash("");
                 titleLabel.textContent = "No session selected";
                 setStatus({ running: false, queueLen: 0 });
@@ -4217,7 +4255,7 @@
                    liveCursor = null;
                    clearRenderedTranscriptRange();
                    turnOpen = false;
-                   localStorage.removeItem("codexweb.selected");
+                   storageRemoveItem("codexweb.selected");
                    setSessionHash("");
                    titleLabel.textContent = "No session selected";
                    setStatus({ running: false, queueLen: 0 });
@@ -4732,7 +4770,7 @@
           pollKickPending = false;
 
           selected = sessionId;
-          localStorage.setItem("codexweb.selected", sessionId);
+          storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
           activeTranscriptState = "pending_bind";
           activeLogPath = null;
@@ -4902,7 +4940,7 @@
               pollTimer = null;
               pollKickPending = false;
               turnOpen = false;
-              localStorage.removeItem("codexweb.selected");
+              storageRemoveItem("codexweb.selected");
               setSessionHash("");
               titleLabel.textContent = "No session selected";
               setStatus({ running: false, queueLen: 0 });
@@ -5302,8 +5340,8 @@
 
         function setAnnouncementEnabled(enabled) {
           localAnnouncementEnabled = !!enabled;
-          if (localAnnouncementEnabled) localStorage.setItem("codoxear.announcementEnabled", "1");
-          else localStorage.removeItem("codoxear.announcementEnabled");
+          if (localAnnouncementEnabled) storageSetItem("codoxear.announcementEnabled", "1");
+          else storageRemoveItem("codoxear.announcementEnabled");
           if (!localAnnouncementEnabled) {
             stopAnnouncementHeartbeat();
             stopLiveAudioWatchdog();
@@ -5319,8 +5357,8 @@
 
         function setNotificationEnabledLocal(enabled) {
           localNotificationEnabled = !!enabled;
-          if (localNotificationEnabled) localStorage.setItem("codoxear.notificationEnabled", "1");
-          else localStorage.removeItem("codoxear.notificationEnabled");
+          if (localNotificationEnabled) storageSetItem("codoxear.notificationEnabled", "1");
+          else storageRemoveItem("codoxear.notificationEnabled");
           if (localNotificationEnabled) {
             notificationFeedSinceTs = Date.now() / 1000;
           }
@@ -5603,8 +5641,8 @@
         }
 
         function setDesktopNotificationsEnabled(enabled) {
-          if (enabled) localStorage.setItem("codoxear.desktopNotificationsEnabled", "1");
-          else localStorage.removeItem("codoxear.desktopNotificationsEnabled");
+          if (enabled) storageSetItem("codoxear.desktopNotificationsEnabled", "1");
+          else storageRemoveItem("codoxear.desktopNotificationsEnabled");
           notificationState.desktop_enabled = !!enabled;
         }
 
@@ -5855,7 +5893,7 @@
           notificationState.desktop_supported = !!(window.isSecureContext && typeof Notification !== "undefined");
           notificationState.push_supported = !!(notificationState.desktop_supported && "serviceWorker" in navigator && "PushManager" in window);
           notificationState.permission = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-          notificationState.desktop_enabled = localStorage.getItem("codoxear.desktopNotificationsEnabled") === "1";
+          notificationState.desktop_enabled = storageGetItem("codoxear.desktopNotificationsEnabled") === "1";
           let snapshot = serverSnapshot;
           if (!snapshot) {
             try {
@@ -7248,8 +7286,8 @@
             newSessionStartBtn.disabled = false;
           }
         };
-        let fileViewMode = localStorage.getItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
-        let fileNonDiffMode = localStorage.getItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
+        let fileViewMode = storageGetItem("codexweb.fileViewMode") || "diff"; // "diff" | "file" | "preview"
+        let fileNonDiffMode = storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
         let fileViewerSessionId = "";
@@ -8597,10 +8635,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function setFileViewMode(mode) {
           const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
           fileViewMode = next;
-          localStorage.setItem("codexweb.fileViewMode", fileViewMode);
+          storageSetItem("codexweb.fileViewMode", fileViewMode);
           if (next !== "diff") {
             fileNonDiffMode = next;
-            localStorage.setItem("codexweb.fileNonDiffMode", fileNonDiffMode);
+            storageSetItem("codexweb.fileNonDiffMode", fileNonDiffMode);
           }
           applyFileMode();
         }
@@ -11027,8 +11065,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         activeAppCleanup = cleanupApp;
 
 	        (async () => {
-	          if (localStorage.getItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
-	          if (localStorage.getItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
+	          if (storageGetItem("codexweb.sidebarCollapsed") === "1") setSidebarCollapsed(true);
+	          if (storageGetItem("codexweb.sidebarOpen") === "1") setSidebarOpen(true);
 
 	          try {
               await loadVoiceSettings();
@@ -11039,7 +11077,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (notificationsEnabledLocally()) await pollNotificationFeed({ prime: true });
 	            const sessions = await refreshSessions();
               const hashed = sessionIdFromHash();
-	            const remembered = localStorage.getItem("codexweb.selected");
+	            const remembered = storageGetItem("codexweb.selected");
 	            const first = sessions && sessions.length ? (sessions.find(sessionSelectable) || {}).session_id || null : null;
 	            const pick =
 	              hashed && sessionSelectable(sessionIndex.get(hashed))

@@ -128,7 +128,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertNotIn("/messages/history", block)
         self.assertNotIn("await openSession(", block)
         self.assertIn("if (selected && !sessionIndex.has(selected)) {", block)
-        self.assertIn("localStorage.removeItem(\"codexweb.selected\");", block)
+        self.assertIn("storageRemoveItem(\"codexweb.selected\");", block)
         self.assertIn("titleLabel.textContent = \"No session selected\";", block)
         self.assertIn("applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));", block)
 
