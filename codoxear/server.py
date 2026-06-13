@@ -6086,30 +6086,37 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
-                unstaged = _run_git(
-                    cwd,
-                    ["diff", "--name-only"],
-                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                    max_bytes=64 * 1024,
-                ).splitlines()
-                staged = _run_git(
-                    cwd,
-                    ["diff", "--name-only", "--cached"],
-                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                    max_bytes=64 * 1024,
-                ).splitlines()
-                unstaged_numstat = _run_git(
-                    cwd,
-                    ["diff", "--numstat"],
-                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                    max_bytes=128 * 1024,
-                )
-                staged_numstat = _run_git(
-                    cwd,
-                    ["diff", "--numstat", "--cached"],
-                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                    max_bytes=128 * 1024,
-                )
+                try:
+                    unstaged = _run_git(
+                        cwd,
+                        ["diff", "--name-only"],
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=64 * 1024,
+                    ).splitlines()
+                    staged = _run_git(
+                        cwd,
+                        ["diff", "--name-only", "--cached"],
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=64 * 1024,
+                    ).splitlines()
+                    unstaged_numstat = _run_git(
+                        cwd,
+                        ["diff", "--numstat"],
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=128 * 1024,
+                    )
+                    staged_numstat = _run_git(
+                        cwd,
+                        ["diff", "--numstat", "--cached"],
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=128 * 1024,
+                    )
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 def _norm_list(xs: list[str]) -> list[str]:
                     out: list[str] = []
                     for x in xs:
@@ -6191,16 +6198,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 args = ["diff", "-U3"]
                 if staged:
                     args.append("--cached")
                 args.extend(["--", rel])
-                diff = _run_git(
-                    cwd,
-                    args,
-                    timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                    max_bytes=GIT_DIFF_MAX_BYTES,
-                )
+                try:
+                    diff = _run_git(
+                        cwd,
+                        args,
+                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                        max_bytes=GIT_DIFF_MAX_BYTES,
+                    )
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 _json_response(self, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
                 return
 
@@ -6234,11 +6251,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 current_text = ""
                 current_size = 0
                 current_exists = bool(p.exists() and p.is_file())
                 if current_exists:
-                    current_text, current_size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                    try:
+                        current_text, current_size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                    except FileNotFoundError:
+                        current_exists = False
+                        current_text = ""
+                        current_size = 0
+                    except PermissionError as e:
+                        _json_response(self, 403, {"error": str(e)})
+                        return
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
@@ -6253,6 +6284,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         max_bytes=FILE_READ_MAX_BYTES,
                     )
                     base_exists = True
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 except RuntimeError:
                     base_exists = False
                     base_text = ""

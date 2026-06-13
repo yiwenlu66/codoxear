@@ -2017,3 +2017,10 @@
 - Full local validation: `python3 -m pytest -q` -> 711 passed, 45 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 710 passed, 1 skipped, 45 subtests passed.
 - Clean-room critic re-runs found and drove fixes for validation-before-expanduser, malformed `~user`, non-string `session_id`, session-scoped malformed cwd, write-update path validation, git cwd OS errors, and NUL cwd in session listing. Final review: no blockers.
+
+## 2026-06-14 01:56 - Git helper late-error hardening
+- Changed files: `codoxear/server.py`, `tests/test_file_inspect.py`.
+- Focused validation: `python3 -m py_compile codoxear/server.py tests/test_file_inspect.py`; `python3 -m pytest tests/test_file_inspect.py -q` -> 38 passed, 20 subtests passed; broader focused set -> 78 passed, 20 subtests passed before the final two regressions, then full suite covered them.
+- Full local validation: `python3 -m pytest -q` -> 717 passed, 45 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 716 passed, 1 skipped, 45 subtests passed.
+- Clean-room review: no blockers; residual accepted ambiguity is `git show` RuntimeError in file_versions, which still maps to `base_exists=false` for untracked/new files.

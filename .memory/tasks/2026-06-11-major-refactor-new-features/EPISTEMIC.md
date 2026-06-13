@@ -1672,3 +1672,13 @@ Scoped claim:
 - In the tested stale/malformed session/path/cwd cases, file read/inspect/list/search/blob/video/download/write and git file helpers fail with controlled 400/404/409 responses instead of cwd fallback or traceback.
 Remaining uncertainty:
 - Later git command races/timeouts and unreadable preview files can still surface as broader route errors; those are adjacent hardening targets, not observed regressions in this tranche.
+
+## 2026-06-14 01:56 - Late git helper failures are route-local evidence, not 500s
+Observation:
+- The git helper routes performed additional git subprocess work after the initial repo validation. Failures in those later calls could bypass route-local response semantics and appear as top-level 500s.
+Intervention:
+- `changed_files`, `diff`, and `file_versions` now catch late `_run_git`, `_resolve_git_path`, and current-file read failures where the route can classify them as 400/403/409.
+Scoped claim:
+- In the tested late git failure cases, git helper routes return controlled JSON errors instead of traceback-style 500 responses.
+Remaining uncertainty:
+- `file_versions` still treats `git show` RuntimeError as `base_exists=false` to support untracked/new files; this can mask some real late git failures.

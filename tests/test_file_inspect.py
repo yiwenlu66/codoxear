@@ -365,6 +365,196 @@ class TestInspectOpenableFile(unittest.TestCase):
                     self.assertEqual(status, 400)
                     self.assertTrue(any(fragment in str(payload.get("error", "")) for fragment in ("home directory", "invalid session cwd")))
 
+    def test_git_changed_files_late_git_failure_returns_409(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=td)
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                raise RuntimeError("git changed during refresh")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(409, {"error": "git changed during refresh"})])
+
+    def test_git_diff_resolve_git_path_failure_returns_409(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    raise RuntimeError("repo vanished")
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(409, {"error": "repo vanished"})])
+
+    def test_git_diff_oversized_output_returns_400(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / "note.md").write_text("hello\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return f"{repo}\n"
+                if args and args[0] == "diff":
+                    raise ValueError("git output too large")
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(400, {"error": "git output too large"})])
+
+    def test_git_file_versions_resolve_git_path_failure_returns_409(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    raise RuntimeError("repo vanished")
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(409, {"error": "repo vanished"})])
+
+    def test_git_file_versions_current_read_error_returns_400(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            (repo / "note.md").write_text("hello\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return f"{repo}\n"
+                raise AssertionError(f"unexpected git args before current read: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_read_text_file_strict", side_effect=ValueError("file too large")), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(400, {"error": "file too large"})])
+
+    def test_git_file_versions_base_oversized_output_returns_400(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return f"{repo}\n"
+                if args == ["show", "HEAD:note.md"]:
+                    raise ValueError("git output too large")
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(400, {"error": "git output too large"})])
+
     def test_file_write_update_rejects_invalid_path_without_500(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             class FakeManager:
