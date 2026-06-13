@@ -53,6 +53,10 @@ class TestAuthCleanupSource(unittest.TestCase):
         for name in ["chatSearchAllAbort", "olderLoadController", "fileOpenAbortController", "fileSearchAbort"]:
             self.assertIn(f"abortController({name});", cleanup)
             self.assertIn(f"{name} = null;", cleanup)
+        self.assertIn("queueUpdateTimers.forEach((timer) => clearTimeout(timer));", cleanup)
+        self.assertIn("queueUpdateTimers.clear();", cleanup)
+        self.assertIn("queueMutationLocks.clear();", cleanup)
+        self.assertIn("queuePendingDeletes.clear();", cleanup)
         self.assertIn("desktopNotificationTimers.forEach((timer) => clearTimeout(timer));", cleanup)
         self.assertIn("stopAnnouncementHeartbeat();", cleanup)
         self.assertIn("stopLiveAudioWatchdog();", cleanup)
@@ -82,6 +86,9 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("if (clearErr && clearErr.status === 401)", send_block)
         self.assertGreaterEqual(send_block.count("if (e && e.status === 401) handleAppAuthLoss();"), 3)
         self.assertIn("if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();", app)
+        attachment_catch_start = app.index("} catch (e) {", app.index("/inject_file"))
+        attachment_catch = app[attachment_catch_start : app.index("function clearComposer", attachment_catch_start)]
+        self.assertLess(attachment_catch.index("if (e && e.status === 401)"), attachment_catch.index("if (selected === sid)"))
 
         clear_start = app.index("async function clearCommitUnknownSend(")
         clear_end = app.index("async function refreshSessions", clear_start)

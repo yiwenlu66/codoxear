@@ -1885,6 +1885,10 @@
           desktopNotificationTimers.clear();
           if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
           chatSearchAllTimer = null;
+          queueUpdateTimers.forEach((timer) => clearTimeout(timer));
+          queueUpdateTimers.clear();
+          queueMutationLocks.clear();
+          queuePendingDeletes.clear();
           abortController(chatSearchAllAbort);
           chatSearchAllAbort = null;
           abortController(olderLoadController);
@@ -11100,6 +11104,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		              kickPoll(0);
 		            }
 		          } catch (e) {
+              if (e && e.status === 401) {
+                handleAppAuthLoss();
+                return;
+              }
 	            if (selected === sid) {
 	              const commitUnknown = Boolean(e && e.obj && e.obj.commit_unknown);
 	              if (commitUnknown) {

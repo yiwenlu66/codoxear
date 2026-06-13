@@ -1792,3 +1792,12 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_send_ack.py tests/test_chat_scrollback_source.py -q` → `41 passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:51 — Attachment 401 and queue timer cleanup repair
+- Final review of send/queue auth handling found no blockers, but identified two adjacent risks: direct `/inject_file` endpoint 401 still showed attach error, and debounced queue update timers could survive app cleanup.
+- Repaired by routing direct attachment upload 401 through `handleAppAuthLoss()` before selected-session/local attach handling.
+- Repaired cleanup by clearing `queueUpdateTimers`, `queueMutationLocks`, and `queuePendingDeletes` in `cleanupApp()`.
+- Added source coverage for attachment 401 ordering and queue timer/mutation cleanup.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_attach_button_source.py tests/test_queue_button_source.py tests/test_chat_scrollback_source.py -q` → `35 passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

@@ -1509,3 +1509,9 @@ Commitments:
 - Intervention: Added auth-loss handling to those follow-up refresh catches.
 - Evidence: Source tests and focused/full/Docker validation passed.
 - Scoped claim: Send-flow API work, including follow-up session refreshes after success/unknown/clear outcomes, now treats 401 as global auth loss.
+
+## 2026-06-13 11:51 — Send/queue auth surface includes attachments and debounced queue updates
+- Observation: Review found that direct attachment upload 401 and delayed queue update timers remained outside the newly enforced auth-loss/cleanup model.
+- Intervention: Added attachment endpoint 401 handling and cleanup of pending queue timers/mutation sets.
+- Evidence: Source tests and focused/full/Docker validation passed.
+- Scoped claim: The send/queue/attachment auth-loss surface now routes observed 401s globally, and auth cleanup cancels queued update timers that could otherwise fire after teardown.
