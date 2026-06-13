@@ -127,7 +127,7 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("if (!appDisposed && queuePendingDeletes.has(itemKey))", update_block)
 
         refresh_start = app.index("async function refreshQueueViewer()")
-        refresh_end = app.index("function showQueueViewer()", refresh_start)
+        refresh_end = app.index("function showQueueViewer({ opener = null } = {})", refresh_start)
         refresh_block = app[refresh_start:refresh_end]
         refresh_catch = refresh_block[refresh_block.index("} catch (e) {") :]
         self.assertLess(refresh_catch.index("if (e && e.status === 401)"), refresh_catch.index("Queue unavailable:"))

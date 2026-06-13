@@ -1550,3 +1550,9 @@ Commitments:
 - Intervention: Added aria-modal, initial close-button focus, and opener restoration for these custom utility dialogs without adding UI controls.
 - Evidence: Source tests, desktop browser modal-focus proof, full local and Docker validation passed.
 - Scoped claim: Under the tested desktop viewport, Queue/Help/Details are now keyboard-modal surfaces with focus return symmetry.
+
+## 2026-06-13 12:30 — Utility modal focus return uses actual opener
+- Observation: Focus restoration based only on `document.activeElement` can miss pointer-clicked opener buttons on some browsers.
+- Intervention: Pass `event.currentTarget` into Queue/Help/Details show functions while retaining active-element fallback for programmatic opens.
+- Evidence: Source tests, updated browser focus proof, full local and Docker validation passed.
+- Scoped claim: For current click handlers, utility modal focus returns to the actual opener independent of browser click-focus behavior.

@@ -10491,9 +10491,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        function showQueueViewer() {
+        function showQueueViewer({ opener = null } = {}) {
           if (!selected) return;
-          queueReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          queueReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           queueViewerSid = selected;
           queueBackdrop.style.display = "block";
@@ -10515,8 +10515,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(queueViewer));
         }
 
-        function showHelpViewer() {
-          helpReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        function showHelpViewer({ opener = null } = {}) {
+          helpReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           helpBackdrop.style.display = "block";
           helpViewer.style.display = "flex";
@@ -10533,10 +10533,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
         }
 
-        async function showDiagViewer() {
+        async function showDiagViewer({ opener = null } = {}) {
           const sid = selected;
           if (!sid) return;
-          diagReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          diagReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           diagContent.innerHTML = "";
           diagStatus.textContent = "Loading...";
@@ -10629,7 +10629,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               return;
             }
             if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0) {
-              showQueueViewer();
+              showQueueViewer({ opener: e.currentTarget });
               return;
             }
             const raw = $("#msg") ? $("#msg").value : "";
@@ -10641,7 +10641,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               });
               return;
             }
-            showQueueViewer();
+            showQueueViewer({ opener: e.currentTarget });
           };
         }
         syncQueueSubmitState();
@@ -10655,7 +10655,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#helpBtnSide").onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          showHelpViewer();
+          showHelpViewer({ opener: e.currentTarget });
         };
         $("#settingsBtnSide").onclick = (e) => {
           e.preventDefault();
@@ -10672,7 +10672,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         diagBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          void showDiagViewer();
+          void showDiagViewer({ opener: e.currentTarget });
         };
         diagCloseBtn.onclick = (e) => {
           e.preventDefault();

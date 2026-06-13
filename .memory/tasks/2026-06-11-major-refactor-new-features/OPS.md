@@ -1849,3 +1849,12 @@
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-modal-parity-18798`, stopped): Queue/Help/Details each focused their close button on open, set role/dialog and aria-modal, inert/aria-hidden `.app`, and restored focus to the opener on Escape with isolation removed. Artifact: `/tmp/codoxear-modal-parity-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `685 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `684 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:30 — Utility modal explicit opener capture
+- Clean-room review of utility modal focus parity found no blockers, but noted `document.activeElement` may not reliably be the clicked opener under pointer activation.
+- Repaired Queue/Help/Details show handlers to accept `{ opener }` and pass `e.currentTarget` from their click handlers, falling back to `document.activeElement` for programmatic opens.
+- Updated source tests and marker tests for the new signatures/call sites.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_overlay_accessibility_source.py tests/test_queue_button_source.py tests/test_diagnostics_source.py -q` → `15 passed`.
+- Browser evidence after repair against isolated Docker sandbox (`codoxear-sandbox-modal-parity-18799`, stopped): Queue/Help/Details still focus close buttons and restore focus to their explicit openers. Artifact: `/tmp/codoxear-modal-parity2-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `685 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `684 passed, 1 skipped, 25 subtests passed`.

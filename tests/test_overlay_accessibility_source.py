@@ -96,13 +96,16 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
                 next_fn = len(source)
             hide_block = source[hide_start:next_fn]
             lower = name.lower() if name != "Diag" else "diag"
-            self.assertIn(f"{lower}ReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
+            self.assertIn(f"{lower}ReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
             self.assertIn("prepareModalOpen();", show_block)
             self.assertIn(f"focusModalCloseButton({lower}Viewer, {close_id});", show_block)
             self.assertIn(f"const wasOpen = isModalTargetOpen({lower}Viewer);", hide_block)
             self.assertIn(f"const focusTarget = {lower}ReturnFocusEl;", hide_block)
             self.assertIn(f"{lower}ReturnFocusEl = null;", hide_block)
             self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+        self.assertIn("showQueueViewer({ opener: e.currentTarget });", source)
+        self.assertIn("showHelpViewer({ opener: e.currentTarget });", source)
+        self.assertIn("showDiagViewer({ opener: e.currentTarget });", source)
 
     def test_help_copy_lists_claude_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

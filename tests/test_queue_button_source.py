@@ -46,7 +46,7 @@ class TestQueueButtonSource(unittest.TestCase):
         self.assertIn('sendControl.disabled = !!sending || !selected || unknownSend || orphanRecovery || recoveryQueue;', source)
         self.assertIn('Review preserved queued recovery items before attaching a file', source)
         self.assertIn('if (res && res.commit_unknown) setToast("send status unknown; queued item needs review");', source)
-        self.assertIn('if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0) {\n              showQueueViewer();\n              return;\n            }', source)
+        self.assertIn('if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0) {\n              showQueueViewer({ opener: e.currentTarget });\n              return;\n            }', source)
         self.assertLess(source.index('if (selectedInfo && (selectedInfo.queue_recovery || selectedInfo.orphan_recovery) && Number(selectedInfo.queue_len || 0) > 0)'), source.index('const raw = $("#msg") ? $("#msg").value : "";'))
         self.assertIn('const commitUnknown = Boolean(item && item.commitUnknown);', source)
         self.assertIn('Delete this recovery item only after checking the transcript or terminal.', source)

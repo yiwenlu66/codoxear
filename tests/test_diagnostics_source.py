@@ -8,7 +8,7 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 class TestDiagnosticsSource(unittest.TestCase):
     def test_diagnostics_render_is_bound_to_captured_session(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("async function showDiagViewer() {")
+        start = source.index("async function showDiagViewer({ opener = null } = {}) {")
         end = source.index("function hideDiagViewer()", start)
         block = source[start:end]
 
