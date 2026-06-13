@@ -10315,23 +10315,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (existing) clearTimeout(existing);
           const t = setTimeout(async () => {
             queueUpdateTimers.delete(key);
+            if (appDisposed) return;
             queueMutationLocks.add(itemKey);
             try {
               await api(`/api/sessions/${sid}/queue/update`, { method: "POST", body: { id: itemKey, text } });
+              if (appDisposed) return;
               queueLastEditMs = 0;
               queueDraftTexts.set(itemKey, text);
               await refreshQueueViewer();
+              if (appDisposed) return;
               await refreshSessions();
+              if (appDisposed) return;
               updateQueueBadge();
             } catch (e) {
               if (e && e.status === 401) {
                 handleAppAuthLoss();
                 return;
               }
+              if (appDisposed) return;
               setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
             } finally {
               queueMutationLocks.delete(itemKey);
-              if (queuePendingDeletes.has(itemKey)) {
+              if (!appDisposed && queuePendingDeletes.has(itemKey)) {
                 queuePendingDeletes.delete(itemKey);
                 void deleteQueueItem(sid, itemKey);
               }

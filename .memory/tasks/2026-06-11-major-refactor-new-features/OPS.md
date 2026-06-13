@@ -1801,3 +1801,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_attach_button_source.py tests/test_queue_button_source.py tests/test_chat_scrollback_source.py -q` → `35 passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:59 — In-flight queue update cleanup guard
+- Review of the send/queue/attachment auth surface found no blockers, but noted that a debounced queue update already in flight at cleanup time could still finish detached-DOM refresh work.
+- Repaired `scheduleQueueUpdate()` timer body with `appDisposed` guards before starting, after update API, after queue refresh, after session refresh, before local error toast, and before acting on pending deletes.
+- Added source coverage for `appDisposed` guards in the queue update timer path.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_server_queue_persistence.py -q` → `75 passed, 15 subtests passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

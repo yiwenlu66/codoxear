@@ -1515,3 +1515,9 @@ Commitments:
 - Intervention: Added attachment endpoint 401 handling and cleanup of pending queue timers/mutation sets.
 - Evidence: Source tests and focused/full/Docker validation passed.
 - Scoped claim: The send/queue/attachment auth-loss surface now routes observed 401s globally, and auth cleanup cancels queued update timers that could otherwise fire after teardown.
+
+## 2026-06-13 11:59 — Queue update work stops after app disposal
+- Observation: Clearing pending debounce timers is insufficient once a queue update timer has already fired and awaits API/refresh work.
+- Intervention: Added disposal checks inside the async queue update path so cleanup prevents subsequent detached UI work and pending-delete actions.
+- Evidence: Source coverage and focused/full/Docker validation passed.
+- Scoped claim: Debounced queue update work now stops both before execution and at key async boundaries after app disposal.
