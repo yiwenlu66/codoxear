@@ -1904,3 +1904,13 @@
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-save-18804`, stopped): edited session A, switched to session B before debounce fired, verified one POST to A with the edit and B's opened popover remained B's config. Artifact: `/tmp/codoxear-unattended-save-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `687 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `686 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:24 — Unattended loading-window and zero-injection repair
+- Re-review found another blocker: the popover became interactive before its current session config loaded, allowing stale/mixed global config to be saved and then overwritten by the load response.
+- Repaired with `setUnattendedControlsDisabled()`: controls are disabled before opening/loading, re-enabled only after the current token/session load succeeds, and remain unable to schedule saves during the loading window.
+- Also repaired remaining-injections zero consistency: setting remaining injections to `0` now sets `unattendedCfg.enabled = false` and unchecks the checkbox before scheduling the snapshot, matching the visible/sidebar state.
+- Added source coverage for disabled controls during load, re-enable before focus, and zero-injection config/checkbox consistency.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_auth_cleanup_source.py tests/test_overlay_accessibility_source.py tests/test_chat_scrollback_source.py -q` → `43 passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-loading-18805`, stopped): delayed GET left all controls disabled and produced no POST, then load enabled controls, moved focus to checkbox, and populated loaded config. Artifact: `/tmp/codoxear-unattended-loading-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `687 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `686 passed, 1 skipped, 25 subtests passed`.

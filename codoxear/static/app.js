@@ -5042,6 +5042,7 @@
             }
             if (e && e.status === 404) {
               selected = null;
+              if (unattendedMenuOpen) hideUnattendedMenu();
               activeLogPath = null;
               activeThreadId = null;
               liveCursor = null;
@@ -5218,6 +5219,14 @@
               ? unattendedNumberDraft.remaining_injections
               : String(unattendedCfg.remaining_injections);
           }
+        }
+
+        function setUnattendedControlsDisabled(disabled) {
+          const value = Boolean(disabled);
+          ["unattendedEnabled", "unattendedCooldownMinutes", "unattendedRemainingInjections", "unattendedRequest"].forEach((id) => {
+            const node = $(`#${id}`);
+            if (node) node.disabled = value;
+          });
         }
 
         function restoreUnattendedNumberDraft(name) {
@@ -5412,6 +5421,7 @@
           unattendedMenuToken = openToken;
           unattendedMenuSessionId = sid;
           unattendedReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          setUnattendedControlsDisabled(true);
           setUnattendedMenuExpanded(true);
           const rect = unattendedBtn.getBoundingClientRect();
           const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
@@ -5423,11 +5433,15 @@
           unattendedMenu.style.left = `${left}px`;
           try {
             await loadUnattendedCfgForSelected({ sid, openToken });
-            if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && selected === sid) focusUnattendedInitialControl();
+            if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && selected === sid) {
+              setUnattendedControlsDisabled(false);
+              focusUnattendedInitialControl();
+            }
           } catch (e) {
             if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || selected !== sid) return;
             console.error("load unattended mode failed", e);
             setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
+            setUnattendedControlsDisabled(false);
             hideUnattendedMenu({ restoreFocus: true });
           }
         }
@@ -5500,6 +5514,9 @@
             if (s) {
               s.unattended_remaining_injections = value;
               if (value <= 0) {
+                unattendedCfg.enabled = false;
+                const enabledEl = $("#unattendedEnabled");
+                if (enabledEl) enabledEl.checked = false;
                 s.unattended_enabled = false;
               }
             }

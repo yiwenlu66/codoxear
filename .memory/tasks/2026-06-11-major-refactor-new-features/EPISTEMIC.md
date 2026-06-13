@@ -1586,3 +1586,9 @@ Commitments:
 - Intervention: Converted save debounce/flush state to per-session queued snapshots and guarded response application by selected session/menu ownership.
 - Evidence: Source tests, browser save-switch proof, full local and Docker validation passed.
 - Scoped claim: A pending Unattended edit now saves to the session where it was made even if the user switches sessions before debounce fires, and the save response does not overwrite the newly selected session's popover state in the tested flow.
+
+## 2026-06-13 21:24 — Unattended controls are inert until owned config loads
+- Observation: A same-open loading window could let users edit controls backed by stale global config before the current session's GET completed.
+- Intervention: Disabled all Unattended controls until the current token/session load succeeds, then enabled and focused the checkbox. Also made remaining-injections zero update the saved `enabled` field, not only sidebar state.
+- Evidence: Source tests, loading-window browser proof, full local and Docker validation passed.
+- Scoped claim: Users cannot schedule Unattended saves from stale controls while a newly opened session's config is still loading in the tested browser flow.
