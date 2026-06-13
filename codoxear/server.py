@@ -364,8 +364,6 @@ _TMUX_AVAILABLE_CACHE: tuple[float, bool] | None = None
 _TMUX_AVAILABLE_CACHE_LOCK = threading.Lock()
 _LAUNCH_DEFAULTS_CACHE: tuple[tuple[tuple[str, bool, int | None, int | None], ...], dict[str, Any]] | None = None
 _LAUNCH_DEFAULTS_CACHE_LOCK = threading.Lock()
-_STATIC_ASSET_VERSION_CACHE: dict[str, tuple[tuple[tuple[str, bool, int | None, int | None], ...], str]] = {}
-_STATIC_ASSET_VERSION_CACHE_LOCK = threading.Lock()
 
 
 def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
@@ -5080,30 +5078,18 @@ MANAGER = SessionManager()
 
 def _static_asset_version(static_dir: Path = STATIC_DIR) -> str:
     base = static_dir.resolve()
-    paths: list[tuple[str, Path]] = []
+    digest = hashlib.sha256()
     for rel in STATIC_ASSET_VERSION_FILES:
         path = (base / rel).resolve()
         if not str(path).startswith(str(base)):
             raise ValueError(f"static asset escaped static dir: {path}")
-        paths.append((rel, path))
-    signature = tuple((rel, *_path_signature(path)[1:]) for rel, path in paths)
-    cache_key = str(base)
-    with _STATIC_ASSET_VERSION_CACHE_LOCK:
-        cached = _STATIC_ASSET_VERSION_CACHE.get(cache_key)
-        if cached is not None and cached[0] == signature:
-            return cached[1]
-    digest = hashlib.sha256()
-    for rel, path in paths:
         if not path.is_file():
             continue
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    version = digest.hexdigest()[:12]
-    with _STATIC_ASSET_VERSION_CACHE_LOCK:
-        _STATIC_ASSET_VERSION_CACHE[cache_key] = (signature, version)
-    return version
+    return digest.hexdigest()[:12]
 
 
 def _read_static_bytes(path: Path) -> bytes:
