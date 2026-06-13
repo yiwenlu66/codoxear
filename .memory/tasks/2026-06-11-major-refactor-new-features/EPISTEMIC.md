@@ -1407,3 +1407,8 @@ Commitments:
 - Intervention: Imported `base64` and added a route-level execution test for a valid upload.
 - Evidence: Focused route test verifies staged bytes and injected bracketed-paste payload; full local and Docker suites passed.
 - Scoped claim: Valid base64 file attachments now reach staging and broker injection in the tested idle-session route path.
+
+## 2026-06-13 10:20 — No-blocker claim for attachment base64 fix
+- Observation: Clean-room review confirmed the route-level valid-upload path now decodes/stages/injects correctly and preserves existing readiness ordering.
+- Scoped claim: The deterministic missing-import blocker for browser file attachments is fixed.
+- Remaining uncertainty: Not all negative route paths are executed at Handler level; they remain covered by lower-level/source tests.

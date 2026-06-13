@@ -1662,3 +1662,9 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_file_upload.py tests/test_file_upload_module_source.py tests/test_attach_button_source.py -q` → `15 passed`.
 - Full local validation: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 10:20 — Attachment base64 fix review
+- Clean-room review of `6864759` found no blockers.
+- Critic validation: `python3 -m py_compile codoxear/server.py` → passed; focused upload/attach tests → `15 passed`; full pytest → `674 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-attachment-base64-review.md`.
+- Residual risks: route-level test covers valid payload path only; state changes between readiness check and injection can still stage a file without injection, which is pre-existing behavior.
