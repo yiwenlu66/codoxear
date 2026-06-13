@@ -37,6 +37,53 @@ def _make_session(*, sid: str, thread_id: str, log_path: Path) -> Session:
 
 
 class TestUnattendedSweep(unittest.TestCase):
+    def test_unattended_set_never_stores_enabled_with_zero_remaining(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": False, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}
+            mgr._unattended_last_injected["sid-a"] = 1000.0
+
+            cfg = mgr.unattended_set("sid-a", enabled=True)
+
+            self.assertFalse(cfg["enabled"])
+            self.assertFalse(mgr._unattended["sid-a"]["enabled"])
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 0)
+            self.assertNotIn("sid-a", mgr._unattended_last_injected)
+
+    def test_unattended_partial_request_save_preserves_server_budget_decrement(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": False, "request": "old", "cooldown_minutes": 5, "remaining_injections": 0}
+
+            cfg = mgr.unattended_set("sid-a", request="new")
+
+            self.assertEqual(cfg["request"], "new")
+            self.assertFalse(cfg["enabled"])
+            self.assertEqual(cfg["remaining_injections"], 0)
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 0)
+
+    def test_unattended_get_masks_stale_enabled_zero_remaining(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}
+
+            cfg = mgr.unattended_get("sid-a")
+
+            self.assertFalse(cfg["enabled"])
+            self.assertEqual(cfg["remaining_injections"], 0)
+
     def test_dedupes_injection_for_same_thread(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

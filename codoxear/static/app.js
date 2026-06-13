@@ -5319,13 +5319,21 @@
           if (!Number.isInteger(data.remaining_injections) || data.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
         }
 
-        function unattendedSaveSnapshot() {
-          return {
-            enabled: Boolean(unattendedCfg.enabled),
-            request: String(unattendedCfg.request || ""),
-            cooldown_minutes: unattendedCfg.cooldown_minutes,
-            remaining_injections: unattendedCfg.remaining_injections,
-          };
+        function unattendedSaveSnapshot(patch = {}) {
+          const out = {};
+          const has = (name) => Object.prototype.hasOwnProperty.call(patch, name);
+          if (has("request")) out.request = String(patch.request || "");
+          if (has("cooldown_minutes")) out.cooldown_minutes = patch.cooldown_minutes;
+          if (has("remaining_injections")) {
+            const remaining = Number(patch.remaining_injections);
+            out.remaining_injections = remaining;
+            if (Number.isFinite(remaining) && remaining <= 0) out.enabled = false;
+          }
+          if (has("enabled")) {
+            const remaining = has("remaining_injections") ? Number(out.remaining_injections) : Number(unattendedCfg.remaining_injections);
+            out.enabled = Boolean(patch.enabled) && Number.isFinite(remaining) && remaining > 0;
+          }
+          return out;
         }
 
         function applySavedUnattendedCfg(saved, sid) {
@@ -5337,9 +5345,20 @@
             cooldown_minutes: saved.cooldown_minutes,
             remaining_injections: saved.remaining_injections,
           };
+          const s = sessionIndex.get(sid);
+          if (s) {
+            s.unattended_enabled = Boolean(saved.enabled);
+            s.unattended_cooldown_minutes = saved.cooldown_minutes;
+            s.unattended_remaining_injections = saved.remaining_injections;
+          }
           finalizeUnattendedNumberDraft("cooldown_minutes");
           finalizeUnattendedNumberDraft("remaining_injections");
           syncUnattendedNumberDraftsFromCfg();
+          syncUnattendedNumberInputs();
+          const enabledEl = $("#unattendedEnabled");
+          if (enabledEl) enabledEl.checked = Boolean(saved.enabled);
+          const requestEl = $("#unattendedRequest");
+          if (requestEl) requestEl.value = String(saved.request || "");
         }
 
         async function flushUnattendedSave(sid) {
@@ -5371,10 +5390,12 @@
           }
         }
 
-        function scheduleUnattendedSave() {
+        function scheduleUnattendedSave(patch = {}) {
           if (!selected) return;
           const sid = selected;
-          unattendedSavePending.set(sid, unattendedSaveSnapshot());
+          const snapshot = unattendedSaveSnapshot(patch);
+          if (!Object.keys(snapshot).length) return;
+          unattendedSavePending.set(sid, { ...(unattendedSavePending.get(sid) || {}), ...snapshot });
           const existing = unattendedSaveTimers.get(sid);
           if (existing) clearTimeout(existing);
           const timer = setTimeout(() => {
@@ -5479,13 +5500,16 @@
 			        if (unattendedEnabledEl)
 			          unattendedEnabledEl.onchange = (e) => {
 			            if (!selected) return;
-			            unattendedCfg.enabled = Boolean(e.target.checked);
+                  const requested = Boolean(e.target.checked);
+                  unattendedCfg.enabled = requested && Number(unattendedCfg.remaining_injections) > 0;
+                  if (requested && !unattendedCfg.enabled) setToast("increase injections before enabling unattended mode");
+                  e.target.checked = unattendedCfg.enabled;
 			            const s = sessionIndex.get(selected);
 			            if (s) {
                   s.unattended_enabled = unattendedCfg.enabled;
                 }
 			            updateUnattendedBtnState();
-			            scheduleUnattendedSave();
+			            scheduleUnattendedSave({ enabled: unattendedCfg.enabled });
 			          };
         if (unattendedCooldownEl)
           unattendedCooldownEl.oninput = (e) => {
@@ -5495,7 +5519,7 @@
             const value = parseUnattendedDraftInt("cooldown_minutes");
             if (value === null) return;
             unattendedCfg.cooldown_minutes = value;
-            scheduleUnattendedSave();
+            scheduleUnattendedSave({ cooldown_minutes: value });
           };
         if (unattendedCooldownEl)
           unattendedCooldownEl.onblur = () => {
@@ -5521,7 +5545,7 @@
               }
             }
             updateUnattendedBtnState();
-            scheduleUnattendedSave();
+            scheduleUnattendedSave({ remaining_injections: value, ...(value <= 0 ? { enabled: false } : {}) });
           };
         if (unattendedRemainingEl)
           unattendedRemainingEl.onblur = () => {
@@ -5532,7 +5556,7 @@
           unattendedRequestEl.oninput = (e) => {
             if (!selected) return;
             unattendedCfg.request = String(e.target.value ?? "");
-            scheduleUnattendedSave();
+            scheduleUnattendedSave({ request: unattendedCfg.request });
           };
 
         function voiceAnnouncementsEnabled() {

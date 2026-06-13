@@ -1592,3 +1592,9 @@ Commitments:
 - Intervention: Disabled all Unattended controls until the current token/session load succeeds, then enabled and focused the checkbox. Also made remaining-injections zero update the saved `enabled` field, not only sidebar state.
 - Evidence: Source tests, loading-window browser proof, full local and Docker validation passed.
 - Scoped claim: Users cannot schedule Unattended saves from stale controls while a newly opened session's config is still loading in the tested browser flow.
+
+## 2026-06-13 21:35 — Unattended budget fields are server-owned unless edited
+- Observation: Full client snapshots could re-grant unattended budget after the server consumed the last injection, and `enabled=true` with zero remaining could persist transiently.
+- Intervention: Client saves became sparse field patches; server enforces `remaining_injections <= 0 => enabled=false`; save responses sync visible state.
+- Evidence: Focused tests, browser POST-body proof, full local and Docker validation passed.
+- Scoped claim: In the tested edit paths, request-only Unattended edits no longer overwrite server-side budget decrements, and zero remaining injections cannot stay enabled through GET/POST semantics.

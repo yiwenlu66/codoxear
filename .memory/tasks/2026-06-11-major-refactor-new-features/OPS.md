@@ -1914,3 +1914,14 @@
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-loading-18805`, stopped): delayed GET left all controls disabled and produced no POST, then load enabled controls, moved focus to checkbox, and populated loaded config. Artifact: `/tmp/codoxear-unattended-loading-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `687 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `686 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:35 — Unattended budget save-invariant repair
+- Final review found two budget-state blockers: client full snapshots could restore stale server-side injection decrements, and enabled could still be saved/returned with `remaining_injections: 0`.
+- Repaired client saves to send only changed fields; pending patches merge per session. Request-only edits now POST only `{request: ...}` and cannot overwrite server-owned budget decrements.
+- Repaired zero-budget behavior on both client and server: enabling with zero remaining is blocked client-side; setting remaining to zero sends `enabled: false`; server `unattended_get()` masks stale enabled-zero state and `unattended_set()` never stores enabled when remaining is zero.
+- Save responses now update current popover controls and session metadata immediately before the next session refresh.
+- Added execution tests in `tests/test_unattended_sweep.py` for zero-budget server invariant and partial request save preservation.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_unattended_sweep.py tests/test_auth_cleanup_source.py tests/test_overlay_accessibility_source.py tests/test_chat_scrollback_source.py -q` → `53 passed`.
+- Browser proof in isolated Docker sandbox (`codoxear-sandbox-unattended-patch-18806`, stopped): request-only edit posted only `request`; zero remaining posted `{remaining_injections: 0, enabled: false}`; zero-budget enable attempt posted `{enabled: false}`, left checkbox unchecked/remaining 0, and showed the explanatory toast. Artifact: `/tmp/codoxear-unattended-patch-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `690 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `689 passed, 1 skipped, 25 subtests passed`.

@@ -3185,12 +3185,12 @@ class SessionManager:
                 raise KeyError("unknown session")
             cfg0 = self._unattended.get(session_id)
             cfg = dict(cfg0) if isinstance(cfg0, dict) else {}
-        enabled = bool(cfg.get("enabled"))
         request = cfg.get("request")
         if not isinstance(request, str):
             request = ""
         cooldown_minutes = _clean_unattended_cooldown_minutes(cfg.get("cooldown_minutes"))
         remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
+        enabled = bool(cfg.get("enabled")) and remaining_injections > 0
         return {
             "enabled": enabled,
             "request": request,
@@ -3223,8 +3223,10 @@ class SessionManager:
                 cur["remaining_injections"] = _clean_unattended_remaining_injections(remaining_injections, allow_zero=True)
             cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
             cur["remaining_injections"] = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+            if int(cur["remaining_injections"]) <= 0:
+                cur["enabled"] = False
             self._unattended[session_id] = cur
-            if enabled is not None and bool(enabled) is False:
+            if not bool(cur.get("enabled")):
                 self._unattended_last_injected.pop(session_id, None)
         self._save_unattended()
         return self.unattended_get(session_id)
