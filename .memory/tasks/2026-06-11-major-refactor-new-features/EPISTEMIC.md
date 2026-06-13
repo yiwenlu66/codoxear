@@ -1419,3 +1419,9 @@ Commitments:
 - Intervention: Added a visual-only time chip hidden at live tail/search mode and updated through existing jump/scroll synchronization.
 - Evidence: Focused source tests, full local/Docker validation, and browser evidence with a synthetic long transcript passed.
 - Scoped claim: Desktop browser users reading older loaded messages get visible date/time orientation; live-tail view remains uncluttered.
+
+## 2026-06-13 10:32 — Time chip edge-case repair
+- Observation: Clean-room review identified two plausible edge failures outside the desktop browser evidence: stale chip state after session disappearance and visual overlap with mobile top navigation.
+- Intervention: Added reset-time synchronization and mobile-specific bottom placement.
+- Evidence: Focused tests pin both repairs; full local and Docker suites passed.
+- Scoped claim: The visible-time chip now hides on transcript reset and is less likely to visually conflict with mobile top rails.

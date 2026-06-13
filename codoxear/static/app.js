@@ -3046,6 +3046,7 @@
 	          backfillToken += 1;
 	          lastScrollTop = 0;
 	          chat.scrollTop = 0;
+              syncVisibleTimeIndicator();
 	        }
 
         function clearTranscriptDom() {

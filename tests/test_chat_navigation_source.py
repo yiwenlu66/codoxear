@@ -69,8 +69,14 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn("syncVisibleTimeIndicator();", jump_block)
         self.assertIn("syncVisibleTimeIndicator();\n          refreshLoadedChatSearch", source)
         self.assertIn("chatSearchLoadingOlder = false;\n          syncVisibleTimeIndicator();", source)
+        reset_block = source[source.index("function resetChatRenderState()") : source.index("function clearTranscriptDom()")]
+        self.assertIn("syncVisibleTimeIndicator();", reset_block)
         self.assertIn(".chatTimeChip", css)
         self.assertIn("pointer-events: none;", css)
+        mobile_block = css[css.index("@media (max-width: 520px)") :]
+        self.assertIn(".chatTimeChip", mobile_block)
+        self.assertIn("top: auto;", mobile_block)
+        self.assertIn("bottom: 14px;", mobile_block)
 
     def test_loaded_chat_search_is_rendered_row_scoped_with_all_transcript_count(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

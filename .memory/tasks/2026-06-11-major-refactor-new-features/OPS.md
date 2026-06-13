@@ -1677,3 +1677,11 @@
 - Full local validation: `python3 -m pytest -q` → `675 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `674 passed, 1 skipped, 25 subtests passed`.
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-timechip-18793`, stopped): mocked 80-message transcript hid chip at live tail and showed `2026-06-10 · 18:45` when scrolled into older loaded messages. Artifact: `/tmp/codoxear-timechip-browser.json`.
+
+## 2026-06-13 10:32 — Visible time chip review repairs
+- Clean-room review of the visible-time chip found no normal-flow blockers, but identified two edge risks: stale chip after selected session disappears and possible narrow-mobile overlap with the top chat navigation rail.
+- Repaired by syncing/hiding the chip inside `resetChatRenderState()` and moving `.chatTimeChip` to bottom-center in the `max-width: 520px` mobile CSS block.
+- Updated source tests for reset synchronization and mobile placement.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py -q` → `33 passed`.
+- Full local validation after repair: `python3 -m pytest -q` → `675 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `674 passed, 1 skipped, 25 subtests passed`.

@@ -2447,6 +2447,10 @@ select {
           font-size: 10px;
           line-height: 17px;
         }
+        .chatTimeChip {
+          top: auto;
+          bottom: 14px;
+        }
         .topbar {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
           gap: 10px;
