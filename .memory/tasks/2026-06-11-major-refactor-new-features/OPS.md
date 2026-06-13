@@ -1839,3 +1839,13 @@
 - Critic validation: `node --check codoxear/static/app.js`; focused auth/login tests → `14 passed`; full pytest → `684 passed, 25 subtests passed`.
 - Review searched direct `renderLogin(renderApp)` call sites and confirmed disposed guards exist in `handleAppAuthLoss()` and logout `finally`; boot `/api/me` 401 path is startup-only.
 - Residual accepted risk: some disposed async paths may still run harmless UI syncs against global IDs, but no found path can render login or clean up a fresh app.
+
+## 2026-06-13 12:22 — Queue/Help/Details modal focus parity
+- Added `aria-modal="true"` to Queue, Help, and Details custom dialogs.
+- Added return-focus slots and shared helpers `restoreModalFocus()` / `focusModalCloseButton()`.
+- Opening Queue/Help/Details captures the opener, applies existing modal isolation, and focuses the close button. Hiding restores focus to the opener if still connected/focusable.
+- Added source coverage for aria-modal, return-focus capture, initial focus, and restore behavior.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_overlay_accessibility_source.py tests/test_queue_button_source.py tests/test_diagnostics_source.py -q` → `9 passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-modal-parity-18798`, stopped): Queue/Help/Details each focused their close button on open, set role/dialog and aria-modal, inert/aria-hidden `.app`, and restored focus to the opener on Escape with isolation removed. Artifact: `/tmp/codoxear-modal-parity-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `685 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `684 passed, 1 skipped, 25 subtests passed`.

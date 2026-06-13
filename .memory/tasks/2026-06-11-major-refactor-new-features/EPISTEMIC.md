@@ -1544,3 +1544,9 @@ Commitments:
 - Observation: Final review found no remaining stale disposed closure path that can render login or clean up a fresh app.
 - Scoped claim: Auth/logout cleanup is now instance-local for the reviewed render-login paths.
 - Remaining uncertainty: Non-teardown UI syncs from disposed async paths may still occur transiently; they are lower severity and not shown to cause login/fresh-app teardown.
+
+## 2026-06-13 12:22 — Remaining custom utility modals own focus
+- Observation: New Session and Settings had modal focus semantics, but Queue/Help/Details still relied only on visual display plus app inerting.
+- Intervention: Added aria-modal, initial close-button focus, and opener restoration for these custom utility dialogs without adding UI controls.
+- Evidence: Source tests, desktop browser modal-focus proof, full local and Docker validation passed.
+- Scoped claim: Under the tested desktop viewport, Queue/Help/Details are now keyboard-modal surfaces with focus return symmetry.

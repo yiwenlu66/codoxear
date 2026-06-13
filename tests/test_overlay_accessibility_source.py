@@ -74,6 +74,36 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         self.assertIn('if (newSessionViewer.style.display === "flex") hideNewSessionDialog();', source)
         self.assertIn('if (brokerPid) hideNewSessionDialog();', source)
 
+    def test_queue_help_details_dialogs_restore_focus(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        for label in [
+            'id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages"',
+            'id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help"',
+            'id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details"',
+        ]:
+            self.assertIn(label, source)
+        self.assertIn("let queueReturnFocusEl = null;", source)
+        self.assertIn("let helpReturnFocusEl = null;", source)
+        self.assertIn("let diagReturnFocusEl = null;", source)
+        self.assertIn("function restoreModalFocus(target, isStillOpen)", source)
+        self.assertIn("function focusModalCloseButton(viewer, closeBtn)", source)
+        for name, close_id in [("Queue", "queueCloseBtn"), ("Help", "helpCloseBtn"), ("Diag", "diagCloseBtn")]:
+            show_start = source.index(f"function show{name}Viewer")
+            hide_start = source.index(f"function hide{name}Viewer", show_start)
+            show_block = source[show_start:hide_start]
+            next_fn = source.find("\n        function ", hide_start + 1)
+            if next_fn == -1:
+                next_fn = len(source)
+            hide_block = source[hide_start:next_fn]
+            lower = name.lower() if name != "Diag" else "diag"
+            self.assertIn(f"{lower}ReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", show_block)
+            self.assertIn("prepareModalOpen();", show_block)
+            self.assertIn(f"focusModalCloseButton({lower}Viewer, {close_id});", show_block)
+            self.assertIn(f"const wasOpen = isModalTargetOpen({lower}Viewer);", hide_block)
+            self.assertIn(f"const focusTarget = {lower}ReturnFocusEl;", hide_block)
+            self.assertIn(f"{lower}ReturnFocusEl = null;", hide_block)
+            self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+
     def test_help_copy_lists_claude_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("Right now that is <b>Codex</b>, <b>Pi</b>, and <b>Claude</b>.", source)

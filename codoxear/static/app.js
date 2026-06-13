@@ -2405,9 +2405,10 @@
           type: "button",
           html: iconSvg("x"),
         });
+        let queueReturnFocusEl = null;
         const queueList = el("div", { class: "queueList", id: "queueList" });
         const queueEmpty = el("div", { class: "muted", id: "queueEmpty", text: "No queued messages." });
-        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-label": "Queued messages" }, [
+        const queueViewer = el("div", { class: "queueViewer", id: "queueViewer", role: "dialog", "aria-modal": "true", "aria-label": "Queued messages" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Queued messages" }),
             el("div", { class: "actions" }, [queueCloseBtn]),
@@ -2427,7 +2428,8 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-label": "Help" }, [
+        let helpReturnFocusEl = null;
+        const helpViewer = el("div", { class: "helpViewer", id: "helpViewer", role: "dialog", "aria-modal": "true", "aria-label": "Help" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Help" }),
             el("div", { class: "actions" }, [helpCloseBtn]),
@@ -2489,9 +2491,10 @@
           type: "button",
           html: iconSvg("x"),
         });
+        let diagReturnFocusEl = null;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
         const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
-        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-label": "Details" }, [
+        const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Details" }),
             el("div", { class: "actions" }, [diagCloseBtn]),
@@ -2880,6 +2883,26 @@
 
         function afterModalVisibilityChanged() {
           syncModalIsolation();
+        }
+
+        function restoreModalFocus(target, isStillOpen) {
+          if (!target || !target.isConnected || typeof target.focus !== "function") return;
+          if (typeof target.disabled === "boolean" && target.disabled) return;
+          requestAnimationFrame(() => {
+            if (typeof isStillOpen === "function" && isStillOpen()) return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function focusModalCloseButton(viewer, closeBtn) {
+          requestAnimationFrame(() => {
+            if (!isModalTargetOpen(viewer)) return;
+            try {
+              closeBtn.focus({ preventScroll: true });
+            } catch {}
+          });
         }
 
         function setToast(text) {
@@ -10470,43 +10493,57 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function showQueueViewer() {
           if (!selected) return;
+          queueReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           queueViewerSid = selected;
           queueBackdrop.style.display = "block";
           queueViewer.style.display = "flex";
           afterModalVisibilityChanged();
+          focusModalCloseButton(queueViewer, queueCloseBtn);
           void refreshQueueViewer();
         }
 
         function hideQueueViewer() {
+          const wasOpen = isModalTargetOpen(queueViewer);
+          const focusTarget = queueReturnFocusEl;
+          queueReturnFocusEl = null;
           queueBackdrop.style.display = "none";
           queueViewer.style.display = "none";
           queueViewerSid = null;
           queueViewerItems = [];
           afterModalVisibilityChanged();
+          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(queueViewer));
         }
 
         function showHelpViewer() {
+          helpReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           helpBackdrop.style.display = "block";
           helpViewer.style.display = "flex";
           afterModalVisibilityChanged();
+          focusModalCloseButton(helpViewer, helpCloseBtn);
         }
         function hideHelpViewer() {
+          const wasOpen = isModalTargetOpen(helpViewer);
+          const focusTarget = helpReturnFocusEl;
+          helpReturnFocusEl = null;
           helpBackdrop.style.display = "none";
           helpViewer.style.display = "none";
           afterModalVisibilityChanged();
+          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
         }
 
         async function showDiagViewer() {
           const sid = selected;
           if (!sid) return;
+          diagReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           diagContent.innerHTML = "";
           diagStatus.textContent = "Loading...";
           diagBackdrop.style.display = "block";
           diagViewer.style.display = "flex";
           afterModalVisibilityChanged();
+          focusModalCloseButton(diagViewer, diagCloseBtn);
           try {
             const d = await api(`/api/sessions/${sid}/diagnostics`);
             if (selected !== sid) return;
@@ -10572,9 +10609,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
         function hideDiagViewer() {
+          const wasOpen = isModalTargetOpen(diagViewer);
+          const focusTarget = diagReturnFocusEl;
+          diagReturnFocusEl = null;
           diagBackdrop.style.display = "none";
           diagViewer.style.display = "none";
           afterModalVisibilityChanged();
+          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(diagViewer));
         }
 
         const queueBtn = $("#queueBtn");
