@@ -1682,3 +1682,13 @@ Scoped claim:
 - In the tested late git failure cases, git helper routes return controlled JSON errors instead of traceback-style 500 responses.
 Remaining uncertainty:
 - `file_versions` still treats `git show` RuntimeError as `base_exists=false` to support untracked/new files; this can mask some real late git failures.
+
+## 2026-06-14 02:20 - Preview file I/O preserves not-found vs permission-denied evidence
+Observation:
+- Preview routes could validate a path and then fail during prefix read, video preview generation, or streaming. `Path.exists()` also collapsed some permission-denied cases into apparent missing files.
+Intervention:
+- Existing-file checks now use `stat()`; preview prefix reads and video preview generation map missing/unreadable files to 404/403; shared inline/attachment streaming opens before success headers and sends 404/403 for missing/unreadable files.
+Scoped claim:
+- In tested preview I/O races and permission-denied cases, blob/video-preview and inline/attachment responses preserve controlled 404/403 semantics instead of top-level 500s or false 404s for permission failures.
+Remaining uncertainty:
+- Filesystem changes after response headers can still cause stale content-length or mid-stream failures; broader OSError classes remain adjacent hardening work.

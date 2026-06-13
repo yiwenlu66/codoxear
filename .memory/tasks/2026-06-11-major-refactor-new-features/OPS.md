@@ -2024,3 +2024,10 @@
 - Full local validation: `python3 -m pytest -q` -> 717 passed, 45 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 716 passed, 1 skipped, 45 subtests passed.
 - Clean-room review: no blockers; residual accepted ambiguity is `git show` RuntimeError in file_versions, which still maps to `base_exists=false` for untracked/new files.
+
+## 2026-06-14 02:20 - Preview file I/O error hardening
+- Changed files: `codoxear/server.py`, `codoxear/file_response.py`, `tests/test_file_inspect.py`, `tests/test_file_response_module_source.py`.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/file_response.py tests/test_file_inspect.py tests/test_file_response_module_source.py`; `python3 -m pytest tests/test_file_inspect.py tests/test_file_response_module_source.py -q` -> 45 passed, 36 subtests passed.
+- Full local validation: `python3 -m pytest -q` -> 722 passed, 61 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 721 passed, 1 skipped, 61 subtests passed.
+- Clean-room review: no blockers; residual risks are mid-stream TOCTOU after headers and rare OSError shapes outside FileNotFound/PermissionError.

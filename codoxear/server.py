@@ -18,6 +18,7 @@ import shlex
 import shutil
 import socket
 import socketserver
+import stat
 import subprocess
 import sys
 import threading
@@ -1066,9 +1067,13 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
 
 
 def _require_existing_file(path: Path) -> Path:
-    if not path.exists():
+    try:
+        st = path.stat()
+    except FileNotFoundError:
         raise FileNotFoundError("file not found")
-    if not path.is_file():
+    except PermissionError:
+        raise
+    if not stat.S_ISREG(st.st_mode):
         raise ValueError("path is not a file")
     return path
 
@@ -5733,6 +5738,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
@@ -5921,11 +5929,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with p.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with p.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, ctype = _file_kind(p, prefix)
                 if _kind == "video":
                     _send_inline_file_response(self, p, ctype or "application/octet-stream")
@@ -5958,17 +5976,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with p.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with p.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, _ctype = _file_kind(p, prefix)
                 if _kind != "video":
                     _json_response(self, 400, {"error": "file is not a video"})
                     return
                 try:
                     preview = _ensure_video_preview(p)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 500, {"error": f"video preview failed: {e}"})
                     return
@@ -5989,11 +6023,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with path_obj.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with path_obj.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, ctype = _file_kind(path_obj, prefix)
                 if _kind == "video":
                     _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
@@ -6018,17 +6062,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with path_obj.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with path_obj.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, _ctype = _file_kind(path_obj, prefix)
                 if _kind != "video":
                     _json_response(self, 400, {"error": "file is not a video"})
                     return
                 try:
                     preview = _ensure_video_preview(path_obj)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 500, {"error": f"video preview failed: {e}"})
                     return
@@ -6843,11 +6903,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with path_obj.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with path_obj.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, ctype = _file_kind(path_obj, prefix)
                 if _kind == "video":
                     _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
@@ -6872,17 +6942,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                with path_obj.open("rb") as f:
-                    prefix = f.read(4096)
+                try:
+                    with path_obj.open("rb") as f:
+                        prefix = f.read(4096)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 _kind, _ctype = _file_kind(path_obj, prefix)
                 if _kind != "video":
                     _json_response(self, 400, {"error": "file is not a video"})
                     return
                 try:
                     preview = _ensure_video_preview(path_obj)
+                except FileNotFoundError as e:
+                    _json_response(self, 404, {"error": str(e)})
+                    return
+                except PermissionError as e:
+                    _json_response(self, 403, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 500, {"error": f"video preview failed: {e}"})
                     return

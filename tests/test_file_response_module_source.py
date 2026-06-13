@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from codoxear.file_response import send_attachment_file_response
+from codoxear.file_response import send_inline_file_response
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ class FakeHandler:
         self.status = None
         self.sent_headers = []
         self.wfile = io.BytesIO()
+        self.error = None
 
     def send_response(self, status: int) -> None:
         self.status = status
@@ -26,6 +28,10 @@ class FakeHandler:
 
     def end_headers(self) -> None:
         self.ended = True
+
+    def send_error(self, status: int, message: str = "") -> None:
+        self.status = status
+        self.error = message
 
 
 class TestFileResponseModuleSource(unittest.TestCase):
@@ -40,6 +46,8 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertNotIn("def _send_inline_file_response(", server_source)
         self.assertNotIn("def _send_attachment_file_response(", server_source)
 
+        self.assertIn("def _open_file_for_response(", module_source)
+        self.assertIn("def _stream_open_file_bytes(", module_source)
         self.assertIn("def _stream_file_bytes(", module_source)
         self.assertIn("def single_byte_range(", module_source)
         self.assertIn("def send_inline_file_response(", module_source)
@@ -48,7 +56,32 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertIn('handler.send_header("Accept-Ranges", "bytes")', module_source)
         self.assertIn('handler.send_header("Cache-Control", "no-store")', module_source)
         self.assertIn('handler.send_header("Content-Disposition", content_disposition)', module_source)
-        self.assertIn("_stream_file_bytes(handler, path, length=size)", module_source)
+        self.assertIn("_stream_open_file_bytes(handler, stream, length=size)", module_source)
+
+    def test_inline_response_maps_missing_file_before_headers(self) -> None:
+        path = Path("/tmp/codoxear-missing-inline-response.bin")
+        handler = FakeHandler()
+
+        send_inline_file_response(handler, path, "application/octet-stream")
+
+        self.assertEqual(handler.status, 404)
+        self.assertEqual(handler.wfile.getvalue(), b"")
+
+    def test_inline_response_maps_open_permission_before_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            path.write_bytes(b"hello")
+            handler = FakeHandler()
+            original_open = Path.open
+            try:
+                Path.open = lambda self, *args, **kwargs: (_ for _ in ()).throw(PermissionError("denied"))  # type: ignore[assignment]
+                send_inline_file_response(handler, path, "application/octet-stream")
+            finally:
+                Path.open = original_open  # type: ignore[assignment]
+
+        self.assertEqual(handler.status, 403)
+        self.assertEqual(handler.error, "denied")
+        self.assertEqual(handler.wfile.getvalue(), b"")
 
     def test_attachment_response_streams_without_read_bytes_and_caps_to_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as td:

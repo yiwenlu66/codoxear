@@ -365,6 +365,113 @@ class TestInspectOpenableFile(unittest.TestCase):
                     self.assertEqual(status, 400)
                     self.assertTrue(any(fragment in str(payload.get("error", "")) for fragment in ("home directory", "invalid session cwd")))
 
+    def test_existing_file_permission_errors_are_403_not_404(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            preview = root / "preview.png"
+            preview.write_bytes(b"\x89PNG\r\n\x1a\nbody")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(root))
+
+            routes = [
+                f"/api/sessions/s/file/blob?path={urllib.parse.quote(preview.name)}",
+                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(preview.name)}",
+                f"/api/files/blob?path={urllib.parse.quote(str(preview))}",
+                f"/api/files/video_preview?path={urllib.parse.quote(str(preview))}",
+            ]
+            for route in routes:
+                with self.subTest(route=route):
+                    parsed = urllib.parse.urlparse(route)
+                    handler = server.Handler.__new__(server.Handler)
+                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                    responses = []
+                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                        Path, "stat", side_effect=PermissionError("denied")
+                    ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                        server.Handler.do_GET(handler)
+                    self.assertEqual(responses, [(403, {"error": "denied"})])
+
+    def test_preview_prefix_read_errors_are_route_local(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            preview = root / "preview.png"
+            preview.write_bytes(b"\x89PNG\r\n\x1a\nbody")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(root))
+
+            routes = [
+                f"/api/sessions/s/file/blob?path={urllib.parse.quote(preview.name)}",
+                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(preview.name)}",
+                f"/api/files/blob?path={urllib.parse.quote(str(preview))}",
+                f"/api/files/video_preview?path={urllib.parse.quote(str(preview))}",
+            ]
+            cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
+            for exc, expected_status in cases:
+                for route in routes:
+                    with self.subTest(route=route, exc=type(exc).__name__):
+                        parsed = urllib.parse.urlparse(route)
+                        handler = server.Handler.__new__(server.Handler)
+                        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                        handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                        responses = []
+                        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                            Path, "open", side_effect=exc
+                        ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                            server.Handler.do_GET(handler)
+                        self.assertEqual(len(responses), 1)
+                        status, payload = responses[0]
+                        self.assertEqual(status, expected_status)
+                        self.assertIn(str(exc), str(payload.get("error", "")))
+
+    def test_video_preview_generation_file_errors_are_route_local(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            video = root / "clip.mp4"
+            video.write_bytes(b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 32)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(root))
+
+            routes = [
+                f"/api/sessions/s/file/video_preview?path={urllib.parse.quote(video.name)}",
+                f"/api/files/video_preview?path={urllib.parse.quote(str(video))}",
+            ]
+            cases = [(PermissionError("denied"), 403), (FileNotFoundError("gone"), 404)]
+            for exc, expected_status in cases:
+                for route in routes:
+                    with self.subTest(route=route, exc=type(exc).__name__):
+                        parsed = urllib.parse.urlparse(route)
+                        handler = server.Handler.__new__(server.Handler)
+                        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                        handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                        responses = []
+                        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                            server, "_ensure_video_preview", side_effect=exc
+                        ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                            server.Handler.do_GET(handler)
+                        self.assertEqual(len(responses), 1)
+                        status, payload = responses[0]
+                        self.assertEqual(status, expected_status)
+                        self.assertIn(str(exc), str(payload.get("error", "")))
+
     def test_git_changed_files_late_git_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             class FakeManager:
