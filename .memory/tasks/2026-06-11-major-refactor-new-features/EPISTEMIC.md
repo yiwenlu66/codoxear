@@ -1623,3 +1623,9 @@ Commitments:
 - Intervention: Introduced session/token guards for file-viewer sync and candidate refresh, started sync at the selection boundary, and made resolved-open paths abort before UI mutation if their captured session is stale.
 - Evidence: Focused runtime/source tests, isolated browser boundary proof, full local and Docker validation, and clean-room review passed.
 - Scoped claim: For non-dirty file viewer state in the tested selection-switch paths, stale old-session candidate and resolved-open work no longer commits under the new selected session.
+
+## 2026-06-13 22:56 — Busy-send dialog owns keyboard focus
+- Observation: Ctrl/Cmd+Enter on a busy session opened a custom dialog without moving focus, and then primary keyboard action could close it without focus restoration.
+- Intervention: Added modal ARIA, deterministic initial focus, opener capture, and focus restoration for dismiss and action paths.
+- Evidence: Focused tests, two isolated browser focus proofs, full local and Docker validation, and clean-room review passed.
+- Scoped claim: In the tested keyboard paths, the busy-send choice dialog no longer leaves keyboard focus outside the active choice or stranded on hidden controls after close/action.

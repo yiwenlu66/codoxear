@@ -24,6 +24,22 @@ class TestSendButtonSource(unittest.TestCase):
         self.assertIn('sending = false;\n            syncSendButtonState();', source)
         self.assertIn('setToast("select a session first");', source)
 
+    def test_busy_send_choice_is_keyboard_focus_owned(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('id: "sendChoice", role: "dialog", "aria-modal": "true", "aria-label": "Send options"', source)
+        self.assertIn("let sendChoiceReturnFocusEl = null;", source)
+        self.assertIn("function focusSendChoiceInitial()", source)
+        self.assertIn('const target = laterBtn && !laterBtn.disabled ? laterBtn : nowBtn && !nowBtn.disabled ? nowBtn : cancelBtn;', source)
+        self.assertIn("function showSendChoice(raw, { opener = null } = {})", source)
+        self.assertIn("sendChoiceReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;", source)
+        self.assertIn("focusSendChoiceInitial();", source)
+        self.assertIn("function hideSendChoice({ restoreFocus = false } = {})", source)
+        self.assertIn("if (restoreFocus) restoreModalFocus(target, () => sendChoice.style.display === \"flex\");", source)
+        self.assertIn("hideSendChoice({ restoreFocus: true });", source)
+        self.assertIn("const ok = await sendText(raw, { sid });", source)
+        self.assertIn("const ok = await enqueueComposerText(raw, { sid });", source)
+        self.assertIn("showSendChoice(raw, { opener: document.activeElement instanceof HTMLElement ? document.activeElement : textarea });", source)
+
 
 if __name__ == "__main__":
     unittest.main()

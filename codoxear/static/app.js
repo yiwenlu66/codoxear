@@ -2394,7 +2394,7 @@
         root.appendChild(filePasteDialog);
 
         const sendChoiceBackdrop = el("div", { class: "modalBackdrop", id: "sendChoiceBackdrop" });
-        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-label": "Send options" }, [
+        const sendChoice = el("div", { class: "sendChoice", id: "sendChoice", role: "dialog", "aria-modal": "true", "aria-label": "Send options" }, [
           el("div", { class: "title", text: "Current response is running" }),
           el("div", { class: "muted", text: "Choose how to handle your next message." }),
           el("div", { class: "sendChoiceActions" }, [
@@ -10242,7 +10242,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void requestHideFileViewer();
             return;
           }
-          if (sendChoice.style.display === "flex") hideSendChoice();
+          if (sendChoice.style.display === "flex") {
+            e.preventDefault();
+            e.stopPropagation();
+            hideSendChoice({ restoreFocus: true });
+            return;
+          }
           if (queueViewer.style.display === "flex") hideQueueViewer();
           if (helpViewer.style.display === "flex") hideHelpViewer();
           if (diagViewer.style.display === "flex") hideDiagViewer();
@@ -10252,6 +10257,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         });
 
         let sendChoicePending = null;
+        let sendChoiceReturnFocusEl = null;
         function syncSendChoiceAttachmentPolicy() {
           const laterBtn = $("#sendChoiceLater");
           if (!laterBtn) return;
@@ -10261,20 +10267,38 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           laterBtn.title = laterLabel;
           laterBtn.setAttribute("aria-label", laterLabel);
         }
-        function showSendChoice(raw) {
+        function focusSendChoiceInitial() {
+          requestAnimationFrame(() => {
+            if (sendChoice.style.display !== "flex") return;
+            const laterBtn = $("#sendChoiceLater");
+            const nowBtn = $("#sendChoiceNow");
+            const cancelBtn = $("#sendChoiceCancel");
+            const target = laterBtn && !laterBtn.disabled ? laterBtn : nowBtn && !nowBtn.disabled ? nowBtn : cancelBtn;
+            if (!target || typeof target.focus !== "function") return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+        function showSendChoice(raw, { opener = null } = {}) {
           prepareModalOpen();
+          sendChoiceReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           sendChoicePending = { sid: selected, text: raw, attachmentCount: attachedFiles };
           syncSendChoiceAttachmentPolicy();
           sendChoiceBackdrop.style.display = "block";
           sendChoice.style.display = "flex";
           afterModalVisibilityChanged();
+          focusSendChoiceInitial();
         }
-        function hideSendChoice() {
+        function hideSendChoice({ restoreFocus = false } = {}) {
+          const target = sendChoiceReturnFocusEl;
+          sendChoiceReturnFocusEl = null;
           sendChoicePending = null;
           syncSendChoiceAttachmentPolicy();
           sendChoiceBackdrop.style.display = "none";
           sendChoice.style.display = "none";
           afterModalVisibilityChanged();
+          if (restoreFocus) restoreModalFocus(target, () => sendChoice.style.display === "flex");
         }
         const sendChoiceNowBtn = $("#sendChoiceNow");
         const sendChoiceLaterBtn = $("#sendChoiceLater");
@@ -10283,7 +10307,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           sendChoiceNowBtn.onclick = async () => {
             const raw = sendChoicePending && sendChoicePending.text;
             const sid = sendChoicePending && sendChoicePending.sid;
-            hideSendChoice();
+            hideSendChoice({ restoreFocus: true });
             if (!raw || !sid) return;
             const ok = await sendText(raw, { sid });
             if (ok && sid === selected && $("#msg").value === raw) clearComposer();
@@ -10297,16 +10321,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               setToast("attachments can only be sent now; wait until idle to queue text with files");
               return;
             }
-            hideSendChoice();
+            hideSendChoice({ restoreFocus: true });
             if (!raw || !sid) return;
             const ok = await enqueueComposerText(raw, { sid });
             if (ok && sid === selected && $("#msg").value === raw) clearComposer();
           };
         if (sendChoiceCancelBtn)
           sendChoiceCancelBtn.onclick = () => {
-            hideSendChoice();
+            hideSendChoice({ restoreFocus: true });
           };
-        sendChoiceBackdrop.onclick = () => hideSendChoice();
+        sendChoiceBackdrop.onclick = () => hideSendChoice({ restoreFocus: true });
 
         const queueUpdateTimers = new Map();
         const queueMutationLocks = new Set();
@@ -11512,7 +11536,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!raw || !raw.trim()) return;
           if (sending) return;
           if (currentRunning) {
-            showSendChoice(raw);
+            showSendChoice(raw, { opener: document.activeElement instanceof HTMLElement ? document.activeElement : textarea });
             return;
           }
           const ok = await sendText(raw);

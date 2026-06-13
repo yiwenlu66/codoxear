@@ -1963,3 +1963,12 @@
 - Full local validation: `python3 -m pytest -q` → `696 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `695 passed, 1 skipped, 25 subtests passed`.
 - Clean-room review after repairs: no blockers; residuals are dirty-file intentional bypass, deletion while viewer open, and post-tail mentioned candidates not auto-opening if early sync had no file.
+
+## 2026-06-13 22:56 — Busy-send choice keyboard focus repair
+- Repaired keyboard-only busy-send branch: the send-choice dialog now has `aria-modal`, captures the opener, focuses "Send after current" when available (fallback to "Send now"/Cancel), and restores opener focus on Escape, Cancel, backdrop, Send now, and Send after current.
+- Source coverage added in `tests/test_send_button_source.py`.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_send_button_source.py tests/test_queue_button_source.py tests/test_overlay_accessibility_source.py -q` → `10 passed`.
+- Browser evidence in isolated Docker sandboxes: `/tmp/codoxear-sendchoice-focus-browser.json` covers Ctrl+Enter → initial focus → Escape return; `/tmp/codoxear-sendchoice-action-browser.json` covers Enter on focused "Send after current" → dialog close → focus restored to composer.
+- Full local validation: `python3 -m pytest -q` → `697 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `696 passed, 1 skipped, 25 subtests passed`.
+- Clean-room review after fixing action-path focus: no blockers; residuals are no explicit Tab trap and untested browser paths for Cancel/backdrop/Send now/attachment-disabled fallback, though source paths are direct.
