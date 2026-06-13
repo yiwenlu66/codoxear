@@ -9568,6 +9568,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added);
         }
 
+        function normalizeSamePathFilePickerScores(entries) {
+          const scoreByPath = new Map();
+          for (const entry of entries) {
+            const path = String(entry && entry.path || "");
+            const score = Number(entry && entry.score || 0);
+            if (!scoreByPath.has(path) || score > Number(scoreByPath.get(path) || 0)) scoreByPath.set(path, score);
+          }
+          for (const entry of entries) {
+            const path = String(entry && entry.path || "");
+            if (scoreByPath.has(path)) entry.score = Number(scoreByPath.get(path) || 0);
+          }
+          return entries;
+        }
+
         function localFilePickerSearchEntries(query) {
           const out = [];
           const seen = new Set();
@@ -9581,7 +9595,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const pickerEntry = pickerEntryForKey(key, { score });
             if (pickerEntry) out.push(pickerEntry);
           }
-          out.sort(compareFilePickerEntries);
+          normalizeSamePathFilePickerScores(out).sort(compareFilePickerEntries);
           return out.slice(0, 120);
         }
 
@@ -9656,7 +9670,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const pickerEntry = pickerEntryForKey(key, { score });
             if (pickerEntry) out.push(pickerEntry);
           }
-          out.sort(compareFilePickerEntries);
+          normalizeSamePathFilePickerScores(out).sort(compareFilePickerEntries);
           const limited = out.slice(0, 120);
           return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query);
         }

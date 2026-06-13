@@ -1736,3 +1736,10 @@ Observation: File preview/download responses already map missing or permission-d
 Intervention: `_stream_open_file_bytes()` now catches post-header `seek`, `read`, and `wfile.write` `OSError`s, including client disconnect subclasses, logs through `handler.log_error`, and writes a concise stderr error line because the main server suppresses default request logs.
 
 Scoped claim: Under focused, full, Docker, and clean-room review evidence, late file streaming read/write failures no longer crash the request handler and remain observable in logs, while pre-header 404/403 mapping and range/content-length header logic remain unchanged. Residual: late truncation can still make the already-sent `Content-Length` inaccurate, which is inherent once headers are committed.
+
+## 2026-06-14 06:05
+Observation: A naive comparator change that forced `gitPath:false` before `gitPath:true` for same-display paths before score comparison created a non-transitive ordering: a low-scored session twin could sort before its high-scored Git twin, the Git twin before an intermediate unrelated path, and the unrelated path before the low-scored session twin.
+
+Intervention: The picker now normalizes sort scores by exact display-path group before sorting. Same-display session/Git twins share the group's max relevance score, then the ordinary score/path/gitPath comparator places the session/cwd identity before the Git identity. Unrelated paths still compare by score against the group's max score.
+
+Scoped claim: The same-display session-before-Git invariant no longer depends on backend/local score equality and no longer makes the comparator cyclic. This is scoped to exact `entry.path` equality; aliases such as case variants, Unicode-normalized variants, and symlink-equivalent paths are not grouped unless earlier layers already produce the same display path.

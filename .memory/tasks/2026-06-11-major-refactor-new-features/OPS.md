@@ -2078,3 +2078,12 @@
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `757 passed, 1 skipped, 77 subtests passed`.
   - Clean-room review -> no blockers; noted unused `_stream_file_bytes()` direct-open residual and unavoidable post-header `Content-Length` mismatch on truncation.
 - `git diff --check` was clean before staging.
+
+## 2026-06-14 06:05
+- Completed file-picker same-display score normalization tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py -q` -> `41 passed`.
+  - Full local: `python3 -m pytest -q` -> `761 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `760 passed, 1 skipped, 77 subtests passed`.
+  - Clean-room review -> no blockers after replacing a non-transitive comparator attempt with same-display score normalization.

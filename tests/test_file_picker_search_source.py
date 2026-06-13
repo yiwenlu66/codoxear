@@ -319,6 +319,58 @@ class TestFilePickerSearchSource(unittest.TestCase):
             [("foo.py", False, False, False), ("foo.py", True, True, False)],
         )
 
+    def test_same_display_session_identity_beats_git_even_with_lower_score(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileEntries": [
+                    {"path": "foo.py", "changed": True, "source": "changed", "additions": 1, "deletions": 0},
+                ],
+                "filePickerSearchActive": True,
+                "filePickerInputValue": "foo.py",
+                "fileSearchLoadedQuery": "foo.py",
+                "fileSearchResults": [{"path": "foo.py", "score": 1}],
+            }
+        )
+        self.assertEqual((result["entries"][0]["path"], result["entries"][0]["gitPath"]), ("foo.py", False))
+        self.assertEqual((result["entries"][1]["path"], result["entries"][1]["gitPath"]), ("foo.py", True))
+
+    def test_same_display_score_normalization_remains_transitive(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileEntries": [
+                    {"path": "foo.py", "changed": True, "source": "changed", "additions": 1, "deletions": 0},
+                    {"path": "foo.py.bak", "changed": False, "source": "recent", "gitPath": False},
+                ],
+                "filePickerSearchActive": True,
+                "filePickerInputValue": "foo.py",
+                "fileSearchLoadedQuery": "foo.py",
+                "fileSearchResults": [{"path": "foo.py", "score": 1}],
+            }
+        )
+        self.assertEqual(
+            [(entry["path"], entry["gitPath"]) for entry in result["entries"][:3]],
+            [("foo.py", False), ("foo.py", True), ("foo.py.bak", False)],
+        )
+
+    def test_unrelated_high_score_still_beats_same_display_group(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileEntries": [
+                    {"path": "foo.py", "changed": True, "source": "changed", "additions": 1, "deletions": 0},
+                ],
+                "filePickerSearchActive": True,
+                "filePickerInputValue": "foo.py",
+                "fileSearchLoadedQuery": "foo.py",
+                "fileSearchResults": [
+                    {"path": "foo.py", "score": 1},
+                    {"path": "bar.py", "score": 13000},
+                ],
+            }
+        )
+        self.assertEqual(result["entries"][0]["path"], "bar.py")
+        self.assertEqual((result["entries"][1]["path"], result["entries"][1]["gitPath"]), ("foo.py", False))
+        self.assertEqual((result["entries"][2]["path"], result["entries"][2]["gitPath"]), ("foo.py", True))
+
     def test_pending_exact_search_prefers_session_probe_over_git_path(self) -> None:
         result = eval_file_picker_search_helpers(
             {
