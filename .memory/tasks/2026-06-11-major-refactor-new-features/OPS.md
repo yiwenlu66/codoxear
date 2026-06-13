@@ -1620,3 +1620,10 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `39 passed`.
 - Full local validation: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:50 — Smooth Jump-to-latest rollback
+- Clean-room review repeatedly found hidden instant-scroll schedulers that could neutralize smooth Jump-to-latest: tail render, decoration rebuild, typing row insertion, pending-row restore, immediate/live poll timing, and initial reset behavior.
+- Decision: reverted the chat code/tests to the last clean state before the smooth-scroll tranche (`b550f34`) while preserving the evidence ledger. The attempted polish is not worth further patch layering without a dedicated scroll scheduler redesign/runtime harness.
+- Focused validation after rollback: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `37 passed`.
+- Full local validation after rollback: `python3 -m pytest -q` → `672 passed, 25 subtests passed`.
+- Full isolated Docker validation after rollback: `scripts/codoxear-docker-sandbox test` → `671 passed, 1 skipped, 25 subtests passed`.

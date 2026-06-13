@@ -1372,3 +1372,9 @@ Commitments:
 - Intervention: Removed immediate `kickPoll(0)` from Jump-to-latest, relying on `openSession()`'s normal poll scheduling; propagated scroll behavior through pending row restoration and append events.
 - Evidence: Focused runtime tests include the `appendEvent` behavior path; full local and Docker suites passed.
 - Scoped claim: Known synchronous bottom-scroll schedulers in the Jump-to-latest tail render now receive the same smooth behavior, and the immediate post-jump live poll no longer injects an instant scroll during the animation.
+
+## 2026-06-13 09:50 — Rejected smooth scroll as unsafe incremental polish
+- Observation: Three clean-room reviews exposed new instant-scroll neutralizers after each patch. The anomaly pattern indicates the current chat scroll system has several independent bottom-scroll schedulers, so smooth scrolling cannot be safely added as a narrow local patch.
+- Rejected hypothesis: A one-shot behavior parameter on the visible Jump-to-latest path is sufficient. Evidence falsified this because reset, render, decoration, typing, pending echoes, and live polling all interact with bottom correction.
+- Decision: Roll back the smooth-scroll code. Preserve the lesson for a future tranche: any smooth scrolling should follow a deliberate scroll-scheduler refactor or runtime harness, not incremental patching.
+- Scoped claim: The branch returns to the previously validated instant-scroll behavior; no low-confidence smooth-scroll feature remains active.

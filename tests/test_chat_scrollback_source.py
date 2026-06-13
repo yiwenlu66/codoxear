@@ -13,22 +13,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         end = source.index("async function selectSession(id) {", start)
         block = source[start:end]
         self.assertIn("invalidateOlderLoad();", block)
-        self.assertIn('await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true, tailScrollBehavior: "smooth" });', block)
-        self.assertNotIn('scrollToBottom({ behavior: "smooth" });', block)
-        self.assertNotIn("kickPoll(0);", block)
-
-    def test_scroll_to_bottom_smooth_is_user_jump_only(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function scrollToBottom(")
-        end = source.index("function ymd(d)", start)
-        block = source[start:end]
-        self.assertIn('function scrollToBottom({ behavior = "auto" } = {})', block)
-        self.assertIn('behavior === "smooth" && !prefersReducedMotion() && typeof chat.scrollTo === "function"', block)
-        self.assertIn('chat.scrollTo({ top, behavior: "smooth" });', block)
-        self.assertIn("else chat.scrollTop = top;", block)
-        self.assertIn("live-tail autoscroll stays instant", block)
-        self.assertEqual(source.count('tailScrollBehavior: "smooth"'), 1)
-        self.assertNotIn('scrollToBottom({ behavior: "smooth" });', source)
+        self.assertIn("await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });", block)
+        self.assertIn("kickPoll(0);", block)
 
     def test_open_session_is_single_render_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -42,22 +28,22 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("const cachedTail = s ? sessionTailCache.get(sessionId) : null;", block)
         self.assertIn("let displayedCachedTail = false;", block)
         self.assertIn("tailCacheMatchesSession(cachedTail, s)", block)
-        self.assertIn("applyCachedTail(sessionId, cachedTail, s, { scrollBehavior: tailScrollBehavior });", block)
+        self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("if (!displayedCachedTail) renderTranscriptLoading(sessionId);", block)
         self.assertIn("data = await api(`/api/sessions/${sessionId}/messages/tail?limit=${initPageLimit()}`);", block)
-        self.assertIn('async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, tailScrollBehavior = "auto" } = {})', block)
+        self.assertIn("async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {})", block)
         self.assertIn("if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {", block)
-        self.assertIn("applyCachedTail(sessionId, cachedTail, s, { scrollBehavior: tailScrollBehavior });", block)
+        self.assertIn("applyCachedTail(sessionId, cachedTail, s);", block)
         self.assertIn("displayedCachedTail = true;", block)
         self.assertIn("renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });", block)
         self.assertIn("if (e && e.status === 401) {", block)
         self.assertIn("handleAppAuthLoss();", block)
         self.assertIn("if (pollGen !== myGen || selected !== sessionId) return null;", block)
         self.assertIn("const slotChange = updateSessionTranscriptSlot(sessionId, data);", block)
-        self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : [], { scrollBehavior: tailScrollBehavior });', block)
+        self.assertIn('if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);', block)
         self.assertIn("else renderPendingTranscriptSlot(sessionId);", block)
-        self.assertIn("applySessionRuntimeFromTail(sessionId, data, { typingScrollBehavior: tailScrollBehavior });", block)
+        self.assertIn("applySessionRuntimeFromTail(sessionId, data);", block)
         self.assertIn('if (slotChange.current.state !== "failed") kickPoll(900);', block)
         self.assertNotIn("refreshInitPageState", block)
 
@@ -135,7 +121,7 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function refreshSessions() {")
-        end = source.index("function appendEvent(ev,", start)
+        end = source.index("function appendEvent(ev) {", start)
         block = source[start:end]
         self.assertNotIn("/messages/tail", block)
         self.assertNotIn("/messages/live", block)
@@ -173,7 +159,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_live_append_does_not_splice_into_history_window(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index('function appendEvent(ev, { scrollBehavior = "auto" } = {}) {')
+        start = source.index("function appendEvent(ev) {")
         end = source.index("function renderTranscript(", start)
         block = source[start:end]
         self.assertIn("const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));", block)
@@ -259,45 +245,20 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_restore_pending_rows_is_bound_to_current_transcript_slot(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index('function restorePendingUserRowsForSession(sessionId, { scrollBehavior = "auto" } = {}) {')
+        start = source.index("function restorePendingUserRowsForSession(sessionId) {")
         end = source.index("function updateQueueBadge()", start)
         block = source[start:end]
         self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
         self.assertIn("Number(item.epoch || 0) === Number(slot.epoch || 0)", block)
-        self.assertIn('appendEvent({ role: "user", text: item.text, pending: true, localId: item.id, ts: item.t0 }, { scrollBehavior });', block)
 
     def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index('function renderTranscript(events, { preserveScroll = false, scrollBehavior = "auto" } = {}) {')
+        start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
         end = source.index("function prependOlderEvents(", start)
         block = source[start:end]
         self.assertIn("takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", block)
         self.assertIn("msgs.push(ev);", block)
-        self.assertIn("rebuildDecorations({ preserveScroll, scrollBehavior });", block)
-        self.assertIn("restorePendingUserRowsForSession(selected, { scrollBehavior });", block)
-        self.assertIn("return true;", block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
-
-    def test_tail_render_schedules_requested_scroll_behavior_first(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        start = source.index('function rebuildDecorations({ preserveScroll, scrollBehavior = "auto" })')
-        end = source.index("function firstVisibleMessageRow", start)
-        block = source[start:end]
-        self.assertIn('requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));', block)
-        render_start = source.index('function renderSessionTail(events, { scrollBehavior = "auto" } = {})')
-        render_end = source.index("function renderPendingTranscriptSlot", render_start)
-        render_block = source[render_start:render_end]
-        self.assertIn('renderTranscript(events, { preserveScroll: false, scrollBehavior });', render_block)
-        self.assertIn("if (!rendered) {", render_block)
-        runtime_start = source.index('function applySessionRuntimeFromTail(sessionId, data, { typingScrollBehavior = "auto" } = {})')
-        runtime_end = source.index("function renderSessionTail", runtime_start)
-        runtime_block = source[runtime_start:runtime_end]
-        self.assertIn('setTyping(nowBusy, { scrollBehavior: typingScrollBehavior });', runtime_block)
-        append_start = source.index('function appendEvent(ev, { scrollBehavior = "auto" } = {})')
-        append_end = source.index('function renderTranscript(', append_start)
-        append_block = source[append_start:append_end]
-        self.assertIn('rebuildDecorations({ preserveScroll: false, scrollBehavior });', append_block)
-        self.assertIn('requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));', append_block)
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
