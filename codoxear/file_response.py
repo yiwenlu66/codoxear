@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import http.server
+import os
 import urllib.parse
 from pathlib import Path
 from typing import BinaryIO
@@ -50,6 +51,10 @@ def _open_file_for_response(handler: http.server.BaseHTTPRequestHandler, path: P
         return None
 
 
+def _open_file_size(f: BinaryIO) -> int:
+    return int(os.fstat(f.fileno()).st_size)
+
+
 def _stream_open_file_bytes(handler: http.server.BaseHTTPRequestHandler, f: BinaryIO, *, start: int = 0, length: int | None = None) -> None:
     if start:
         f.seek(start)
@@ -70,15 +75,11 @@ def _stream_file_bytes(handler: http.server.BaseHTTPRequestHandler, path: Path, 
 
 
 def send_inline_file_response(handler: http.server.BaseHTTPRequestHandler, path: Path, content_type: str) -> None:
-    try:
-        size = int(path.stat().st_size)
-    except (FileNotFoundError, PermissionError) as e:
-        _send_file_open_error(handler, e)
-        return
     stream = _open_file_for_response(handler, path)
     if stream is None:
         return
     with stream:
+        size = _open_file_size(stream)
         try:
             byte_range = single_byte_range(handler.headers.get("Range"), size)
         except ValueError:
@@ -115,12 +116,14 @@ def send_attachment_file_response(
     if stream is None:
         return
     with stream:
+        actual_size = _open_file_size(stream)
+        length = min(max(0, int(size)), actual_size)
         handler.send_response(200)
         handler.send_header("Content-Type", "application/octet-stream")
-        handler.send_header("Content-Length", str(size))
+        handler.send_header("Content-Length", str(length))
         handler.send_header("Content-Disposition", content_disposition)
         handler.send_header("Cache-Control", "no-store")
         handler.send_header("Pragma", "no-cache")
         handler.send_header("Expires", "0")
         handler.end_headers()
-        _stream_open_file_bytes(handler, stream, length=size)
+        _stream_open_file_bytes(handler, stream, length=length)

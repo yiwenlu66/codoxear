@@ -2031,3 +2031,10 @@
 - Full local validation: `python3 -m pytest -q` -> 722 passed, 61 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 721 passed, 1 skipped, 61 subtests passed.
 - Clean-room review: no blockers; residual risks are mid-stream TOCTOU after headers and rare OSError shapes outside FileNotFound/PermissionError.
+
+## 2026-06-14 02:39 - File streaming size race hardening
+- Changed files: `codoxear/file_response.py`, `tests/test_file_response_module_source.py`.
+- Focused validation: `python3 -m py_compile codoxear/file_response.py tests/test_file_response_module_source.py`; `python3 -m pytest tests/test_file_response_module_source.py tests/test_file_inspect.py -q` -> 47 passed, 36 subtests passed.
+- Full local validation: `python3 -m pytest -q` -> 724 passed, 61 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 723 passed, 1 skipped, 61 subtests passed.
+- Clean-room review: no blockers; residual risk is file mutation after headers are sent.

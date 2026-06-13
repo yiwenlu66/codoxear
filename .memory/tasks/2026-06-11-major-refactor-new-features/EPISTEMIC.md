@@ -1692,3 +1692,13 @@ Scoped claim:
 - In tested preview I/O races and permission-denied cases, blob/video-preview and inline/attachment responses preserve controlled 404/403 semantics instead of top-level 500s or false 404s for permission failures.
 Remaining uncertainty:
 - Filesystem changes after response headers can still cause stale content-length or mid-stream failures; broader OSError classes remain adjacent hardening work.
+
+## 2026-06-14 02:39 - File response size now follows the opened stream
+Observation:
+- Even after pre-header open-error handling, inline responses used path `stat()` before open and attachment responses trusted an earlier inspected size. A file shrink between inspection/stat and stream open could advertise a larger `Content-Length` than the body actually sent.
+Intervention:
+- Inline and attachment responses now open the file first and derive response length from `os.fstat()` on the opened file descriptor. Attachments preserve the previous declared-size cap but no longer overstate length when the opened file is smaller.
+Scoped claim:
+- In the tested pre-header race shapes, file responses advertise lengths/ranges for the file descriptor they actually stream rather than stale path metadata.
+Remaining uncertainty:
+- Mutations after headers are sent can still cause mid-stream mismatch; solving that requires stronger snapshotting or buffering semantics.

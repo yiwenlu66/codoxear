@@ -56,7 +56,9 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertIn('handler.send_header("Accept-Ranges", "bytes")', module_source)
         self.assertIn('handler.send_header("Cache-Control", "no-store")', module_source)
         self.assertIn('handler.send_header("Content-Disposition", content_disposition)', module_source)
-        self.assertIn("_stream_open_file_bytes(handler, stream, length=size)", module_source)
+        self.assertIn("def _open_file_size(", module_source)
+        self.assertIn("os.fstat(f.fileno()).st_size", module_source)
+        self.assertIn("_stream_open_file_bytes(handler, stream, length=length)", module_source)
 
     def test_inline_response_maps_missing_file_before_headers(self) -> None:
         path = Path("/tmp/codoxear-missing-inline-response.bin")
@@ -82,6 +84,40 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertEqual(handler.status, 403)
         self.assertEqual(handler.error, "denied")
         self.assertEqual(handler.wfile.getvalue(), b"")
+
+    def test_inline_response_uses_open_file_size_for_range_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            raw = b"0123456789"
+            path.write_bytes(raw)
+            handler = FakeHandler()
+            handler.headers = {"Range": "bytes=2-4"}
+            original_stat = Path.stat
+            try:
+                Path.stat = lambda self, *args, **kwargs: (_ for _ in ()).throw(AssertionError("inline response must size the opened file"))  # type: ignore[assignment]
+                send_inline_file_response(handler, path, "application/octet-stream")
+            finally:
+                Path.stat = original_stat  # type: ignore[assignment]
+            self.assertEqual(handler.status, 206)
+            self.assertIn(("Content-Length", "3"), handler.sent_headers)
+            self.assertIn(("Content-Range", f"bytes 2-4/{len(raw)}"), handler.sent_headers)
+            self.assertEqual(handler.wfile.getvalue(), raw[2:5])
+
+    def test_attachment_response_caps_stale_declared_size_to_open_file_size(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            raw = b"short"
+            path.write_bytes(raw)
+            handler = FakeHandler()
+            send_attachment_file_response(
+                handler,
+                path,
+                size=len(raw) + 10,
+                content_disposition="attachment; filename*=UTF-8''blob.bin",
+            )
+            self.assertEqual(handler.status, 200)
+            self.assertIn(("Content-Length", str(len(raw))), handler.sent_headers)
+            self.assertEqual(handler.wfile.getvalue(), raw)
 
     def test_attachment_response_streams_without_read_bytes_and_caps_to_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as td:
