@@ -1430,3 +1430,10 @@ Commitments:
 - Observation: Mobile browser geometry placed the chip at bottom-center (`y=736.8..762`) below top nav rail (`y=102..146`), left of jump button (`x=336..376`), and above composer (`y=776..844`).
 - Scoped claim: Under a 390×844 mobile viewport with a long mocked transcript, the time chip avoids the reviewed top-rail and bottom-control overlap risks.
 - Remaining uncertainty: This is synthetic transcript geometry, not a real phone/device pass.
+
+## 2026-06-13 10:46 — Older-history failures become recoverable observations
+- Observation: Initial transcript tail failures had explicit Retry UI, but older-history page failures reset the button silently. This could make long-chat navigation appear broken after a transient network/server failure.
+- Mechanism: The history request already has session/generation guards and preserves loaded rows on failure; the missing piece was visible feedback and a user-controlled retry using the same guarded path.
+- Intervention: Added an inline non-transcript error/retry affordance near the older button. It does not clear transcript rows, does not mutate server state, and does not change 409 mismatch behavior.
+- Evidence: Focused/runtime tests, full local/Docker validation, and browser forced-503/retry proof passed.
+- Scoped claim: In loaded transcripts with older history available, non-409 history page failures are now visible and retryable without losing already loaded messages.

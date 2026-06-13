@@ -1635,7 +1635,14 @@
           type: "button",
           text: "Load older messages",
         });
+        const olderErrorText = el("span", { class: "olderErrorText", text: "" });
+        const olderRetryBtn = el("button", { class: "olderRetryBtn", type: "button", text: "Retry" });
+        const olderError = el("div", { class: "olderError", id: "olderError", role: "status" }, [
+          olderErrorText,
+          olderRetryBtn,
+        ]);
         olderWrap.appendChild(olderBtn);
+        olderWrap.appendChild(olderError);
         const bottomSentinel = el("div", { id: "bottomSentinel" });
         const jumpBtn = el("button", {
           class: "jumpBtn",
@@ -3055,12 +3062,23 @@
           chatInner.appendChild(bottomSentinel);
         }
 
+        function clearOlderLoadError() {
+          olderError.style.display = "none";
+          olderErrorText.textContent = "";
+        }
+
+        function showOlderLoadError() {
+          olderErrorText.textContent = "Couldn’t load older messages.";
+          olderError.style.display = "flex";
+        }
+
         function setOlderState({ hasMore, isLoading }) {
           hasOlder = Boolean(hasMore);
           loadingOlder = Boolean(isLoading);
           olderWrap.style.display = hasOlder ? "flex" : "none";
           olderBtn.disabled = loadingOlder;
           olderBtn.textContent = loadingOlder ? "Loading..." : "Load older messages";
+          if (loadingOlder || !hasOlder) clearOlderLoadError();
         }
 
         function renderedMessageRows() {
@@ -4670,6 +4688,7 @@
             if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
             const evs = Array.isArray(data.events) ? data.events : [];
             const nextHasOlder = Boolean(data.has_older);
+            clearOlderLoadError();
             setOlderState({ hasMore: nextHasOlder, isLoading: false });
             if (evs.length) {
               prependOlderEvents(evs, { preserveViewport: auto });
@@ -4683,6 +4702,7 @@
               return false;
             }
             setOlderState({ hasMore: hasOlder, isLoading: false });
+            showOlderLoadError();
             return false;
           } finally {
             if (olderLoadController === ctl) olderLoadController = null;
@@ -10702,6 +10722,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void jumpToLatest();
         };
         olderBtn.onclick = () => {
+          void loadOlderMessages({ auto: false });
+        };
+        olderRetryBtn.onclick = () => {
+          clearOlderLoadError();
           void loadOlderMessages({ auto: false });
         };
 

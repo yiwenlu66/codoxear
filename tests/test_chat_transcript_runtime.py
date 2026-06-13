@@ -112,6 +112,8 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               olderPageLimit: () => 60,
               oldestRenderedHistoryCursor: () => "cursor-oldest-row",
               setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
+              clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
+              showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
               prependOlderEvents: (events, opts) => {{ ctx.prepended = {{ events, opts }}; }},
               openSession: async () => {{ throw new Error("should not reopen"); }},
               api: async (url) => {{
@@ -136,6 +138,49 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertIn("cursor=cursor-oldest-row", out["requestUrl"])
         self.assertEqual(out["lastOlderState"], {"hasMore": False, "isLoading": False})
         self.assertEqual(out["prepended"]["events"][0]["text"], "older")
+
+    def test_history_failure_preserves_has_older_and_shows_retry_error(self) -> None:
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{
+              selected: "sid",
+              hasOlder: true,
+              loadingOlder: false,
+              pollGen: 7,
+              olderLoadRequestId: 0,
+              olderAutoTriggerAt: 0,
+              OLDER_AUTO_COOLDOWN_MS: 450,
+              olderLoadController: null,
+              performance: {{ now: () => 1000 }},
+              AbortController,
+              encodeURIComponent,
+              olderPageLimit: () => 60,
+              oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
+              clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
+              showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
+              prependOlderEvents: () => {{ ctx.prepended = true; }},
+              openSession: async () => {{ throw new Error("should not reopen"); }},
+              api: async () => {{ const err = new Error("unavailable"); err.status = 503; throw err; }},
+            }};
+            vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(snippet)}, ctx);
+            ctx.loadOlderMessages({{ auto: false }}).then(() => {{
+              process.stdout.write(JSON.stringify({{
+                lastOlderState: ctx.lastOlderState,
+                showedOlderError: Boolean(ctx.showedOlderError),
+                prepended: Boolean(ctx.prepended),
+              }}));
+            }});
+            """
+        )
+        out = _run_node(js)
+
+        self.assertEqual(out["lastOlderState"], {"hasMore": True, "isLoading": False})
+        self.assertTrue(out["showedOlderError"])
+        self.assertFalse(out["prepended"])
 
     def test_live_delta_does_not_splice_into_history_window(self) -> None:
         snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")

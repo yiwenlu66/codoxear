@@ -157,6 +157,32 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertNotIn("historyCursor", block)
         self.assertIn("await openSession(sid, { useCache: false });", block)
 
+    def test_load_older_failure_has_inline_retry_without_resetting_history(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn('const olderErrorText = el("span", { class: "olderErrorText", text: "" });', source)
+        self.assertIn('const olderRetryBtn = el("button", { class: "olderRetryBtn", type: "button", text: "Retry" });', source)
+        self.assertIn('const olderError = el("div", { class: "olderError", id: "olderError", role: "status" }', source)
+        self.assertIn("olderWrap.appendChild(olderError);", source)
+        self.assertIn("function clearOlderLoadError() {", source)
+        self.assertIn("function showOlderLoadError() {", source)
+        self.assertIn('olderErrorText.textContent = "Couldn’t load older messages.";', source)
+        state_start = source.index("function setOlderState({ hasMore, isLoading })")
+        state_end = source.index("function renderedMessageRows()", state_start)
+        state_block = source[state_start:state_end]
+        self.assertIn("if (loadingOlder || !hasOlder) clearOlderLoadError();", state_block)
+        load_start = source.index("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {")
+        load_end = source.index("function maybeAutoLoadOlder()", load_start)
+        load_block = source[load_start:load_end]
+        self.assertIn("clearOlderLoadError();\n            setOlderState({ hasMore: nextHasOlder, isLoading: false });", load_block)
+        self.assertIn("await openSession(sid, { useCache: false });", load_block)
+        self.assertIn("setOlderState({ hasMore: hasOlder, isLoading: false });\n            showOlderLoadError();", load_block)
+        self.assertNotIn("clearTranscriptDom();", load_block)
+        self.assertIn("olderRetryBtn.onclick = () => {", source)
+        self.assertIn("clearOlderLoadError();\n          void loadOlderMessages({ auto: false });", source)
+        self.assertIn(".olderError", css)
+        self.assertIn(".olderRetryBtn", css)
+
     def test_live_append_does_not_splice_into_history_window(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("function appendEvent(ev) {")

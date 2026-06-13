@@ -807,6 +807,9 @@
       }
       .olderWrap {
         display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
         align-self: center;
         margin: 4px 0 8px 0;
       }
@@ -816,6 +819,25 @@
         font-size: 12px;
         line-height: 1.1;
         color: var(--muted);
+      }
+      .olderError {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(254, 242, 242, 0.92);
+        color: #7f1d1d;
+        font-size: 12px;
+        line-height: 1.2;
+      }
+      .olderRetryBtn {
+        padding: 4px 8px;
+        border-radius: 999px;
+        border-color: rgba(185, 28, 28, 0.24);
+        color: #7f1d1d;
+        font-size: 12px;
+        line-height: 1.1;
       }
       .chatTimeChip {
         position: absolute;

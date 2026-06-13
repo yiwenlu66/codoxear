@@ -1690,3 +1690,13 @@
 - Re-review of repaired visible-time chip found no blockers.
 - Critic validation: `node --check codoxear/static/app.js`; focused chat tests → `33 passed`; full pytest → `675 passed, 25 subtests passed`.
 - Additional mobile browser evidence against isolated Docker sandbox (`codoxear-sandbox-timechip-mobile-18794`, stopped): at 390×844, chip appeared while scrolled up (`2026-06-10 · 18:50`), hid at live tail, did not overlap top chat nav rail, jump button, or composer. Artifact: `/tmp/codoxear-timechip-mobile-browser.json`.
+
+## 2026-06-13 10:46 — Older-history failure feedback and retry
+- Added a bounded non-transcript `olderError` feedback row under `Load older messages` with a Retry button.
+- Failure behavior: non-409 `/messages/history` errors preserve current loaded rows and `hasOlder`, re-enable the older button, and show `Couldn’t load older messages.` plus Retry. Retry clears the error and calls the same guarded `loadOlderMessages({ auto: false })` path. 409 still reopens the session tail; stale generation/session responses still return without showing error.
+- Added CSS for compact older-history error/retry styling.
+- Added source coverage in `test_chat_scrollback_source.py` and runtime VM coverage in `test_chat_transcript_runtime.py` for success and failure paths.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `40 passed`.
+- Full local validation: `python3 -m pytest -q` → `677 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `676 passed, 1 skipped, 25 subtests passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-history-retry-18795`, stopped): forced first history request to 503, verified row count stayed 30, inline error+Retry appeared, retry made second history call, prepended 4 older rows, and cleared the error. Artifact: `/tmp/codoxear-history-retry-browser.json`.
