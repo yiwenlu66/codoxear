@@ -4696,11 +4696,11 @@
             }
             return false;
           } catch (e) {
-            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
             if (e && e.status === 401) {
               handleAppAuthLoss();
               return false;
             }
+            if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;
             if (e && e.status === 409) {
               await openSession(sid, { useCache: false });
               return false;

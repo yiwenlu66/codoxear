@@ -1708,3 +1708,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `41 passed`.
 - Full local validation: `python3 -m pytest -q` → `678 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `677 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 10:56 — Older-history stale 401 handling
+- Re-review of the history auth repair found no blockers, but noted stale/cancelled history 401s were still suppressed by stale guards before auth-loss handling.
+- Repaired by moving `e.status === 401` handling ahead of the stale session/generation/request guard in `loadOlderMessages()`, matching tail/session polling semantics that auth loss is global.
+- Added source ordering coverage and a runtime VM test where `api()` makes the request stale before throwing 401; `handleAppAuthLoss()` still runs and retry UI is not shown.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `42 passed`.
+- Full local validation: `python3 -m pytest -q` → `679 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `678 passed, 1 skipped, 25 subtests passed`.

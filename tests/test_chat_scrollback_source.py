@@ -176,6 +176,8 @@ class TestChatScrollbackSource(unittest.TestCase):
         load_block = source[load_start:load_end]
         self.assertIn("clearOlderLoadError();\n            setOlderState({ hasMore: nextHasOlder, isLoading: false });", load_block)
         self.assertIn("handleAppAuthLoss();", load_block)
+        catch_block = load_block[load_block.index("} catch (e) {") :]
+        self.assertLess(catch_block.index("if (e && e.status === 401)"), catch_block.index("if (selected !== sid || pollGen !== gen || reqId !== olderLoadRequestId) return false;"))
         self.assertLess(load_block.index("if (e && e.status === 401)"), load_block.index("if (e && e.status === 409)"))
         self.assertLess(load_block.index("if (e && e.status === 409)"), load_block.index("showOlderLoadError();"))
         self.assertIn("await openSession(sid, { useCache: false });", load_block)

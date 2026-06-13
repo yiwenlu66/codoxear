@@ -1443,3 +1443,9 @@ Commitments:
 - Intervention: Added explicit 401 handling before retry-error display.
 - Evidence: Runtime test confirms 401 calls `handleAppAuthLoss()` and does not show retry UI; focused/full/Docker validation passed.
 - Scoped claim: Older-history retry UI now represents retryable history-load failures, not authentication expiration.
+
+## 2026-06-13 10:56 — Auth loss outranks stale history responses
+- Observation: A stale history response can still be decisive if it is a 401, because authentication state is app-global rather than session-local.
+- Intervention: Moved history 401 handling before stale request suppression.
+- Evidence: Runtime stale-401 test confirms auth loss is triggered and retry UI is not shown; focused/full/Docker validation passed.
+- Scoped claim: `/messages/history` now treats 401 consistently with other transcript fetches: auth loss is handled even if the request is otherwise stale.
