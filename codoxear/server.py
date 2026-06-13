@@ -2291,6 +2291,8 @@ class Session:
     commit_unknown_send: dict[str, Any] | None = None
     sync_send_supported: bool = False
     key_write_errors_supported: bool = False
+    last_send_log_path: Path | None = None
+    last_send_log_size: int | None = None
 
 
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
@@ -3176,6 +3178,47 @@ class SessionManager:
                 raise KeyError("unknown session")
             return s, s.log_path
 
+    def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
+        if not isinstance(state, dict) or "busy" not in state or "queue_len" not in state:
+            raise ValueError("invalid broker state response")
+        busy_raw = state.get("busy")
+        queue_len_raw = state.get("queue_len")
+        if not isinstance(busy_raw, bool):
+            raise ValueError("invalid broker state response")
+        if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
+            raise ValueError("invalid broker state response")
+        return busy_raw, int(queue_len_raw)
+
+    def _log_size_or_none(self, log_path: Path | None) -> int | None:
+        if not isinstance(log_path, Path):
+            return None
+        try:
+            return int(log_path.stat().st_size)
+        except OSError:
+            return None
+
+    def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
+        busy_raw, queue_len = self._broker_busy_queue_from_state(state)
+        if queue_len > 0:
+            return False
+        log_idle: bool | None = None
+        log_size: int | None = None
+        if isinstance(log_path, Path) and log_path.exists():
+            log_idle = bool(self.idle_from_log(session_id))
+            if not log_idle:
+                return False
+            log_size = self._log_size_or_none(log_path)
+        if busy_raw:
+            if log_idle is not True:
+                return False
+            with self._lock:
+                s = self._sessions.get(session_id)
+                last_send_log_path = s.last_send_log_path if s is not None else None
+                last_send_log_size = s.last_send_log_size if s is not None else None
+            if last_send_log_path == log_path and last_send_log_size is not None and (log_size is None or log_size <= last_send_log_size):
+                return False
+        return True
+
     def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
@@ -3188,21 +3231,16 @@ class SessionManager:
                 return False
             log_path = s.log_path
         st = self.get_state(session_id)
-        if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
-            raise ValueError("invalid broker state response")
-        if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
-            return False
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             log_path = s.log_path
-        if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
-            return False
-        return True
+        return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -3211,14 +3249,19 @@ class SessionManager:
                 return False
             if s.pending_attachment:
                 return False
+            log_path = s.log_path
         st = self.get_state(session_id)
-        if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
-            raise ValueError("invalid broker state response")
-        if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
-            return False
-        if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
-            return False
-        return True
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            if s.commit_unknown_send:
+                return False
+            if s.pending_attachment:
+                return False
+            log_path = s.log_path
+        return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def _promote_queue_head_if_sendable(
         self,
@@ -5141,6 +5184,10 @@ class SessionManager:
                 sock = s.sock_path
             if not self._send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):
                 raise SessionNotReadyError("session is busy; wait before sending")
+            with self._lock:
+                s_current = self._sessions.get(session_id)
+                pre_send_log_path = s_current.log_path if s_current is not None else None
+                pre_send_log_size = self._log_size_or_none(pre_send_log_path)
 
             def raise_commit_unknown(message: str, cause: BaseException | None = None) -> None:
                 if queue_item_id is None:
@@ -5192,6 +5239,8 @@ class SessionManager:
                     if "busy" in resp:
                         s2.busy = bool(resp.get("busy"))
                     s2.queue_len = queue_len
+                    s2.last_send_log_path = pre_send_log_path
+                    s2.last_send_log_size = pre_send_log_size
             self._set_pending_attachment(session_id, False)
             if queue_item_id is None:
                 self._set_commit_unknown_send(session_id, None)
@@ -5252,10 +5301,9 @@ class SessionManager:
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2:
-                if "busy" not in resp or "queue_len" not in resp:
-                    raise ValueError("invalid broker state response")
-                s2.busy = bool(resp.get("busy"))
-                s2.queue_len = int(resp.get("queue_len"))
+                busy_val, queue_len = self._broker_busy_queue_from_state(resp)
+                s2.busy = busy_val
+                s2.queue_len = queue_len
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -5306,16 +5354,14 @@ class SessionManager:
                 raise SessionNotReadyError("resolve the unknown send before attaching a file")
             if not (s.sync_send_supported and s.key_write_errors_supported):
                 raise SessionNotReadyError("broker must be restarted before file attachments are available")
+            if s.pending_attachment:
+                return False
             if s.queue_sending_item_id is not None:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
             log_path = s.log_path
         st = self.get_state(session_id)
-        if not isinstance(st, dict) or "busy" not in st or "queue_len" not in st:
-            raise ValueError("invalid broker state response")
-        if bool(st.get("busy")) or int(st.get("queue_len")) > 0:
-            return False
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
             s = self._sessions.get(session_id)
@@ -5323,14 +5369,14 @@ class SessionManager:
                 raise KeyError("unknown session")
             if s.commit_unknown_send:
                 raise SessionNotReadyError("resolve the unknown send before attaching a file")
+            if s.pending_attachment:
+                return False
             if s.queue_sending_item_id is not None:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
             log_path = s.log_path
-        if isinstance(log_path, Path) and log_path.exists() and (not self.idle_from_log(session_id)):
-            return False
-        return True
+        return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         input_lock = self._input_lock_for_session(session_id)

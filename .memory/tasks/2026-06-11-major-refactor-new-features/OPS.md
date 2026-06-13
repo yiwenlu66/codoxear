@@ -2114,3 +2114,12 @@
   - Full local: `python3 -m pytest -q` -> `774 passed, 77 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `773 passed, 1 skipped, 77 subtests passed`.
   - Clean-room review loop found and drove fixes for malformed/non-dict/oversized record handling and bounded line buffering; final review -> no blockers.
+
+## 2026-06-14 07:46
+- Completed Pi/stale-broker-busy readiness tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_server_queue_persistence.py`, `tests/test_queue_sweep_idle_guard.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_sessions_pending_log_idle.py tests/test_broker_busy_state.py tests/test_idle_heuristics.py -q` -> `145 passed, 20 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `784 passed, 82 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `783 passed, 1 skipped, 82 subtests passed`.
+  - Clean-room review loop found and drove fixes for overbroad stale-busy override, log-path/size race, queue sidecar refresh, pending attachment, and malformed broker state; final review -> no blockers.

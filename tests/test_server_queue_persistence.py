@@ -941,6 +941,132 @@ class TestServerQueuePersistence(unittest.TestCase):
             if input_lock.acquire(blocking=False):
                 input_lock.release()
 
+    def test_send_readiness_allows_stale_broker_busy_when_log_is_idle(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.log_path = log_path
+            mgr._sessions[sid] = session
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            self.assertTrue(SessionManager._send_remote_ready(mgr, sid))
+
+    def test_confirmed_send_records_log_size_after_readiness(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.log_path = log_path
+            mgr._sessions[sid] = session
+            mgr._sock_call = lambda *_args, **_kwargs: {"queued": False, "queue_len": 0}  # type: ignore[method-assign]
+
+            def ready(_sid: str, *, allow_pending_attachment: bool = False) -> bool:
+                log_path.write_text(log_path.read_text(encoding="utf-8") + '{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"prior done"}]}}\n', encoding="utf-8")
+                return True
+
+            mgr._send_remote_ready = ready  # type: ignore[method-assign]
+            SessionManager.send(mgr, sid, "next")
+
+            self.assertEqual(mgr._sessions[sid].last_send_log_path, log_path)
+            self.assertEqual(mgr._sessions[sid].last_send_log_size, log_path.stat().st_size)
+
+    def test_send_readiness_rejects_broker_busy_until_log_advances_after_send(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.log_path = log_path
+            session.last_send_log_path = log_path
+            session.last_send_log_size = log_path.stat().st_size
+            mgr._sessions[sid] = session
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager._send_remote_ready(mgr, sid))
+            log_path.write_text(log_path.read_text(encoding="utf-8") + '{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            self.assertTrue(SessionManager._send_remote_ready(mgr, sid))
+
+    def test_send_readiness_ignores_last_send_size_from_different_log(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            old_log = root / "old.jsonl"
+            old_log.write_text("x" * 1000, encoding="utf-8")
+            new_log = root / "new.jsonl"
+            new_log.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.log_path = new_log
+            session.last_send_log_path = old_log
+            session.last_send_log_size = old_log.stat().st_size
+            mgr._sessions[sid] = session
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            self.assertTrue(SessionManager._send_remote_ready(mgr, sid))
+
+    def test_queue_readiness_refreshes_sidecar_before_stale_busy_override(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            log_path = root / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.sock_path = root / "s1.sock"
+            session.log_path = None
+            mgr._sessions[sid] = session
+            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
+                self.assertFalse(drain_queue)
+                mgr._sessions[sid].log_path = log_path
+
+            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
+
+            self.assertTrue(SessionManager._queue_remote_ready(mgr, sid, log_path=None))
+
+    def test_queue_readiness_refreshes_sidecar_after_state_probe(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            old_log = root / "old.jsonl"
+            old_log.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            new_log = root / "new.jsonl"
+            new_log.write_text('{"type":"message","message":{"role":"user","content":[{"type":"text","text":"active"}]}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.sock_path = root / "s1.sock"
+            session.log_path = old_log
+            mgr._sessions[sid] = session
+            session.sock_path.with_suffix(".json").write_text("{}\n", encoding="utf-8")
+            target = {"log": old_log}
+
+            def refresh(_sid: str, *, drain_queue: bool = True) -> None:
+                self.assertFalse(drain_queue)
+                mgr._sessions[sid].log_path = target["log"]
+
+            def get_state(_sid: str) -> dict[str, object]:
+                target["log"] = new_log
+                return {"busy": False, "queue_len": 0}
+
+            mgr.refresh_session_meta = refresh  # type: ignore[method-assign]
+            mgr.get_state = get_state  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: mgr._sessions[sid].log_path != new_log  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager._queue_remote_ready(mgr, sid, log_path=old_log))
+            self.assertEqual(mgr._sessions[sid].log_path, new_log)
+
     def test_send_rejects_remote_busy_before_socket_send(self) -> None:
         sid = "s1"
         mgr = self._mgr()
@@ -951,6 +1077,46 @@ class TestServerQueuePersistence(unittest.TestCase):
 
         with self.assertRaisesRegex(SessionNotReadyError, "session is busy"):
             SessionManager.send(mgr, sid, "stale direct prompt")
+
+    def test_readiness_rejects_malformed_broker_state(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        malformed = [
+            {"busy": False, "queue_len": False},
+            {"busy": False, "queue_len": -1},
+            {"busy": False, "queue_len": 0.5},
+            {"busy": False, "queue_len": "0"},
+            {"busy": 0, "queue_len": 0},
+        ]
+        for state in malformed:
+            with self.subTest(state=state):
+                mgr._sock_call = lambda *_args, state=state, **_kwargs: state  # type: ignore[method-assign]
+                with self.assertRaisesRegex(ValueError, "invalid broker state response"):
+                    SessionManager._send_remote_ready(mgr, sid)
+
+    def test_attachment_readiness_allows_stale_broker_busy_when_log_is_idle(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            session = _make_session(sid)
+            session.log_path = log_path
+            mgr._sessions[sid] = session
+            mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.idle_from_log = lambda _sid: True  # type: ignore[method-assign]
+
+            self.assertTrue(SessionManager.attachment_injection_ready(mgr, sid))
+
+    def test_attachment_readiness_rejects_pending_attachment(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        mgr._sessions[sid] = _make_session(sid)
+        mgr._sessions[sid].pending_attachment = True
+        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+
+        self.assertFalse(SessionManager.attachment_injection_ready(mgr, sid))
 
     def test_direct_send_rejects_when_local_queue_exists(self) -> None:
         sid = "s1"

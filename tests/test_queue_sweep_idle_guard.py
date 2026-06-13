@@ -83,7 +83,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         self.assertEqual(sent, [(sid, "queued")])
         self.assertNotIn(sid, mgr._queues)
 
-    def test_queue_sweep_requires_consecutive_idle_window(self) -> None:
+    def test_queue_sweep_keeps_idle_window_when_log_idle_overrides_stale_broker_busy(self) -> None:
         mgr = self._mgr()
         sid = "s1"
         lp = Path("/tmp/codoxear-test-rollout3.jsonl")
@@ -115,21 +115,54 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
         mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}
         with patch("codoxear.server.time.time", return_value=204.0):
             SessionManager._queue_sweep(mgr)
-        self.assertIsNone(mgr._sessions[sid].queue_idle_since)
-
-        mgr.get_state = lambda _sid: {"busy": False, "queue_len": 0}
-        with patch("codoxear.server.time.time", return_value=205.0):
-            SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [])
-        self.assertEqual(mgr._sessions[sid].queue_idle_since, 205.0)
+        self.assertEqual(mgr._sessions[sid].queue_idle_since, 200.0)
 
-        with patch("codoxear.server.time.time", return_value=205.0 + QUEUE_IDLE_GRACE_SECONDS - 0.1):
+        with patch("codoxear.server.time.time", return_value=200.0 + QUEUE_IDLE_GRACE_SECONDS - 0.1):
             SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [])
 
-        with patch("codoxear.server.time.time", return_value=205.0 + QUEUE_IDLE_GRACE_SECONDS + 0.1):
+        with patch("codoxear.server.time.time", return_value=200.0 + QUEUE_IDLE_GRACE_SECONDS + 0.1):
             SessionManager._queue_sweep(mgr)
         self.assertEqual(sent, [(sid, "queued")])
+
+    def test_queue_sweep_blocks_broker_busy_until_log_advances_after_send(self) -> None:
+        mgr = self._mgr()
+        sid = "s1"
+        lp = Path("/tmp/codoxear-test-rollout3b.jsonl")
+        lp.write_text('{"type":"event_msg","payload":{"type":"task_complete"},"timestamp":"2026-03-06T00:00:00Z"}\n', encoding="utf-8")
+        self.addCleanup(lambda: lp.unlink(missing_ok=True))
+        session = Session(
+            session_id=sid,
+            thread_id="t1",
+            broker_pid=1,
+            codex_pid=1,
+            agent_backend="codex",
+            owned=False,
+            start_ts=0.0,
+            cwd="/tmp",
+            log_path=lp,
+            sock_path=Path("/tmp/s1.sock"),
+            last_send_log_path=lp,
+            last_send_log_size=lp.stat().st_size,
+        )
+        mgr._sessions[sid] = session
+        mgr._queues[sid] = [_queue_item("q1", "queued")]
+        mgr.idle_from_log = lambda _sid: True
+        mgr.get_state = lambda _sid: {"busy": True, "queue_len": 0}
+        sent = []
+        mgr.send = lambda _sid, text, **_kwargs: sent.append((_sid, text)) or {"queued": False, "queue_len": 0}
+
+        with patch("codoxear.server.time.time", return_value=200.0):
+            SessionManager._queue_sweep(mgr)
+        self.assertEqual(sent, [])
+        self.assertIsNone(mgr._sessions[sid].queue_idle_since)
+
+        lp.write_text(lp.read_text(encoding="utf-8") + '{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+        with patch("codoxear.server.time.time", return_value=201.0):
+            SessionManager._queue_sweep(mgr)
+        self.assertEqual(sent, [])
+        self.assertEqual(mgr._sessions[sid].queue_idle_since, 201.0)
 
     def test_queue_sweep_pops_duplicate_texts_by_item_id(self) -> None:
         mgr = self._mgr()
