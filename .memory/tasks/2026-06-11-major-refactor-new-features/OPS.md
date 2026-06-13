@@ -1648,3 +1648,9 @@
 - Critic validation: `node --check codoxear/static/app.js` → passed; focused sidebar/session-polling tests → `13 passed`; full pytest → `673 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-sidebar-identical-render-review.md`.
 - Residual risks: source-order tests do not prove runtime DOM mutation behavior; full-session signature is conservative and may reduce the perf win.
+
+## 2026-06-13 10:05 — Sidebar identical-render browser evidence
+- Ran an isolated Docker browser check against `codoxear-sandbox-sidebar-18792` with mocked `/api/sessions` returning repeated 200 responses that changed non-sidebar data (`recent_cwds`/launch defaults) while preserving the rendered sidebar signature.
+- Playwright attached a `MutationObserver` to `.sessions` after the active session state was applied, waited for another 200 poll, and observed zero sidebar child-list mutations with identical sidebar HTML before/after.
+- Browser artifact: `/tmp/codoxear-sidebar-identical-browser.json`.
+- Stopped the isolated Docker sandbox after capture.

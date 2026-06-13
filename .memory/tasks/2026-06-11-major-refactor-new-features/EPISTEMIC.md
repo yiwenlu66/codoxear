@@ -1395,3 +1395,8 @@ Commitments:
 - Observation: Clean-room review found no stale-render or swipe-deferral blocker in the conservative signature guard.
 - Scoped claim: The guard safely skips sidebar DOM clear/rebuild only when the full rendered sidebar signature is unchanged and no deferred swipe refresh is being applied.
 - Remaining uncertainty: Runtime DOM mutation behavior is not yet browser-observed; source tests constrain order and invariants but not actual MutationObserver behavior.
+
+## 2026-06-13 10:05 — Browser observation supports sidebar no-op claim
+- Observation: Runtime browser evidence showed an identical-signature 200 `/api/sessions` poll produced no `.sessions` child-list mutations and preserved active card HTML.
+- Interpretation: This directly supports the intended no-op DOM behavior beyond source-order assertions, under a desktop mocked-session scenario.
+- Scope: Evidence covers desktop action layout with one active session and non-sidebar payload changes. It does not cover mobile open-swipe deferred refresh behavior in a browser, which remains constrained by source tests and prior swipe evidence.
