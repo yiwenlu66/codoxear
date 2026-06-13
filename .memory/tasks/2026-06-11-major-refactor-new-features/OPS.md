@@ -1634,3 +1634,11 @@
 - Critic validation: `node --check codoxear/static/app.js` → passed; focused chat tests → `37 passed`; full pytest rerun → `672 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-smooth-jump-rollback-review.md`.
 - Residual risk: one transient unrelated Pi model registry test failed once and passed on isolated/full rerun; no connection found to rollback.
+
+## 2026-06-13 09:58 — Sidebar identical-render skip
+- Implemented a conservative sidebar render signature for `/api/sessions` refreshes. If a 200 response produces the same GTD sidebar entries, selected id, and mobile/desktop action mode, the code skips `sessionsWrap.innerHTML = ""` and the card/header rebuild.
+- Preserved existing 304 fast path and open-swipe deferral: deferred swipe refreshes still apply after close, and a changed signature still triggers the existing full rebuild path.
+- Added source tests for `lastSidebarRenderSignature`, `sidebarRenderSignature()`, the `sidebarUnchanged` guard, and updated deferred-swipe ordering expectations.
+- Focused validation: `python3 -m pytest tests/test_session_polling_source.py tests/test_sidebar_gtd_source.py -q` → `13 passed`.
+- Full local validation: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.

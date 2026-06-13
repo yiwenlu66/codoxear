@@ -45,6 +45,17 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index('sessionsWrap.innerHTML = "";'))
         self.assertLess(block.index("if (notModified && !swipeRefreshDeferred) return latestSessions;"), block.index("newSessionDefaults ="))
 
+    def test_sessions_identical_sidebar_signature_skips_dom_rebuild(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('let lastSidebarRenderSignature = "";', source)
+        self.assertIn("function sidebarRenderSignature(entries, { selectedId = \"\", swipeActions = false } = {})", source)
+        block = source[source.index("async function refreshSessionsOnce()") : source.index("function appendEvent")]
+        self.assertIn("const sidebarSignature = sidebarRenderSignature(sidebarEntries, { selectedId: selected, swipeActions });", block)
+        self.assertIn("const sidebarUnchanged = !applyingDeferredSwipeRefresh && sessionsWrap.childElementCount > 0 && sidebarSignature === lastSidebarRenderSignature;", block)
+        self.assertIn("if (!sidebarUnchanged) {", block)
+        self.assertIn("lastSidebarRenderSignature = sidebarSignature;", block)
+        self.assertLess(block.index("const sidebarUnchanged"), block.index('sessionsWrap.innerHTML = "";'))
+
     def test_sessions_304_preserves_deferred_swipe_refresh(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         block = source[source.index("async function refreshSessionsOnce()") : source.index("function appendEvent")]
@@ -54,7 +65,8 @@ class TestSessionPollingSource(unittest.TestCase):
         self.assertIn("const sessions = latestSessions", block)
         self.assertIn("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;", block)
         self.assertLess(block.index("const sessions = latestSessions"), block.index("if (swipeActions && openSwipeSessionId"))
-        self.assertLess(block.index('sessionsWrap.innerHTML = "";'), block.index("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;"))
+        self.assertLess(block.index("const sidebarUnchanged"), block.index("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;"))
+        self.assertLess(block.index("if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;"), block.index('sessionsWrap.innerHTML = "";'))
 
     def test_closing_swipe_keeps_deferred_refresh_flag_until_render(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

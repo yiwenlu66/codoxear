@@ -381,6 +381,18 @@
         return entries;
       }
 
+      function sidebarRenderSignature(entries, { selectedId = "", swipeActions = false } = {}) {
+        return JSON.stringify({
+          selectedId: String(selectedId || ""),
+          swipeActions: Boolean(swipeActions),
+          entries: (Array.isArray(entries) ? entries : []).map((entry) => {
+            if (!entry || entry.type === "header") return ["header", entry && entry.key, entry && entry.label, Number(entry && entry.count) || 0];
+            const session = entry.session && typeof entry.session === "object" ? entry.session : {};
+            return ["session", session.session_id || "", session];
+          }),
+        });
+      }
+
       function renderSessionGroupHeader(entry) {
         const count = Number(entry.count) || 0;
         return el("div", {
@@ -1712,6 +1724,7 @@
          let openSwipeSessionId = null;
          let openSwipeTargetX = 0;
          let swipeRefreshDeferred = false;
+         let lastSidebarRenderSignature = "";
          let sessionsRefreshInFlight = null;
          let sessionsRefreshQueued = false;
 	        let sessionIndex = new Map(); // session_id -> session info
@@ -4180,9 +4193,13 @@
 		             swipeRefreshDeferred = true;
 		             return sessions;
 		           }
-		           sessionsWrap.innerHTML = "";
-		           openSwipeContent = null;
+              const sidebarSignature = sidebarRenderSignature(sidebarEntries, { selectedId: selected, swipeActions });
+              const sidebarUnchanged = !applyingDeferredSwipeRefresh && sessionsWrap.childElementCount > 0 && sidebarSignature === lastSidebarRenderSignature;
               if (applyingDeferredSwipeRefresh) swipeRefreshDeferred = false;
+              if (!sidebarUnchanged) {
+		             sessionsWrap.innerHTML = "";
+		             openSwipeContent = null;
+                lastSidebarRenderSignature = sidebarSignature;
 			          for (const entry of sidebarEntries) {
                     if (entry.type === "header") {
                       sessionsWrap.appendChild(renderSessionGroupHeader(entry));
@@ -4492,6 +4509,7 @@
 
 	             sessionsWrap.appendChild(card);
 	            }
+              }
 	          if (openSwipeSessionId && !sessionIndex.has(openSwipeSessionId)) {
 	            openSwipeSessionId = null;
 	            openSwipeTargetX = 0;

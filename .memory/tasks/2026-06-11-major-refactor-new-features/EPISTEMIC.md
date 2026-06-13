@@ -1383,3 +1383,10 @@ Commitments:
 - Observation: Clean-room rollback review confirmed the branch no longer contains active smooth Jump-to-latest behavior and chat code/tests match the pre-smooth validated state.
 - Scoped claim: The unsafe smooth-scroll polish is removed without rolling back storage-denial or file-picker candidate work.
 - Remaining uncertainty: Pi model registry test flaked once during critic validation; immediate rerun and full rerun passed, so this is tracked as unrelated possible suite flakiness rather than evidence against the rollback.
+
+## 2026-06-13 09:58 — Conservative sidebar DOM no-op guard
+- Observation: 304 fast path prevents DOM work only when the server payload is unchanged. A 200 response can still carry unchanged sidebar-render state and previously forced a full sidebar rebuild.
+- Mechanism: The sidebar DOM is a function of GTD entry order, selected id, mobile/desktop action mode, and session fields used by the cards. A conservative full-entry signature can safely identify identical render states without changing card/swipe implementation.
+- Intervention: Added `sidebarRenderSignature()` and skipped only the clear/rebuild block when the signature is unchanged and no deferred swipe refresh is being applied.
+- Evidence: Source tests pin guard placement relative to 304 and swipe deferral; full local and Docker suites passed.
+- Scoped claim: Some changed `/api/sessions` responses that do not alter sidebar-render state no longer rebuild sidebar DOM. This is not full keyed DOM patching; changed session rows still use the existing full rebuild path.
