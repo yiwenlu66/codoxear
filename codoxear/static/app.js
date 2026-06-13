@@ -10203,6 +10203,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             }
             return true;
           } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return false;
+            }
             setToast(`queue error: ${e && e.message ? e.message : "unknown error"}`);
             return false;
           } finally {
@@ -10252,6 +10256,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               else hideQueueViewer();
             }
           } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
             await refreshQueueViewer();
             setToast(`queue delete error: ${e && e.message ? e.message : "unknown error"}`);
           } finally {
@@ -10273,6 +10281,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             await refreshSessions();
             updateQueueBadge();
           } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
             setToast(`queue move error: ${e && e.message ? e.message : "unknown error"}`);
           } finally {
             queueMutationLocks.delete(key);
@@ -10304,6 +10316,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               await refreshSessions();
               updateQueueBadge();
             } catch (e) {
+              if (e && e.status === 401) {
+                handleAppAuthLoss();
+                return;
+              }
               setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
             } finally {
               queueMutationLocks.delete(itemKey);
@@ -10425,6 +10441,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             queueEmpty.textContent = "No queued messages.";
             renderQueueList();
           } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
             if (queueViewerSid && queueViewerSid !== sid) return;
             queueViewerSid = sid;
             queueViewerItems = [];
@@ -11162,6 +11182,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
             return true;
           } catch (e2) {
+            if (e2 && e2.status === 401) {
+              handleAppAuthLoss();
+              return false;
+            }
             const commitUnknown = Boolean(e2 && e2.obj && e2.obj.commit_unknown);
             if (commitUnknown) {
               setToast("send status unknown; check transcript before retrying");
@@ -11187,6 +11211,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   setToast("pending attachment state cleared");
                   void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
                 } catch (clearErr) {
+                  if (clearErr && clearErr.status === 401) {
+                    handleAppAuthLoss();
+                    return false;
+                  }
                   setToast(`clear pending attachment error: ${clearErr && clearErr.message ? clearErr.message : "unknown error"}`);
                 }
               }

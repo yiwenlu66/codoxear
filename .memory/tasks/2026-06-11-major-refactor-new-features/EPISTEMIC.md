@@ -1490,3 +1490,10 @@ Commitments:
 - Observation: Clean-room review confirmed the new VM coverage exercises the real open-mode helper and pins the intended freshness gate.
 - Scoped claim: The stale-vs-fresh auto-diff policy now has direct helper-level regression coverage.
 - Remaining uncertainty: Browser/API integration around file opening remains separately evidenced by prior file-picker work, not by this test-only tranche.
+
+## 2026-06-13 11:32 — Auth loss outranks send/queue local errors
+- Observation: Some send/queue paths treated API 401 as local send/queue failures, which could leave users in stale app UI after auth expiry.
+- Mechanism: Authentication is app-global; a 401 is not a retryable send/queue business error.
+- Intervention: Routed 401 through `handleAppAuthLoss()` before local commit-unknown/toast/status handling in send/queue flows.
+- Evidence: Source catch-order tests, browser forced-401 proof for send/enqueue, full local and Docker validation passed.
+- Scoped claim: User-initiated send and queue operations now return to login on observed 401 instead of presenting misleading local errors.

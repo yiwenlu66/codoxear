@@ -70,6 +70,50 @@ class TestAuthCleanupSource(unittest.TestCase):
         logout = app[logout_start:logout_end]
         self.assertIn("finally {\n            cleanupApp();\n            renderLogin(renderApp);\n          }", logout)
 
+    def test_send_and_queue_api_401_uses_global_auth_loss(self) -> None:
+        app = render_app_block()
+        send_start = app.index("async function sendText(")
+        send_end = app.index("form.onsubmit = async", send_start)
+        send_block = app[send_start:send_end]
+        send_catch = send_block[send_block.index("} catch (e2) {") : send_block.index("} finally {", send_block.index("} catch (e2) {"))]
+        self.assertLess(send_catch.index("if (e2 && e2.status === 401)"), send_catch.index("const commitUnknown = Boolean"))
+        self.assertLess(send_catch.index("if (e2 && e2.status === 401)"), send_catch.index("setToast(`send error:"))
+        self.assertIn("handleAppAuthLoss();\n              return false;", send_catch)
+        self.assertIn("if (clearErr && clearErr.status === 401)", send_block)
+
+        enqueue_start = app.index("async function enqueueComposerText(")
+        enqueue_end = app.index("async function deleteQueueItem", enqueue_start)
+        enqueue_block = app[enqueue_start:enqueue_end]
+        enqueue_catch = enqueue_block[enqueue_block.index("} catch (e) {") : enqueue_block.index("} finally {", enqueue_block.index("} catch (e) {"))]
+        self.assertLess(enqueue_catch.index("if (e && e.status === 401)"), enqueue_catch.index("setToast(`queue error:"))
+        self.assertIn("handleAppAuthLoss();\n              return false;", enqueue_catch)
+
+        delete_start = app.index("async function deleteQueueItem(")
+        delete_end = app.index("async function moveQueueItem", delete_start)
+        delete_block = app[delete_start:delete_end]
+        delete_catch = delete_block[delete_block.index("} catch (e) {") : delete_block.index("} finally {", delete_block.index("} catch (e) {"))]
+        self.assertLess(delete_catch.index("if (e && e.status === 401)"), delete_catch.index("await refreshQueueViewer();"))
+        self.assertLess(delete_catch.index("if (e && e.status === 401)"), delete_catch.index("setToast(`queue delete error:"))
+
+        move_start = app.index("async function moveQueueItem(")
+        move_end = app.index("function scheduleQueueUpdate", move_start)
+        move_block = app[move_start:move_end]
+        move_catch = move_block[move_block.index("} catch (e) {") : move_block.index("} finally {", move_block.index("} catch (e) {"))]
+        self.assertLess(move_catch.index("if (e && e.status === 401)"), move_catch.index("setToast(`queue move error:"))
+
+        update_start = app.index("function scheduleQueueUpdate(")
+        update_end = app.index("function renderQueueList", update_start)
+        update_block = app[update_start:update_end]
+        update_catch = update_block[update_block.index("} catch (e) {") : update_block.index("} finally {", update_block.index("} catch (e) {"))]
+        self.assertLess(update_catch.index("if (e && e.status === 401)"), update_catch.index("setToast(`queue update error:"))
+
+        refresh_start = app.index("async function refreshQueueViewer()")
+        refresh_end = app.index("function showQueueViewer()", refresh_start)
+        refresh_block = app[refresh_start:refresh_end]
+        refresh_catch = refresh_block[refresh_block.index("} catch (e) {") :]
+        self.assertLess(refresh_catch.index("if (e && e.status === 401)"), refresh_catch.index("Queue unavailable:"))
+        self.assertLess(refresh_catch.index("if (e && e.status === 401)"), refresh_catch.index("setToast(`queue load error:"))
+
     def test_async_poll_results_stop_after_cleanup(self) -> None:
         app = render_app_block()
         refresh_start = app.index("async function refreshSessions()")

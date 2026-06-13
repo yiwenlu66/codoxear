@@ -1767,3 +1767,12 @@
 - Critic validation: focused file-picker tests → `10 passed`; full pytest → `683 passed, 25 subtests passed`.
 - Review confirmed the VM test extracts the real `resolveFileOpenMode()` helper and covers the intended fresh/stale/explicit/preview/non-diffable branches.
 - Residual accepted risks: `inspectSessionFilePath()` and `isDiffableFileKind()` are stubbed, so the test pins open-mode policy rather than full DOM/API integration or file-kind classification.
+
+## 2026-06-13 11:32 — Send/queue 401 auth-loss consistency
+- Added explicit 401 handling to user-initiated send/queue API paths before local error UI: `sendText()`, pending-attachment clear inside send recovery, `enqueueComposerText()`, queue delete/move/update, and queue viewer load.
+- Behavior: 401 calls `handleAppAuthLoss()` and returns before commit-unknown handling, local send/queue toasts, queue unavailable UI, or queue mutation refresh/error flows. Non-auth behavior is unchanged.
+- Added source coverage in `test_auth_cleanup_source.py` for catch-ordering across send/enqueue/queue mutations/queue load.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_chat_transcript_runtime.py tests/test_send_ack.py tests/test_server_queue_persistence.py -q` → `92 passed, 15 subtests passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-send-queue-auth-18797`, stopped): forced `/send` and `/enqueue` to return 401; both rendered login, removed `.app`, and did not show local send/queue error UI. Artifact: `/tmp/codoxear-send-queue-auth-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
