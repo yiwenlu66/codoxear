@@ -1825,3 +1825,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_send_ack.py tests/test_attach_button_source.py -q` → `22 passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:13 — Logout stale closure guard
+- Re-review found no blocker in `handleAppAuthLoss()`, but identified the same stale-closure teardown mechanism in logout's async `finally`: a disposed logout closure could still call `renderLogin()` and clean up a fresh app.
+- Repaired logout finally with `if (appDisposed) return;` before cleanup/render-login.
+- Updated auth cleanup source coverage.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_login_accessibility_source.py tests/test_auth_cookie.py -q` → `14 passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

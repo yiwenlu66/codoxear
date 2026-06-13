@@ -72,7 +72,7 @@ class TestAuthCleanupSource(unittest.TestCase):
         logout_start = app.index('$("#logoutBtnSide").onclick = async () => {')
         logout_end = app.index("toggleSidebarBtn.onclick", logout_start)
         logout = app[logout_start:logout_end]
-        self.assertIn("finally {\n            cleanupApp();\n            renderLogin(renderApp);\n          }", logout)
+        self.assertIn("finally {\n            if (appDisposed) return;\n            cleanupApp();\n            renderLogin(renderApp);\n          }", logout)
 
     def test_send_and_queue_api_401_uses_global_auth_loss(self) -> None:
         app = render_app_block()

@@ -10720,6 +10720,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             console.error("logout failed", e);
           } finally {
+            if (appDisposed) return;
             cleanupApp();
             renderLogin(renderApp);
           }

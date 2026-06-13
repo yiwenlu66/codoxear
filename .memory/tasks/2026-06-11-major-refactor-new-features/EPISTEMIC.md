@@ -1533,3 +1533,9 @@ Commitments:
 - Intervention: Guarded `handleAppAuthLoss()` with `if (appDisposed) return;`.
 - Evidence: Source coverage and focused/full/Docker validation passed.
 - Scoped claim: Late 401s from disposed app instances no longer tear down a fresh app through stale auth-loss closures.
+
+## 2026-06-13 12:13 — Logout is also instance-local after disposal
+- Observation: Guarding `handleAppAuthLoss()` was insufficient because logout's async `finally` directly called `renderLogin()` outside that helper.
+- Intervention: Added an `appDisposed` guard before logout cleanup/render-login.
+- Evidence: Source coverage and focused/full/Docker validation passed.
+- Scoped claim: Late completion of a disposed logout request no longer tears down a fresh app after re-login.
