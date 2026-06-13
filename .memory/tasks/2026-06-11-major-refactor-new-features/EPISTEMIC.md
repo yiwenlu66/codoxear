@@ -1598,3 +1598,9 @@ Commitments:
 - Intervention: Client saves became sparse field patches; server enforces `remaining_injections <= 0 => enabled=false`; save responses sync visible state.
 - Evidence: Focused tests, browser POST-body proof, full local and Docker validation passed.
 - Scoped claim: In the tested edit paths, request-only Unattended edits no longer overwrite server-side budget decrements, and zero remaining injections cannot stay enabled through GET/POST semantics.
+
+## 2026-06-13 21:41 — Unattended zero-budget invariant now spans session list
+- Observation: `/api/sessions` used raw stored `enabled` and could contradict `/unattended` by advertising active Unattended mode with zero remaining injections.
+- Intervention: Session-list metadata now derives enabled from both stored enabled and positive remaining budget; malformed non-boolean API `enabled` values are rejected.
+- Evidence: New list-session counterexample test, focused tests, full local and Docker validation passed.
+- Scoped claim: The zero-budget disabled invariant now holds across dedicated config reads, config writes, and session-list metadata in tested paths.

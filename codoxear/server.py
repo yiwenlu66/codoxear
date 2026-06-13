@@ -3853,13 +3853,13 @@ class SessionManager:
             active_ids = set(self._sessions.keys())
             for s in self._sessions.values():
                 cfg0 = self._unattended.get(s.session_id)
-                unattended_enabled = bool(cfg0.get("enabled")) if isinstance(cfg0, dict) else False
                 unattended_cooldown_minutes = _clean_unattended_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else UNATTENDED_DEFAULT_IDLE_MINUTES
                 unattended_remaining_injections = (
                     _clean_unattended_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
                     if isinstance(cfg0, dict)
                     else UNATTENDED_DEFAULT_MAX_INJECTIONS
                 )
+                unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0 if isinstance(cfg0, dict) else False
                 alias = self._aliases.get(s.session_id)
                 if not isinstance(alias, str):
                     alias = ""
@@ -7125,8 +7125,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 enabled: bool | None
                 if enabled_raw is None:
                     enabled = None
+                elif isinstance(enabled_raw, bool):
+                    enabled = enabled_raw
                 else:
-                    enabled = bool(enabled_raw)
+                    _json_response(self, 400, {"error": "enabled must be a boolean"})
+                    return
 
                 if request_raw is not None and (not isinstance(request_raw, str)):
                     _json_response(self, 400, {"error": "request must be a string"})

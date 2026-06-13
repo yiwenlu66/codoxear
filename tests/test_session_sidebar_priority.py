@@ -51,6 +51,17 @@ def _session(*, sid: str, start_ts: float, last_chat_ts: float | None = None, ow
 
 
 class TestSessionSidebarPriority(unittest.TestCase):
+    def test_list_sessions_masks_stale_unattended_enabled_zero_remaining(self) -> None:
+        mgr = _make_manager()
+        s = _session(sid="target", start_ts=time.time())
+        mgr._sessions = {s.session_id: s}
+        mgr._unattended = {"target": {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 0}}
+
+        [item] = mgr.list_sessions()
+
+        self.assertFalse(item["unattended_enabled"])
+        self.assertEqual(item["unattended_remaining_injections"], 0)
+
     def test_list_sessions_sorts_by_final_priority_then_recency(self) -> None:
         mgr = _make_manager()
         now = time.time()
