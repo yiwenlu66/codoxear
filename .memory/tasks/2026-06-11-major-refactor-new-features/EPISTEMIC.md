@@ -1324,3 +1324,11 @@ Commitments:
 - Observation: Clean-room review found no blockers and confirmed no remaining direct localStorage references outside the helper.
 - Scoped claim: storage-denied/quota-error browsers should still reach the main Codoxear UI; only convenience preferences are degraded.
 - Remaining uncertainty: behavior with pre-existing live sessions under denied storage was not separately browser-tested, but source flow still selects from `/api/sessions` independently of storage persistence.
+
+## 2026-06-13 09:08 — File picker orientation without expanding UI surface
+- Observation: Local-first file search was already implemented, but the no-query picker still flattened changed, mentioned, and recently opened candidates into one undifferentiated list and refetched candidates on each open.
+- Mechanism: These candidate sources have different user meanings: changed files support review, mentioned files support transcript follow-through, and recently opened files support continuity. Labeling them can improve orientation without adding a new panel.
+- Intervention: Added source metadata, compact section dividers for no-query menus, and a short session/key-based cache. Search menus stay flat because source sections compete with score ordering during query refinement.
+- Evidence: VM test shows a second same-key refresh reuses cache while forced refresh refetches; focused/full/Docker suites pass.
+- Scoped claim: Reopening the file picker shortly after candidate discovery avoids redundant changed-file requests for the same loaded session state, and the no-query menu now communicates why candidates are present.
+- Remaining uncertainty: This tranche is validated structurally/with VM behavior, not by a real browser screenshot with populated fake sessions.

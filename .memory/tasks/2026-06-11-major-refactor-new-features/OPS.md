@@ -1563,3 +1563,12 @@
 - Critic validation: `node --check codoxear/static/app.js` → passed; focused pytest on requested storage/New Session/scrollback files → `35 passed`; full pytest → `668 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-storage-denial-review.md`.
 - Residual risks: browser evidence used no live sessions; denied/quota storage loses preference persistence by design; source regex would miss `window.localStorage.getItem(...)`, but grep found no direct calls outside helper.
+
+## 2026-06-13 09:08 — File picker candidate hierarchy and cache
+- Implemented file-picker candidate source metadata for changed files, chat-mentioned paths, and recently opened files.
+- Added compact no-query section headers: `Changed files`, `Mentioned in chat`, and `Recently opened`; active search results remain flat to preserve minimal search UX.
+- Added a short per-session candidate cache keyed by session id + remembered file list + currently loaded chat file refs. Cache TTL is 15s; forced refresh bypasses it; remembered-file updates invalidate it.
+- Added VM/source tests covering source metadata propagation, actual cache reuse/force-refresh behavior with mocked `/git/changed_files`, and section/cache source hooks.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` → `26 passed`.
+- Full local validation: `python3 -m pytest -q` → `671 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `670 passed, 1 skipped, 25 subtests passed`.
