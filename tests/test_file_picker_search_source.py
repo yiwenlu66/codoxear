@@ -60,6 +60,54 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_resolve_file_open_mode_cases() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    snippet = js_function(source, "resolveFileOpenMode")
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileEntryMap: new Map(),
+          fileCandidateGitStateFresh: false,
+          fileNonDiffMode: "file",
+          inspectedKind: "text",
+          inspectSessionFilePath: async () => {{ return {{ exists: true, kind: ctx.inspectedKind }}; }},
+          isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        (async () => {{
+          ctx.fileEntryMap.set("changed.py", {{ changed: true }});
+          ctx.fileCandidateGitStateFresh = true;
+          ctx.inspectedKind = "text";
+          const freshChanged = await ctx.resolveFileOpenMode("changed.py");
+          ctx.fileCandidateGitStateFresh = false;
+          const cachedChanged = await ctx.resolveFileOpenMode("changed.py");
+          const explicitCachedChanged = await ctx.resolveFileOpenMode("changed.py", {{ changed: true }});
+          ctx.fileCandidateGitStateFresh = true;
+          const freshExplicitUnchanged = await ctx.resolveFileOpenMode("changed.py", {{ changed: false }});
+          ctx.fileCandidateGitStateFresh = false;
+          ctx.fileNonDiffMode = "preview";
+          ctx.inspectedKind = "markdown";
+          const staleMarkdownPreview = await ctx.resolveFileOpenMode("README.md", {{ changed: true }});
+          ctx.fileCandidateGitStateFresh = true;
+          ctx.inspectedKind = "image";
+          const freshChangedNondiffable = await ctx.resolveFileOpenMode("image.png", {{ changed: true }});
+          process.stdout.write(JSON.stringify({{
+            freshChanged,
+            cachedChanged,
+            explicitCachedChanged,
+            freshExplicitUnchanged,
+            staleMarkdownPreview,
+            freshChangedNondiffable,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_file_candidate_cache_helpers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     names = [
@@ -214,6 +262,15 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertTrue(result["firstFresh"])
         self.assertFalse(result["secondFresh"])
         self.assertTrue(result["thirdFresh"])
+
+    def test_resolve_file_open_mode_requires_fresh_changed_metadata_for_diff(self) -> None:
+        result = eval_resolve_file_open_mode_cases()
+        self.assertEqual(result["freshChanged"], "diff")
+        self.assertEqual(result["cachedChanged"], "file")
+        self.assertEqual(result["explicitCachedChanged"], "file")
+        self.assertEqual(result["freshExplicitUnchanged"], "file")
+        self.assertEqual(result["staleMarkdownPreview"], "preview")
+        self.assertEqual(result["freshChangedNondiffable"], "file")
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

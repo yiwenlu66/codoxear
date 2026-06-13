@@ -1753,3 +1753,11 @@
 - Critic validation: focused lock/source test subset → `3 passed`; `tests/test_file_*.py` → `75 passed`; full pytest → `682 passed, 25 subtests passed`.
 - Review confirmed route critical section still covers read/version-check/write, waiters increment refcount before blocking, cleanup runs in `finally`, and exceptions are not suppressed.
 - Residual accepted risks: locking remains process-local and string-path based; external writers, other server processes, hardlink/path aliases are not serialized. This is pre-existing and outside the server-process per-path invariant.
+
+## 2026-06-13 11:18 — File picker auto-diff freshness coverage
+- Added execution-level VM coverage for `resolveFileOpenMode()`.
+- Cases pinned: fresh changed diffable file → `diff`; cached/stale changed metadata (including explicit changed flag) → normal `file`; fresh explicit unchanged → `file`; stale markdown with preview preference → `preview`; fresh changed non-diffable kind → `file`.
+- No product code changed; this closes the prior review gap that cached changed metadata was source-supported but not directly behavior-tested.
+- Focused validation: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py -q` → `10 passed`.
+- Full local validation: `python3 -m pytest -q` → `683 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `682 passed, 1 skipped, 25 subtests passed`.

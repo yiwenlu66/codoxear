@@ -1478,3 +1478,10 @@ Commitments:
 - Observation: Clean-room review found no blocker in refcounted file-write lock cleanup.
 - Scoped claim: Within one server process and one resolved string path, file write locks now serialize active saves without retaining historical path entries.
 - Remaining uncertainty: Cross-process/filesystem-alias serialization remains outside current guarantees.
+
+## 2026-06-13 11:18 — Auto-diff depends on fresh git evidence
+- Observation: Prior file-picker candidate work made cached changed metadata non-authoritative, but direct execution coverage for `resolveFileOpenMode()` was missing.
+- Mechanism: Only `fileCandidateGitStateFresh && candidateChanged` should authorize automatic diff mode.
+- Intervention: Added runtime tests over the helper with fresh/stale/explicit/non-diffable/preview cases.
+- Evidence: Focused/full/Docker validation passed.
+- Scoped claim: The intended auto-diff freshness policy is now pinned by execution tests; no behavior change was made.
