@@ -1504,3 +1504,9 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `42 passed`.
 - Full local validation: `python3 -m pytest -q` → `664 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `663 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 08:12 — File conflict final review
+- Clean-room critic review of the finalized file conflict recovery tranche found no blockers.
+- Critic validation: `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `42 passed`; `node --check codoxear/static/app.js` → passed; `python3 -m py_compile codoxear/server.py` → passed.
+- Review artifact: `/tmp/codoxear-file-conflict-recovery-review.md`.
+- Residual risks noted: per-file write lock is process-local, not OS-level CAS across multiple server processes or external writers; in-flight saves are not cancellable and may still commit server-side after user navigation/discard; `_FILE_WRITE_LOCKS` can grow by distinct path count over a long-lived server.

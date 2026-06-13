@@ -1276,3 +1276,8 @@ Commitments:
 - Intervention: Added per-file write locks around existing-file read/version-check/write. Client save operation ownership remains token/session/path based, with source tests covering the update path.
 - Evidence: Source tests pin lock placement and client ownership; focused/full local/Docker validations passed.
 - Scoped claim: Existing-file writes now serialize the stale-version comparison and atomic replace within this server process, preventing same-version concurrent blind overwrite races in the supported single-process server model.
+
+## 2026-06-13 08:12 — No-blocker scoped claim for file conflict recovery
+- Observation: Final clean-room review found no blockers after session/path conflict action binding, save-token cleanup ownership, and server compare/write locking.
+- Scoped claim: In the supported single-process server model, stale-version file saves now produce safe client recovery actions and server-side check/write serialization instead of blind overwrites or stale UI mutation.
+- Remaining uncertainty: The server lock does not protect against multiple Codoxear server processes or external writers after the server read but before replace; this is acceptable for current single-process architecture but should be documented if multi-process serving is introduced.
