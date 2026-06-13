@@ -42,7 +42,6 @@ class TestAuthCleanupSource(unittest.TestCase):
         for name in [
             "newSessionResumeLoadTimer",
             "voiceSaveTimer",
-            "unattendedSaveTimer",
             "liveAudioRetryTimer",
             "fileSearchTimer",
             "chatSearchAllTimer",
@@ -53,6 +52,10 @@ class TestAuthCleanupSource(unittest.TestCase):
         for name in ["chatSearchAllAbort", "olderLoadController", "fileOpenAbortController", "fileSearchAbort"]:
             self.assertIn(f"abortController({name});", cleanup)
             self.assertIn(f"{name} = null;", cleanup)
+        self.assertIn("unattendedSaveTimers.forEach((timer) => clearTimeout(timer));", cleanup)
+        self.assertIn("unattendedSaveTimers.clear();", cleanup)
+        self.assertIn("unattendedSavePending.clear();", cleanup)
+        self.assertIn("unattendedSaveInFlight.clear();", cleanup)
         self.assertIn("queueUpdateTimers.forEach((timer) => clearTimeout(timer));", cleanup)
         self.assertIn("queueUpdateTimers.clear();", cleanup)
         self.assertIn("queueMutationLocks.clear();", cleanup)

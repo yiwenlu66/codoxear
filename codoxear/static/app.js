@@ -1840,7 +1840,9 @@
               let unattendedCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
               let unattendedNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
               let unattendedNumberDirty = { cooldown_minutes: false, remaining_injections: false };
-              let unattendedSaveTimer = null;
+              const unattendedSaveTimers = new Map();
+              const unattendedSaveInFlight = new Map();
+              const unattendedSavePending = new Map();
               let editSessionId = null;
         let appDisposed = false;
         const appEventCleanups = [];
@@ -1876,8 +1878,10 @@
           newSessionResumeLoadTimer = null;
           if (voiceSaveTimer) clearTimeout(voiceSaveTimer);
           voiceSaveTimer = null;
-          if (unattendedSaveTimer) clearTimeout(unattendedSaveTimer);
-          unattendedSaveTimer = null;
+          unattendedSaveTimers.forEach((timer) => clearTimeout(timer));
+          unattendedSaveTimers.clear();
+          unattendedSavePending.clear();
+          unattendedSaveInFlight.clear();
           if (liveAudioRetryTimer) clearTimeout(liveAudioRetryTimer);
           liveAudioRetryTimer = null;
           if (fileSearchTimer) clearTimeout(fileSearchTimer);
@@ -5298,45 +5302,79 @@
              syncUnattendedNumberInputs();
              if (requestEl) requestEl.value = unattendedCfg.request;
            }
-			        function scheduleUnattendedSave() {
-			          if (!selected) return;
-			          const sid = selected;
-			          if (unattendedSaveTimer) clearTimeout(unattendedSaveTimer);
-			          unattendedSaveTimer = setTimeout(async () => {
-			            if (selected !== sid) return;
-               try {
-                 const saved = await api(`/api/sessions/${sid}/unattended`, {
-                   method: "POST",
-                   body: {
-                     enabled: unattendedCfg.enabled,
-                     request: unattendedCfg.request,
-                     cooldown_minutes: unattendedCfg.cooldown_minutes,
-                     remaining_injections: unattendedCfg.remaining_injections,
-                   },
-                 });
-                 if (!saved || typeof saved !== "object") throw new Error("invalid unattended response");
-                 if (typeof saved.enabled !== "boolean") throw new Error("invalid unattended.enabled");
-                 if (typeof saved.request !== "string") throw new Error("invalid unattended.request");
-                 if (!Number.isInteger(saved.cooldown_minutes) || saved.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
-                 if (!Number.isInteger(saved.remaining_injections) || saved.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
-                 unattendedCfg = {
-                   enabled: saved.enabled,
-                   request: saved.request,
-                   cooldown_minutes: saved.cooldown_minutes,
-                   remaining_injections: saved.remaining_injections,
-                 };
-                 finalizeUnattendedNumberDraft("cooldown_minutes");
-                 finalizeUnattendedNumberDraft("remaining_injections");
-                 syncUnattendedNumberDraftsFromCfg();
-                 await refreshSessions();
-               } catch (e) {
-                 console.error("save unattended mode failed", e);
-                 setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
-               }
-               updateUnattendedBtnState();
-             }, 450);
-           }
-			        function setUnattendedMenuExpanded(open) {
+			        function validateUnattendedPayload(data) {
+          if (!data || typeof data !== "object") throw new Error("invalid unattended response");
+          if (typeof data.enabled !== "boolean") throw new Error("invalid unattended.enabled");
+          if (typeof data.request !== "string") throw new Error("invalid unattended.request");
+          if (!Number.isInteger(data.cooldown_minutes) || data.cooldown_minutes < 1) throw new Error("invalid unattended.cooldown_minutes");
+          if (!Number.isInteger(data.remaining_injections) || data.remaining_injections < 0) throw new Error("invalid unattended.remaining_injections");
+        }
+
+        function unattendedSaveSnapshot() {
+          return {
+            enabled: Boolean(unattendedCfg.enabled),
+            request: String(unattendedCfg.request || ""),
+            cooldown_minutes: unattendedCfg.cooldown_minutes,
+            remaining_injections: unattendedCfg.remaining_injections,
+          };
+        }
+
+        function applySavedUnattendedCfg(saved, sid) {
+          if (selected !== sid) return;
+          if (unattendedMenuOpen && unattendedMenuSessionId !== sid) return;
+          unattendedCfg = {
+            enabled: saved.enabled,
+            request: saved.request,
+            cooldown_minutes: saved.cooldown_minutes,
+            remaining_injections: saved.remaining_injections,
+          };
+          finalizeUnattendedNumberDraft("cooldown_minutes");
+          finalizeUnattendedNumberDraft("remaining_injections");
+          syncUnattendedNumberDraftsFromCfg();
+        }
+
+        async function flushUnattendedSave(sid) {
+          if (!sid || appDisposed || unattendedSaveInFlight.get(sid)) return;
+          const snapshot = unattendedSavePending.get(sid);
+          if (!snapshot) return;
+          unattendedSavePending.delete(sid);
+          unattendedSaveInFlight.set(sid, true);
+          try {
+            const saved = await api(`/api/sessions/${sid}/unattended`, {
+              method: "POST",
+              body: snapshot,
+            });
+            validateUnattendedPayload(saved);
+            if (appDisposed) return;
+            if (!unattendedSavePending.has(sid)) applySavedUnattendedCfg(saved, sid);
+            await refreshSessions();
+          } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return;
+            }
+            console.error("save unattended mode failed", e);
+            if (!appDisposed && selected === sid) setToast(`unattended save error: ${e && e.message ? e.message : "unknown error"}`);
+          } finally {
+            unattendedSaveInFlight.delete(sid);
+            if (!appDisposed && unattendedSavePending.has(sid)) void flushUnattendedSave(sid);
+            else if (!appDisposed && selected === sid) updateUnattendedBtnState();
+          }
+        }
+
+        function scheduleUnattendedSave() {
+          if (!selected) return;
+          const sid = selected;
+          unattendedSavePending.set(sid, unattendedSaveSnapshot());
+          const existing = unattendedSaveTimers.get(sid);
+          if (existing) clearTimeout(existing);
+          const timer = setTimeout(() => {
+            unattendedSaveTimers.delete(sid);
+            void flushUnattendedSave(sid);
+          }, 450);
+          unattendedSaveTimers.set(sid, timer);
+        }
+        function setUnattendedMenuExpanded(open) {
           unattendedMenuOpen = Boolean(open);
           unattendedMenu.style.display = unattendedMenuOpen ? "block" : "none";
           unattendedBtn.setAttribute("aria-expanded", unattendedMenuOpen ? "true" : "false");

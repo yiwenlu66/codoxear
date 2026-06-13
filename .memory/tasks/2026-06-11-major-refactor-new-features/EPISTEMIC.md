@@ -1580,3 +1580,9 @@ Commitments:
 - Intervention: Moved open-token/session checks before Unattended config mutation and closed the popover immediately on selected-session change/removal.
 - Evidence: Source tests, stale-success browser proof, full local and Docker validation passed.
 - Scoped claim: Stale successful Unattended loads no longer overwrite a newer popover in the tested same-session reopen race, and session changes close old popovers before users can edit stale session-bound controls.
+
+## 2026-06-13 21:15 — Unattended saves are session-scoped
+- Observation: Load scoping alone was insufficient because POST saves were still global: pending edits could be dropped on session switch, and late save responses could mutate the wrong popover state.
+- Intervention: Converted save debounce/flush state to per-session queued snapshots and guarded response application by selected session/menu ownership.
+- Evidence: Source tests, browser save-switch proof, full local and Docker validation passed.
+- Scoped claim: A pending Unattended edit now saves to the session where it was made even if the user switches sessions before debounce fires, and the save response does not overwrite the newly selected session's popover state in the tested flow.

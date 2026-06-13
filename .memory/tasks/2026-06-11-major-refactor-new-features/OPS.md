@@ -1893,3 +1893,14 @@
 - Browser evidence for stale successful load against isolated Docker sandbox (`codoxear-sandbox-unattended-stale-success-18803`, stopped): first GET delayed, second open loaded `second open`, first GET later returned stale successful config; newer popover stayed open and fields remained from second load. Artifact: `/tmp/codoxear-unattended-stale-success-browser.json`.
 - Full local validation after repair: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:15 — Unattended save lifecycle scoping repair
+- Re-review found the remaining blocker: Unattended saves used one global debounce timer/config, so switching sessions could drop the previous session's pending edit or let a late POST response overwrite the current session's popover state.
+- Replaced scalar `unattendedSaveTimer` with per-session `unattendedSaveTimers`, `unattendedSavePending`, and `unattendedSaveInFlight` maps.
+- Saves now snapshot the current config at schedule time, post to the captured session even after switching away, serialize in-flight saves per session, apply saved config back to global/UI state only if the saved session is still selected/current, and continue flushing any newer pending snapshot after an in-flight save completes.
+- Cleanup now clears all unattended save timers/pending/in-flight maps.
+- Added source coverage for per-session save maps, snapshot body use, selected/menu-session application guards, in-flight serialization, and absence of the old selected-session drop guard in the debounce schedule path.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_auth_cleanup_source.py tests/test_overlay_accessibility_source.py -q` → `19 passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-save-18804`, stopped): edited session A, switched to session B before debounce fired, verified one POST to A with the edit and B's opened popover remained B's config. Artifact: `/tmp/codoxear-unattended-save-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `687 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `686 passed, 1 skipped, 25 subtests passed`.

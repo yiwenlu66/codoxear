@@ -64,6 +64,37 @@ class TestUnattendedModeSource(unittest.TestCase):
         self.assertIn("if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();", source)
         self.assertIn("if (unattendedMenuOpen) hideUnattendedMenu();", source)
 
+    def test_unattended_saves_are_session_scoped_and_queued(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("const unattendedSaveTimers = new Map();", source)
+        self.assertIn("const unattendedSaveInFlight = new Map();", source)
+        self.assertIn("const unattendedSavePending = new Map();", source)
+        self.assertIn("function unattendedSaveSnapshot()", source)
+        self.assertIn("function applySavedUnattendedCfg(saved, sid)", source)
+        apply_start = source.index("function applySavedUnattendedCfg(saved, sid)")
+        apply_end = source.index("async function flushUnattendedSave", apply_start)
+        apply_block = source[apply_start:apply_end]
+        self.assertIn("if (selected !== sid) return;", apply_block)
+        self.assertIn("if (unattendedMenuOpen && unattendedMenuSessionId !== sid) return;", apply_block)
+        self.assertIn("async function flushUnattendedSave(sid)", source)
+        flush_start = source.index("async function flushUnattendedSave(sid)")
+        flush_end = source.index("function scheduleUnattendedSave", flush_start)
+        flush_block = source[flush_start:flush_end]
+        self.assertIn("if (!sid || appDisposed || unattendedSaveInFlight.get(sid)) return;", flush_block)
+        self.assertIn("const snapshot = unattendedSavePending.get(sid);", flush_block)
+        self.assertIn("unattendedSavePending.delete(sid);", flush_block)
+        self.assertIn("unattendedSaveInFlight.set(sid, true);", flush_block)
+        self.assertIn("body: snapshot", flush_block)
+        self.assertIn("if (!unattendedSavePending.has(sid)) applySavedUnattendedCfg(saved, sid);", flush_block)
+        self.assertIn("if (!appDisposed && unattendedSavePending.has(sid)) void flushUnattendedSave(sid);", flush_block)
+        schedule_start = source.index("function scheduleUnattendedSave()")
+        schedule_end = source.index("function setUnattendedMenuExpanded", schedule_start)
+        schedule_block = source[schedule_start:schedule_end]
+        self.assertIn("unattendedSavePending.set(sid, unattendedSaveSnapshot());", schedule_block)
+        self.assertIn("const existing = unattendedSaveTimers.get(sid);", schedule_block)
+        self.assertIn("unattendedSaveTimers.set(sid, timer);", schedule_block)
+        self.assertNotIn("if (selected !== sid) return;", schedule_block)
+
     def test_app_uses_unattended_session_fields_without_harness_fallback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('s.unattended_enabled', source)
