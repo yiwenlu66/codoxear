@@ -1604,3 +1604,10 @@ Commitments:
 - Intervention: Session-list metadata now derives enabled from both stored enabled and positive remaining budget; malformed non-boolean API `enabled` values are rejected.
 - Evidence: New list-session counterexample test, focused tests, full local and Docker validation passed.
 - Scoped claim: The zero-budget disabled invariant now holds across dedicated config reads, config writes, and session-list metadata in tested paths.
+
+## 2026-06-13 21:49 — Sweep sends are serialized with Unattended config writes
+- Observation: A sweep snapshot could become stale before `send()`, allowing an old unattended prompt after the user disabled/zeroed the config.
+- Mechanism: `_unattended_sweep()` copied `_unattended` outside the send boundary; config writes were not serialized with the final send decision.
+- Intervention: Per-session input locks are re-entrant and now serialize `unattended_set()` with the sweep's final live recheck + send + decrement sequence.
+- Evidence: Race regression test, focused checks, full local and Docker validation passed.
+- Scoped claim: A disable/zero-budget config write that completes before the sweep's final send decision now prevents the unattended send in the tested interleaving; config writes arriving after that decision serialize behind the send boundary.

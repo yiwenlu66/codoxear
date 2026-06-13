@@ -2112,7 +2112,7 @@ class SessionManager:
         self._queue_store = QueueStore(QUEUE_PATH)
         self._pending_attachment_ids: set[str] = set()
         self._commit_unknown_sends: dict[str, dict[str, Any]] = {}
-        self._input_locks: dict[str, threading.Lock] = {}
+        self._input_locks: dict[str, threading.RLock] = {}
         self._recent_cwds: dict[str, float] = {}
         self._include_launch_attempts = True
         self._unattended_last_injected: dict[str, float] = {}
@@ -2532,7 +2532,7 @@ class SessionManager:
             self._queue_store = store
         return store
 
-    def _input_lock_for_session(self, session_id: str) -> threading.Lock:
+    def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         with self._lock:
             locks = getattr(self, "_input_locks", None)
             if not isinstance(locks, dict):
@@ -2540,7 +2540,7 @@ class SessionManager:
                 locks = self._input_locks
             lock = locks.get(session_id)
             if lock is None:
-                lock = threading.Lock()
+                lock = threading.RLock()
                 locks[session_id] = lock
             return lock
 
@@ -3207,28 +3207,30 @@ class SessionManager:
         cooldown_minutes: int | None = None,
         remaining_injections: int | None = None,
     ) -> dict[str, Any]:
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            cur0 = self._unattended.get(session_id)
-            cur = dict(cur0) if isinstance(cur0, dict) else {}
-            if enabled is not None:
-                cur["enabled"] = bool(enabled)
-            if request is not None:
-                cur["request"] = str(request)
-            if cooldown_minutes is not None:
-                cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cooldown_minutes)
-            if remaining_injections is not None:
-                cur["remaining_injections"] = _clean_unattended_remaining_injections(remaining_injections, allow_zero=True)
-            cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
-            cur["remaining_injections"] = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-            if int(cur["remaining_injections"]) <= 0:
-                cur["enabled"] = False
-            self._unattended[session_id] = cur
-            if not bool(cur.get("enabled")):
-                self._unattended_last_injected.pop(session_id, None)
-        self._save_unattended()
+        input_lock = self._input_lock_for_session(session_id)
+        with input_lock:
+            with self._lock:
+                s = self._sessions.get(session_id)
+                if not s:
+                    raise KeyError("unknown session")
+                cur0 = self._unattended.get(session_id)
+                cur = dict(cur0) if isinstance(cur0, dict) else {}
+                if enabled is not None:
+                    cur["enabled"] = bool(enabled)
+                if request is not None:
+                    cur["request"] = str(request)
+                if cooldown_minutes is not None:
+                    cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cooldown_minutes)
+                if remaining_injections is not None:
+                    cur["remaining_injections"] = _clean_unattended_remaining_injections(remaining_injections, allow_zero=True)
+                cur["cooldown_minutes"] = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
+                cur["remaining_injections"] = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+                if int(cur["remaining_injections"]) <= 0:
+                    cur["enabled"] = False
+                self._unattended[session_id] = cur
+                if not bool(cur.get("enabled")):
+                    self._unattended_last_injected.pop(session_id, None)
+            self._save_unattended()
         return self.unattended_get(session_id)
 
     def _session_display_name(self, session_id: str) -> str:
@@ -3351,10 +3353,6 @@ class SessionManager:
                         self._unattended_last_injected.pop(sid, None)
                     self._save_unattended()
                     continue
-                request = cfg.get("request")
-                if not isinstance(request, str):
-                    request = ""
-                prompt = _render_unattended_prompt(request)
                 lp = s.log_path
                 if lp is None or (not lp.exists()):
                     continue
@@ -3384,19 +3382,53 @@ class SessionManager:
                     scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
                 if scope_last and (now - scope_last) < cooldown_seconds:
                     continue
-                self.send(sid, prompt)
-                with self._lock:
-                    self._unattended_last_injected[sid] = now
-                    self._unattended_last_injected_scope[scope_key] = now
-                    cur0 = self._unattended.get(sid)
-                    cur = dict(cur0) if isinstance(cur0, dict) else {}
-                    next_remaining = max(0, remaining_injections - 1)
-                    cur["remaining_injections"] = next_remaining
-                    if next_remaining <= 0:
-                        cur["enabled"] = False
-                        self._unattended_last_injected.pop(sid, None)
-                    self._unattended[sid] = cur
-                self._save_unattended()
+                input_lock = self._input_lock_for_session(sid)
+                save_after_disable = False
+                prompt = ""
+                with input_lock:
+                    with self._lock:
+                        cur0 = self._unattended.get(sid)
+                        cur = dict(cur0) if isinstance(cur0, dict) else {}
+                        live_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+                        live_cooldown_minutes = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
+                        live_cooldown_seconds = float(live_cooldown_minutes * 60)
+                        live_last_inj = float(self._unattended_last_injected.get(sid, 0.0))
+                        live_scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
+                        if live_remaining <= 0:
+                            cur["enabled"] = False
+                            cur["remaining_injections"] = 0
+                            self._unattended[sid] = cur
+                            self._unattended_last_injected.pop(sid, None)
+                            save_after_disable = True
+                            live_enabled = False
+                        else:
+                            live_enabled = bool(cur.get("enabled"))
+                        if (
+                            live_enabled
+                            and not ((live_last_inj and (now - live_last_inj) < live_cooldown_seconds) or (live_scope_last and (now - live_scope_last) < live_cooldown_seconds))
+                        ):
+                            live_request = cur.get("request")
+                            if not isinstance(live_request, str):
+                                live_request = ""
+                            prompt = _render_unattended_prompt(live_request)
+                    if save_after_disable:
+                        self._save_unattended()
+                    if not prompt:
+                        continue
+                    self.send(sid, prompt)
+                    with self._lock:
+                        self._unattended_last_injected[sid] = now
+                        self._unattended_last_injected_scope[scope_key] = now
+                        cur0 = self._unattended.get(sid)
+                        cur = dict(cur0) if isinstance(cur0, dict) else {}
+                        current_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+                        next_remaining = max(0, current_remaining - 1)
+                        cur["remaining_injections"] = next_remaining
+                        if next_remaining <= 0:
+                            cur["enabled"] = False
+                            self._unattended_last_injected.pop(sid, None)
+                        self._unattended[sid] = cur
+                    self._save_unattended()
             except Exception as e:
                 sys.stderr.write(f"error: unattended session {sid} skipped: {type(e).__name__}: {e}\n")
                 traceback.print_exc(file=sys.stderr)

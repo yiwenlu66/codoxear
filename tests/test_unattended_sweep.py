@@ -84,6 +84,32 @@ class TestUnattendedSweep(unittest.TestCase):
             self.assertFalse(cfg["enabled"])
             self.assertEqual(cfg["remaining_injections"], 0)
 
+    def test_rechecks_config_after_idle_probe_before_send(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text("{}", encoding="utf-8")
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "old", "cooldown_minutes": 5, "remaining_injections": 10}
+            sent: list[tuple[str, str]] = []
+
+            def disable_during_idle_probe(sid: str) -> dict[str, int | bool]:
+                mgr._unattended[sid] = {"enabled": False, "request": "new", "cooldown_minutes": 5, "remaining_injections": 0}
+                return {"busy": False, "queue_len": 0}
+
+            mgr.get_state = disable_during_idle_probe  # type: ignore[method-assign]
+            mgr.send = lambda sid, text: (sent.append((sid, text)) or {"ok": True})  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0), patch(
+                "codoxear.server._last_chat_role_ts_from_tail", return_value=("assistant", 0.0)
+            ):
+                mgr._unattended_sweep()
+
+            self.assertEqual(sent, [])
+            self.assertFalse(mgr._unattended["sid-a"]["enabled"])
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 0)
+
     def test_dedupes_injection_for_same_thread(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

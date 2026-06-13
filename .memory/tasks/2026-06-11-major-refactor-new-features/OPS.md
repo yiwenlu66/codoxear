@@ -1934,3 +1934,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_unattended_sweep.py tests/test_session_sidebar_priority.py tests/test_auth_cleanup_source.py tests/test_overlay_accessibility_source.py tests/test_chat_scrollback_source.py -q` → `72 passed`.
 - Full local validation: `python3 -m pytest -q` → `691 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `690 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:49 — Unattended sweep recheck race repair
+- Final review found a server-side race: `_unattended_sweep()` snapshotted config, then could send an old prompt after a concurrent disable/zero-budget POST completed before `send()`.
+- Repaired by using re-entrant per-session input locks and serializing `unattended_set()` with sends. The sweep now performs a live config/budget/cooldown recheck under that per-session lock immediately before sending and decrements from the current live remaining count after send.
+- Added regression coverage: `test_rechecks_config_after_idle_probe_before_send` mutates config between the sweep snapshot and send eligibility probe; the sweep now sends nothing and preserves disabled/zero state.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_sweep.py tests/test_unattended_mode_source.py tests/test_unattended_store.py tests/test_unattended_input_source.py tests/test_session_sidebar_priority.py -q` → `43 passed`.
+- Full local validation: `python3 -m pytest -q` → `692 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `691 passed, 1 skipped, 25 subtests passed`.
