@@ -1685,3 +1685,8 @@
 - Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py -q` → `33 passed`.
 - Full local validation after repair: `python3 -m pytest -q` → `675 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `674 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 10:36 — Visible time chip re-review and mobile evidence
+- Re-review of repaired visible-time chip found no blockers.
+- Critic validation: `node --check codoxear/static/app.js`; focused chat tests → `33 passed`; full pytest → `675 passed, 25 subtests passed`.
+- Additional mobile browser evidence against isolated Docker sandbox (`codoxear-sandbox-timechip-mobile-18794`, stopped): at 390×844, chip appeared while scrolled up (`2026-06-10 · 18:50`), hid at live tail, did not overlap top chat nav rail, jump button, or composer. Artifact: `/tmp/codoxear-timechip-mobile-browser.json`.

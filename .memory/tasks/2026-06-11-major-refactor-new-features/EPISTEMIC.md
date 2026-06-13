@@ -1425,3 +1425,8 @@ Commitments:
 - Intervention: Added reset-time synchronization and mobile-specific bottom placement.
 - Evidence: Focused tests pin both repairs; full local and Docker suites passed.
 - Scoped claim: The visible-time chip now hides on transcript reset and is less likely to visually conflict with mobile top rails.
+
+## 2026-06-13 10:36 — Mobile time-chip layout evidence
+- Observation: Mobile browser geometry placed the chip at bottom-center (`y=736.8..762`) below top nav rail (`y=102..146`), left of jump button (`x=336..376`), and above composer (`y=776..844`).
+- Scoped claim: Under a 390×844 mobile viewport with a long mocked transcript, the time chip avoids the reviewed top-rail and bottom-control overlap risks.
+- Remaining uncertainty: This is synthetic transcript geometry, not a real phone/device pass.
