@@ -1883,3 +1883,13 @@
 - Additional browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-stale-18801`, stopped): delayed first `/unattended` load, closed/reopened, second load succeeded, then first failed; newer popover stayed open with second config and no stale error toast. Artifact: `/tmp/codoxear-unattended-stale-browser.json`.
 - Full local validation after repair: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:06 — Unattended stale success/session-change blocker repair
+- Re-review found blockers: token/session guard ran only after `loadUnattendedCfgForSelected()` had already mutated UI state, so stale successful loads could overwrite newer popover fields; session changes could leave an old popover visible before tail load completed.
+- Repaired by moving token/session validation into `loadUnattendedCfgForSelected({ sid, openToken })` before any config/UI mutation.
+- Repaired by hiding the Unattended popover immediately inside `openSession()` when selected session changes, and by explicitly hiding when the selected session disappears during session refresh.
+- Updated source coverage to assert mutation guards precede `unattendedCfg` assignment and that openSession/session-removal paths hide the popover.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_overlay_accessibility_source.py tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py -q` → `42 passed`.
+- Browser evidence for stale successful load against isolated Docker sandbox (`codoxear-sandbox-unattended-stale-success-18803`, stopped): first GET delayed, second open loaded `second open`, first GET later returned stale successful config; newer popover stayed open and fields remained from second load. Artifact: `/tmp/codoxear-unattended-stale-success-browser.json`.
+- Full local validation after repair: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.

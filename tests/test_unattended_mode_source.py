@@ -41,6 +41,12 @@ class TestUnattendedModeSource(unittest.TestCase):
         self.assertIn("unattendedMenuToken += 1;", source)
         self.assertIn("unattendedMenuSessionId = null;", source)
         self.assertIn("if (restoreFocus && wasOpen) restoreUnattendedFocus();", source)
+        self.assertIn("async function loadUnattendedCfgForSelected({ sid = selected, openToken = null } = {})", source)
+        self.assertIn("if (openToken !== null && (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || !unattendedMenuOpen)) return;", source)
+        load_start = source.index("async function loadUnattendedCfgForSelected")
+        load_end = source.index("function scheduleUnattendedSave", load_start)
+        load_block = source[load_start:load_end]
+        self.assertLess(load_block.index("if (openToken !== null"), load_block.index("unattendedCfg = {"))
         self.assertIn("async function showUnattendedMenu({ opener = null } = {})", source)
         self.assertIn("const sid = selected;", source)
         self.assertIn("const openToken = unattendedMenuToken + 1;", source)
@@ -55,6 +61,8 @@ class TestUnattendedModeSource(unittest.TestCase):
         self.assertIn('hideUnattendedMenu({ restoreFocus: true });', source)
         self.assertIn('addAppEvent(document, "keydown", onUnattendedKeydown, true);', source)
         self.assertIn("if (unattendedMenuOpen && (!selected || unattendedMenuSessionId !== selected)) hideUnattendedMenu();", source)
+        self.assertIn("if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();", source)
+        self.assertIn("if (unattendedMenuOpen) hideUnattendedMenu();", source)
 
     def test_app_uses_unattended_session_fields_without_harness_fallback(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

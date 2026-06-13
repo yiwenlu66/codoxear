@@ -4253,6 +4253,7 @@
 		          for (const s of sessions) sessionIndex.set(s.session_id, s);
               if (selected && !sessionIndex.has(selected)) {
                 selected = null;
+                if (unattendedMenuOpen) hideUnattendedMenu();
                 activeTranscriptState = "pending_bind";
                 activeLogPath = null;
                 activeThreadId = null;
@@ -4875,6 +4876,7 @@
           pollKickPending = false;
 
           selected = sessionId;
+          if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();
           storageSetItem("codexweb.selected", sessionId);
           setSessionHash(sessionId);
           activeTranscriptState = "pending_bind";
@@ -5270,11 +5272,12 @@
           syncSendButtonState();
           diagBtn.disabled = !selected;
         }
-           async function loadUnattendedCfgForSelected() {
-             if (!selected) return;
-             const sid = selected;
+           async function loadUnattendedCfgForSelected({ sid = selected, openToken = null } = {}) {
+             if (!sid) return;
+             sid = String(sid);
               const d = await api(`/api/sessions/${sid}/unattended`);
               if (selected !== sid) return;
+              if (openToken !== null && (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || !unattendedMenuOpen)) return;
               if (!d || typeof d !== "object") throw new Error("invalid unattended response");
               if (typeof d.enabled !== "boolean") throw new Error("invalid unattended.enabled");
               if (typeof d.request !== "string") throw new Error("invalid unattended.request");
@@ -5381,7 +5384,7 @@
           const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
           unattendedMenu.style.left = `${left}px`;
           try {
-            await loadUnattendedCfgForSelected();
+            await loadUnattendedCfgForSelected({ sid, openToken });
             if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && selected === sid) focusUnattendedInitialControl();
           } catch (e) {
             if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || selected !== sid) return;

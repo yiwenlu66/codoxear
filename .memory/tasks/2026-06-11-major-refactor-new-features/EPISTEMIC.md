@@ -1574,3 +1574,9 @@ Commitments:
 - Intervention: Added token/session ownership to the popover load path and close-on-session-change behavior.
 - Evidence: Source tests, stale-load browser proof, full local and Docker validation passed.
 - Scoped claim: Stale Unattended load failures no longer close/toast over a newer popover for the same tested session, and selected-session changes close the old popover instead of leaving it bound to stale session state.
+
+## 2026-06-13 21:06 — Unattended load ownership protects mutation, not just focus
+- Observation: Token checks after an async load are insufficient if the load function mutates global/UI state before returning.
+- Intervention: Moved open-token/session checks before Unattended config mutation and closed the popover immediately on selected-session change/removal.
+- Evidence: Source tests, stale-success browser proof, full local and Docker validation passed.
+- Scoped claim: Stale successful Unattended loads no longer overwrite a newer popover in the tested same-session reopen race, and session changes close old popovers before users can edit stale session-bound controls.
