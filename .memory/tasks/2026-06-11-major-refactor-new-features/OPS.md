@@ -1833,3 +1833,9 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_login_accessibility_source.py tests/test_auth_cookie.py -q` → `14 passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:17 — Stale auth/logout cleanup final review
+- Final clean-room review of stale auth/logout cleanup found no blockers.
+- Critic validation: `node --check codoxear/static/app.js`; focused auth/login tests → `14 passed`; full pytest → `684 passed, 25 subtests passed`.
+- Review searched direct `renderLogin(renderApp)` call sites and confirmed disposed guards exist in `handleAppAuthLoss()` and logout `finally`; boot `/api/me` 401 path is startup-only.
+- Residual accepted risk: some disposed async paths may still run harmless UI syncs against global IDs, but no found path can render login or clean up a fresh app.

@@ -1539,3 +1539,8 @@ Commitments:
 - Intervention: Added an `appDisposed` guard before logout cleanup/render-login.
 - Evidence: Source coverage and focused/full/Docker validation passed.
 - Scoped claim: Late completion of a disposed logout request no longer tears down a fresh app after re-login.
+
+## 2026-06-13 12:17 — Stale closure teardown class accepted
+- Observation: Final review found no remaining stale disposed closure path that can render login or clean up a fresh app.
+- Scoped claim: Auth/logout cleanup is now instance-local for the reviewed render-login paths.
+- Remaining uncertainty: Non-teardown UI syncs from disposed async paths may still occur transiently; they are lower severity and not shown to cause login/fresh-app teardown.
