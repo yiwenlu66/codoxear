@@ -1834,6 +1834,8 @@
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
               let unattendedMenuOpen = false;
+              let unattendedMenuToken = 0;
+              let unattendedMenuSessionId = null;
               let unattendedReturnFocusEl = null;
               let unattendedCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
               let unattendedNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
@@ -5261,7 +5263,7 @@
           chatSearchBtn.disabled = !selected;
           sessionContextBar.style.display = selected ? "flex" : "none";
           chatNavRail.style.display = selected ? "flex" : "none";
-          if (!selected && unattendedMenuOpen) hideUnattendedMenu();
+          if (unattendedMenuOpen && (!selected || unattendedMenuSessionId !== selected)) hideUnattendedMenu();
           if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
@@ -5355,6 +5357,8 @@
 
         function hideUnattendedMenu({ restoreFocus = false } = {}) {
           const wasOpen = unattendedMenuOpen;
+          unattendedMenuToken += 1;
+          unattendedMenuSessionId = null;
           setUnattendedMenuExpanded(false);
           if (restoreFocus && wasOpen) restoreUnattendedFocus();
           else unattendedReturnFocusEl = null;
@@ -5362,6 +5366,10 @@
 
         async function showUnattendedMenu({ opener = null } = {}) {
           if (!selected) return;
+          const sid = selected;
+          const openToken = unattendedMenuToken + 1;
+          unattendedMenuToken = openToken;
+          unattendedMenuSessionId = sid;
           unattendedReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           setUnattendedMenuExpanded(true);
           const rect = unattendedBtn.getBoundingClientRect();
@@ -5374,8 +5382,9 @@
           unattendedMenu.style.left = `${left}px`;
           try {
             await loadUnattendedCfgForSelected();
-            if (unattendedMenuOpen) focusUnattendedInitialControl();
+            if (unattendedMenuOpen && unattendedMenuToken === openToken && unattendedMenuSessionId === sid && selected === sid) focusUnattendedInitialControl();
           } catch (e) {
+            if (unattendedMenuToken !== openToken || unattendedMenuSessionId !== sid || selected !== sid) return;
             console.error("load unattended mode failed", e);
             setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
             hideUnattendedMenu({ restoreFocus: true });

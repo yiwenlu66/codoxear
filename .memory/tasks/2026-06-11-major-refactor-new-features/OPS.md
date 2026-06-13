@@ -1874,3 +1874,12 @@
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-a11y-18800`, stopped): keyboard Enter opened the popover, focus moved to `#unattendedEnabled` after config load, `aria-expanded` became true, Escape closed/restored focus to `#unattendedBtn`, outside click closed and reset `aria-expanded=false`. Artifact: `/tmp/codoxear-unattended-a11y-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 20:57 — Unattended stale-load/session guard repair
+- Clean-room review of the Unattended popover found no blockers, but identified two stale-state risks: an old failed `/unattended` load could close a newer popover, and programmatic selected-session changes could leave the popover bound to the old session.
+- Repaired with `unattendedMenuToken` and `unattendedMenuSessionId`. Hide invalidates pending loads; show records token/session; load success focuses only if token/session/selected still match; stale failures return without closing/toasting. `updateUnattendedBtnState()` now closes the popover if selected session changes or disappears.
+- Added source coverage for token/session guards.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_overlay_accessibility_source.py tests/test_auth_cleanup_source.py -q` → `18 passed`.
+- Additional browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-stale-18801`, stopped): delayed first `/unattended` load, closed/reopened, second load succeeded, then first failed; newer popover stayed open with second config and no stale error toast. Artifact: `/tmp/codoxear-unattended-stale-browser.json`.
+- Full local validation after repair: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.

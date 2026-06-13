@@ -1568,3 +1568,9 @@ Commitments:
 - Intervention: Added ARIA state, focus helpers, Escape handling, and deselection close without changing unattended server semantics.
 - Evidence: Source tests, browser keyboard proof, full local and Docker validation passed.
 - Scoped claim: Under the tested desktop browser flow, Unattended settings are keyboard-accessible and no longer leave focus outside a dialog-labelled popover.
+
+## 2026-06-13 20:57 — Unattended popover stale async work is scoped
+- Observation: Opening the Unattended popover starts an async config load; without an open token, an older failed load could affect a newer open instance.
+- Intervention: Added token/session ownership to the popover load path and close-on-session-change behavior.
+- Evidence: Source tests, stale-load browser proof, full local and Docker validation passed.
+- Scoped claim: Stale Unattended load failures no longer close/toast over a newer popover for the same tested session, and selected-session changes close the old popover instead of leaving it bound to stale session state.
