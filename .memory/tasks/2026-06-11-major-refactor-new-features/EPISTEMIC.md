@@ -1611,3 +1611,9 @@ Commitments:
 - Intervention: Per-session input locks are re-entrant and now serialize `unattended_set()` with the sweep's final live recheck + send + decrement sequence.
 - Evidence: Race regression test, focused checks, full local and Docker validation passed.
 - Scoped claim: A disable/zero-budget config write that completes before the sweep's final send decision now prevents the unattended send in the tested interleaving; config writes arriving after that decision serialize behind the send boundary.
+
+## 2026-06-13 21:55 — Cooldown uses latest assistant observation at send boundary
+- Observation: Config could be live-rechecked while the transcript tail/cooldown observation remained stale, allowing an unattended prompt too soon after a newer assistant turn.
+- Intervention: The sweep now re-reads the last chat role/timestamp under the per-session input lock immediately before send and aborts if the latest assistant turn is still within cooldown.
+- Evidence: Stale-tail regression test, focused checks, full local and Docker validation passed.
+- Scoped claim: In the tested interleaving, a new assistant turn observed after the sweep's initial scan but before the final send boundary prevents unattended injection and budget decrement.

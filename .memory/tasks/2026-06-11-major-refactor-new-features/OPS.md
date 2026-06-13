@@ -1942,3 +1942,12 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_sweep.py tests/test_unattended_mode_source.py tests/test_unattended_store.py tests/test_unattended_input_source.py tests/test_session_sidebar_priority.py -q` → `43 passed`.
 - Full local validation: `python3 -m pytest -q` → `692 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `691 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 21:55 — Unattended live-tail cooldown recheck repair
+- Re-review found the sweep still used a stale transcript tail observation: a new assistant turn could land after the initial tail scan but before send, violating the cooldown.
+- Repaired by re-reading the latest assistant tail under the per-session input lock immediately before send, after the live config/budget/cooldown recheck.
+- Also moved legacy zero-budget cleanup under the same per-session input lock to avoid racing a fresh re-enable.
+- Added `test_rechecks_latest_assistant_timestamp_before_send`, where the first tail scan passes cooldown and the second live-tail scan is inside the cooldown; the sweep now sends nothing and does not decrement budget.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_sweep.py tests/test_unattended_mode_source.py tests/test_unattended_store.py tests/test_unattended_input_source.py tests/test_session_sidebar_priority.py -q` → `44 passed`.
+- Full local validation: `python3 -m pytest -q` → `693 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `692 passed, 1 skipped, 25 subtests passed`.

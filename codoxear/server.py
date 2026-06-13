@@ -3344,14 +3344,21 @@ class SessionManager:
                 cooldown_seconds = float(cooldown_minutes * 60)
                 remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
                 if remaining_injections <= 0:
-                    with self._lock:
-                        cur0 = self._unattended.get(sid)
-                        cur = dict(cur0) if isinstance(cur0, dict) else {}
-                        cur["enabled"] = False
-                        cur["remaining_injections"] = 0
-                        self._unattended[sid] = cur
-                        self._unattended_last_injected.pop(sid, None)
-                    self._save_unattended()
+                    input_lock = self._input_lock_for_session(sid)
+                    save_zero_cleanup = False
+                    with input_lock:
+                        with self._lock:
+                            cur0 = self._unattended.get(sid)
+                            cur = dict(cur0) if isinstance(cur0, dict) else {}
+                            live_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
+                            if live_remaining <= 0:
+                                cur["enabled"] = False
+                                cur["remaining_injections"] = 0
+                                self._unattended[sid] = cur
+                                self._unattended_last_injected.pop(sid, None)
+                                save_zero_cleanup = True
+                    if save_zero_cleanup:
+                        self._save_unattended()
                     continue
                 lp = s.log_path
                 if lp is None or (not lp.exists()):
@@ -3414,6 +3421,14 @@ class SessionManager:
                     if save_after_disable:
                         self._save_unattended()
                     if not prompt:
+                        continue
+                    live_last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES)
+                    if not live_last:
+                        continue
+                    live_role, live_ts = live_last
+                    if live_role != "assistant":
+                        continue
+                    if (now - float(live_ts)) < live_cooldown_seconds:
                         continue
                     self.send(sid, prompt)
                     with self._lock:
