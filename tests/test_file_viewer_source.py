@@ -93,6 +93,106 @@ def eval_file_open_request_sequence() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_viewer_session_sync_race() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("let fileOpenRequestId = 0;")
+    end = source.index("function extToEditorLang", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        let resolveUnsaved;
+        const calls = [];
+        const ctx = {{
+          selected: "sid-b",
+          fileViewerSessionId: "sid-a",
+          activeFilePath: "old.txt",
+          activeFileLine: 1,
+          fileSearchSessionId: "sid-a",
+          fileCandidateList: ["candidate.txt"],
+          fileStatus: {{ textContent: "" }},
+          fileOpenAbortController: null,
+          isFileViewerOpen: () => true,
+          maybeHandleUnsavedFileChanges: () => new Promise((resolve) => {{ resolveUnsaved = resolve; }}),
+          disposePdfRender: () => calls.push("disposePdfRender"),
+          resetFileSearchState: () => calls.push("resetFileSearchState"),
+          refreshFileCandidates: async () => calls.push("refreshFileCandidates"),
+          preferredFileSelectionForSession: () => ({{ path: "preferred.txt", line: 9 }}),
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          openFilePathWithResolvedMode: async (...args) => calls.push(["openFilePathWithResolvedMode", ...args]),
+          resetFileViewerPanel: () => calls.push("resetFileViewerPanel"),
+          resetFilePickerInput: () => calls.push("resetFilePickerInput"),
+          renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
+          updateFileTouchToolbar: () => calls.push("updateFileTouchToolbar"),
+          normalizeLineNumber: (value) => value == null ? null : Number(value),
+          AbortController: class {{
+            constructor() {{ this.signal = {{ aborted: false }}; }}
+            abort() {{ this.signal.aborted = true; }}
+          }},
+          console,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { ensureCurrentFileViewerSession };\n")}, ctx);
+        const promise = ctx.__test.ensureCurrentFileViewerSession();
+        ctx.selected = "sid-c";
+        resolveUnsaved(true);
+        promise.then((result) => {{
+          process.stdout.write(JSON.stringify({{
+            result,
+            selected: ctx.selected,
+            fileViewerSessionId: ctx.fileViewerSessionId,
+            calls,
+            status: ctx.fileStatus.textContent,
+          }}));
+        }}).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def eval_resolved_open_current_guard() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    guard_start = source.index("async function openFilePathWithGuard")
+    guard_end = source.index("async function openDraftFilePathWithGuard", guard_start)
+    resolved_start = source.index("async function openFilePathWithResolvedMode")
+    resolved_end = source.index("async function openDraftFilePath", resolved_start)
+    snippet = source[guard_start:guard_end] + "\n" + source[resolved_start:resolved_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        let resolveMode;
+        let current = true;
+        const calls = [];
+        const ctx = {{
+          maybeHandleUnsavedFileChanges: async () => true,
+          setFilePath: (...args) => calls.push(["setFilePath", ...args]),
+          setFileViewMode: (...args) => calls.push(["setFileViewMode", ...args]),
+          renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
+          openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
+          currentFileSessionId: () => "sid-b",
+          resolveFileOpenMode: () => new Promise((resolve) => {{ resolveMode = resolve; }}),
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { openFilePathWithResolvedMode };\n")}, ctx);
+        const promise = ctx.__test.openFilePathWithResolvedMode("b-file.txt", {{ isCurrent: () => current }});
+        current = false;
+        resolveMode("file");
+        promise.then((result) => {{
+          process.stdout.write(JSON.stringify({{ result, calls }}));
+        }}).catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 class TestFileViewerSource(unittest.TestCase):
     def test_file_editor_disables_monaco_suggestions(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -102,6 +202,76 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('acceptSuggestionOnEnter: "off"', source)
         self.assertIn('tabCompletion: "off"', source)
         self.assertIn('wordBasedSuggestions: "off"', source)
+
+    def test_file_viewer_session_sync_aborts_after_selected_changes(self) -> None:
+        result = eval_file_viewer_session_sync_race()
+        self.assertFalse(result["result"])
+        self.assertEqual(result["selected"], "sid-c")
+        self.assertEqual(result["fileViewerSessionId"], "sid-a")
+        self.assertNotIn("refreshFileCandidates", result["calls"])
+        self.assertFalse(any(isinstance(call, list) and call[0] == "openFilePathWithResolvedMode" for call in result["calls"]))
+        self.assertEqual(result["status"], "")
+
+    def test_resolved_file_open_aborts_when_session_guard_turns_stale(self) -> None:
+        result = eval_resolved_open_current_guard()
+        self.assertFalse(result["result"])
+        self.assertEqual(result["calls"], [])
+
+    def test_file_viewer_session_sync_has_commit_guards(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("let fileViewerSessionSyncToken = 0;", source)
+        self.assertIn("let fileCandidateRequestSeq = 0;", source)
+        self.assertIn("function isFileViewerSelectionCurrent(sessionId, token = null)", source)
+        self.assertIn("function isFileViewerSessionCurrent(sessionId, token = null)", source)
+        ensure_start = source.index("async function ensureCurrentFileViewerSession()")
+        ensure_end = source.index("function extToEditorLang", ensure_start)
+        ensure_block = source[ensure_start:ensure_end]
+        self.assertIn("const syncToken = ++fileViewerSessionSyncToken;", ensure_block)
+        self.assertIn("if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;", ensure_block)
+        self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", ensure_block)
+        self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return false;", ensure_block)
+        self.assertIn("openFilePathWithResolvedMode(preferred.path, { line: preferred.line, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
+        self.assertIn("openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", ensure_block)
+        refresh_start = source.index("async function refreshFileCandidates(")
+        refresh_end = source.index("async function showFileViewer", refresh_start)
+        refresh_block = source[refresh_start:refresh_end]
+        self.assertIn("const requestSeq = ++fileCandidateRequestSeq;", refresh_block)
+        self.assertIn("const current = () => requestSeq === fileCandidateRequestSeq", refresh_block)
+        self.assertIn("if (!current()) return;", refresh_block)
+        show_start = source.index("async function showFileViewer")
+        show_end = source.index("function hideFileViewer", show_start)
+        show_block = source[show_start:show_end]
+        self.assertIn("const syncToken = ++fileViewerSessionSyncToken;", show_block)
+        self.assertIn("await refreshFileCandidates({ sessionId: sid, syncToken });", show_block)
+        self.assertIn("if (!isFileViewerSessionCurrent(sid, syncToken)) return;", show_block)
+        self.assertIn("openFilePathWithResolvedMode(preferred, { line: preferredLine, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) })", show_block)
+        self.assertIn("fileViewerSessionSyncToken += 1;\n          cancelPendingFileOpen();", source)
+        open_start = source.index("async function openSession(sessionId")
+        open_end = source.index("async function pollMessages", open_start)
+        open_block = source[open_start:open_end]
+        self.assertIn("const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !fileDirty);", open_block)
+        self.assertIn("void ensureCurrentFileViewerSession().catch((e) => console.error(\"file viewer session sync failed after selection\", e));", open_block)
+        self.assertLess(open_block.index("const fileViewerSyncStarted"), open_block.index("messages/tail"))
+        self.assertIn("if (isFileViewerOpen() && !fileDirty && !fileViewerSyncStarted) {", open_block)
+        self.assertIn("void ensureCurrentFileViewerSession();", open_block)
+        self.assertIn("void refreshFileCandidates({ sessionId }).catch((e) => console.error(\"file candidates refresh failed after transcript load\", e));", open_block)
+        resolved_start = source.index("async function openFilePathWithResolvedMode")
+        resolved_end = source.index("async function openDraftFilePath", resolved_start)
+        resolved_block = source[resolved_start:resolved_end]
+        self.assertIn("isCurrent = null", resolved_block)
+        self.assertIn("const sessionAtStart = currentFileSessionId();", resolved_block)
+        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart;", resolved_block)
+        self.assertIn("if (!currentGuard()) return false;", resolved_block)
+        self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });", resolved_block)
+        guard_start = source.index("async function openFilePathWithGuard")
+        guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
+        guard_block = source[guard_start:guard_end]
+        self.assertIn("isCurrent = null", guard_block)
+        self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
+        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart;", guard_block)
+        self.assertIn("if (!currentGuard()) return false;", guard_block)
+        self.assertIn("return Boolean(currentGuard());", guard_block)
 
     def test_file_open_requests_are_single_owner(self) -> None:
         result = eval_file_open_request_sequence()
@@ -210,7 +380,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const request = beginFileOpenRequest(nextPath, { line });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
-        self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null } = {})", source)
+        self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null } = {})", source)
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)

@@ -1951,3 +1951,15 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_sweep.py tests/test_unattended_mode_source.py tests/test_unattended_store.py tests/test_unattended_input_source.py tests/test_session_sidebar_priority.py -q` → `44 passed`.
 - Full local validation: `python3 -m pytest -q` → `693 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `692 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 22:42 — File-viewer selected-session coherence repair
+- Selected next bounded product target after Unattended: file viewer must not publish stale paths/candidates/content under a newly selected session.
+- Added `fileViewerSessionSyncToken` and `fileCandidateRequestSeq` guards. `ensureCurrentFileViewerSession()` and `showFileViewer()` now pass session/token guards across awaits; `refreshFileCandidates()` only publishes when its request sequence and session are current; closing the viewer invalidates pending sync.
+- Repaired selection-boundary gap: `openSession()` now starts file-viewer sync immediately after selected-session optimistic state changes, before `/messages/tail`; tail success separately refreshes candidates so transcript-mentioned file refs are included after transcript render.
+- Repaired stale resolved-open gap: `openFilePathWithResolvedMode()` and `openFilePathWithGuard()` capture the starting file-viewer session or use an explicit `isCurrent` guard and abort before `setFilePath()`/`openFilePath()` when stale.
+- Added runtime/source coverage in `tests/test_file_viewer_source.py`; updated file-picker VM harness for candidate request sequence/current-session stubs.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_chat_scrollback_source.py -q` → `55 passed`.
+- Browser evidence in isolated Docker sandbox: `/tmp/codoxear-fileviewer-boundary2-browser.json` delayed old-session changed-files, delayed/failing new-session transcript tail, and confirmed the viewer stayed on session B candidates without leaking stale session A file paths.
+- Full local validation: `python3 -m pytest -q` → `696 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `695 passed, 1 skipped, 25 subtests passed`.
+- Clean-room review after repairs: no blockers; residuals are dirty-file intentional bypass, deletion while viewer open, and post-tail mentioned candidates not auto-opening if early sync had no file.

@@ -133,6 +133,7 @@ def eval_file_candidate_cache_helpers() -> dict:
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
           fileCandidateCache: new Map(),
+          fileCandidateRequestSeq: 0,
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
           fileViewerSessionId: "s1",
           selected: "",
@@ -149,6 +150,9 @@ def eval_file_candidate_cache_helpers() -> dict:
           }}
           function renderFilePickerMenu() {{
             renderCount += 1;
+          }}
+          function isFileViewerSessionCurrent() {{
+            return true;
           }}
         ` + {json.dumps(snippet)}, ctx);
         (async () => {{

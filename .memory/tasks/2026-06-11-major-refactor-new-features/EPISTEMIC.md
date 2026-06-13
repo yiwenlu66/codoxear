@@ -1617,3 +1617,9 @@ Commitments:
 - Intervention: The sweep now re-reads the last chat role/timestamp under the per-session input lock immediately before send and aborts if the latest assistant turn is still within cooldown.
 - Evidence: Stale-tail regression test, focused checks, full local and Docker validation passed.
 - Scoped claim: In the tested interleaving, a new assistant turn observed after the sweep's initial scan but before the final send boundary prevents unattended injection and budget decrement.
+
+## 2026-06-13 22:42 — File-viewer async commits are session-owned
+- Observation: File viewer async work could outlive a selected-session switch and publish stale candidates/path changes, especially when transcript tail was delayed or a resolved file-open resumed after another session became current.
+- Intervention: Introduced session/token guards for file-viewer sync and candidate refresh, started sync at the selection boundary, and made resolved-open paths abort before UI mutation if their captured session is stale.
+- Evidence: Focused runtime/source tests, isolated browser boundary proof, full local and Docker validation, and clean-room review passed.
+- Scoped claim: For non-dirty file viewer state in the tested selection-switch paths, stale old-session candidate and resolved-open work no longer commits under the new selected session.

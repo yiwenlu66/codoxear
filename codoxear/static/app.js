@@ -4906,6 +4906,10 @@
           setStatus({ running: optimisticBusy, queueLen: optimisticQueueLen });
           setContext(s ? s.token || null : null);
           setTyping(optimisticBusy);
+          const fileViewerSyncStarted = Boolean(isFileViewerOpen() && !fileDirty);
+          if (fileViewerSyncStarted) {
+            void ensureCurrentFileViewerSession().catch((e) => console.error("file viewer session sync failed after selection", e));
+          }
 
           if (s && s.orphan_recovery) {
             renderPendingTranscriptSlot(sessionId);
@@ -4960,7 +4964,11 @@
           if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
           updateUnattendedBtnState();
-          if (isFileViewerOpen() && !fileDirty) void ensureCurrentFileViewerSession();
+          if (isFileViewerOpen() && !fileDirty && !fileViewerSyncStarted) {
+            void ensureCurrentFileViewerSession();
+          } else if (isFileViewerOpen() && !fileDirty && fileViewerSessionId === sessionId) {
+            void refreshFileCandidates({ sessionId }).catch((e) => console.error("file candidates refresh failed after transcript load", e));
+          }
           return data;
         }
 
@@ -7586,6 +7594,8 @@
         let fileUnsavedResolver = null;
         let fileOpenRequestId = 0;
         let fileOpenAbortController = null;
+        let fileViewerSessionSyncToken = 0;
+        let fileCandidateRequestSeq = 0;
         let fileTouchSelectMode = false;
         let fileTouchSelectAnchor = null;
         let fileTouchSelectHead = null;
@@ -7629,6 +7639,24 @@
             request.requestId === fileOpenRequestId &&
             request.sessionId === currentFileSessionId() &&
             request.path === String(activeFilePath || "").trim()
+          );
+        }
+
+        function isFileViewerSelectionCurrent(sessionId, token = null) {
+          const sid = String(sessionId || "").trim();
+          return Boolean(
+            sid &&
+              isFileViewerOpen() &&
+              String(selected || "").trim() === sid &&
+              (token === null || token === fileViewerSessionSyncToken)
+          );
+        }
+
+        function isFileViewerSessionCurrent(sessionId, token = null) {
+          const sid = String(sessionId || "").trim();
+          return Boolean(
+            isFileViewerSelectionCurrent(sid, token) &&
+              String(fileViewerSessionId || "").trim() === sid
           );
         }
 
@@ -7701,7 +7729,9 @@
           const sid = String(selected || "").trim();
           if (!sid) return false;
           if (fileViewerSessionId === sid) return true;
+          const syncToken = ++fileViewerSessionSyncToken;
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          if (!isFileViewerSelectionCurrent(sid, syncToken)) return false;
           cancelPendingFileOpen();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = sid;
@@ -7709,27 +7739,31 @@
             resetFileSearchState();
             fileSearchSessionId = fileViewerSessionId;
           }
-          await refreshFileCandidates();
+          await refreshFileCandidates({ sessionId: sid, syncToken });
+          if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           const preferred = preferredFileSelectionForSession(sid);
           if (preferred.path) {
             setFilePath(preferred.path, { line: preferred.line });
             try {
-              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line });
+              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
+              if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             }
-            return true;
+            return isFileViewerSessionCurrent(sid, syncToken);
           }
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
           if (first) {
             setFilePath(first, { line: null });
             try {
-              await openFilePathWithResolvedMode(first, { line: null });
+              await openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
+              if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             }
-            return true;
+            return isFileViewerSessionCurrent(sid, syncToken);
           }
+          if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           resetFileViewerPanel();
           activeFilePath = "";
           activeFileLine = null;
@@ -8835,13 +8869,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return false;
         }
 
-        async function openFilePathWithGuard(path, { line = null, mode = null } = {}) {
+        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null } = {}) {
+          const sessionAtStart = currentFileSessionId();
+          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart;
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          if (!currentGuard()) return false;
           setFilePath(path, { line });
           if (mode) setFileViewMode(mode);
           renderFilePickerMenu();
           await openFilePath(path, { line });
-          return true;
+          return Boolean(currentGuard());
         }
 
         async function openDraftFilePathWithGuard(path) {
@@ -8975,9 +9012,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return "file";
         }
 
-        async function openFilePathWithResolvedMode(path, { line = null, changed = null } = {}) {
+        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null } = {}) {
+          const sessionAtStart = currentFileSessionId();
+          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart;
           const mode = await resolveFileOpenMode(path, { changed });
-          return await openFilePathWithGuard(path, { line, mode });
+          if (!currentGuard()) return false;
+          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
@@ -9599,9 +9639,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return null;
         }
 
-        async function refreshFileCandidates({ force = false } = {}) {
-          const sid = fileViewerSessionId || selected || "";
+        async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
+          const sid = String(sessionId || fileViewerSessionId || selected || "").trim();
+          const requestSeq = ++fileCandidateRequestSeq;
+          const current = () => requestSeq === fileCandidateRequestSeq && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
           if (!sid) {
+            if (!current()) return;
             fileCandidateGitStateFresh = false;
             applyFileCandidateEntries([]);
             return;
@@ -9609,11 +9652,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const cacheKey = fileCandidateCacheKey(sid);
           const cached = fileCandidateCache.get(sid);
           if (!force && cached && cached.key === cacheKey && Date.now() - Number(cached.ts || 0) < FILE_CANDIDATE_CACHE_TTL_MS) {
+            if (!current()) return;
             fileCandidateGitStateFresh = false;
             applyFileCandidateEntries(cached.entries);
             renderFilePickerMenu();
             return;
           }
+          if (!current()) return;
           fileCandidateGitStateFresh = false;
           applyFileCandidateEntries([]);
           try {
@@ -9649,10 +9694,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               seen.add(entry.path);
               merged.push(entry);
             }
+            if (!current()) return;
             applyFileCandidateEntries(merged);
             fileCandidateGitStateFresh = true;
             rememberFileCandidateCache(sid, cacheKey);
           } catch (e) {}
+          if (!current()) return;
           renderFilePickerMenu();
         }
 
@@ -9665,21 +9712,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           afterModalVisibilityChanged();
           updateFileTouchToolbar();
           rememberActiveFileSelection(fileViewerSessionId);
-          fileViewerSessionId = selected || "";
+          const sid = String(selected || "").trim();
+          const syncToken = ++fileViewerSessionSyncToken;
+          fileViewerSessionId = sid;
           if (fileSearchSessionId !== fileViewerSessionId) {
             resetFileSearchState();
             fileSearchSessionId = fileViewerSessionId;
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
-          await refreshFileCandidates();
+          await refreshFileCandidates({ sessionId: sid, syncToken });
+          if (!isFileViewerSessionCurrent(sid, syncToken)) return;
           const explicitPath = String(path || "").trim();
           const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
           const preferred = explicitPath || preferredSelection.path;
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
           if (preferred) {
             setFilePath(preferred, { line: preferredLine });
-            void openFilePathWithResolvedMode(preferred, { line: preferredLine }).catch((e) => {
+            void openFilePathWithResolvedMode(preferred, { line: preferredLine, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+              if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
             return;
@@ -9687,7 +9738,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const first = fileCandidateList.length ? fileCandidateList[0] : "";
           if (first) {
             setFilePath(first, { line: null });
-            void openFilePathWithResolvedMode(first, { line: null }).catch((e) => {
+            void openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+              if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
             return;
@@ -9700,6 +9752,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
+          fileViewerSessionSyncToken += 1;
           cancelPendingFileOpen();
           hideFileUnsavedDialog();
           hideFilePasteDialog();
