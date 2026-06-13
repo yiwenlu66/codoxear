@@ -1561,3 +1561,10 @@ Commitments:
 - Observation: Clean-room review found no blocker after explicit opener capture.
 - Scoped claim: Queue/Help/Details now satisfy the same modal focus ownership pattern as the other repaired custom dialogs under tested desktop behavior.
 - Remaining uncertainty: Mobile hidden-sidebar opener restoration needs separate evidence if user-visible focus location after close becomes a requirement.
+
+## 2026-06-13 20:49 — Unattended popover becomes a keyboard disclosure
+- Observation: The Unattended settings surface had `role="dialog"` but did not synchronize button expanded state, own focus on open, or support Escape/focus return.
+- Mechanism: It is a lightweight popover rather than a modal; the correct invariant is disclosure-style ownership: explicit button state, focus enters after load, Escape/toggle restore to opener, passive dismissal just hides and clears state.
+- Intervention: Added ARIA state, focus helpers, Escape handling, and deselection close without changing unattended server semantics.
+- Evidence: Source tests, browser keyboard proof, full local and Docker validation passed.
+- Scoped claim: Under the tested desktop browser flow, Unattended settings are keyboard-accessible and no longer leave focus outside a dialog-labelled popover.

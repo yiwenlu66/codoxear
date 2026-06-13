@@ -1864,3 +1864,13 @@
 - Critic validation: `node --check codoxear/static/app.js`; focused overlay/queue/diagnostics tests → `9 passed`; broader `-k 'overlay or queue or diagnostics'` → `97 passed, 15 subtests passed`; full pytest → `685 passed, 25 subtests passed`; worktree clean.
 - Review confirmed aria-modal, close-button focus, explicit opener capture, button/backdrop/Escape shared close paths, and Details async load not affecting focus.
 - Residual accepted risks: browser evidence covers happy paths, not every opener-disabled/removed/offscreen case; mobile Help from closed sidebar may restore focus to a hidden opener and would need separate mobile evidence if visible-focus-on-mobile becomes a requirement.
+
+## 2026-06-13 20:49 — Unattended popover accessibility
+- Added `aria-controls="unattendedMenu"`, `aria-expanded`, and `aria-haspopup="dialog"` to the Unattended button.
+- Added open-state synchronization through `setUnattendedMenuExpanded()`, opener capture, Escape close with focus restoration, initial focus on `#unattendedEnabled` after config load, and close-on-deselection behavior.
+- Outside click and resize still close the lightweight popover without focus restoration; Escape/toggle/load-failure restore to the opener when appropriate.
+- Added source coverage in `tests/test_unattended_mode_source.py` for ARIA state, focus helpers, Escape handling, opener capture, and deselection close.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_unattended_mode_source.py tests/test_overlay_accessibility_source.py tests/test_auth_cleanup_source.py -q` → `18 passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-unattended-a11y-18800`, stopped): keyboard Enter opened the popover, focus moved to `#unattendedEnabled` after config load, `aria-expanded` became true, Escape closed/restored focus to `#unattendedBtn`, outside click closed and reset `aria-expanded=false`. Artifact: `/tmp/codoxear-unattended-a11y-browser.json`.
+- Full local validation: `python3 -m pytest -q` → `686 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `685 passed, 1 skipped, 25 subtests passed`.

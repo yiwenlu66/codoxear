@@ -1834,6 +1834,7 @@
                  let clickLoadT0 = 0;
                  let clickMetricPending = false;
               let unattendedMenuOpen = false;
+              let unattendedReturnFocusEl = null;
               let unattendedCfg = { enabled: false, request: "", cooldown_minutes: 5, remaining_injections: 10 };
               let unattendedNumberDraft = { cooldown_minutes: "5", remaining_injections: "10" };
               let unattendedNumberDirty = { cooldown_minutes: false, remaining_injections: false };
@@ -2035,6 +2036,9 @@
           class: "icon-btn",
           title: "Unattended mode",
           "aria-label": "Unattended mode",
+          "aria-controls": "unattendedMenu",
+          "aria-expanded": "false",
+          "aria-haspopup": "dialog",
           type: "button",
           html: iconSvg("unattended"),
         });
@@ -5257,6 +5261,7 @@
           chatSearchBtn.disabled = !selected;
           sessionContextBar.style.display = selected ? "flex" : "none";
           chatNavRail.style.display = selected ? "flex" : "none";
+          if (!selected && unattendedMenuOpen) hideUnattendedMenu();
           if (!selected && chatSearchOpen) closeChatSearch();
           updateChatNavButtons();
           syncQueueSubmitState();
@@ -5326,50 +5331,84 @@
                updateUnattendedBtnState();
              }, 450);
            }
-			        function hideUnattendedMenu() {
-			          unattendedMenuOpen = false;
-			          unattendedMenu.style.display = "none";
-			        }
-			        async function showUnattendedMenu() {
-			          if (!selected) return;
-			          unattendedMenuOpen = true;
-			          unattendedMenu.style.display = "block";
-			          const rect = unattendedBtn.getBoundingClientRect();
-			          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
-			          unattendedMenu.style.top = `${top}px`;
-			          unattendedMenu.style.left = "12px";
-			          unattendedMenu.style.right = "auto";
-             const w = unattendedMenu.offsetWidth || 320;
-             const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
-             unattendedMenu.style.left = `${left}px`;
-             try {
-               await loadUnattendedCfgForSelected();
-             } catch (e) {
-               console.error("load unattended mode failed", e);
-               setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
-               hideUnattendedMenu();
-             }
-           }
-			        function toggleUnattendedMenu() {
-			          if (unattendedMenuOpen) hideUnattendedMenu();
-			          else showUnattendedMenu();
-			        }
+			        function setUnattendedMenuExpanded(open) {
+          unattendedMenuOpen = Boolean(open);
+          unattendedMenu.style.display = unattendedMenuOpen ? "block" : "none";
+          unattendedBtn.setAttribute("aria-expanded", unattendedMenuOpen ? "true" : "false");
+        }
 
-			        unattendedBtn.onclick = (e) => {
-			          e.preventDefault();
-			          e.stopPropagation();
-		          toggleUnattendedMenu();
-		        };
-		        unattendedMenu.onclick = (e) => e.stopPropagation();
-		        const onDocClick = () => {
-		          if (unattendedMenuOpen) hideUnattendedMenu();
-		        };
-		        const onResize = () => {
-		          if (unattendedMenuOpen) hideUnattendedMenu();
-		        };
-			        addAppEvent(document, "click", onDocClick);
-			        addAppEvent(window, "resize", onResize);
-			        const unattendedEnabledEl = $("#unattendedEnabled");
+        function restoreUnattendedFocus() {
+          const target = unattendedReturnFocusEl;
+          unattendedReturnFocusEl = null;
+          restoreModalFocus(target, () => unattendedMenuOpen);
+        }
+
+        function focusUnattendedInitialControl() {
+          requestAnimationFrame(() => {
+            if (!unattendedMenuOpen) return;
+            const target = $("#unattendedEnabled") || unattendedMenu;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function hideUnattendedMenu({ restoreFocus = false } = {}) {
+          const wasOpen = unattendedMenuOpen;
+          setUnattendedMenuExpanded(false);
+          if (restoreFocus && wasOpen) restoreUnattendedFocus();
+          else unattendedReturnFocusEl = null;
+        }
+
+        async function showUnattendedMenu({ opener = null } = {}) {
+          if (!selected) return;
+          unattendedReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          setUnattendedMenuExpanded(true);
+          const rect = unattendedBtn.getBoundingClientRect();
+          const top = Math.min(window.innerHeight - 12, rect.bottom + 8);
+          unattendedMenu.style.top = `${top}px`;
+          unattendedMenu.style.left = "12px";
+          unattendedMenu.style.right = "auto";
+          const w = unattendedMenu.offsetWidth || 320;
+          const left = Math.max(12, Math.min(window.innerWidth - 12 - w, rect.right - w));
+          unattendedMenu.style.left = `${left}px`;
+          try {
+            await loadUnattendedCfgForSelected();
+            if (unattendedMenuOpen) focusUnattendedInitialControl();
+          } catch (e) {
+            console.error("load unattended mode failed", e);
+            setToast(`unattended load error: ${e && e.message ? e.message : "unknown error"}`);
+            hideUnattendedMenu({ restoreFocus: true });
+          }
+        }
+
+        function toggleUnattendedMenu({ opener = null } = {}) {
+          if (unattendedMenuOpen) hideUnattendedMenu({ restoreFocus: true });
+          else showUnattendedMenu({ opener });
+        }
+
+        unattendedBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleUnattendedMenu({ opener: e.currentTarget });
+        };
+        unattendedMenu.onclick = (e) => e.stopPropagation();
+        const onUnattendedKeydown = (e) => {
+          if (e.key !== "Escape" || !unattendedMenuOpen) return;
+          e.preventDefault();
+          e.stopPropagation();
+          hideUnattendedMenu({ restoreFocus: true });
+        };
+        const onDocClick = () => {
+          if (unattendedMenuOpen) hideUnattendedMenu();
+        };
+        const onResize = () => {
+          if (unattendedMenuOpen) hideUnattendedMenu();
+        };
+        addAppEvent(document, "keydown", onUnattendedKeydown, true);
+        addAppEvent(document, "click", onDocClick);
+        addAppEvent(window, "resize", onResize);
+        const unattendedEnabledEl = $("#unattendedEnabled");
 			        const unattendedCooldownEl = $("#unattendedCooldownMinutes");
 			        const unattendedRemainingEl = $("#unattendedRemainingInjections");
 			        const unattendedRequestEl = $("#unattendedRequest");
