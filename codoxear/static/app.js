@@ -8835,7 +8835,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function setFileEditMode(nextMode) {
-          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable;
+          fileEditMode = Boolean(nextMode) && fileViewMode === "file" && isTextFileKind(activeFileKind) && activeFileEditable && !isFileViewerSessionUnavailable();
           syncFileEditorReadOnly();
           updateFileEditButton();
         }
@@ -8854,10 +8854,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (resolve) resolve(choice);
         }
 
+        function syncFileUnsavedDialogMode() {
+          const unavailable = isFileViewerSessionUnavailable();
+          const title = fileUnsavedDialog.querySelector(".title");
+          const message = fileUnsavedDialog.querySelector(".muted");
+          const saveBtn = $("#fileUnsavedSaveBtn");
+          const discardBtn = $("#fileUnsavedDiscardBtn");
+          if (title) title.textContent = unavailable ? "Session unavailable" : "Unsaved changes";
+          if (message) message.textContent = unavailable ? "This session is no longer available. Copy your edits before closing; they cannot be saved here." : "Save this file before leaving the editor?";
+          if (saveBtn) {
+            saveBtn.hidden = unavailable;
+            saveBtn.disabled = unavailable;
+          }
+          if (discardBtn) discardBtn.textContent = unavailable ? "Close without saving" : "Discard";
+        }
+
         function promptFileUnsavedChoice() {
           if (!fileDirty) return Promise.resolve("discard");
           if (fileUnsavedResolver) return Promise.resolve("cancel");
           prepareModalOpen();
+          syncFileUnsavedDialogMode();
           fileUnsavedBackdrop.style.display = "block";
           fileUnsavedDialog.style.display = "flex";
           afterModalVisibilityChanged();
@@ -10222,7 +10238,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           void requestHideFileViewer();
         };
         fileBackdrop.onclick = () => void requestHideFileViewer();
-        $("#fileUnsavedSaveBtn").onclick = () => hideFileUnsavedDialog("save");
+        $("#fileUnsavedSaveBtn").onclick = () => {
+          if (blockUnavailableFileAction()) return;
+          hideFileUnsavedDialog("save");
+        };
         $("#fileUnsavedDiscardBtn").onclick = () => hideFileUnsavedDialog("discard");
         $("#fileUnsavedCancelBtn").onclick = () => hideFileUnsavedDialog("cancel");
         fileUnsavedBackdrop.onclick = () => hideFileUnsavedDialog("cancel");

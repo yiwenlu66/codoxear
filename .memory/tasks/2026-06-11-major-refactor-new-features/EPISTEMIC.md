@@ -1652,3 +1652,13 @@ Scoped claim:
 - Under the tested source paths, removed-session dirty edits remain copyable/read-only and session-scoped file actions no longer proceed against the unavailable session from the guarded UI flows.
 Remaining uncertainty:
 - Dirty Monaco preservation is validated by source/review, not browser e2e; live server-side writes already accepted before removal observation cannot be retroactively aborted.
+
+## 2026-06-14 00:52 - Dirty unavailable close prompt matches copy-only state
+Observation:
+- The prior unavailable dirty-file invariant blocked saves, but the close confirmation still offered a Save choice, making the UI contradict the copy-only state.
+Intervention:
+- `setFileEditMode(true)` now refuses unavailable sessions; the unsaved-close dialog switches to a session-unavailable message, hides/disables Save, and labels discard as close without saving. The Save button handler also rechecks unavailable state.
+Scoped claim:
+- In the guarded source paths, users closing a dirty unavailable viewer see a truthful copy-before-close prompt rather than a blocked Save option.
+Remaining uncertainty:
+- This is validated by source tests and review, not a behavioral browser proof of focus/visibility.

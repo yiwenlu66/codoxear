@@ -2003,3 +2003,10 @@
 - Full local validation: `python3 -m pytest -q` -> 700 passed, 25 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 699 passed, 1 skipped, 25 subtests passed.
 - Clean-room critic re-runs found and drove fixes for unsaved-dialog continuations, paste continuations, stale-selected tail-404 replay, draft-open continuation after inspect, and primitive open/resolve sharp edges. Final adversarial review: no blockers; focused source tests and diff check passed.
+
+## 2026-06-14 00:52 - Dirty unavailable close prompt truthfulness
+- Changed files: `codoxear/static/app.js`, `tests/test_file_viewer_source.py`.
+- Focused validation: `python3 -m py_compile tests/test_file_viewer_source.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_picker_search_source.py -q` -> 30 passed.
+- Clean-room review: no blockers; residual risk is source-level rather than DOM/browser proof for focus/click behavior.
+- Full local validation: `python3 -m pytest -q` -> 700 passed, 25 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 699 passed, 1 skipped, 25 subtests passed.
