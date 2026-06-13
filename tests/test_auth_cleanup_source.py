@@ -81,6 +81,12 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("handleAppAuthLoss();\n              return false;", send_catch)
         self.assertIn("if (clearErr && clearErr.status === 401)", send_block)
 
+        clear_start = app.index("async function clearCommitUnknownSend(")
+        clear_end = app.index("async function refreshSessions", clear_start)
+        clear_block = app[clear_start:clear_end]
+        clear_catch = clear_block[clear_block.index("} catch (e) {") :]
+        self.assertLess(clear_catch.index("if (e && e.status === 401)"), clear_catch.index("setToast(`clear unknown send error:"))
+
         enqueue_start = app.index("async function enqueueComposerText(")
         enqueue_end = app.index("async function deleteQueueItem", enqueue_start)
         enqueue_block = app[enqueue_start:enqueue_end]

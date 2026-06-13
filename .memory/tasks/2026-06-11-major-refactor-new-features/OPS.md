@@ -1776,3 +1776,11 @@
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-send-queue-auth-18797`, stopped): forced `/send` and `/enqueue` to return 401; both rendered login, removed `.app`, and did not show local send/queue error UI. Artifact: `/tmp/codoxear-send-queue-auth-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:38 — Clear unknown-send 401 repair
+- Clean-room review of send/queue auth handling found no blockers, but identified adjacent `clearCommitUnknownSend()` 401 handling as still local-toast based.
+- Repaired by routing 401 from `/commit_unknown_send/clear` and from its following `refreshSessions()` through `handleAppAuthLoss()` before the local clear-error toast.
+- Added source coverage to the send/queue auth-loss test.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_send_ack.py tests/test_server_queue_persistence.py -q` → `108 passed, 15 subtests passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

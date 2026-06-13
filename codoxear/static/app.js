@@ -4141,6 +4141,10 @@
             updateQueueBadge();
             return true;
           } catch (e) {
+            if (e && e.status === 401) {
+              handleAppAuthLoss();
+              return false;
+            }
             setToast(`clear unknown send error: ${e && e.message ? e.message : "unknown error"}`);
             return false;
           }

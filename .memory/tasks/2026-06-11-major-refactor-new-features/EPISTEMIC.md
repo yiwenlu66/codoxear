@@ -1497,3 +1497,9 @@ Commitments:
 - Intervention: Routed 401 through `handleAppAuthLoss()` before local commit-unknown/toast/status handling in send/queue flows.
 - Evidence: Source catch-order tests, browser forced-401 proof for send/enqueue, full local and Docker validation passed.
 - Scoped claim: User-initiated send and queue operations now return to login on observed 401 instead of presenting misleading local errors.
+
+## 2026-06-13 11:38 — Unknown-send marker clear follows auth-loss policy
+- Observation: Review found an adjacent send/queue action, clearing an unknown-send marker, still presented 401 as a local error.
+- Intervention: Added 401 auth-loss handling before local clear-error UI.
+- Evidence: Source coverage and focused/full/Docker validation passed.
+- Scoped claim: The send/queue auth-loss policy now includes the unknown-send recovery action that can be triggered from send/queue attempts.
