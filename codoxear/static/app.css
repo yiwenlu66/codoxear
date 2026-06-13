@@ -920,6 +920,16 @@
       .msg.transcript-error {
         color: #7f1d1d;
         box-shadow: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .transcriptRetryBtn.icon-btn.text-btn {
+        height: 28px;
+        min-width: 0;
+        padding: 0 9px;
+        background: rgba(255, 255, 255, 0.8);
       }
       .msg.assistant.warning {
         border-color: rgba(180, 83, 9, 0.28);

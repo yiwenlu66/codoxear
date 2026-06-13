@@ -4674,13 +4674,23 @@
           const reason = err && err.message ? ` ${err.message}` : "";
           const row = el("div", { class: "msg-row assistant typing-row transcript-error-row" });
           row.dataset.role = "assistant";
-          row.appendChild(
-            el("div", {
-              class: "msg assistant error transcript-error",
-              role: "alert",
-              text: `Could not load transcript.${reason} Select the conversation again to retry.`,
-            })
-          );
+          const bubble = el("div", { class: "msg assistant error transcript-error", role: "alert" });
+          bubble.appendChild(el("span", { class: "transcriptErrorText", text: `Could not load transcript.${reason}` }));
+          const retryBtn = el("button", {
+            class: "icon-btn text-btn transcriptRetryBtn",
+            type: "button",
+            text: "Retry",
+            title: "Retry loading this transcript",
+            "aria-label": "Retry loading this transcript",
+          });
+          retryBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (selected !== sessionId) return;
+            void openSession(sessionId, { useCache: true });
+          };
+          bubble.appendChild(retryBtn);
+          row.appendChild(bubble);
           chatInner.insertBefore(row, bottomSentinel);
           turnOpen = false;
           setTyping(false);

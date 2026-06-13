@@ -96,10 +96,14 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('class: "msg-row assistant typing-row transcript-error-row"', block)
         self.assertIn('role: "alert"', block)
         self.assertIn("Could not load transcript.", block)
-        self.assertIn("Select the conversation again to retry.", block)
+        self.assertIn('class: "icon-btn text-btn transcriptRetryBtn"', block)
+        self.assertIn('text: "Retry"', block)
+        self.assertIn("if (selected !== sessionId) return;", block)
+        self.assertIn("void openSession(sessionId, { useCache: true });", block)
         self.assertIn("setTyping(false);", block)
         self.assertIn("markClickFirstPaint();", block)
         self.assertIn(".msg.transcript-error", css)
+        self.assertIn(".transcriptRetryBtn.icon-btn.text-btn", css)
 
     def test_tail_poll_auth_loss_precedes_stale_generation_guards(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
