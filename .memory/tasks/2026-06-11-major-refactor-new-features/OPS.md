@@ -1589,3 +1589,11 @@
 - Critic validation: `node --check codoxear/static/app.js` → passed; focused file-picker tests → `27 passed`; full pytest → `672 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-file-picker-candidate-review.md`.
 - Residual risks: `fileCandidateGitStateFresh` can remain true during an open viewer if external git state changes; no direct behavioral test for `resolveFileOpenMode()` fresh/non-fresh branch; cache hits intentionally disable automatic diff mode.
+
+## 2026-06-13 09:20 — Jump-to-latest smooth scroll polish
+- Implemented opt-in smooth bottom scroll for user-triggered `Jump to latest` only.
+- `scrollToBottom({ behavior = "auto" })` now uses `chat.scrollTo({ top, behavior: "smooth" })` only when explicitly requested and reduced motion is not active; all live-tail/layout autoscroll callers keep instant scroll behavior.
+- Added source tests ensuring the smooth call appears only in `jumpToLatest()` and that the helper documents live-tail instant behavior.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `33 passed`.
+- Full local validation: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.

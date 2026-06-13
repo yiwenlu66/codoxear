@@ -3704,10 +3704,14 @@
           jumpBtn.style.display = renderedAtLiveTail && (autoScroll || isNearBottom()) ? "none" : "inline-flex";
         }
 
-        function scrollToBottom() {
+        function scrollToBottom({ behavior = "auto" } = {}) {
           // Avoid scrollIntoView() on mobile Safari, which can scroll the whole page when the
-          // on-screen keyboard opens/closes.
-          chat.scrollTop = chat.scrollHeight;
+          // on-screen keyboard opens/closes. Smooth behavior is opt-in for user-triggered jumps;
+          // live-tail autoscroll stays instant so near-bottom tracking remains deterministic.
+          const top = chat.scrollHeight;
+          const useSmooth = behavior === "smooth" && !prefersReducedMotion() && typeof chat.scrollTo === "function";
+          if (useSmooth) chat.scrollTo({ top, behavior: "smooth" });
+          else chat.scrollTop = top;
           lastScrollTop = chat.scrollTop;
         }
 
@@ -5012,7 +5016,7 @@
           }
           if (selected !== sid) return;
           requestAnimationFrame(() => {
-            scrollToBottom();
+            scrollToBottom({ behavior: "smooth" });
             syncJumpButton();
           });
           kickPoll(0);

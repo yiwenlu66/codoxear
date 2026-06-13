@@ -14,7 +14,20 @@ class TestChatScrollbackSource(unittest.TestCase):
         block = source[start:end]
         self.assertIn("invalidateOlderLoad();", block)
         self.assertIn("await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });", block)
+        self.assertIn('scrollToBottom({ behavior: "smooth" });', block)
         self.assertIn("kickPoll(0);", block)
+
+    def test_scroll_to_bottom_smooth_is_user_jump_only(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        start = source.index("function scrollToBottom(")
+        end = source.index("function ymd(d)", start)
+        block = source[start:end]
+        self.assertIn('function scrollToBottom({ behavior = "auto" } = {})', block)
+        self.assertIn('behavior === "smooth" && !prefersReducedMotion() && typeof chat.scrollTo === "function"', block)
+        self.assertIn('chat.scrollTo({ top, behavior: "smooth" });', block)
+        self.assertIn("else chat.scrollTop = top;", block)
+        self.assertIn("live-tail autoscroll stays instant", block)
+        self.assertEqual(source.count('scrollToBottom({ behavior: "smooth" });'), 1)
 
     def test_open_session_is_single_render_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

@@ -1344,3 +1344,10 @@ Commitments:
 - Observation: Clean-room re-review found no blockers after score-first ordering and non-authoritative cache repair.
 - Scoped claim: File-picker candidate sections and short cache improve orientation/reopen behavior without making cached candidate metadata authoritative for file open content or diff-mode selection.
 - Remaining uncertainty: A real populated browser screenshot was not captured; evidence is source/VM behavior plus full local/Docker suites and adversarial review.
+
+## 2026-06-13 09:20 — Smooth scroll must not perturb live-tail tracking
+- Observation: Recon noted raw bottom jumps are visually jarring, but smooth scrolling everywhere risks perturbing `isNearBottom()`/auto-scroll logic during live appends.
+- Mechanism: User-triggered `Jump to latest` is a navigation action and can be smooth; live-tail autoscroll is a control-loop correction and should remain immediate.
+- Intervention: Made smooth bottom scrolling opt-in and used it only in `jumpToLatest()`, with reduced-motion fallback.
+- Evidence: Source tests pin a single smooth bottom caller; full local/Docker suites passed.
+- Scoped claim: Jump-to-latest is less abrupt for users who allow motion, while live-tail autoscroll semantics remain instant.
