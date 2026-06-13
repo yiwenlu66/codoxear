@@ -4675,12 +4675,12 @@
           }
         }
 
-        function renderSessionTail(events) {
+        function renderSessionTail(events, { scrollBehavior = "auto" } = {}) {
           renderTranscript(events, { preserveScroll: false });
           markClickFirstPaint();
           requestAnimationFrame(() => {
-            scrollToBottom();
-            requestAnimationFrame(() => scrollToBottom());
+            scrollToBottom({ behavior: scrollBehavior });
+            if (scrollBehavior !== "smooth" || prefersReducedMotion()) requestAnimationFrame(() => scrollToBottom());
           });
         }
 
@@ -4740,7 +4740,7 @@
           syncJumpButton();
         }
 
-        function applyCachedTail(sessionId, cache, sessionMeta) {
+        function applyCachedTail(sessionId, cache, sessionMeta, { scrollBehavior = "auto" } = {}) {
           updateSessionTranscriptSlot(sessionId, {
             transcript_state: "bound",
             thread_id: cache.threadId || (sessionMeta ? sessionMeta.thread_id : null),
@@ -4749,7 +4749,7 @@
           syncActiveTranscriptSlot(sessionId);
           liveCursor = cache.liveCursor || null;
           setOlderState({ hasMore: Boolean(cache.hasOlder), isLoading: false });
-          renderSessionTail(cache.events);
+          renderSessionTail(cache.events, { scrollBehavior });
           const metaBusy = Boolean(sessionMeta && sessionMeta.busy);
           const cachedBusy = Boolean(cache.busy) || metaBusy;
           const queueLen =
@@ -4764,7 +4764,7 @@
           setTyping(cachedBusy);
         }
 
-        async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false } = {}) {
+        async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, tailScrollBehavior = "auto" } = {}) {
           pollGen += 1;
           const myGen = pollGen;
           if (pollTimer) {
@@ -4817,7 +4817,7 @@
           const cachedTail = s ? sessionTailCache.get(sessionId) : null;
           let displayedCachedTail = false;
           if (useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
-            applyCachedTail(sessionId, cachedTail, s);
+            applyCachedTail(sessionId, cachedTail, s, { scrollBehavior: tailScrollBehavior });
             displayedCachedTail = true;
           }
           if (!displayedCachedTail) renderTranscriptLoading(sessionId);
@@ -4832,7 +4832,7 @@
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
             if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
-              applyCachedTail(sessionId, cachedTail, s);
+              applyCachedTail(sessionId, cachedTail, s, { scrollBehavior: tailScrollBehavior });
               displayedCachedTail = true;
             }
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
@@ -4846,7 +4846,7 @@
             if (slotChange.current.state !== "failed") kickPoll(900);
             return data;
           }
-          if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : []);
+          if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : [], { scrollBehavior: tailScrollBehavior });
           else renderPendingTranscriptSlot(sessionId);
           applySessionRuntimeFromTail(sessionId, data);
 
@@ -5009,14 +5009,13 @@
           invalidateOlderLoad();
           autoScroll = true;
           try {
-            await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true });
+            await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true, tailScrollBehavior: "smooth" });
           } catch (e) {
             if (selected !== sid) return;
             setToast(`jump error: ${e && e.message ? e.message : "unknown error"}`);
           }
           if (selected !== sid) return;
           requestAnimationFrame(() => {
-            scrollToBottom({ behavior: "smooth" });
             syncJumpButton();
           });
           kickPoll(0);

@@ -1597,3 +1597,10 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `33 passed`.
 - Full local validation: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:31 — Jump-to-latest smooth-scroll repair
+- Clean-room review of initial smooth Jump-to-latest commit found a blocker: `openSession()`/`renderSessionTail()` scheduled instant bottom scrolls before the post-load smooth scroll, likely neutralizing visible smooth motion.
+- Repaired by making tail rendering accept `scrollBehavior`, passing `tailScrollBehavior: "smooth"` from `jumpToLatest()`, and removing the post-open smooth scroll. Live-tail/default paths still use instant scroll.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `33 passed`.
+- Full local validation after repair: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.

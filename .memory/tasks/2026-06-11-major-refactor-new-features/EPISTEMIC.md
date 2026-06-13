@@ -1351,3 +1351,10 @@ Commitments:
 - Intervention: Made smooth bottom scrolling opt-in and used it only in `jumpToLatest()`, with reduced-motion fallback.
 - Evidence: Source tests pin a single smooth bottom caller; full local/Docker suites passed.
 - Scoped claim: Jump-to-latest is less abrupt for users who allow motion, while live-tail autoscroll semantics remain instant.
+
+## 2026-06-13 09:31 — Smooth jump must be attached to the render that scrolls
+- Observation: Review found the first smooth-scroll implementation was probably ineffective because authoritative tail render had already queued instant scrolls before `jumpToLatest()` queued a smooth scroll.
+- Revised mechanism: The scroll behavior belongs to the render path that owns bottom correction. Adding a later smooth scroll after an instant bottom jump is not a reliable UX change.
+- Intervention: `renderSessionTail()` accepts a one-shot `scrollBehavior`; `jumpToLatest()` passes `tailScrollBehavior: "smooth"` into `openSession()`. Default live-tail/render callers remain instant.
+- Evidence: Focused source tests pin single smooth option flow through Jump-to-latest; full local and Docker suites passed.
+- Scoped claim: User-triggered Jump-to-latest now requests smooth behavior on the authoritative tail-render scroll, while live-tail autoscroll remains immediate.
