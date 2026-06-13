@@ -1485,3 +1485,8 @@ Commitments:
 - Intervention: Added runtime tests over the helper with fresh/stale/explicit/non-diffable/preview cases.
 - Evidence: Focused/full/Docker validation passed.
 - Scoped claim: The intended auto-diff freshness policy is now pinned by execution tests; no behavior change was made.
+
+## 2026-06-13 11:21 — File picker freshness coverage accepted
+- Observation: Clean-room review confirmed the new VM coverage exercises the real open-mode helper and pins the intended freshness gate.
+- Scoped claim: The stale-vs-fresh auto-diff policy now has direct helper-level regression coverage.
+- Remaining uncertainty: Browser/API integration around file opening remains separately evidenced by prior file-picker work, not by this test-only tranche.

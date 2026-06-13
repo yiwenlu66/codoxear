@@ -1761,3 +1761,9 @@
 - Focused validation: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py -q` → `10 passed`.
 - Full local validation: `python3 -m pytest -q` → `683 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `682 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:21 — File picker freshness coverage review
+- Clean-room review of `ffb84bc` found no blockers.
+- Critic validation: focused file-picker tests → `10 passed`; full pytest → `683 passed, 25 subtests passed`.
+- Review confirmed the VM test extracts the real `resolveFileOpenMode()` helper and covers the intended fresh/stale/explicit/preview/non-diffable branches.
+- Residual accepted risks: `inspectSessionFilePath()` and `isDiffableFileKind()` are stubbed, so the test pins open-mode policy rather than full DOM/API integration or file-kind classification.
