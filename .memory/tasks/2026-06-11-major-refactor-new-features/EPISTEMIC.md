@@ -1312,3 +1312,10 @@ Commitments:
 - Observation: Final clean-room review found no blockers after removing static asset version caching.
 - Scoped claim: `/api/sessions` now avoids repeated launch-default and tmux probe work without caching live session rows or weakening static asset cache-busting identity.
 - Remaining uncertainty: Launch-default cache invalidation remains signature-based, not content-hash based; this is accepted because launch config changes are normal file writes with mtime/size changes in the supported workflow.
+
+## 2026-06-13 08:56 — Preference storage is optional, not a startup dependency
+- Observation: Fresh review found unguarded `localStorage` calls during startup and runtime preference handling. In storage-denied browsers this could throw before session rendering and be misreported as an inability to contact the server.
+- Mechanism: selected session, sidebar state, notification/announcement toggles, New Session choices, and file-view mode are convenience preferences; none are authoritative server/session state. Failing to persist them should degrade to defaults, not abort app boot.
+- Intervention: Centralized browser storage access behind catching wrappers and replaced direct calls.
+- Evidence: VM tests exercise getter/method exceptions; source tests ensure selected-session/New Session paths use wrappers; full local/Docker suites pass; real Chromium with a pre-scripted throwing `localStorage` getter still reached the authenticated main UI without storage/security errors.
+- Scoped claim: Browser Web Storage denial or quota errors no longer prevent Codoxear from starting and using the main UI; the affected preference persistence may be lost for that browser context.

@@ -1547,3 +1547,13 @@
 - Critic validation: `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`; `python3 -m py_compile codoxear/server.py` → passed; `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-session-constants-memoization-review.md`.
 - Residual risks noted: launch defaults use mtime/size signatures, so timestamp-preserving same-size config/cache edits can be missed until mtime/size changes; tmux availability display can be stale for TTL, but launch path still checks directly.
+
+## 2026-06-13 08:56 — Browser storage-denial robustness
+- Selected a fresh deterministic UX robustness gap: direct `localStorage` access could throw `SecurityError`/quota errors in hardened/mobile browser contexts and make preference state look like a server-contact boot failure.
+- Implemented `optionalLocalStorage()`, `storageGetItem()`, `storageSetItem()`, and `storageRemoveItem()` in `codoxear/static/app.js` and replaced direct preference/session storage calls with the wrapper.
+- Added `tests/test_storage_robustness_source.py` with Node VM execution of the real wrapper under a throwing `window.localStorage` getter and throwing storage methods.
+- Updated source assertions for selected-session clearing and New Session remembered backend to require wrapper usage.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_storage_robustness_source.py tests/test_new_session_model_options_source.py tests/test_chat_scrollback_source.py tests/test_file_picker_session_state.py -q` → `37 passed`.
+- Full local validation: `python3 -m pytest -q` → `668 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `667 passed, 1 skipped, 25 subtests passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-storage-18791`, stopped): Playwright injected a throwing `localStorage` getter before app scripts, logged in, and observed main UI rendered with `threadTitle: "No session selected"`, composer and file viewer present, no storage/server-contact errors. Artifact: `/tmp/codoxear-storage-denied-browser.json`.
