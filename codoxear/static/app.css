@@ -817,6 +817,26 @@
         line-height: 1.1;
         color: var(--muted);
       }
+      .chatTimeChip {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        z-index: 7;
+        display: none;
+        align-items: center;
+        transform: translateX(-50%);
+        padding: 5px 10px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.88);
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.1;
+        white-space: nowrap;
+        box-shadow: var(--shadow-sm);
+        pointer-events: none;
+        backdrop-filter: blur(10px);
+      }
       .chatSearchBar {
         order: 0;
         flex: 0 0 auto;

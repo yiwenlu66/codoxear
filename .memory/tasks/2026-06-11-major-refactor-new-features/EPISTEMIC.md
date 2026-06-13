@@ -1412,3 +1412,10 @@ Commitments:
 - Observation: Clean-room review confirmed the route-level valid-upload path now decodes/stages/injects correctly and preserves existing readiness ordering.
 - Scoped claim: The deterministic missing-import blocker for browser file attachments is fixed.
 - Remaining uncertainty: Not all negative route paths are executed at Handler level; they remain covered by lower-level/source tests.
+
+## 2026-06-13 10:26 — Long-chat orientation without new controls
+- Observation: Current chat navigation has search and user-turn jumps, but no passive indicator of the current visible time while reading history.
+- Mechanism: Rendered rows already carry `dataset.ts`, and `firstVisibleMessageRow()` already defines the viewport anchor. A non-interactive chip can expose that existing state without adding a control surface.
+- Intervention: Added a visual-only time chip hidden at live tail/search mode and updated through existing jump/scroll synchronization.
+- Evidence: Focused source tests, full local/Docker validation, and browser evidence with a synthetic long transcript passed.
+- Scoped claim: Desktop browser users reading older loaded messages get visible date/time orientation; live-tail view remains uncluttered.

@@ -1644,6 +1644,7 @@
           "aria-label": "Jump to latest",
           html: iconSvg("down"),
         });
+        const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });
         const chatSearchInput = el("input", {
           id: "chatSearchInput",
           class: "chatSearchInput",
@@ -1669,6 +1670,7 @@
         chat.appendChild(chatInner);
         chatWrap.appendChild(chat);
         chatWrap.appendChild(jumpBtn);
+        chatWrap.appendChild(chatTimeChip);
         chatWrap.appendChild(chatSearchBar);
         const composer = el("div", { class: "composer" });
 
@@ -3256,6 +3258,7 @@
           if (!selected) return;
           chatSearchOpen = true;
           chatSearchBar.style.display = "flex";
+          syncVisibleTimeIndicator();
           refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
           chatSearchInput.focus({ preventScroll: true });
           chatSearchInput.select();
@@ -3267,6 +3270,7 @@
           clearChatSearchMarks();
           resetAllChatSearchCount();
           chatSearchLoadingOlder = false;
+          syncVisibleTimeIndicator();
         }
 
         async function loadOlderUntilChatSearchMatch({ boundaryMatch = null, focus = "first" } = {}) {
@@ -3713,8 +3717,27 @@
           return chat.scrollHeight - (chat.scrollTop + chat.clientHeight) <= thresholdPx;
         }
 
+        function syncVisibleTimeIndicator() {
+          if (!selected || chatSearchOpen || (renderedAtLiveTail && (autoScroll || isNearBottom()))) {
+            chatTimeChip.style.display = "none";
+            chatTimeChip.textContent = "";
+            return;
+          }
+          const row = firstVisibleMessageRow();
+          const ts = row ? Number(row.dataset.ts || "0") : 0;
+          if (!Number.isFinite(ts) || ts <= 0) {
+            chatTimeChip.style.display = "none";
+            chatTimeChip.textContent = "";
+            return;
+          }
+          const d = new Date(ts * 1000);
+          chatTimeChip.textContent = `${dayLabel(d)} · ${time24(d)}`;
+          chatTimeChip.style.display = "inline-flex";
+        }
+
         function syncJumpButton() {
           jumpBtn.style.display = renderedAtLiveTail && (autoScroll || isNearBottom()) ? "none" : "inline-flex";
+          syncVisibleTimeIndicator();
         }
 
         function scrollToBottom() {

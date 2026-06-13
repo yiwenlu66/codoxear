@@ -1668,3 +1668,12 @@
 - Critic validation: `python3 -m py_compile codoxear/server.py` → passed; focused upload/attach tests → `15 passed`; full pytest → `674 passed, 25 subtests passed`.
 - Review artifact: `/tmp/codoxear-attachment-base64-review.md`.
 - Residual risks: route-level test covers valid payload path only; state changes between readiness check and injection can still stage a file without injection, which is pre-existing behavior.
+
+## 2026-06-13 10:26 — Visible message time chip
+- Implemented a compact visual-only `chatTimeChip` for long-chat orientation. It uses `firstVisibleMessageRow().dataset.ts`, existing `dayLabel()`/`time24()`, hides near live tail, and hides while loaded-chat search is open to avoid surface overlap.
+- Added CSS for a centered non-interactive overlay chip in `chatWrap`.
+- Added source tests covering chip construction, first-visible-row timestamp use, hide/show logic, sync from `syncJumpButton()`, and search open/close synchronization.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_navigation_source.py tests/test_chat_scrollback_source.py -q` → `33 passed`.
+- Full local validation: `python3 -m pytest -q` → `675 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `674 passed, 1 skipped, 25 subtests passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-timechip-18793`, stopped): mocked 80-message transcript hid chip at live tail and showed `2026-06-10 · 18:45` when scrolled into older loaded messages. Artifact: `/tmp/codoxear-timechip-browser.json`.

@@ -50,6 +50,28 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn(".msg-row.nav-pulse .msg", css)
         self.assertIn("@keyframes navPulse", css)
 
+    def test_visible_time_indicator_uses_first_visible_message(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn('const chatTimeChip = el("div", { id: "chatTimeChip", class: "chatTimeChip", "aria-hidden": "true" });', source)
+        self.assertIn("chatWrap.appendChild(chatTimeChip);", source)
+        self.assertIn("function syncVisibleTimeIndicator() {", source)
+        start = source.index("function syncVisibleTimeIndicator() {")
+        end = source.index("function syncJumpButton()", start)
+        block = source[start:end]
+        self.assertIn("chatSearchOpen", block)
+        self.assertIn("firstVisibleMessageRow()", block)
+        self.assertIn('Number(row.dataset.ts || "0")', block)
+        self.assertIn('chatTimeChip.textContent = `${dayLabel(d)} · ${time24(d)}`;', block)
+        self.assertIn('chatTimeChip.style.display = "inline-flex";', block)
+        self.assertIn('chatTimeChip.style.display = "none";', block)
+        jump_block = source[source.index("function syncJumpButton()") : source.index("function scrollToBottom()")]
+        self.assertIn("syncVisibleTimeIndicator();", jump_block)
+        self.assertIn("syncVisibleTimeIndicator();\n          refreshLoadedChatSearch", source)
+        self.assertIn("chatSearchLoadingOlder = false;\n          syncVisibleTimeIndicator();", source)
+        self.assertIn(".chatTimeChip", css)
+        self.assertIn("pointer-events: none;", css)
+
     def test_loaded_chat_search_is_rendered_row_scoped_with_all_transcript_count(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('id: "chatSearchBtn"', source)
