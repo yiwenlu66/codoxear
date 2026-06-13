@@ -1390,3 +1390,8 @@ Commitments:
 - Intervention: Added `sidebarRenderSignature()` and skipped only the clear/rebuild block when the signature is unchanged and no deferred swipe refresh is being applied.
 - Evidence: Source tests pin guard placement relative to 304 and swipe deferral; full local and Docker suites passed.
 - Scoped claim: Some changed `/api/sessions` responses that do not alter sidebar-render state no longer rebuild sidebar DOM. This is not full keyed DOM patching; changed session rows still use the existing full rebuild path.
+
+## 2026-06-13 10:03 — No-blocker claim for sidebar identical-render guard
+- Observation: Clean-room review found no stale-render or swipe-deferral blocker in the conservative signature guard.
+- Scoped claim: The guard safely skips sidebar DOM clear/rebuild only when the full rendered sidebar signature is unchanged and no deferred swipe refresh is being applied.
+- Remaining uncertainty: Runtime DOM mutation behavior is not yet browser-observed; source tests constrain order and invariants but not actual MutationObserver behavior.

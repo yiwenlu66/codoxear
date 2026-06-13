@@ -1642,3 +1642,9 @@
 - Focused validation: `python3 -m pytest tests/test_session_polling_source.py tests/test_sidebar_gtd_source.py -q` → `13 passed`.
 - Full local validation: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 10:03 — Sidebar identical-render guard review
+- Clean-room review of `f51db2f` found no blockers.
+- Critic validation: `node --check codoxear/static/app.js` → passed; focused sidebar/session-polling tests → `13 passed`; full pytest → `673 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-sidebar-identical-render-review.md`.
+- Residual risks: source-order tests do not prove runtime DOM mutation behavior; full-session signature is conservative and may reduce the perf win.
