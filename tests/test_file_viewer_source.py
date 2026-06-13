@@ -266,7 +266,10 @@ class TestFileViewerSource(unittest.TestCase):
     def test_file_write_conflict_check_is_locked_with_write(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
         self.assertIn("_FILE_WRITE_LOCKS_LOCK = threading.Lock()", source)
-        self.assertIn("def _file_write_lock(path: Path) -> threading.Lock:", source)
+        self.assertIn("_FILE_WRITE_LOCKS: dict[str, tuple[threading.Lock, int]] = {}", source)
+        self.assertIn("@contextmanager\ndef _file_write_lock(path: Path) -> Iterator[None]:", source)
+        self.assertIn("_FILE_WRITE_LOCKS[key] = (lock, refcount + 1)", source)
+        self.assertIn("_FILE_WRITE_LOCKS.pop(key, None)", source)
         route_start = source.index('session_id = _match_session_route(path, "file", "write")')
         route_end = source.index('session_id = _match_session_route(path, "delete")', route_start)
         block = source[route_start:route_end]

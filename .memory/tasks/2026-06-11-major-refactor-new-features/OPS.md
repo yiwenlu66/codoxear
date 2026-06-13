@@ -1738,3 +1738,12 @@
 - Critic validation: `node --check codoxear/static/app.js`; focused modal/launch tests → `20 passed`; full pytest → `680 passed, 25 subtests passed`.
 - Review confirmed `aria-modal=true`, desktop/mobile initial focus, all close paths routing through `hideNewSessionDialog()`, successful-start close path, and unchanged modal isolation.
 - Residual accepted risks: committed tests are source-structure checks; browser artifact covers core open/Escape close behavior but not every close path individually. Focus restoration checks connected/disabled but not full rendered/tabbable visibility for possible future openers.
+
+## 2026-06-13 11:12 — File write lock lifecycle cleanup
+- Replaced the unbounded `_FILE_WRITE_LOCKS: dict[str, threading.Lock]` cache with a refcounted context manager: `_FILE_WRITE_LOCKS: dict[str, tuple[threading.Lock, int]]`.
+- Waiters increment the refcount before acquiring the per-file lock, so an entry is not removed while another thread is waiting. The entry is removed when the final holder/waiter exits.
+- Preserved the route invariant: file write update still locks around conflict read/version check and atomic write.
+- Added execution tests for single-use cleanup and concurrent waiter refcounting, plus updated source coverage.
+- Focused validation: `python3 -m pytest tests/test_file_write_locks.py tests/test_file_viewer_source.py tests/test_file_inspect.py -q` → `42 passed`.
+- Full local validation: `python3 -m pytest -q` → `682 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `681 passed, 1 skipped, 25 subtests passed`.

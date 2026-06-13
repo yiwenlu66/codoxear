@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import copy
 import errno
+from contextlib import contextmanager
 import hashlib
 import hmac
 import http.server
@@ -25,7 +26,7 @@ import traceback
 import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
@@ -360,7 +361,7 @@ def _clean_unattended_remaining_injections(raw: Any, *, allow_zero: bool) -> int
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
 _FILE_WRITE_LOCKS_LOCK = threading.Lock()
-_FILE_WRITE_LOCKS: dict[str, threading.Lock] = {}
+_FILE_WRITE_LOCKS: dict[str, tuple[threading.Lock, int]] = {}
 _TMUX_AVAILABLE_CACHE: tuple[float, bool] | None = None
 _TMUX_AVAILABLE_CACHE_LOCK = threading.Lock()
 _LAUNCH_DEFAULTS_CACHE: tuple[tuple[tuple[str, bool, int | None, int | None], ...], dict[str, Any]] | None = None
@@ -377,14 +378,29 @@ def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
     return (str(path), True, int(st.st_mtime_ns), int(st.st_size))
 
 
-def _file_write_lock(path: Path) -> threading.Lock:
+@contextmanager
+def _file_write_lock(path: Path) -> Iterator[None]:
     key = str(path)
     with _FILE_WRITE_LOCKS_LOCK:
-        lock = _FILE_WRITE_LOCKS.get(key)
-        if lock is None:
+        entry = _FILE_WRITE_LOCKS.get(key)
+        if entry is None:
             lock = threading.Lock()
-            _FILE_WRITE_LOCKS[key] = lock
-        return lock
+            refcount = 0
+        else:
+            lock, refcount = entry
+        _FILE_WRITE_LOCKS[key] = (lock, refcount + 1)
+    try:
+        with lock:
+            yield
+    finally:
+        with _FILE_WRITE_LOCKS_LOCK:
+            entry = _FILE_WRITE_LOCKS.get(key)
+            if entry is not None and entry[0] is lock:
+                refcount = entry[1] - 1
+                if refcount <= 0:
+                    _FILE_WRITE_LOCKS.pop(key, None)
+                else:
+                    _FILE_WRITE_LOCKS[key] = (lock, refcount)
 
 
 def _record_metric(name: str, value_ms: float) -> None:

@@ -1466,3 +1466,10 @@ Commitments:
 - Observation: Clean-room review found no blockers in New Session modal focus/ARIA behavior.
 - Scoped claim: Under tested launcher paths and desktop/mobile viewports, New Session is a proper modal focus surface without changing launch semantics.
 - Remaining uncertainty: Future opener elements may need stronger visibility/tabbability checks if they are hidden or removed differently from current launchers.
+
+## 2026-06-13 11:12 — File write locks no longer accumulate by path
+- Observation: File-save conflict protection introduced per-path locks but kept every path key forever, making the lock table grow with distinct edited files.
+- Mechanism: The lock only needs to exist while at least one holder or waiter exists for that path.
+- Intervention: Converted the helper into a refcounted context manager that counts waiters before acquire and deletes the path entry after the last exit.
+- Evidence: Concurrency tests show waiter refcounting and final cleanup; focused/full/Docker validation passed.
+- Scoped claim: Repeated writes to many distinct paths no longer cause durable growth of `_FILE_WRITE_LOCKS` under normal helper use.
