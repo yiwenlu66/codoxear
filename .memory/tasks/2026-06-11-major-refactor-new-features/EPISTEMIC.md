@@ -1281,3 +1281,10 @@ Commitments:
 - Observation: Final clean-room review found no blockers after session/path conflict action binding, save-token cleanup ownership, and server compare/write locking.
 - Scoped claim: In the supported single-process server model, stale-version file saves now produce safe client recovery actions and server-side check/write serialization instead of blind overwrites or stale UI mutation.
 - Remaining uncertainty: The server lock does not protect against multiple Codoxear server processes or external writers after the server read but before replace; this is acceptable for current single-process architecture but should be documented if multi-process serving is introduced.
+
+## 2026-06-13 08:16 — Transcript retry uses the existing selection path
+- Observation: Transcript load error recovery previously required reselecting the same session from the sidebar, which is awkward on mobile and when the sidebar is hidden.
+- Mechanism: Retry is safe if it is scoped to the still-selected session and delegates to `openSession()`, because that path already handles auth loss, stale generations, cached tails, loading, and explicit error state.
+- Intervention: Added selected-session guarded Retry button inside the non-transcript error bubble.
+- Evidence: Browser evidence demonstrates synthetic failure -> Retry -> transcript recovery; source/full local/Docker validations passed.
+- Scoped claim: Users can now recover from transient transcript load errors inline without introducing a new transcript fetch semantics path.
