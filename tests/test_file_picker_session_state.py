@@ -20,6 +20,7 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
           selected: "session-a",
           fileViewerSessionId: "session-a",
           activeFilePath: "file-a.py",
+          activeFileGitPath: true,
           activeFileLine: 7,
           fileSessionSelections: new Map(),
           sessionIndex: new Map([
@@ -66,8 +67,8 @@ def eval_file_picker_session_helpers() -> dict[str, object]:
 class TestFilePickerSessionState(unittest.TestCase):
     def test_preferred_file_selection_is_session_scoped(self) -> None:
         result = eval_file_picker_session_helpers()
-        self.assertEqual(result["sessionA"], {"path": "file-a.py", "line": 7})
-        self.assertEqual(result["sessionB"], {"path": "file-b.py", "line": None})
+        self.assertEqual(result["sessionA"], {"path": "file-a.py", "line": 7, "gitPath": True})
+        self.assertEqual(result["sessionB"], {"path": "file-b.py", "line": None, "gitPath": False})
 
     def test_global_file_path_local_storage_is_not_used(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

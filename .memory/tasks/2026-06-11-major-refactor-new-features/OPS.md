@@ -2058,3 +2058,13 @@
   - scripts/codoxear-docker-sandbox test -> 749 passed, 1 skipped, 77 subtests passed
   - final clean-room critic review -> no commit-blocking issues.
   - git diff --check -> clean.
+
+## 2026-06-14 05:48
+- Completed file-picker candidate identity tranche in `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps`.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`, `tests/test_file_picker_session_state.py`, `tests/test_file_viewer_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py tests/test_file_inspect.py tests/test_path_resolution.py -q` -> `111 passed, 52 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `756 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `755 passed, 1 skipped, 77 subtests passed`.
+  - `git diff --check` -> clean.
+- Clean-room review loop found and drove fixes for timing-dependent pending Enter, normalized `./foo.py` pending/loaded/error search, stale cached/fresh diff enablement, and no-session candidate clear recompute. Final review before the no-session residual found no blockers; the residual was patched and all validation rerun.

@@ -7778,32 +7778,34 @@
           fileSessionSelections.set(sid, {
             path,
             line: activeFileLine == null ? null : activeFileLine,
+            gitPath: Boolean(activeFileGitPath),
           });
         }
 
         function historyFileSelectionForSession(sessionId) {
           const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null };
+          if (!sid) return { path: "", line: null, gitPath: false };
           const s = sessionIndex.get(sid);
-          if (!s) return { path: "", line: null };
+          if (!s) return { path: "", line: null, gitPath: false };
           for (const abs of listFromFilesField(s.files)) {
             const rel = sessionRelativePath(abs, sid);
             if (typeof rel === "string" && rel && rel !== ".") {
-              return { path: rel, line: null };
+              return { path: rel, line: null, gitPath: false };
             }
           }
-          return { path: "", line: null };
+          return { path: "", line: null, gitPath: false };
         }
 
         function preferredFileSelectionForSession(sessionId) {
           const sid = String(sessionId || "").trim();
-          if (!sid) return { path: "", line: null };
+          if (!sid) return { path: "", line: null, gitPath: false };
           const remembered = fileSessionSelections.get(sid);
           const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path : "";
           if (rememberedPath !== "") {
             return {
               path: rememberedPath,
               line: normalizeLineNumber(remembered.line),
+              gitPath: Boolean(remembered.gitPath),
             };
           }
           return historyFileSelectionForSession(sid);
@@ -7848,20 +7850,21 @@
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           const preferred = preferredFileSelectionForSession(sid);
           if (preferred.path) {
-            setFilePath(preferred.path, { line: preferred.line });
+            setFilePath(preferred.path, { line: preferred.line, gitPath: preferred.gitPath });
             try {
-              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
+              await openFilePathWithResolvedMode(preferred.path, { line: preferred.line, gitPath: preferred.gitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             }
             return isFileViewerSessionCurrent(sid, syncToken);
           }
-          const first = fileCandidateList.length ? fileCandidateList[0] : "";
+          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
+          const first = firstKey ? fileEntryMap.get(firstKey) : null;
           if (first) {
-            setFilePath(first, { line: null });
+            setFilePath(first.path, { line: null, gitPath: first.gitPath });
             try {
-              await openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
+              await openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) });
             } catch (e) {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
@@ -9074,11 +9077,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function applyFileMode() {
           const hasPath = Boolean(activeFilePath);
-          const entry = hasPath ? fileEntryMap.get(activeFilePath) : null;
+          const entry = hasPath ? activeFileEntry() : null;
           const canToggleMode = hasPath && !activeFileDraft;
           const isDiff = fileViewMode === "diff";
           const isPreview = fileViewMode === "preview";
-          const diffable = canToggleMode && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
+          const diffable = canToggleMode && activeFileGitPath && fileCandidateGitStateFresh && Boolean(entry && entry.changed) && isDiffableFileKind(activeFileKind);
           const previewable = !activeFileDraft && activeFileKind === "markdown";
           fileModeDiffBtn.classList.toggle("active", hasPath && isDiff);
           fileModePreviewBtn.classList.toggle("active", hasPath && isPreview);
@@ -9124,10 +9127,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileMode();
         }
 
-        function isGitFileCandidatePath(path, changed = null) {
+        function fileCandidateKey(path, gitPath = false) {
+          return `${gitPath ? "git" : "session"}\u0000${String(path ?? "")}`;
+        }
+
+        function fileCandidateKeyForEntry(entry) {
+          return fileCandidateKey(entry && entry.path, Boolean(entry && entry.gitPath));
+        }
+
+        function activeFileEntry() {
+          if (!activeFilePath) return null;
+          return fileEntryMap.get(fileCandidateKey(activeFilePath, activeFileGitPath)) || null;
+        }
+
+        function isGitFileCandidatePath(path, changed = null, gitPath = null) {
+          if (gitPath !== null && gitPath !== undefined) return Boolean(gitPath);
           if (changed !== null && changed !== undefined) return Boolean(changed);
-          const entry = fileEntryMap.get(String(path ?? ""));
-          return Boolean(entry && entry.changed);
+          const gitEntry = fileEntryMap.get(fileCandidateKey(path, true));
+          if (gitEntry) return true;
+          const sessionEntry = fileEntryMap.get(fileCandidateKey(path, false));
+          return Boolean(sessionEntry && sessionEntry.gitPath);
         }
 
         async function inspectSessionFilePath(path, { gitPath = false } = {}) {
@@ -9147,12 +9166,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        async function resolveFileOpenMode(path, { changed = null } = {}) {
-          const gitPath = isGitFileCandidatePath(path, changed);
-          const candidateChanged = isGitFileCandidatePath(path, changed);
-          const inspect = await inspectSessionFilePath(path, { gitPath });
+        async function resolveFileOpenMode(path, { changed = null, gitPath = null } = {}) {
+          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed) : Boolean(gitPath);
+          const identityEntry = fileEntryMap.get(fileCandidateKey(path, useGitPath));
+          const candidateChanged = useGitPath && (changed === null || changed === undefined ? Boolean(identityEntry && identityEntry.changed) : Boolean(changed));
+          const inspect = await inspectSessionFilePath(path, { gitPath: useGitPath });
           if (!inspect || !inspect.exists) {
-            if (candidateChanged) return "diff";
+            if (fileCandidateGitStateFresh && candidateChanged) return "diff";
             throw new Error("file not found");
           }
           const kind = String(inspect.kind || "").trim();
@@ -9162,20 +9182,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return "file";
         }
 
-        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null } = {}) {
+        async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null, gitPath = null } = {}) {
           if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
           const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
-          const gitPath = isGitFileCandidatePath(path, changed);
+          const useGitPath = gitPath === null || gitPath === undefined ? isGitFileCandidatePath(path, changed) : Boolean(gitPath);
           let mode;
           try {
-            mode = await resolveFileOpenMode(path, { changed });
+            mode = await resolveFileOpenMode(path, { changed, gitPath: useGitPath });
           } catch (e) {
             if (blockUnavailableFileAction()) return false;
             throw e;
           }
           if (!currentGuard()) return false;
-          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath });
+          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath: useGitPath });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
@@ -9226,13 +9246,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function cloneFileCandidateEntry(entry) {
           if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
-          return {
+          const source = normalizeFileCandidateSource(entry.source);
+          const gitPath = entry.gitPath === undefined ? Boolean(entry.changed && source === "changed") : Boolean(entry.gitPath);
+          const cloned = {
             path: entry.path,
+            gitPath,
+            key: fileCandidateKey(entry.path, gitPath),
             additions: entry.additions ?? null,
             deletions: entry.deletions ?? null,
             changed: Boolean(entry.changed),
-            source: normalizeFileCandidateSource(entry.source),
+            source,
           };
+          return cloned;
         }
 
         function applyFileCandidateEntries(entries) {
@@ -9240,15 +9265,15 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileEntryMap = new Map();
           for (const raw of Array.isArray(entries) ? entries : []) {
             const entry = cloneFileCandidateEntry(raw);
-            if (!entry || fileEntryMap.has(entry.path)) continue;
-            fileCandidateList.push(entry.path);
-            fileEntryMap.set(entry.path, entry);
+            if (!entry || fileEntryMap.has(entry.key)) continue;
+            fileCandidateList.push(entry.key);
+            fileEntryMap.set(entry.key, entry);
           }
         }
 
         function currentFileCandidateEntries() {
           return fileCandidateList
-            .map((path) => cloneFileCandidateEntry(fileEntryMap.get(path) || { path }))
+            .map((key) => cloneFileCandidateEntry(fileEntryMap.get(key)))
             .filter(Boolean);
         }
 
@@ -9267,12 +9292,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function upsertFileEntry(entry) {
           const merged = cloneFileCandidateEntry(entry);
           if (!merged) return;
-          const current = fileEntryMap.get(merged.path);
+          const current = fileEntryMap.get(merged.key);
           if (current && !merged.source) merged.source = normalizeFileCandidateSource(current.source);
-          if (!fileEntryMap.has(merged.path)) {
-            fileCandidateList.push(merged.path);
+          if (!fileEntryMap.has(merged.key)) {
+            fileCandidateList.push(merged.key);
           }
-          fileEntryMap.set(merged.path, merged);
+          fileEntryMap.set(merged.key, merged);
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
@@ -9280,9 +9305,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sid = fileViewerSessionId || selected || "";
           const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
-          const current = fileEntryMap.get(rel);
+          const gitPath = Boolean(activeFileGitPath);
+          const current = fileEntryMap.get(fileCandidateKey(rel, gitPath));
           upsertFileEntry({
             path: rel,
+            gitPath,
             additions: current && current.changed ? current.additions : null,
             deletions: current && current.changed ? current.deletions : null,
             changed: Boolean(current && current.changed),
@@ -9359,15 +9386,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return total;
         }
 
-        function pickerEntryForPath(path, { score = 0 } = {}) {
-          const entry = fileEntryMap.get(path) || { path, additions: null, deletions: null, changed: false, source: "" };
+        function pickerEntryForKey(key, { score = 0 } = {}) {
+          const entry = cloneFileCandidateEntry(fileEntryMap.get(key));
+          return entry ? { ...entry, added: true, score } : null;
+        }
+
+        function pickerEntryForPath(path, { score = 0, gitPath = false } = {}) {
+          const key = fileCandidateKey(path, gitPath);
+          const entry = cloneFileCandidateEntry(fileEntryMap.get(key) || { path, gitPath, additions: null, deletions: null, changed: false, source: "" });
+          if (!entry) return null;
           return {
-            path,
-            additions: entry.additions ?? null,
-            deletions: entry.deletions ?? null,
-            changed: Boolean(entry.changed),
-            source: normalizeFileCandidateSource(entry.source),
-            added: fileEntryMap.has(path),
+            ...entry,
+            added: fileEntryMap.has(key),
             score,
           };
         }
@@ -9521,18 +9551,60 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }, 120);
         }
 
+        function filePickerCandidateScore(path, query) {
+          const rawScore = fileSearchScore(path, query);
+          const normalized = normalizeDraftFilePath(query);
+          if (!normalized || normalized === String(query || "")) return rawScore;
+          return Math.max(rawScore, fileSearchScore(path, normalized));
+        }
+
+        function compareFilePickerEntries(a, b) {
+          const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
+          if (scoreDiff) return scoreDiff;
+          const pathDiff = String(a.path || "").localeCompare(String(b.path || ""));
+          if (pathDiff) return pathDiff;
+          const gitPathDiff = Number(Boolean(a.gitPath)) - Number(Boolean(b.gitPath));
+          if (gitPathDiff) return gitPathDiff;
+          return Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added);
+        }
+
         function localFilePickerSearchEntries(query) {
           const out = [];
           const seen = new Set();
-          for (const path of fileCandidateList) {
-            if (seen.has(path)) continue;
-            const score = fileSearchScore(path, query);
+          for (const key of fileCandidateList) {
+            if (seen.has(key)) continue;
+            const entry = fileEntryMap.get(key);
+            if (!entry) continue;
+            const score = filePickerCandidateScore(entry.path, query);
             if (score < 0) continue;
-            seen.add(path);
-            out.push(pickerEntryForPath(path, { score }));
+            seen.add(key);
+            const pickerEntry = pickerEntryForKey(key, { score });
+            if (pickerEntry) out.push(pickerEntry);
           }
-          out.sort((a, b) => b.score - a.score || Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added) || a.path.localeCompare(b.path));
+          out.sort(compareFilePickerEntries);
           return out.slice(0, 120);
+        }
+
+        function pendingSessionPathEntry(path) {
+          return {
+            path,
+            gitPath: false,
+            additions: null,
+            deletions: null,
+            changed: false,
+            added: false,
+            score: 0,
+            source: "",
+            pendingSessionPath: true,
+          };
+        }
+
+        function prependPendingSessionPathEntry(entries, query) {
+          const draftPath = normalizeDraftFilePath(query);
+          if (!draftPath) return entries;
+          if (entries.some((entry) => entry.path === draftPath && !entry.gitPath)) return entries;
+          if (!entries.some((entry) => entry.path === draftPath && entry.gitPath)) return entries;
+          return [pendingSessionPathEntry(draftPath), ...entries];
         }
 
         function prependDraftFileEntry(entries, query) {
@@ -9546,42 +9618,47 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         function visibleFilePickerEntries() {
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
           if (!query) {
-            const entries = fileCandidateList.map((path) => pickerEntryForPath(path));
-            if (activeFileDraft && activeFilePath && !entries.some((entry) => entry.path === activeFilePath)) {
+            const entries = fileCandidateList.map((key) => pickerEntryForKey(key)).filter(Boolean);
+            if (activeFileDraft && activeFilePath && !entries.some((entry) => entry.path === activeFilePath && !entry.gitPath)) {
               entries.unshift(draftFileEntry(activeFilePath));
             }
             return entries;
           }
           if (fileSearchPendingQuery === query) {
-            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
             return localEntries.length ? localEntries : null;
           }
           if (fileSearchErrorQuery === query) {
-            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
             return localEntries.length ? localEntries : [];
           }
           if (fileSearchLoadedQuery !== query) {
-            const localEntries = prependDraftFileEntry(localFilePickerSearchEntries(query), query);
+            const localEntries = prependDraftFileEntry(prependPendingSessionPathEntry(localFilePickerSearchEntries(query), query), query);
             return localEntries.length ? localEntries : null;
           }
           const out = [];
           const seen = new Set();
           for (const item of fileSearchResults) {
             const path = item && typeof item.path === "string" ? item.path : "";
-            if (path === "" || path === "." || seen.has(path)) continue;
-            seen.add(path);
+            const key = fileCandidateKey(path, false);
+            if (path === "" || path === "." || seen.has(key)) continue;
+            seen.add(key);
             const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
-            out.push(pickerEntryForPath(path, { score }));
+            const pickerEntry = pickerEntryForPath(path, { score, gitPath: false });
+            if (pickerEntry) out.push(pickerEntry);
           }
-          for (const path of fileCandidateList) {
-            if (seen.has(path)) continue;
-            const score = fileSearchScore(path, query);
+          for (const key of fileCandidateList) {
+            if (seen.has(key)) continue;
+            const entry = fileEntryMap.get(key);
+            if (!entry) continue;
+            const score = filePickerCandidateScore(entry.path, query);
             if (score < 0) continue;
-            out.push(pickerEntryForPath(path, { score }));
+            const pickerEntry = pickerEntryForKey(key, { score });
+            if (pickerEntry) out.push(pickerEntry);
           }
-          out.sort((a, b) => b.score - a.score || Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added) || a.path.localeCompare(b.path));
+          out.sort(compareFilePickerEntries);
           const limited = out.slice(0, 120);
-          return prependDraftFileEntry(limited, query);
+          return prependDraftFileEntry(prependPendingSessionPathEntry(limited, query), query);
         }
 
         async function getKnownFileRefCandidates() {
@@ -9681,7 +9758,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               lastSourceSection = section;
             }
             const path = entry.path;
-            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && !query);
+            const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && activeFileGitPath === Boolean(entry.gitPath) && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
               class: "fileMenuItem" + (entry.createNew ? " fileMenuCreate" : "") + (active ? " active" : ""),
@@ -9709,7 +9786,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 return;
               }
               try {
-                await openFilePathWithResolvedMode(path, { line: null, changed: Boolean(fileEntryMap.get(path)?.changed) });
+                await openFilePathWithResolvedMode(path, { line: null, changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) });
               } catch (e) {
                 fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
               }
@@ -9809,6 +9886,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!current()) return;
             fileCandidateGitStateFresh = false;
             applyFileCandidateEntries([]);
+            applyFileMode();
             return;
           }
           const cacheKey = fileCandidateCacheKey(sid);
@@ -9817,12 +9895,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!current()) return;
             fileCandidateGitStateFresh = false;
             applyFileCandidateEntries(cached.entries);
+            applyFileMode();
             renderFilePickerMenu();
             return;
           }
           if (!current()) return;
           fileCandidateGitStateFresh = false;
           applyFileCandidateEntries([]);
+          applyFileMode();
           try {
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
@@ -9835,6 +9915,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 deletions:
                   typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
                 changed: true,
+                gitPath: true,
                 source: "changed",
               }));
             const messageEntries = collectMessageFileRefs().map((path) => ({
@@ -9842,23 +9923,27 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               additions: null,
               deletions: null,
               changed: false,
+              gitPath: false,
               source: "mentioned",
             }));
             const s = sid ? sessionIndex.get(sid) : null;
             const manualEntries = listFromFilesField(s && s.files)
               .map((abs) => sessionRelativePath(abs, sid))
               .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-              .map((path) => ({ path, additions: null, deletions: null, changed: false, source: "recent" }));
+              .map((path) => ({ path, gitPath: false, additions: null, deletions: null, changed: false, source: "recent" }));
             const merged = [];
             const seen = new Set();
             for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
-              if (!entry || !entry.path || seen.has(entry.path)) continue;
-              seen.add(entry.path);
+              if (!entry || entry.path === "") continue;
+              const key = fileCandidateKeyForEntry(entry);
+              if (seen.has(key)) continue;
+              seen.add(key);
               merged.push(entry);
             }
             if (!current()) return;
             applyFileCandidateEntries(merged);
             fileCandidateGitStateFresh = true;
+            applyFileMode();
             rememberFileCandidateCache(sid, cacheKey);
           } catch (e) {}
           if (!current()) return;
@@ -9890,18 +9975,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
           const preferred = explicitPath || preferredSelection.path;
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
+          const preferredGitPath = explicitPath ? false : Boolean(preferredSelection.gitPath);
           if (preferred) {
-            setFilePath(preferred, { line: preferredLine });
-            void openFilePathWithResolvedMode(preferred, { line: preferredLine, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+            setFilePath(preferred, { line: preferredLine, gitPath: preferredGitPath });
+            void openFilePathWithResolvedMode(preferred, { line: preferredLine, gitPath: preferredGitPath, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
             return;
           }
-          const first = fileCandidateList.length ? fileCandidateList[0] : "";
+          const firstKey = fileCandidateList.length ? fileCandidateList[0] : "";
+          const first = firstKey ? fileEntryMap.get(firstKey) : null;
           if (first) {
-            setFilePath(first, { line: null });
-            void openFilePathWithResolvedMode(first, { line: null, isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
+            setFilePath(first.path, { line: null, gitPath: first.gitPath });
+            void openFilePathWithResolvedMode(first.path, { line: null, changed: Boolean(first.changed), gitPath: Boolean(first.gitPath), isCurrent: () => isFileViewerSessionCurrent(sid, syncToken) }).catch((e) => {
               if (!isFileViewerSessionCurrent(sid, syncToken)) return;
               fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             });
@@ -9973,7 +10060,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           clearFileVideo();
           fileDiff.style.display = "block";
           try {
-            const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode;
+            const activeEntry = activeFileEntry();
+            const canUseDiffView = request.gitPath && fileCandidateGitStateFresh && Boolean(activeEntry && activeEntry.changed);
+            const viewMode = fileViewMode === "preview" && !isMarkdownPreviewable(rel) ? "file" : fileViewMode === "diff" && !canUseDiffView ? "file" : fileViewMode;
             if (viewMode !== fileViewMode) setFileViewMode(viewMode);
             if (viewMode === "diff") {
               const res = await api(`/api/sessions/${request.sessionId}/git/file_versions?path=${encodeURIComponent(rel)}`, {
@@ -10178,7 +10267,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void openDraftFilePathWithGuard(active.path);
               return;
             }
-            void openFilePathWithResolvedMode(active.path, { line: null, changed: Boolean(active.changed) }).catch((err) => {
+            void openFilePathWithResolvedMode(active.path, { line: null, changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) }).catch((err) => {
               fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
             });
             return;
