@@ -1300,3 +1300,10 @@ Commitments:
 - Intervention: Added signature/TTL caches for launch defaults, static asset version, and tmux availability only.
 - Evidence: Targeted cache test shows launch-default reuse, deep-copy isolation, and invalidation; existing static asset tests still pass; full local/Docker suites passed.
 - Scoped claim: Repeated `/api/sessions` polls avoid repeated config/static/tmux helper work while preserving live session-list computation and visible invalidation on file changes represented by mtime/size signatures.
+
+## 2026-06-13 08:31 — Static asset version must remain content-derived
+- Observation: Clean-room review found a counterexample to static asset version memoization by mtime/size: timestamp-preserving same-size content replacement can keep a stale version.
+- Revised mechanism: Unlike launch defaults, static asset version is itself a content identity contract for cache busting. Approximate file signatures are insufficient unless paired with content reading.
+- Intervention: Removed static asset version memoization; `_static_asset_version()` again reads bytes to compute the hash. Launch defaults and tmux availability remain cached because their invalidation semantics are weaker and scoped to `/api/sessions` display/config defaults.
+- Evidence: Focused/static/full local/Docker validations passed after removal.
+- Scoped claim: `/api/sessions` no longer risks stale `app_version` from mtime/size-preserving static content changes.

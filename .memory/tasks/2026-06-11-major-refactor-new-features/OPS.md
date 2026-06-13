@@ -1534,3 +1534,10 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`.
 - Full local validation: `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `664 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 08:31 — Static asset version cache removal
+- Clean-room critic found a blocker in `_static_asset_version()` memoization: same-size content changes with preserved `mtime_ns` could return a stale app version, keeping `/api/sessions` ETags and static asset URLs stale.
+- Removed static asset version memoization and restored content-hash computation on every `_static_asset_version()` call. Kept launch-defaults signature cache and tmux TTL cache.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`.
+- Full local validation after repair: `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `664 passed, 1 skipped, 25 subtests passed`.
