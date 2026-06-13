@@ -1461,3 +1461,8 @@ Commitments:
 - Intervention: Added `aria-modal`, initial focus, and focus restoration without changing launch semantics or adding UI controls.
 - Evidence: Source tests, full local/Docker validation, and desktop/mobile browser focus evidence passed.
 - Scoped claim: Keyboard/screen-reader users now enter the New Session dialog predictably and return to the launcher on close under the tested desktop and mobile viewports.
+
+## 2026-06-13 11:08 — New Session accessibility accepted
+- Observation: Clean-room review found no blockers in New Session modal focus/ARIA behavior.
+- Scoped claim: Under tested launcher paths and desktop/mobile viewports, New Session is a proper modal focus surface without changing launch semantics.
+- Remaining uncertainty: Future opener elements may need stronger visibility/tabbability checks if they are hidden or removed differently from current launchers.

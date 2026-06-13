@@ -1732,3 +1732,9 @@
 - Full local validation: `python3 -m pytest -q` → `680 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `679 passed, 1 skipped, 25 subtests passed`.
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-new-session-a11y-18796`, stopped): desktop open focused `#newSessionCwdInput`, mobile open focused `#newSessionCloseBtn`, both had `role=dialog`/`aria-modal=true`, both isolated `.app`, and Escape restored focus to `#newBtn` with isolation removed. Artifact: `/tmp/codoxear-new-session-a11y-browser.json`.
+
+## 2026-06-13 11:08 — New Session accessibility review
+- Clean-room review of `ab8468a` found no blockers.
+- Critic validation: `node --check codoxear/static/app.js`; focused modal/launch tests → `20 passed`; full pytest → `680 passed, 25 subtests passed`.
+- Review confirmed `aria-modal=true`, desktop/mobile initial focus, all close paths routing through `hideNewSessionDialog()`, successful-start close path, and unchanged modal isolation.
+- Residual accepted risks: committed tests are source-structure checks; browser artifact covers core open/Escape close behavior but not every close path individually. Focus restoration checks connected/disabled but not full rendered/tabbable visibility for possible future openers.
