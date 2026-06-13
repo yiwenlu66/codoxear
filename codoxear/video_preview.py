@@ -5,6 +5,8 @@ import os
 import secrets
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,20 @@ def _positive_int_env(name: str, default: int) -> int:
 
 VIDEO_PREVIEW_CACHE_MAX_FILES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_FILES", 256)
 VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)
+VIDEO_PREVIEW_FAILURE_TTL_SECONDS = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_FAILURE_TTL_SECONDS", 15)
+VIDEO_PREVIEW_FAILURE_MAX_ENTRIES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_FAILURE_MAX_ENTRIES", 512)
+
+
+class _PreviewLock:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.refs = 0
+
+
+_PREVIEW_LOCKS_GUARD = threading.Lock()
+_PREVIEW_LOCKS: dict[Path, _PreviewLock] = {}
+_PREVIEW_FAILURES_GUARD = threading.Lock()
+_PREVIEW_FAILURES: dict[Path, tuple[float, str]] = {}
 
 
 def video_response_payload(
@@ -54,11 +70,80 @@ def video_preview_path(path: Path, *, preview_dir: Path) -> Path:
     return preview_dir / f"{hashlib.sha256(payload).hexdigest()}.mp4"
 
 
-def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
-    out = video_preview_path(path, preview_dir=preview_dir)
-    if out.exists() and out.stat().st_size > 0:
-        prune_video_preview_cache(preview_dir, keep=out)
-        return out
+def _preview_ready(path: Path) -> bool:
+    try:
+        return path.exists() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _acquire_preview_lock(path: Path) -> _PreviewLock:
+    with _PREVIEW_LOCKS_GUARD:
+        entry = _PREVIEW_LOCKS.get(path)
+        if entry is None:
+            entry = _PreviewLock()
+            _PREVIEW_LOCKS[path] = entry
+        entry.refs += 1
+    entry.lock.acquire()
+    return entry
+
+
+def _release_preview_lock(path: Path, entry: _PreviewLock) -> None:
+    entry.lock.release()
+    with _PREVIEW_LOCKS_GUARD:
+        entry.refs -= 1
+        if entry.refs <= 0 and _PREVIEW_LOCKS.get(path) is entry:
+            _PREVIEW_LOCKS.pop(path, None)
+
+
+def _prune_preview_failures_locked(now: float) -> None:
+    expired = [path for path, (expires_at, _message) in _PREVIEW_FAILURES.items() if expires_at <= now]
+    for path in expired:
+        _PREVIEW_FAILURES.pop(path, None)
+    cap = max(0, int(VIDEO_PREVIEW_FAILURE_MAX_ENTRIES))
+    if cap <= 0:
+        _PREVIEW_FAILURES.clear()
+        return
+    overflow = len(_PREVIEW_FAILURES) - cap
+    if overflow <= 0:
+        return
+    oldest = sorted(_PREVIEW_FAILURES.items(), key=lambda item: (item[1][0], str(item[0])))[:overflow]
+    for path, _cached in oldest:
+        _PREVIEW_FAILURES.pop(path, None)
+
+
+def _cached_preview_failure(path: Path) -> str | None:
+    ttl = max(0, int(VIDEO_PREVIEW_FAILURE_TTL_SECONDS))
+    if ttl <= 0:
+        return None
+    now = time.monotonic()
+    with _PREVIEW_FAILURES_GUARD:
+        _prune_preview_failures_locked(now)
+        cached = _PREVIEW_FAILURES.get(path)
+        if not cached:
+            return None
+        return cached[1]
+
+
+def _remember_preview_failure(path: Path, exc: BaseException) -> None:
+    ttl = max(0, int(VIDEO_PREVIEW_FAILURE_TTL_SECONDS))
+    cap = max(0, int(VIDEO_PREVIEW_FAILURE_MAX_ENTRIES))
+    if ttl <= 0 or cap <= 0:
+        return
+    message = str(exc).strip() or type(exc).__name__
+    now = time.monotonic()
+    with _PREVIEW_FAILURES_GUARD:
+        _prune_preview_failures_locked(now)
+        _PREVIEW_FAILURES[path] = (now + ttl, message)
+        _prune_preview_failures_locked(now)
+
+
+def _clear_preview_failure(path: Path) -> None:
+    with _PREVIEW_FAILURES_GUARD:
+        _PREVIEW_FAILURES.pop(path, None)
+
+
+def _generate_video_preview(path: Path, out: Path, *, preview_dir: Path) -> Path:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg is required for compatible video previews")
@@ -107,6 +192,30 @@ def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
         return out
     finally:
         unlink_quiet(tmp)
+
+
+def ensure_video_preview(path: Path, *, preview_dir: Path) -> Path:
+    out = video_preview_path(path, preview_dir=preview_dir)
+    if _preview_ready(out):
+        prune_video_preview_cache(preview_dir, keep=out)
+        return out
+    entry = _acquire_preview_lock(out)
+    try:
+        if _preview_ready(out):
+            prune_video_preview_cache(preview_dir, keep=out)
+            return out
+        cached_failure = _cached_preview_failure(out)
+        if cached_failure:
+            raise RuntimeError(f"recent video preview generation failed: {cached_failure}")
+        try:
+            generated = _generate_video_preview(path, out, preview_dir=preview_dir)
+        except RuntimeError as exc:
+            _remember_preview_failure(out, exc)
+            raise
+        _clear_preview_failure(out)
+        return generated
+    finally:
+        _release_preview_lock(out, entry)
 
 
 def prune_video_preview_cache(

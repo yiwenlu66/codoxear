@@ -1750,3 +1750,12 @@ Observation: After the `(gitPath,path)` candidate-identity fix, two file-picker 
 Intervention: The file picker now adds compact identity hints only where the surrounding UI does not already disambiguate enough: duplicate same-display rows, pending session-path probes, and Git-root rows during search mode where source sections are hidden. Hints are visible text and tooltip title metadata; they do not override the option accessible name.
 
 Scoped claim: Under source/runtime tests and clean-room review, ambiguous same-display picker rows are now distinguishable without changing ordering, click/Enter routing, literal path text, create/draft behavior, or changed-stat display. Residual: browser visual/screen-reader evidence is source-based rather than a live assistive-tech pass; existing ellipsis/nowrap behavior still limits forensic display of trailing-space/newline filenames.
+
+## 2026-06-14 06:50
+Observation: Video preview generation used a deterministic source-stat output key but did not coordinate concurrent requests for that key. Multiple browser/media retries for the same incompatible video could therefore launch duplicate ffmpeg work, and repeated ffmpeg failures could be retried immediately.
+
+Intervention: `ensure_video_preview()` now uses a per-output in-process lock with refcount cleanup, rechecks the positive cache after acquiring the lock, and records a short bounded negative cache for `RuntimeError` generation failures only. Expired failure entries are pruned on later preview activity and the failure map is capped; source size/mtime changes produce a different preview key and bypass the old failure.
+
+Observation: Clean-room review found two important refinements: an unbounded negative cache would leak across many failing source-stat keys, and caching all exception types could convert a repeated `PermissionError` into a `RuntimeError`, changing HTTP error semantics. The final implementation caps/prunes failures and only caches `RuntimeError` generation failures, preserving `PermissionError`/`FileNotFoundError`/`OSError` propagation.
+
+Scoped claim: Under focused, full, Docker, and clean-room evidence, same-process duplicate preview requests for one source-stat key produce at most one generation attempt, repeated ffmpeg-like `RuntimeError` failures are briefly throttled without permanent suppression, and non-ffmpeg file/permission errors are not transformed by the throttle. Residual: singleflight is process-local and source mutations that preserve path/size/mtime_ns can still reuse a stale key.

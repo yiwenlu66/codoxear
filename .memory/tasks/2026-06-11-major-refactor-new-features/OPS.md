@@ -2096,3 +2096,12 @@
   - Full local: `python3 -m pytest -q` -> `762 passed, 77 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `761 passed, 1 skipped, 77 subtests passed`.
   - Final clean-room review -> no blockers. Prior review found an accessibility blocker from overriding picker option `aria-label`; fixed by relying on visible hint spans plus `title` instead.
+
+## 2026-06-14 06:50
+- Completed video preview singleflight/failure-throttle reliability tranche.
+- Changed artifacts: `codoxear/video_preview.py`, `tests/test_video_preview_cache.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_video_preview_cache.py tests/test_file_inspect.py tests/test_file_viewer_source.py -q` -> `94 passed, 52 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `767 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `766 passed, 1 skipped, 77 subtests passed`.
+  - Clean-room review loop found and drove fixes for unbounded failure map and exception-semantics drift; final review -> no blockers.
