@@ -1400,3 +1400,10 @@ Commitments:
 - Observation: Runtime browser evidence showed an identical-signature 200 `/api/sessions` poll produced no `.sessions` child-list mutations and preserved active card HTML.
 - Interpretation: This directly supports the intended no-op DOM behavior beyond source-order assertions, under a desktop mocked-session scenario.
 - Scope: Evidence covers desktop action layout with one active session and non-sidebar payload changes. It does not cover mobile open-swipe deferred refresh behavior in a browser, which remains constrained by source tests and prior swipe evidence.
+
+## 2026-06-13 10:17 — Attachment route failure was an unexecuted import bug
+- Observation: The attachment route referenced `base64` without importing it. Existing tests only source-checked ordering around `base64.b64decode`; they did not execute the route.
+- Mechanism: Valid browser-generated base64 payloads would raise `NameError`, get caught by the broad decode exception, and be misreported as invalid base64 before staging/injection.
+- Intervention: Imported `base64` and added a route-level execution test for a valid upload.
+- Evidence: Focused route test verifies staged bytes and injected bracketed-paste payload; full local and Docker suites passed.
+- Scoped claim: Valid base64 file attachments now reach staging and broker injection in the tested idle-session route path.

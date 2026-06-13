@@ -1,9 +1,12 @@
+import base64
 import tempfile
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest.mock import patch
 
 from codoxear import pty_util
+from codoxear import server
 from codoxear.server import _attachment_inject_text
 from codoxear.server import _stage_uploaded_file
 
@@ -50,6 +53,53 @@ class TestStageUploadedFile(unittest.TestCase):
     def test_attachment_inject_text_rejects_non_positive_index(self) -> None:
         with self.assertRaisesRegex(ValueError, "attachment_index must be >= 1"):
             _attachment_inject_text(0, Path("/tmp/example.txt"))
+
+
+class TestInjectFileRoute(unittest.TestCase):
+    def test_valid_base64_payload_is_staged_and_injected(self) -> None:
+        class FakeManager:
+            def __init__(self) -> None:
+                self.ready_calls = []
+                self.inject_calls = []
+
+            def attachment_injection_ready(self, session_id: str) -> bool:
+                self.ready_calls.append(session_id)
+                return True
+
+            def inject_attachment_keys(self, session_id: str, seq: str) -> dict:
+                self.inject_calls.append((session_id, seq))
+                return {"ok": True}
+
+        fake_manager = FakeManager()
+        handler = server.Handler.__new__(server.Handler)
+        parsed = urllib.parse.urlparse("/api/sessions/sess-1/inject_file")
+        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+        handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+        handler._read_json_body = lambda **_kwargs: {  # type: ignore[attr-defined]
+            "filename": "note.txt",
+            "attachment_index": 1,
+            "data_b64": base64.b64encode(b"hello attachment").decode("ascii"),
+        }
+        responses = []
+        with tempfile.TemporaryDirectory() as td:
+            upload_root = Path(td) / "uploads"
+            with patch.object(server, "MANAGER", fake_manager), patch.object(server, "UPLOAD_DIR", upload_root), patch.object(
+                server, "_require_auth", return_value=True
+            ), patch.object(server, "_now", return_value=42.0), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_POST(handler)
+
+            staged = upload_root / "sess-1" / "42000_note.txt"
+            self.assertEqual(staged.read_bytes(), b"hello attachment")
+
+        self.assertEqual(fake_manager.ready_calls, ["sess-1"])
+        self.assertEqual(len(fake_manager.inject_calls), 1)
+        session_id, seq = fake_manager.inject_calls[0]
+        self.assertEqual(session_id, "sess-1")
+        self.assertIn("\x1b[200~Attachment 1: ", seq)
+        self.assertIn("42000_note.txt\n\x1b[201~", seq)
+        self.assertEqual(responses, [(200, {"ok": True, "path": str(staged), "inject_text": f"Attachment 1: {staged}\n", "broker": {"ok": True}})])
 
 
 class TestSeqBytes(unittest.TestCase):

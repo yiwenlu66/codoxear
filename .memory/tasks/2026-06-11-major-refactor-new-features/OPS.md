@@ -1654,3 +1654,11 @@
 - Playwright attached a `MutationObserver` to `.sessions` after the active session state was applied, waited for another 200 poll, and observed zero sidebar child-list mutations with identical sidebar HTML before/after.
 - Browser artifact: `/tmp/codoxear-sidebar-identical-browser.json`.
 - Stopped the isolated Docker sandbox after capture.
+
+## 2026-06-13 10:17 — Attachment upload base64 blocker fix
+- Fresh critic found a deterministic attachment blocker: `/api/sessions/<sid>/inject_file` used `base64.b64decode(...)` without importing `base64`, causing valid browser uploads to be reported as `400 invalid base64`.
+- Added the missing `base64` import in `codoxear/server.py`.
+- Added an execution test that instantiates `Handler.do_POST()` for `/api/sessions/sess-1/inject_file`, mocks auth/manager readiness/injection, submits a valid base64 payload, verifies staged bytes, bracketed paste injection text, and 200 response.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_file_upload.py tests/test_file_upload_module_source.py tests/test_attach_button_source.py -q` → `15 passed`.
+- Full local validation: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.
