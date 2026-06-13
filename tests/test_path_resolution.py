@@ -27,6 +27,14 @@ class TestPathResolution(unittest.TestCase):
             resolved = _resolve_session_path(base, "a/b.txt")
             self.assertEqual(resolved, target.resolve())
 
+    def test_resolve_session_path_allows_whitespace_only_relative_name(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            target = base / " "
+            target.write_text("x", encoding="utf-8")
+            resolved = _resolve_session_path(base, " ")
+            self.assertEqual(resolved, target.resolve())
+
     def test_resolve_git_path_allows_absolute_inside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -38,6 +46,17 @@ class TestPathResolution(unittest.TestCase):
             self.assertEqual(resolved, target.resolve())
             self.assertEqual(repo_root, root.resolve())
             self.assertEqual(rel, "dir/file.txt")
+
+    def test_resolve_git_path_keeps_backslash_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            subprocess.run(["git", "init"], cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            target = root / "back\\slash.md"
+            target.write_text("x", encoding="utf-8")
+            resolved, repo_root, rel = _resolve_git_path(root, "back\\slash.md")
+            self.assertEqual(resolved, target)
+            self.assertEqual(repo_root, root.resolve())
+            self.assertEqual(rel, "back\\slash.md")
 
     def test_resolve_git_path_rejects_absolute_outside_repo(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -272,8 +272,8 @@
         const out = [];
         for (const v of val) {
           if (typeof v !== "string") continue;
-          const p = v.trim();
-          if (!p || out.includes(p)) continue;
+          const p = v;
+          if (p === "" || out.includes(p)) continue;
           out.push(p);
         }
         return out;
@@ -747,8 +747,13 @@
       }
 
       function stripPathLocationSuffix(rawPath) {
-        const parsed = parseFileLocation(rawPath);
-        return parsed ? parsed.path : String(rawPath || "").trim();
+        const raw = String(rawPath ?? "");
+        const trimmed = raw.trim();
+        let m = trimmed.match(/^(.*)#L(\d+)(?:-\d+)?$/);
+        if (m) return m[1];
+        m = trimmed.match(/^(.*):(\d+)(?::\d+)?$/);
+        if (m && !/^[A-Za-z]:$/.test(m[1])) return m[1];
+        return raw;
       }
 
       function parseLocalFileRef(rawValue) {
@@ -7641,6 +7646,7 @@
         let fileViewerSessionId = "";
         let fileViewerUnavailableSessionId = "";
         let activeFilePath = "";
+        let activeFileGitPath = false;
         let activeFileKind = "";
         let activeFileText = "";
         let activeFileEditable = false;
@@ -7713,10 +7719,11 @@
           fileOpenAbortController = null;
         }
 
-        function beginFileOpenRequest(nextPath = null, { line = undefined } = {}) {
+        function beginFileOpenRequest(nextPath = null, { line = undefined, gitPath = undefined } = {}) {
           cancelPendingFileOpen();
-          const rel = String(nextPath == null ? activeFilePath : nextPath).trim();
+          const rel = String(nextPath == null ? activeFilePath : nextPath);
           activeFilePath = rel;
+          if (gitPath !== undefined) activeFileGitPath = Boolean(gitPath);
           activeFileLine = line === undefined ? activeFileLine : normalizeLineNumber(line);
           const controller = typeof AbortController === "function" ? new AbortController() : null;
           if (controller) fileOpenAbortController = controller;
@@ -7724,6 +7731,7 @@
             requestId: fileOpenRequestId,
             sessionId: currentFileSessionId(),
             path: rel,
+            gitPath: activeFileGitPath,
             line: activeFileLine,
             signal: controller ? controller.signal : null,
           };
@@ -7734,7 +7742,7 @@
           return (
             request.requestId === fileOpenRequestId &&
             request.sessionId === currentFileSessionId() &&
-            request.path === String(activeFilePath || "").trim()
+            request.path === String(activeFilePath ?? "")
           );
         }
 
@@ -7765,8 +7773,8 @@
 
         function rememberActiveFileSelection(sessionId = currentFileSessionId()) {
           const sid = String(sessionId || "").trim();
-          const path = String(activeFilePath || "").trim();
-          if (!sid || !path) return;
+          const path = String(activeFilePath ?? "");
+          if (!sid || path === "") return;
           fileSessionSelections.set(sid, {
             path,
             line: activeFileLine == null ? null : activeFileLine,
@@ -7791,8 +7799,8 @@
           const sid = String(sessionId || "").trim();
           if (!sid) return { path: "", line: null };
           const remembered = fileSessionSelections.get(sid);
-          const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path.trim() : "";
-          if (rememberedPath) {
+          const rememberedPath = remembered && typeof remembered.path === "string" ? remembered.path : "";
+          if (rememberedPath !== "") {
             return {
               path: rememberedPath,
               line: normalizeLineNumber(remembered.line),
@@ -7863,6 +7871,7 @@
           if (!isFileViewerSessionCurrent(sid, syncToken)) return false;
           resetFileViewerPanel();
           activeFilePath = "";
+          activeFileGitPath = false;
           activeFileLine = null;
           resetFilePickerInput();
           renderFilePickerMenu();
@@ -8903,7 +8912,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const ok = window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);
             if (!ok) return;
             fileStatus.textContent = `Reloading ${savePath}...`;
-            const reloaded = await openFilePath(savePath, { line: activeFileLine });
+            const reloaded = await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath });
             if (!reloaded && activeFilePath === savePath) fileStatus.textContent = `${savePath} - reload failed`;
           };
           keepBtn.onclick = (e) => {
@@ -8940,7 +8949,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           try {
             const saveBody = saveDraft
               ? { path: savePath, text, create: true }
-              : { path: savePath, text, version: saveVersion };
+              : { path: savePath, text, version: saveVersion, git_path: Boolean(activeFileGitPath) };
             const res = await api(`/api/sessions/${saveSessionId}/file/write`, {
               method: "POST",
               body: saveBody,
@@ -8950,6 +8959,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (res && typeof res.version === "string") activeFileVersion = res.version;
             if (res && typeof res.editable === "boolean") activeFileEditable = res.editable;
             activeFileDraft = false;
+            if (saveDraft) activeFileGitPath = false;
             applyFileMode();
             setFileDirty(false);
             if (exitEditMode) setFileEditMode(false);
@@ -8987,7 +8997,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return false;
         }
 
-        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null } = {}) {
+        async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null, gitPath = false } = {}) {
           if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
           const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
@@ -8997,7 +9007,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           setFilePath(path, { line });
           if (mode) setFileViewMode(mode);
           renderFilePickerMenu();
-          await openFilePath(path, { line });
+          await openFilePath(path, { line, gitPath });
           return Boolean(currentGuard());
         }
 
@@ -9027,7 +9037,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           if (blockUnavailableFileAction()) return false;
           setFileViewMode("file");
-          setFilePath(rel, { line: null });
+          setFilePath(rel, { line: null, gitPath: false });
           renderFilePickerMenu();
           await openDraftFilePath(rel, { line: null });
           return true;
@@ -9042,7 +9052,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (blockUnavailableFileAction()) return false;
           setFileViewMode(next);
           renderFilePickerMenu();
-          await openFilePath(activeFilePath, { line: activeFileLine });
+          await openFilePath(activeFilePath, { line: activeFileLine, gitPath: activeFileGitPath });
           return true;
         }
 
@@ -9103,9 +9113,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileMenuState();
         }
 
-        function setFilePath(rel, { line = null } = {}) {
-          const next = String(rel || "").trim();
+        function setFilePath(rel, { line = null, gitPath = undefined } = {}) {
+          const next = String(rel ?? "");
           activeFilePath = next;
+          if (gitPath !== undefined) activeFileGitPath = Boolean(gitPath);
           activeFileLine = normalizeLineNumber(line);
           resetFilePickerInput();
           fileMenuOpen = false;
@@ -9113,13 +9124,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           applyFileMode();
         }
 
-        async function inspectSessionFilePath(path) {
+        function isGitFileCandidatePath(path, changed = null) {
+          if (changed !== null && changed !== undefined) return Boolean(changed);
+          const entry = fileEntryMap.get(String(path ?? ""));
+          return Boolean(entry && entry.changed);
+        }
+
+        async function inspectSessionFilePath(path, { gitPath = false } = {}) {
           const sid = fileViewerSessionId || selected || "";
           if (!sid) throw new Error("select a session first");
           try {
+            const body = { session_id: sid, path };
+            if (gitPath) body.git_path = true;
             const res = await api("/api/files/inspect", {
               method: "POST",
-              body: { session_id: sid, path },
+              body,
             });
             return { exists: true, ...res };
           } catch (e) {
@@ -9129,10 +9148,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function resolveFileOpenMode(path, { changed = null } = {}) {
-          const inspect = await inspectSessionFilePath(path);
-          if (!inspect || !inspect.exists) throw new Error("file not found");
+          const gitPath = isGitFileCandidatePath(path, changed);
+          const candidateChanged = isGitFileCandidatePath(path, changed);
+          const inspect = await inspectSessionFilePath(path, { gitPath });
+          if (!inspect || !inspect.exists) {
+            if (candidateChanged) return "diff";
+            throw new Error("file not found");
+          }
           const kind = String(inspect.kind || "").trim();
-          const candidateChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
           const isChanged = fileCandidateGitStateFresh && candidateChanged;
           if (isChanged && isDiffableFileKind(kind)) return "diff";
           if (kind === "markdown" && fileNonDiffMode === "preview") return "preview";
@@ -9143,6 +9166,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
           const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
+          const gitPath = isGitFileCandidatePath(path, changed);
           let mode;
           try {
             mode = await resolveFileOpenMode(path, { changed });
@@ -9151,13 +9175,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             throw e;
           }
           if (!currentGuard()) return false;
-          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });
+          return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
           if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId) return;
-          const request = beginFileOpenRequest(path, { line });
+          const request = beginFileOpenRequest(path, { line, gitPath: false });
           const rel = normalizeDraftFilePath(path);
           if (!rel) {
             fileStatus.textContent = "Choose a valid relative file path.";
@@ -9201,9 +9225,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function cloneFileCandidateEntry(entry) {
-          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) return null;
+          if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
           return {
-            path: entry.path.trim(),
+            path: entry.path,
             additions: entry.additions ?? null,
             deletions: entry.deletions ?? null,
             changed: Boolean(entry.changed),
@@ -9230,8 +9254,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function fileCandidateCacheKey(sid) {
           const s = sid ? sessionIndex.get(sid) : null;
-          const filesKey = listFromFilesField(s && s.files).join("\n");
-          const refsKey = collectMessageFileRefs().join("\n");
+          const filesKey = JSON.stringify(listFromFilesField(s && s.files));
+          const refsKey = JSON.stringify(collectMessageFileRefs());
           return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
         }
 
@@ -9252,7 +9276,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
-          const raw = String(relPath || "").trim();
+          const raw = String(relPath ?? "");
           const sid = fileViewerSessionId || selected || "";
           const rel = sessionRelativePath(raw, sid) || raw;
           if (!rel) return;
@@ -9267,8 +9291,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const s = sid ? sessionIndex.get(sid) : null;
           if (!s) return;
           const files = listFromFilesField(s.files);
-          const abs = typeof absPath === "string" && absPath.trim()
-            ? absPath.trim()
+          const abs = typeof absPath === "string" && absPath !== ""
+            ? absPath
             : s.cwd && rel !== "."
               ? `${String(s.cwd).replace(/\/+$/, "")}/${rel.replace(/^\.?\//, "")}`
               : "";
@@ -9287,9 +9311,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (!(node instanceof Element)) continue;
             const kind = String(node.getAttribute("data-file-kind") || "").trim();
             if (kind === "directory") continue;
-            const rawAbs = String(node.getAttribute("data-file-path") || "").trim();
+            const rawAbs = String(node.getAttribute("data-file-path") ?? "");
             const raw = rawAbs;
-            if (!raw) continue;
+            if (raw === "") continue;
             const rel = raw.startsWith("/") ? sessionRelativePath(raw) || "" : raw.replace(/^\.?\//, "");
             if (!rel || rel === "." || seen.has(rel)) continue;
             seen.add(rel);
@@ -9426,8 +9450,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const matches = [];
             const seen = new Set();
             for (const item of Array.isArray(res && res.matches) ? res.matches : []) {
-              const path = item && typeof item.path === "string" ? item.path.trim() : "";
-              if (!path || path === "." || seen.has(path)) continue;
+              const path = item && typeof item.path === "string" ? item.path : "";
+              if (path === "" || path === "." || seen.has(path)) continue;
               seen.add(path);
               const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
               matches.push({ path, score });
@@ -9543,8 +9567,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const out = [];
           const seen = new Set();
           for (const item of fileSearchResults) {
-            const path = item && typeof item.path === "string" ? item.path.trim() : "";
-            if (!path || path === "." || seen.has(path)) continue;
+            const path = item && typeof item.path === "string" ? item.path : "";
+            if (path === "" || path === "." || seen.has(path)) continue;
             seen.add(path);
             const score = Number.isFinite(item && item.score) ? Number(item.score) : 0;
             out.push(pickerEntryForPath(path, { score }));
@@ -9580,8 +9604,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               const entries = Array.isArray(res.entries) ? res.entries : [];
               for (const entry of entries) {
                 if (!entry || typeof entry.path !== "string") continue;
-                const path = String(entry.path).trim();
-                if (path) out.add(path);
+                const path = entry.path;
+                if (path !== "") out.add(path);
               }
             } catch {}
             return [...out];
@@ -9705,12 +9729,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function fileRefValidationKey(path) {
-          return `${selected || ""}|${String(path || "").trim()}`;
+          return `${selected || ""}|${String(path ?? "")}`;
         }
 
         async function inspectFileRefPath(path) {
-          const rawPath = String(path || "").trim();
-          if (!rawPath) return { ok: false };
+          const rawPath = String(path ?? "");
+          if (rawPath === "") return { ok: false };
           let inspectPath = rawPath;
           if (!rawPath.includes("/") && selected) {
             const candidates = await getKnownFileRefCandidates();
@@ -9746,12 +9770,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!root) return;
           const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
           for (const node of nodes) {
-            const path = String(node.getAttribute("data-candidate-file-path") || "").trim();
+            const path = String(node.getAttribute("data-candidate-file-path") ?? "");
             const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
-            if (!path) continue;
+            if (path === "") continue;
             const result = await inspectFileRefPath(path);
             if (!result || !result.ok) continue;
-            const resolvedPath = String(result.resolvedPath || result.inspectPath || path).trim();
+            const resolvedPath = String(result.resolvedPath || result.inspectPath || path);
             const link = el("a", {
               href: "#",
               class: "inlineFileLink",
@@ -9803,9 +9827,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
             const changedEntries = entriesIn
-              .filter((entry) => entry && typeof entry.path === "string" && String(entry.path).trim())
+              .filter((entry) => entry && typeof entry.path === "string" && entry.path !== "")
               .map((entry) => ({
-                path: String(entry.path).trim(),
+                path: entry.path,
                 additions:
                   typeof entry.additions === "number" && Number.isFinite(entry.additions) ? entry.additions : entry.additions == null ? null : null,
                 deletions:
@@ -9862,7 +9886,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           else applyFileMode();
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return;
-          const explicitPath = String(path || "").trim();
+          const explicitPath = String(path ?? "");
           const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
           const preferred = explicitPath || preferredSelection.path;
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
@@ -9885,6 +9909,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           resetFileViewerPanel();
           activeFilePath = "";
+          activeFileGitPath = false;
           activeFileLine = null;
           resetFilePickerInput();
           renderFilePickerMenu();
@@ -9930,10 +9955,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           updateFileEditButton();
           updateFileTouchToolbar();
         }
-        async function openFilePath(nextPath = null, { line = undefined } = {}) {
+        async function openFilePath(nextPath = null, { line = undefined, gitPath = undefined } = {}) {
           if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
-          const request = beginFileOpenRequest(nextPath, { line });
+          const request = beginFileOpenRequest(nextPath, { line, gitPath });
           const rel = request.path;
           if (!rel) {
             fileStatus.textContent = "Choose a file first.";
@@ -9971,7 +9996,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               applyFileMode();
               rememberOpenedFile(rel, res && typeof res.abs_path === "string" ? res.abs_path : null);
             } else {
-              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}`, {
+              const gitPathQuery = request.gitPath ? "&git_path=1" : "";
+              const res = await api(`/api/sessions/${request.sessionId}/file/read?path=${encodeURIComponent(rel)}${gitPathQuery}`, {
                 signal: request.signal,
               });
               if (!isCurrentFileOpenRequest(request)) return false;
@@ -10198,7 +10224,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           e.stopPropagation();
           if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId || !activeFilePath) return;
-          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}`);
+          const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}${activeFileGitPath ? "&git_path=1" : ""}`);
           const link = document.createElement("a");
           link.href = url;
           link.rel = "noopener";
@@ -10255,10 +10281,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         filePasteBackdrop.onclick = () => hideFilePasteDialog();
         async function openFileReference(ref) {
           if (!ref || typeof ref.path !== "string") return;
-          const rawPath = String(ref.path || "").trim();
+          const rawPath = String(ref.path ?? "");
           const line = normalizeLineNumber(ref.line);
-          if (!rawPath) return;
-          const parsed = parseLocalFileRef(rawPath);
+          if (rawPath === "") return;
+          const parsed = ref.literal ? { path: rawPath, line } : parseLocalFileRef(rawPath);
           if (!parsed) {
             setToast("unsupported file reference");
             return;
@@ -10307,14 +10333,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const target = e.target instanceof Element ? e.target.closest("a[data-file-path]") : null;
           if (!target) return;
           e.preventDefault();
-          const path = String(target.getAttribute("data-file-path") || "").trim();
+          const path = String(target.getAttribute("data-file-path") ?? "");
           const kind = String(target.getAttribute("data-file-kind") || "").trim();
           const line = normalizeLineNumber(target.getAttribute("data-file-line"));
           if (kind === "directory") {
             await confirmDirectorySession(path);
             return;
           }
-          await openFileReference({ path, line });
+          await openFileReference({ path, line, literal: true });
         });
         addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;

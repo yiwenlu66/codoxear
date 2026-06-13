@@ -186,7 +186,7 @@ class TestMarkdownTables(unittest.TestCase):
 
     def test_candidate_file_link_source_prefers_resolved_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('const resolvedPath = String(result.resolvedPath || result.inspectPath || path).trim();', source)
+        self.assertIn('const resolvedPath = String(result.resolvedPath || result.inspectPath || path);', source)
         self.assertIn('"data-file-path": resolvedPath,', source)
 
 

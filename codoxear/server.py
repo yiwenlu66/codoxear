@@ -11,6 +11,7 @@ import http.server
 import json
 import math
 import os
+import posixpath
 import re
 import secrets
 import signal
@@ -92,6 +93,7 @@ from .launch_config import read_codex_launch_defaults as _launch_read_codex_laun
 from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
 from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
 from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
+from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
 from .file_view import inspect_downloadable_file as _inspect_downloadable_file
@@ -1053,7 +1055,7 @@ def _resolve_session_cwd(raw_cwd: str) -> Path:
 
 
 def _resolve_session_path(base: Path, raw_path: str) -> Path:
-    if not isinstance(raw_path, str) or not raw_path.strip():
+    if not isinstance(raw_path, str) or raw_path == "":
         raise ValueError("path required")
     if "\x00" in raw_path:
         raise ValueError("invalid path")
@@ -1088,12 +1090,58 @@ def _resolve_existing_absolute_file(raw_path: str) -> Path:
 
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
     repo_root = Path(_run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()).resolve()
-    target = _resolve_session_path(cwd, raw_path)
-    try:
-        rel = str(target.relative_to(repo_root))
-    except ValueError as e:
-        raise ValueError("path is outside git repo") from e
+    if not isinstance(raw_path, str) or raw_path == "":
+        raise ValueError("path required")
+    if "\x00" in raw_path:
+        raise ValueError("invalid path")
+    raw = Path(raw_path)
+    if raw.is_absolute():
+        target = Path(os.path.normpath(str(raw)))
+        try:
+            rel = target.relative_to(repo_root).as_posix()
+        except ValueError as e:
+            raise ValueError("path is outside git repo") from e
+        if rel in {"", "."}:
+            raise ValueError("path required")
+    else:
+        rel = posixpath.normpath(raw_path)
+        if rel in {"", "."}:
+            raise ValueError("path required")
+        if rel == ".." or rel.startswith("../"):
+            raise ValueError("path is outside git repo")
+        target = repo_root / Path(rel)
     return target, repo_root, rel
+
+
+def _git_error_is_missing_head(message: str) -> bool:
+    return "Not a valid object name HEAD" in message or "ambiguous argument 'HEAD'" in message or "bad revision 'HEAD'" in message
+
+
+def _git_head_blob_oid(cwd: Path, rel: str) -> str | None:
+    try:
+        tree_match = _run_git(
+            cwd,
+            ["ls-tree", "-z", "HEAD", "--", rel],
+            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+            max_bytes=64 * 1024,
+            literal_pathspecs=True,
+        )
+    except RuntimeError as e:
+        if _git_error_is_missing_head(str(e)):
+            return None
+        raise
+    for entry in tree_match.split("\0"):
+        if not entry:
+            continue
+        meta, sep, path = entry.partition("\t")
+        if not sep or path != rel:
+            continue
+        parts = meta.split()
+        if len(parts) >= 3:
+            if parts[1] == "blob":
+                return parts[2]
+            raise RuntimeError(f"HEAD path is not a file: {rel}")
+    return None
 
 
 def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
@@ -1161,8 +1209,14 @@ def _list_session_relative_files(base: Path) -> list[str]:
     return out
 
 
-def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
+def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
     cmd = ["git", *args]
+    env = None
+    if literal_pathspecs:
+        env = os.environ.copy()
+        for key in ("GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"):
+            env.pop(key, None)
+        env["GIT_LITERAL_PATHSPECS"] = "1"
     try:
         proc = subprocess.run(
             cmd,
@@ -1171,6 +1225,7 @@ def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) ->
             stderr=subprocess.PIPE,
             timeout=timeout_s,
             check=False,
+            env=env,
         )
     except (OSError, ValueError) as e:
         raise RuntimeError(str(e)) from e
@@ -1300,25 +1355,22 @@ def _create_git_worktree(source_cwd: Path, worktree_branch: str) -> Path:
     return target.resolve()
 
 
+def _split_git_nul_paths(text: str) -> list[str]:
+    return [part for part in text.split("\0") if part]
+
+
 def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
     out: dict[str, dict[str, int | None]] = {}
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line:
-            continue
-        parts = line.split("\t", 2)
-        if len(parts) != 3:
-            continue
-        add_raw, del_raw, path = parts
-        path_s = path.strip()
-        if not path_s:
-            continue
+
+    def add_entry(add_raw: str, del_raw: str, path_s: str) -> None:
+        if path_s == "":
+            return
         add_v = None if add_raw == "-" else int(add_raw)
         del_v = None if del_raw == "-" else int(del_raw)
         prev = out.get(path_s)
         if prev is None:
             out[path_s] = {"additions": add_v, "deletions": del_v}
-            continue
+            return
         if add_v is None or prev["additions"] is None:
             prev["additions"] = None
         else:
@@ -1327,6 +1379,34 @@ def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
             prev["deletions"] = None
         else:
             prev["deletions"] = int(prev["deletions"]) + del_v
+
+    if "\0" in text:
+        records = text.split("\0")
+        idx = 0
+        while idx < len(records):
+            raw = records[idx]
+            idx += 1
+            if raw == "":
+                continue
+            parts = raw.split("\t", 2)
+            if len(parts) != 3:
+                continue
+            add_raw, del_raw, path = parts
+            if path == "":
+                # With --numstat -z, rename/copy records are encoded as:
+                # add<TAB>del<TAB><NUL>old-path<NUL>new-path<NUL>.
+                if idx + 1 >= len(records):
+                    continue
+                idx += 1
+                path = records[idx]
+                idx += 1
+            add_entry(add_raw, del_raw, path)
+    else:
+        for raw in [raw for raw in text.splitlines() if raw != ""]:
+            parts = raw.split("\t", 2)
+            if len(parts) != 3:
+                continue
+            add_entry(parts[0], parts[1], parts[2])
     return out
 
 
@@ -1532,6 +1612,76 @@ def _current_git_branch(cwd: Path) -> str | None:
     if not branch:
         return None
     return branch
+
+
+def _query_flag(values: Mapping[str, list[str]], name: str) -> bool:
+    raw = values.get(name, [""])[0]
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _body_flag(obj: Mapping[str, Any], name: str) -> bool:
+    raw = obj.get(name)
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _path_resolves_inside(path_obj: Path, root: Path) -> bool:
+    try:
+        path_obj.resolve().relative_to(root)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _symlink_payload_view(path_obj: Path) -> ClientFileView:
+    raw = os.readlink(path_obj).encode("utf-8", errors="surrogateescape")
+    text = raw.decode("utf-8", errors="replace")
+    return ClientFileView(
+        kind="text",
+        size=len(raw),
+        text=text,
+        editable=False,
+        version=hashlib.sha256(raw).hexdigest(),
+    )
+
+
+def _resolve_git_client_file_view(*, session_id: str, raw_path: str) -> tuple[Path, str, ClientFileView]:
+    if not session_id:
+        raise ValueError("session_id required for git path")
+    MANAGER.refresh_session_meta(session_id)
+    s = MANAGER.get_session(session_id)
+    if s is None:
+        raise FileNotFoundError("unknown session")
+    cwd = _resolve_session_cwd(s.cwd)
+    path_obj, repo_root, rel = _resolve_git_path(cwd, raw_path)
+    if _path_resolves_inside(path_obj.parent, repo_root) and path_obj.is_symlink():
+        return path_obj, rel, _symlink_payload_view(path_obj)
+    try:
+        real = path_obj.resolve()
+        real.relative_to(repo_root)
+    except (OSError, ValueError) as e:
+        raise FileNotFoundError("file not found") from e
+    return real, rel, _read_client_file_view(real)
+
+
+def _resolve_git_existing_regular_file(*, session_id: str, raw_path: str) -> tuple[Path, str]:
+    if not session_id:
+        raise ValueError("session_id required for git path")
+    MANAGER.refresh_session_meta(session_id)
+    s = MANAGER.get_session(session_id)
+    if s is None:
+        raise FileNotFoundError("unknown session")
+    cwd = _resolve_session_cwd(s.cwd)
+    path_obj, repo_root, rel = _resolve_git_path(cwd, raw_path)
+    try:
+        real = path_obj.resolve()
+        real.relative_to(repo_root)
+    except (OSError, ValueError) as e:
+        raise FileNotFoundError("file not found") from e
+    return _require_existing_file(real), rel
 
 
 def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
@@ -2535,8 +2685,8 @@ class SessionManager:
             for v in arr:
                 if not isinstance(v, str):
                     continue
-                p = v.strip()
-                if not p or p in out:
+                p = v
+                if p == "" or p in out:
                     continue
                 out.append(p)
                 if len(out) >= FILE_HISTORY_MAX:
@@ -3158,8 +3308,8 @@ class SessionManager:
         return list(out)
 
     def files_add(self, session_id: str, path: str) -> list[str]:
-        p = str(path).strip()
-        if not p:
+        p = str(path)
+        if p == "":
             return self.files_get(session_id)
         dirty = False
         with self._lock:
@@ -5732,9 +5882,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
+                git_path = _query_flag(qs, "git_path")
                 try:
-                    base = _resolve_session_cwd(s.cwd)
-                    p = _resolve_existing_session_file(base, rel)
+                    if git_path:
+                        p, rel, view = _resolve_git_client_file_view(session_id=session_id, raw_path=rel)
+                    else:
+                        base = _resolve_session_cwd(s.cwd)
+                        p = _resolve_existing_session_file(base, rel)
+                        view = _read_client_file_view(p)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5744,14 +5899,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                try:
-                    view = _read_client_file_view(p)
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
+                git_suffix = "&git_path=1" if git_path else ""
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
@@ -5767,7 +5918,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "path": str(p),
                             "rel": str(rel),
                             "size": int(view.size),
-                            "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                            "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
                         },
                     )
                     return
@@ -5782,7 +5933,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "path": str(p),
                             "rel": str(rel),
                             "size": int(view.size),
-                            "pdf_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
+                            "pdf_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
                         },
                     )
                     return
@@ -5795,8 +5946,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             rel=str(rel),
                             size=int(view.size),
                             content_type=view.content_type,
-                            video_url=f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}",
-                            preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}",
+                            video_url=f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
+                            preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}{git_suffix}",
                         ),
                     )
                     return
@@ -5923,9 +6074,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
+                git_path = _query_flag(qs, "git_path")
                 try:
-                    base = _resolve_session_cwd(s.cwd)
-                    p = _resolve_existing_session_file(base, rel)
+                    if git_path:
+                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
+                    else:
+                        base = _resolve_session_cwd(s.cwd)
+                        p = _resolve_existing_session_file(base, rel)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5934,6 +6089,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 try:
                     with p.open("rb") as f:
@@ -5970,9 +6128,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
+                git_path = _query_flag(qs, "git_path")
                 try:
-                    base = _resolve_session_cwd(s.cwd)
-                    p = _resolve_existing_session_file(base, rel)
+                    if git_path:
+                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
+                    else:
+                        base = _resolve_session_cwd(s.cwd)
+                        p = _resolve_existing_session_file(base, rel)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -5981,6 +6143,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 try:
                     with p.open("rb") as f:
@@ -6111,9 +6276,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
+                git_path = _query_flag(qs, "git_path")
                 try:
-                    base = _resolve_session_cwd(s.cwd)
-                    p = _resolve_session_path(base, rel)
+                    if git_path:
+                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
+                    else:
+                        base = _resolve_session_cwd(s.cwd)
+                        p = _resolve_session_path(base, rel)
                     size = _inspect_downloadable_file(p)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -6123,6 +6292,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 _send_attachment_file_response(self, p, size=size, content_disposition=_download_disposition(p))
                 return
@@ -6147,27 +6319,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 409, {"error": str(e)})
                     return
                 try:
-                    unstaged = _run_git(
-                        cwd,
-                        ["diff", "--name-only"],
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=64 * 1024,
-                    ).splitlines()
-                    staged = _run_git(
-                        cwd,
-                        ["diff", "--name-only", "--cached"],
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=64 * 1024,
-                    ).splitlines()
+                    unstaged = _split_git_nul_paths(
+                        _run_git(
+                            cwd,
+                            ["diff", "--name-only", "-z"],
+                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                            max_bytes=64 * 1024,
+                        )
+                    )
+                    staged = _split_git_nul_paths(
+                        _run_git(
+                            cwd,
+                            ["diff", "--name-only", "--cached", "-z"],
+                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                            max_bytes=64 * 1024,
+                        )
+                    )
                     unstaged_numstat = _run_git(
                         cwd,
-                        ["diff", "--numstat"],
+                        ["diff", "--numstat", "-z"],
                         timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
                         max_bytes=128 * 1024,
                     )
                     staged_numstat = _run_git(
                         cwd,
-                        ["diff", "--numstat", "--cached"],
+                        ["diff", "--numstat", "--cached", "-z"],
                         timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
                         max_bytes=128 * 1024,
                     )
@@ -6180,10 +6356,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 def _norm_list(xs: list[str]) -> list[str]:
                     out: list[str] = []
                     for x in xs:
-                        t = x.strip()
-                        if not t:
+                        if x == "":
                             continue
-                        out.append(t)
+                        out.append(x)
                         if len(out) >= GIT_CHANGED_FILES_MAX:
                             break
                     return out
@@ -6254,7 +6429,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 409, {"error": str(e)})
                     return
                 try:
-                    _target, _repo_root, rel = _resolve_git_path(cwd, rel)
+                    _target, repo_root, rel = _resolve_git_path(cwd, rel)
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
@@ -6267,10 +6442,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 args.extend(["--", rel])
                 try:
                     diff = _run_git(
-                        cwd,
+                        repo_root,
                         args,
                         timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
                         max_bytes=GIT_DIFF_MAX_BYTES,
+                        literal_pathspecs=True,
                     )
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
@@ -6307,7 +6483,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 409, {"error": str(e)})
                     return
                 try:
-                    p, _repo_root, rel = _resolve_git_path(cwd, rel)
+                    p, repo_root, rel = _resolve_git_path(cwd, rel)
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
@@ -6316,10 +6492,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 current_text = ""
                 current_size = 0
-                current_exists = bool(p.exists() and p.is_file())
-                if current_exists:
+                current_exists = False
+                parent_inside_repo = False
+                try:
+                    p.parent.resolve().relative_to(repo_root)
+                    parent_inside_repo = True
+                except (OSError, ValueError):
+                    parent_inside_repo = False
+                if parent_inside_repo and p.is_symlink():
                     try:
-                        current_text, current_size = _read_text_file_strict(p, max_bytes=FILE_READ_MAX_BYTES)
+                        current_raw = os.readlink(p).encode("utf-8", errors="surrogateescape")
+                        current_text = current_raw.decode("utf-8", errors="replace")
+                        current_size = len(current_raw)
+                        current_exists = True
                     except FileNotFoundError:
                         current_exists = False
                         current_text = ""
@@ -6327,9 +6512,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     except PermissionError as e:
                         _json_response(self, 403, {"error": str(e)})
                         return
-                    except ValueError as e:
+                    except OSError as e:
                         _json_response(self, 400, {"error": str(e)})
                         return
+                else:
+                    try:
+                        current_real = p.resolve()
+                        current_real.relative_to(repo_root)
+                        current_exists = bool(current_real.is_file())
+                    except (OSError, ValueError):
+                        current_exists = False
+                    if current_exists:
+                        try:
+                            current_text, current_size = _read_text_file_strict(current_real, max_bytes=FILE_READ_MAX_BYTES)
+                        except FileNotFoundError:
+                            current_exists = False
+                            current_text = ""
+                            current_size = 0
+                        except PermissionError as e:
+                            _json_response(self, 403, {"error": str(e)})
+                            return
+                        except ValueError as e:
+                            _json_response(self, 400, {"error": str(e)})
+                            return
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
@@ -6337,19 +6542,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 base_exists = False
                 base_text = ""
                 try:
-                    base_text = _run_git(
-                        cwd,
-                        ["show", f"HEAD:{rel}"],
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=FILE_READ_MAX_BYTES,
-                    )
-                    base_exists = True
+                    base_oid = _git_head_blob_oid(repo_root, rel)
+                    if base_oid:
+                        base_text = _run_git(
+                            repo_root,
+                            ["cat-file", "-p", base_oid],
+                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+                            max_bytes=FILE_READ_MAX_BYTES,
+                        )
+                        base_exists = True
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                except RuntimeError:
-                    base_exists = False
-                    base_text = ""
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 _json_response(
                     self,
                     200,
@@ -6753,7 +6960,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 obj = self._read_json_body()
                 path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or not path_raw.strip():
+                if not isinstance(path_raw, str) or path_raw == "":
                     _json_response(self, 400, {"error": "path required"})
                     return
                 session_id_raw = obj.get("session_id")
@@ -6761,9 +6968,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "session_id must be a string"})
                     return
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
+                git_path = _body_flag(obj, "git_path")
+                rel_for_url = ""
                 try:
-                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    view = _read_client_file_view(path_obj)
+                    if git_path:
+                        path_obj, rel_for_url, view = _resolve_git_client_file_view(session_id=session_id, raw_path=path_raw)
+                    else:
+                        path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                        view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -6773,11 +6985,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
+                    return
                 if session_id:
                     try:
                         MANAGER.files_add(session_id, str(path_obj))
                     except KeyError:
                         pass
+                media_blob_url = (
+                    f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel_for_url)}&git_path=1"
+                    if git_path and session_id and rel_for_url
+                    else f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}"
+                )
+                media_preview_url = (
+                    f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel_for_url)}&git_path=1"
+                    if git_path and session_id and rel_for_url
+                    else f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}"
+                )
                 if view.kind == "image":
                     _json_response(
                         self,
@@ -6788,7 +7013,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "content_type": view.content_type,
                             "path": str(path_obj),
                             "size": int(view.size),
-                            "image_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
+                            "image_url": media_blob_url,
                         },
                     )
                     return
@@ -6802,7 +7027,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             "content_type": view.content_type,
                             "path": str(path_obj),
                             "size": int(view.size),
-                            "pdf_url": f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
+                            "pdf_url": media_blob_url,
                         },
                     )
                     return
@@ -6814,8 +7039,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                             path_obj=path_obj,
                             size=int(view.size),
                             content_type=view.content_type,
-                            video_url=f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}",
-                            preview_url=f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}",
+                            video_url=media_blob_url,
+                            preview_url=media_preview_url,
                         ),
                     )
                     return
@@ -6854,7 +7079,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 obj = self._read_json_body()
                 path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or not path_raw.strip():
+                if not isinstance(path_raw, str) or path_raw == "":
                     _json_response(self, 400, {"error": "path required"})
                     return
                 session_id_raw = obj.get("session_id")
@@ -6862,9 +7087,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "session_id must be a string"})
                     return
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
+                git_path = _body_flag(obj, "git_path")
                 try:
-                    path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                    view = _read_client_file_view(path_obj)
+                    if git_path:
+                        path_obj, _rel, view = _resolve_git_client_file_view(session_id=session_id, raw_path=path_raw)
+                    else:
+                        path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
+                        view = _read_client_file_view(path_obj)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
                     return
@@ -6873,6 +7102,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
+                    return
+                except RuntimeError as e:
+                    _json_response(self, 409, {"error": str(e)})
                     return
                 _json_response(
                     self,
@@ -6982,7 +7214,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 obj = self._read_json_body()
                 path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or not path_raw.strip():
+                if not isinstance(path_raw, str) or path_raw == "":
                     _json_response(self, 400, {"error": "path required"})
                     return
                 text_raw = obj.get("text")
@@ -6991,6 +7223,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 create_raw = obj.get("create")
                 create = create_raw if isinstance(create_raw, bool) else False
+                git_path = _body_flag(obj, "git_path")
+                if create and git_path:
+                    _json_response(self, 400, {"error": "git_path is only supported for existing files"})
+                    return
                 version_raw = obj.get("version")
                 if not create and (not isinstance(version_raw, str) or not version_raw.strip()):
                     _json_response(self, 400, {"error": "version required"})
@@ -7034,9 +7270,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return
                 else:
                     try:
-                        p = _resolve_session_path(base, path_raw)
+                        if git_path:
+                            p, _rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=path_raw)
+                        else:
+                            p = _resolve_session_path(base, path_raw)
+                    except FileNotFoundError as e:
+                        _json_response(self, 404, {"error": str(e)})
+                        return
                     except ValueError as e:
                         _json_response(self, 400, {"error": str(e)})
+                        return
+                    except RuntimeError as e:
+                        _json_response(self, 409, {"error": str(e)})
                         return
                     with _file_write_lock(p):
                         try:

@@ -71,7 +71,8 @@ def eval_resolve_file_open_mode_cases() -> dict:
           fileCandidateGitStateFresh: false,
           fileNonDiffMode: "file",
           inspectedKind: "text",
-          inspectSessionFilePath: async () => {{ return {{ exists: true, kind: ctx.inspectedKind }}; }},
+          inspectSessionFilePath: async () => {{ return ctx.inspectedKind === "missing" ? {{ exists: false }} : {{ exists: true, kind: ctx.inspectedKind }}; }},
+          isGitFileCandidatePath: (path, changed = null) => changed === null ? Boolean(ctx.fileEntryMap.get(String(path || ""))?.changed) : Boolean(changed),
           isDiffableFileKind: (kind) => kind === "text" || kind === "markdown",
         }};
         vm.createContext(ctx);
@@ -93,6 +94,8 @@ def eval_resolve_file_open_mode_cases() -> dict:
           ctx.fileCandidateGitStateFresh = true;
           ctx.inspectedKind = "image";
           const freshChangedNondiffable = await ctx.resolveFileOpenMode("image.png", {{ changed: true }});
+          ctx.inspectedKind = "missing";
+          const deletedChanged = await ctx.resolveFileOpenMode("gone.md", {{ changed: true }});
           process.stdout.write(JSON.stringify({{
             freshChanged,
             cachedChanged,
@@ -100,6 +103,7 @@ def eval_resolve_file_open_mode_cases() -> dict:
             freshExplicitUnchanged,
             staleMarkdownPreview,
             freshChangedNondiffable,
+            deletedChanged,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -159,6 +163,16 @@ def eval_file_candidate_cache_helpers() -> dict:
           }}
         ` + {json.dumps(snippet)}, ctx);
         (async () => {{
+          const literalFiles = ctx.listFromFilesField(["/repo/trail.md ", "/repo/new\\n.md", "", "/repo/trail.md "]);
+          const literalRel = ctx.sessionRelativePath("/repo/trail.md ", "s1");
+          const literalSuffix = ctx.stripPathLocationSuffix("/repo/trail.md ");
+          ctx.applyFileCandidateEntries([{{ path: "trail.md ", source: "changed" }}, {{ path: "new\\n.md", source: "recent" }}]);
+          const literalCandidates = ctx.fileCandidateList.slice();
+          ctx.sessionIndex.get("s1").files = literalFiles;
+          const literalCacheKey = ctx.fileCandidateCacheKey("s1");
+          ctx.sessionIndex.get("s1").files = ["/repo/recent.txt"];
+          ctx.fileCandidateList = [];
+          ctx.fileEntryMap = new Map();
           await ctx.refreshFileCandidates();
           const first = ctx.fileCandidateList.slice();
           const firstFresh = ctx.fileCandidateGitStateFresh;
@@ -179,6 +193,11 @@ def eval_file_candidate_cache_helpers() -> dict:
             thirdFresh,
             cacheSize: ctx.fileCandidateCache.size,
             sources: ctx.fileCandidateList.map((path) => (ctx.fileEntryMap.get(path) || {{}}).source || ""),
+            literalFiles,
+            literalRel,
+            literalSuffix,
+            literalCandidates,
+            literalCacheKey,
           }}));
         }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
@@ -266,6 +285,11 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["third"], result["first"])
         self.assertEqual(result["cacheSize"], 1)
         self.assertEqual(result["sources"], ["changed", "recent"])
+        self.assertEqual(result["literalFiles"], ["/repo/trail.md ", "/repo/new\n.md"])
+        self.assertEqual(result["literalRel"], "trail.md ")
+        self.assertEqual(result["literalSuffix"], "/repo/trail.md ")
+        self.assertEqual(result["literalCandidates"], ["trail.md ", "new\n.md"])
+        self.assertIn("/repo/trail.md ", result["literalCacheKey"])
         self.assertTrue(result["firstFresh"])
         self.assertFalse(result["secondFresh"])
         self.assertTrue(result["thirdFresh"])
@@ -278,6 +302,7 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["freshExplicitUnchanged"], "file")
         self.assertEqual(result["staleMarkdownPreview"], "preview")
         self.assertEqual(result["freshChangedNondiffable"], "file")
+        self.assertEqual(result["deletedChanged"], "diff")
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

@@ -2038,3 +2038,23 @@
 - Full local validation: `python3 -m pytest -q` -> 724 passed, 61 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 723 passed, 1 skipped, 61 subtests passed.
 - Clean-room review: no blockers; residual risk is file mutation after headers are sent.
+
+## 2026-06-14 04:28 — Git/file-viewer literal-path hardening validation
+- Worktree: /home/yiwen/codex-web-product-recovery on recovery/product-gaps; live checkout untouched.
+- Implemented uncommitted tranche across codoxear/server.py, codoxear/static/app.js, and focused tests.
+- Validation commands:
+  - python3 -m py_compile codoxear/server.py tests/test_file_inspect.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py
+  - python3 -m pytest tests/test_file_inspect.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_session_file_history.py tests/test_path_resolution.py -q -> 106 passed, 52 subtests passed
+  - python3 -m pytest -q -> 750 passed, 77 subtests passed
+  - scripts/codoxear-docker-sandbox test -> 749 passed, 1 skipped, 77 subtests passed
+  - clean-room critic final review -> no commit-blocking issues; residuals: remembered selections do not persist git_path once files drop from changed_files, non-UTF-8 filenames remain replacement-decoded, symlink checks are not atomic against concurrent local mutation.
+  - git diff --check -> clean.
+
+## 2026-06-14 04:28 — Final git_path viewer fixes after review
+- Clean-room review found two final blockers: activeFileGitPath could leak into newly created drafts after opening a changed file, and deleted changed-file candidates failed before file_versions because inspect returned 404. A lower-severity media URL gap in POST /api/files/read was also fixed.
+- Follow-up validation:
+  - python3 -m pytest tests/test_file_inspect.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_session_file_history.py tests/test_path_resolution.py -q -> 106 passed, 52 subtests passed
+  - python3 -m pytest -q -> 750 passed, 77 subtests passed
+  - scripts/codoxear-docker-sandbox test -> 749 passed, 1 skipped, 77 subtests passed
+  - final clean-room critic review -> no commit-blocking issues.
+  - git diff --check -> clean.

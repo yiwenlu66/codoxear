@@ -57,6 +57,17 @@ class TestSessionFileHistory(unittest.TestCase):
         self.assertEqual(mgr.files_get("session-a"), ["/tmp/shared-project/file-a.py"])
         self.assertEqual(mgr.files_get("session-b"), [])
 
+    def test_file_history_preserves_literal_whitespace_paths(self) -> None:
+        mgr = self._build_manager()
+        mgr._sessions = {
+            "session-a": _make_session("session-a", "/tmp/project"),
+        }
+        literal = "/tmp/project/trail.md "
+
+        mgr.files_add("session-a", literal)
+
+        self.assertEqual(mgr.files_get("session-a"), [literal])
+
     def test_load_files_discards_legacy_cwd_buckets(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "session_files.json"
@@ -66,6 +77,7 @@ class TestSessionFileHistory(unittest.TestCase):
                         "cwd:/tmp/shared-project": ["/tmp/shared-project/file-a.py"],
                         "session-a": ["/tmp/project-a/legacy.py"],
                         "sid:session-b": ["/tmp/project-b/current.py"],
+                        "sid:session-c": ["/tmp/project-c/trail.md "],
                     }
                 )
                 + "\n",
@@ -83,6 +95,7 @@ class TestSessionFileHistory(unittest.TestCase):
             {
                 "sid:session-a": ["/tmp/project-a/legacy.py"],
                 "sid:session-b": ["/tmp/project-b/current.py"],
+                "sid:session-c": ["/tmp/project-c/trail.md "],
             },
         )
 

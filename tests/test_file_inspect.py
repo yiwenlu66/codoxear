@@ -472,6 +472,83 @@ class TestInspectOpenableFile(unittest.TestCase):
                         self.assertEqual(status, expected_status)
                         self.assertIn(str(exc), str(payload.get("error", "")))
 
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_changed_files_preserves_whitespace_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            paths = [" lead.md", "trail.md ", "tab\t.md", "new\n.md", "back\\slash.md"]
+            for rel in paths:
+                (repo / rel).write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", *[f":(literal){rel}" for rel in paths]], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add whitespace paths"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            for rel in paths:
+                (repo / rel).write_text("current\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertCountEqual(payload["files"], paths)
+            self.assertCountEqual([entry["path"] for entry in payload["entries"]], paths)
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_changed_files_parses_nul_numstat_rename_record(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "diff.renames", "true"], cwd=repo, check=True)
+            old = repo / "old name.md"
+            old.write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "old name.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add old"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "mv", "old name.md", "new name.md"], cwd=repo, check=True)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/changed_files")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertIn("new name.md", payload["files"])
+            entry = next(entry for entry in payload["entries"] if entry["path"] == "new name.md")
+            self.assertEqual(entry["additions"], 0)
+            self.assertEqual(entry["deletions"], 0)
+
     def test_git_changed_files_late_git_failure_returns_409(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             class FakeManager:
@@ -646,7 +723,9 @@ class TestInspectOpenableFile(unittest.TestCase):
                     return "true\n"
                 if args == ["rev-parse", "--show-toplevel"]:
                     return f"{repo}\n"
-                if args == ["show", "HEAD:note.md"]:
+                if args == ["ls-tree", "-z", "HEAD", "--", "note.md"]:
+                    return "100644 blob deadbeef\tnote.md\0"
+                if args == ["cat-file", "-p", "deadbeef"]:
                     raise ValueError("git output too large")
                 raise AssertionError(f"unexpected git args: {args}")
 
@@ -661,6 +740,653 @@ class TestInspectOpenableFile(unittest.TestCase):
             ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
                 server.Handler.do_GET(handler)
             self.assertEqual(responses, [(400, {"error": "git output too large"})])
+
+    def test_git_file_versions_missing_base_keeps_200_when_repo_still_healthy(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return f"{repo}\n"
+                if args == ["ls-tree", "-z", "HEAD", "--", "note.md"]:
+                    return ""
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertFalse(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "")
+
+    def test_git_file_versions_base_runtime_failure_returns_409_when_head_tree_has_path(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            def fake_run_git(_cwd: Path, args: list[str], **_kwargs: object) -> str:
+                if args == ["rev-parse", "--is-inside-work-tree"]:
+                    return "true\n"
+                if args == ["rev-parse", "--show-toplevel"]:
+                    return f"{repo}\n"
+                if args == ["ls-tree", "-z", "HEAD", "--", "note.md"]:
+                    return "100644 blob deadbeef\tnote.md\0"
+                if args == ["cat-file", "-p", "deadbeef"]:
+                    raise RuntimeError("bad object deadbeef")
+                raise AssertionError(f"unexpected git args: {args}")
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_run_git", side_effect=fake_run_git
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(responses, [(409, {"error": "bad object deadbeef"})])
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_corrupt_committed_blob_returns_409(self) -> None:
+        for rel in ["note.md", " lead.md", "trail.md ", "tab\t.md", "new\n.md", "back\\slash.md", ":abc", ":(top)foo", ":(literal)bar"]:
+            with self.subTest(rel=rel):
+                with tempfile.TemporaryDirectory() as td:
+                    repo = Path(td)
+                    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+                    subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+                    note = repo / rel
+                    note.write_text("hello\n", encoding="utf-8")
+                    subprocess.run(["git", "add", "--", f":(literal){rel}"], cwd=repo, check=True)
+                    subprocess.run(["git", "commit", "-m", "add note"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    blob = subprocess.check_output(["git", "rev-parse", f"HEAD:{rel}"], cwd=repo, text=True).strip()
+                    (repo / ".git" / "objects" / blob[:2] / blob[2:]).unlink()
+
+                    class FakeManager:
+                        def refresh_session_meta(self, _session_id: str) -> None:
+                            return None
+
+                        def get_session(self, _session_id: str) -> object:
+                            return SimpleNamespace(cwd=str(repo))
+
+                        def files_add(self, _session_id: str, _path: str) -> None:
+                            return None
+
+                    parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
+                    handler = server.Handler.__new__(server.Handler)
+                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                    responses = []
+                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                    ):
+                        server.Handler.do_GET(handler)
+                    self.assertEqual(len(responses), 1)
+                    status, payload = responses[0]
+                    self.assertEqual(status, 409)
+                    self.assertTrue(str(payload.get("error", "")).strip())
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_diff_uses_repo_root_relative_path_from_subdir_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subdir = repo / "sub"
+            subdir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "root.md").write_text("ROOT base\n", encoding="utf-8")
+            (subdir / "root.md").write_text("SUB base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "root.md", "sub/root.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add notes"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / "root.md").write_text("ROOT current\n", encoding="utf-8")
+            (subdir / "root.md").write_text("SUB current\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(subdir))
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/diff?path=root.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "root.md")
+            self.assertIn("+++ b/root.md", payload["diff"])
+            self.assertNotIn("+++ b/sub/root.md", payload["diff"])
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_unborn_repo_has_no_base(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            note = repo / "note.md"
+            note.write_text("current\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertTrue(payload["current_exists"])
+            self.assertFalse(payload["base_exists"])
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_whitespace_only_path_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / " ").write_text("space base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", ":(literal) "], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add space"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / " ").write_text("space current\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=%20")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], " ")
+            self.assertEqual(payload["current_text"], "space current\n")
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "space base\n")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_backslash_path_is_literal(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            rel = "back\\slash.md"
+            (repo / rel).write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "--", f":(literal){rel}"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add backslash"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / rel).write_text("current\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], rel)
+            self.assertEqual(payload["current_text"], "current\n")
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "base\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_git_file_versions_symlink_replaced_dir_keeps_literal_base_without_escaping_current(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            repo = Path(td)
+            outside = Path(outside_td)
+            tracked_dir = repo / "d"
+            tracked_dir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (tracked_dir / "f").write_text("base in repo\n", encoding="utf-8")
+            subprocess.run(["git", "add", "d/f"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add nested"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            shutil.rmtree(tracked_dir)
+            (outside / "f").write_text("outside current\n", encoding="utf-8")
+            os.symlink(outside, tracked_dir)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d/f")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "d/f")
+            self.assertFalse(payload["current_exists"])
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "base in repo\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_git_file_versions_symlinked_parent_leaf_symlink_does_not_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            repo = Path(td)
+            outside = Path(outside_td)
+            tracked_dir = repo / "d"
+            tracked_dir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (tracked_dir / "link").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "d/link"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add nested"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            shutil.rmtree(tracked_dir)
+            os.symlink("secret-target", outside / "link")
+            os.symlink(outside, tracked_dir)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d/link")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "d/link")
+            self.assertFalse(payload["current_exists"])
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "base\n")
+            self.assertNotIn("secret-target", str(payload))
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_git_file_versions_symlink_path_reads_link_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "target").write_text("TARGET CONTENT\n", encoding="utf-8")
+            os.symlink("target", repo / "link")
+            subprocess.run(["git", "add", "target", "link"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / "target").write_text("TARGET CURRENT\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=link")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "link")
+            self.assertEqual(payload["current_text"], "target")
+            self.assertEqual(payload["current_size"], len("target"))
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "target")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_git_file_versions_absolute_symlink_path_reads_link_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "target").write_text("TARGET BASE\n", encoding="utf-8")
+            os.symlink("target", repo / "link")
+            subprocess.run(["git", "add", "target", "link"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / "target").write_text("TARGET CURRENT\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            encoded = urllib.parse.quote(str(repo / "link"))
+            parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={encoded}")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "link")
+            self.assertEqual(payload["current_text"], "target")
+            self.assertEqual(payload["base_text"], "target")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_git_file_versions_non_utf8_symlink_payload_is_json_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            os.symlink(b"bad\xfftarget", os.fsencode(repo / "link"))
+            subprocess.run(["git", "add", "link"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add nonutf symlink"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=link")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["current_text"], "bad�target")
+            self.assertEqual(payload["current_size"], len(b"bad\xfftarget"))
+            self.assertEqual(payload["base_text"], "bad�target")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_head_tree_current_file_returns_409(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            tracked_dir = repo / "d"
+            tracked_dir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (tracked_dir / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "d/base.txt"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add dir"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            shutil.rmtree(tracked_dir)
+            (repo / "d").write_text("current file replacing HEAD dir\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=d")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 409)
+            self.assertIn("HEAD path is not a file", str(payload.get("error", "")))
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_base_lookup_is_repo_root_anchored_from_subdir_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subdir = repo / "sub"
+            subdir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            (repo / "root.md").write_text("ROOT base\n", encoding="utf-8")
+            (subdir / "root.md").write_text("SUB base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "root.md", "sub/root.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add notes"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (repo / "root.md").write_text("ROOT current modified\n", encoding="utf-8")
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(subdir))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=root.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], "root.md")
+            self.assertEqual(payload["current_text"], "ROOT current modified\n")
+            self.assertTrue(payload["base_exists"])
+            self.assertEqual(payload["base_text"], "ROOT base\n")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_glob_like_current_path_missing_from_head_returns_base_absent(self) -> None:
+        for rel in ["*.md", "[abc].md", "?ote.md"]:
+            with self.subTest(rel=rel):
+                with tempfile.TemporaryDirectory() as td:
+                    repo = Path(td)
+                    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+                    subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+                    (repo / "note.md").write_text("tracked\n", encoding="utf-8")
+                    subprocess.run(["git", "add", "note.md"], cwd=repo, check=True)
+                    subprocess.run(["git", "commit", "-m", "add note"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    (repo / rel).write_text("current only\n", encoding="utf-8")
+
+                    class FakeManager:
+                        def refresh_session_meta(self, _session_id: str) -> None:
+                            return None
+
+                        def get_session(self, _session_id: str) -> object:
+                            return SimpleNamespace(cwd=str(repo))
+
+                        def files_add(self, _session_id: str, _path: str) -> None:
+                            return None
+
+                    parsed = urllib.parse.urlparse(f"/api/sessions/s/git/file_versions?path={urllib.parse.quote(rel)}")
+                    handler = server.Handler.__new__(server.Handler)
+                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                    responses = []
+                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                    ):
+                        server.Handler.do_GET(handler)
+                    self.assertEqual(len(responses), 1)
+                    status, payload = responses[0]
+                    self.assertEqual(status, 200)
+                    self.assertTrue(payload["current_exists"])
+                    self.assertFalse(payload["base_exists"])
+                    self.assertEqual(payload["base_text"], "")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_git_file_versions_corrupt_blob_ignores_literal_pathspec_env(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            subprocess.run(["git", "config", "user.email", "codoxear@example.invalid"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.name", "Codoxear Test"], cwd=repo, check=True)
+            note = repo / "note.md"
+            note.write_text("hello\n", encoding="utf-8")
+            subprocess.run(["git", "add", "note.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "add note"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            blob = subprocess.check_output(["git", "rev-parse", "HEAD:note.md"], cwd=repo, text=True).strip()
+            (repo / ".git" / "objects" / blob[:2] / blob[2:]).unlink()
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/git/file_versions?path=note.md")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.dict(os.environ, {"GIT_LITERAL_PATHSPECS": "1", "GIT_GLOB_PATHSPECS": "1", "GIT_ICASE_PATHSPECS": "1"}), patch.object(server, "MANAGER", FakeManager()), patch.object(
+                server, "_require_auth", return_value=True
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 409)
+            self.assertTrue(str(payload.get("error", "")).strip())
 
     def test_file_write_update_rejects_invalid_path_without_500(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -688,6 +1414,192 @@ class TestInspectOpenableFile(unittest.TestCase):
             cwd_file = Path(td) / "not-a-directory"
             cwd_file.write_text("not a cwd", encoding="utf-8")
             self.assertIsNone(_current_git_branch(cwd_file))
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_global_file_routes_git_path_use_repo_root_from_subdir_cwd(self) -> None:
+        for route in ("/api/files/read", "/api/files/inspect"):
+            with self.subTest(route=route), tempfile.TemporaryDirectory() as td:
+                repo = Path(td)
+                subdir = repo / "sub"
+                target = repo / "d" / "f.md"
+                subdir.mkdir()
+                target.parent.mkdir()
+                target.write_text("root file\n", encoding="utf-8")
+                subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                class FakeManager:
+                    def refresh_session_meta(self, _session_id: str) -> None:
+                        return None
+
+                    def get_session(self, _session_id: str) -> object:
+                        return SimpleNamespace(cwd=str(subdir))
+
+                    def files_add(self, _session_id: str, _path: str) -> None:
+                        return None
+
+                parsed = urllib.parse.urlparse(route)
+                handler = server.Handler.__new__(server.Handler)
+                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+                handler._read_json_body = lambda **_kwargs: {"path": "d/f.md", "session_id": "s", "git_path": True}  # type: ignore[attr-defined]
+                responses = []
+                with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                ):
+                    server.Handler.do_POST(handler)
+                self.assertEqual(len(responses), 1)
+                status, payload = responses[0]
+                self.assertEqual(status, 200)
+                self.assertEqual(payload["path"], str(target))
+                if route.endswith("/read"):
+                    self.assertEqual(payload["text"], "root file\n")
+                else:
+                    self.assertEqual(payload["kind"], "markdown")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_session_file_read_git_path_uses_repo_root_from_subdir_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subdir = repo / "sub"
+            target = repo / "d" / "f.md"
+            subdir.mkdir()
+            target.parent.mkdir()
+            target.write_text("root file\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(subdir))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/file/read?path=d/f.md&git_path=1")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], str(target))
+            self.assertEqual(payload["rel"], "d/f.md")
+            self.assertEqual(payload["text"], "root file\n")
+
+    @unittest.skipIf(shutil.which("git") is None, "git required")
+    def test_global_file_read_git_path_media_urls_stay_session_git_relative(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            subdir = repo / "sub"
+            image = repo / "assets" / "icon.svg"
+            subdir.mkdir()
+            image.parent.mkdir()
+            image.write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>\n', encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(subdir))
+
+                def files_add(self, _session_id: str, _path: str) -> None:
+                    return None
+
+            parsed = urllib.parse.urlparse("/api/files/read")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+            handler._read_json_body = lambda **_kwargs: {"path": "assets/icon.svg", "session_id": "s", "git_path": True}  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_POST(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["kind"], "image")
+            self.assertEqual(payload["image_url"], "/api/sessions/s/file/blob?path=assets/icon.svg&git_path=1")
+
+    @unittest.skipIf(not hasattr(os, "symlink") or shutil.which("git") is None, "symlink and git required")
+    def test_session_file_read_git_path_does_not_follow_symlinked_parent_leaf_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            repo = Path(td)
+            outside = Path(outside_td)
+            tracked_dir = repo / "d"
+            tracked_dir.mkdir()
+            subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (tracked_dir / "link").write_text("base\n", encoding="utf-8")
+            shutil.rmtree(tracked_dir)
+            os.symlink("secret-target", outside / "link")
+            os.symlink(outside, tracked_dir)
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(repo))
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/file/read?path=d/link&git_path=1")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+            handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_GET(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 404)
+            self.assertNotIn("secret-target", str(payload))
+
+    def test_global_file_routes_allow_whitespace_only_filename(self) -> None:
+        for route in ("/api/files/read", "/api/files/inspect"):
+            with self.subTest(route=route), tempfile.TemporaryDirectory() as td:
+                base = Path(td)
+                (base / " ").write_text("space file\n", encoding="utf-8")
+
+                class FakeManager:
+                    def refresh_session_meta(self, _session_id: str) -> None:
+                        return None
+
+                    def get_session(self, _session_id: str) -> object:
+                        return SimpleNamespace(cwd=str(base))
+
+                    def files_add(self, _session_id: str, _path: str) -> None:
+                        return None
+
+                parsed = urllib.parse.urlparse(route)
+                handler = server.Handler.__new__(server.Handler)
+                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+                handler._read_json_body = lambda **_kwargs: {"path": " ", "session_id": "s"}  # type: ignore[attr-defined]
+                responses = []
+                with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                ):
+                    server.Handler.do_POST(handler)
+                self.assertEqual(len(responses), 1)
+                status, payload = responses[0]
+                self.assertEqual(status, 200)
+                self.assertEqual(payload["path"], str(base / " "))
+                if route.endswith("/read"):
+                    self.assertEqual(payload["text"], "space file\n")
+                else:
+                    self.assertEqual(payload["kind"], "text")
 
     def test_global_file_routes_reject_non_string_session_id(self) -> None:
         for route in ("/api/files/read", "/api/files/inspect"):

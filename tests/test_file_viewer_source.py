@@ -57,6 +57,7 @@ def eval_file_open_request_sequence() -> dict:
         }}
         const ctx = {{
           activeFilePath: "old.txt",
+          activeFileGitPath: false,
           activeFileLine: 1,
           fileViewerSessionId: "sid-1",
           selected: "",
@@ -68,13 +69,14 @@ def eval_file_open_request_sequence() -> dict:
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_open = { beginFileOpenRequest, isCurrentFileOpenRequest, cancelPendingFileOpen, currentFileSessionId };\n")}, ctx);
         const first = ctx.__test_file_open.beginFileOpenRequest("first.txt", {{ line: 3 }});
         const firstCurrent = ctx.__test_file_open.isCurrentFileOpenRequest(first);
-        const second = ctx.__test_file_open.beginFileOpenRequest("second.txt", {{ line: 8 }});
+        const second = ctx.__test_file_open.beginFileOpenRequest(" trail.md ", {{ line: 8, gitPath: true }});
         const result = {{
           currentSessionId: ctx.__test_file_open.currentFileSessionId(),
           firstCurrent,
           firstSignalAborted: Boolean(first.signal && first.signal.aborted),
           firstAfterSecond: ctx.__test_file_open.isCurrentFileOpenRequest(first),
           secondCurrent: ctx.__test_file_open.isCurrentFileOpenRequest(second),
+          secondGitPath: second.gitPath,
           activeFilePath: ctx.activeFilePath,
           activeFileLine: ctx.activeFileLine,
         }};
@@ -107,6 +109,7 @@ def eval_file_viewer_session_sync_race() -> dict:
           selected: "sid-b",
           fileViewerSessionId: "sid-a",
           activeFilePath: "old.txt",
+          activeFileGitPath: false,
           activeFileLine: 1,
           fileSearchSessionId: "sid-a",
           fileCandidateList: ["candidate.txt"],
@@ -178,6 +181,7 @@ def eval_resolved_open_current_guard() -> dict:
           openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
           currentFileSessionId: () => "sid-b",
           blockUnavailableFileAction: () => false,
+          isGitFileCandidatePath: () => true,
           resolveFileOpenMode: () => new Promise((resolve) => {{ resolveMode = resolve; }}),
         }};
         vm.createContext(ctx);
@@ -265,17 +269,26 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", resolved_block)
         self.assertIn("if (!currentGuard()) return false;", resolved_block)
         self.assertIn("try {", resolved_block)
+        self.assertIn("const gitPath = isGitFileCandidatePath(path, changed);", resolved_block)
         self.assertIn("mode = await resolveFileOpenMode(path, { changed });", resolved_block)
         self.assertIn("if (blockUnavailableFileAction()) return false;", resolved_block)
-        self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });", resolved_block)
+        self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard, gitPath });", resolved_block)
         guard_start = source.index("async function openFilePathWithGuard")
         guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
         guard_block = source[guard_start:guard_end]
+        self.assertIn("gitPath = false", guard_block)
         self.assertIn("isCurrent = null", guard_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
         self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", guard_block)
         self.assertIn("if (!currentGuard()) return false;", guard_block)
+        self.assertIn("await openFilePath(path, { line, gitPath });", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
+        self.assertIn("if (gitPath) body.git_path = true;", source)
+        self.assertIn('const gitPathQuery = request.gitPath ? "&git_path=1" : "";', source)
+        self.assertIn("git_path: Boolean(activeFileGitPath)", source)
+        self.assertIn("beginFileOpenRequest(path, { line, gitPath: false })", source)
+        self.assertIn("setFilePath(rel, { line: null, gitPath: false })", source)
+        self.assertIn("if (saveDraft) activeFileGitPath = false;", source)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -356,7 +369,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertTrue(result["firstSignalAborted"])
         self.assertFalse(result["firstAfterSecond"])
         self.assertTrue(result["secondCurrent"])
-        self.assertEqual(result["activeFilePath"], "second.txt")
+        self.assertEqual(result["activeFilePath"], " trail.md ")
+        self.assertTrue(result["secondGitPath"])
         self.assertEqual(result["activeFileLine"], 8)
         self.assertFalse(result["secondAfterCancel"])
 
@@ -453,7 +467,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("let fileOpenRequestId = 0;", source)
         self.assertIn("let fileOpenAbortController = null;", source)
         self.assertIn("function cancelPendingFileOpen()", source)
-        self.assertIn("const request = beginFileOpenRequest(nextPath, { line });", source)
+        self.assertIn("const request = beginFileOpenRequest(nextPath, { line, gitPath });", source)
         self.assertIn("signal: request.signal", source)
         self.assertIn("if (!isCurrentFileOpenRequest(request)) return false;", source)
         self.assertIn("async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null } = {})", source)
@@ -478,7 +492,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("activeFileSaveToken = saveToken;", block)
         self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();", block)
         self.assertIn("? { path: savePath, text, create: true }", block)
-        self.assertIn(": { path: savePath, text, version: saveVersion };", block)
+        self.assertIn(": { path: savePath, text, version: saveVersion, git_path: Boolean(activeFileGitPath) };", block)
         self.assertIn("await api(`/api/sessions/${saveSessionId}/file/write`", block)
         self.assertIn("if (!saveStillCurrent()) return true;", block)
         self.assertIn("if (!saveStillCurrent()) return false;", block)
@@ -495,7 +509,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('text: "Keep editing"', block)
         self.assertIn("window.confirm(`Reload ${savePath} from disk and discard your unsaved editor draft?`);", block)
         self.assertIn("if (fileViewerSessionId !== saveSessionId || activeFilePath !== savePath) return;", block)
-        self.assertIn("await openFilePath(savePath, { line: activeFileLine });", block)
+        self.assertIn("await openFilePath(savePath, { line: activeFileLine, gitPath: activeFileGitPath });", block)
         self.assertIn("getActiveFileCodeEditor();", block)
         self.assertIn("fileStatus.replaceChildren(label, actions);", block)
         save_start = source.index("async function saveActiveFileEdits")
@@ -519,7 +533,7 @@ class TestFileViewerSource(unittest.TestCase):
         route_start = source.index('session_id = _match_session_route(path, "file", "write")')
         route_end = source.index('session_id = _match_session_route(path, "delete")', route_start)
         block = source[route_start:route_end]
-        update_block = block[block.index("else:\n                    try:\n                        p = _resolve_session_path(base, path_raw)") :]
+        update_block = block[block.index("else:\n                    try:\n                        if git_path:") :]
         self.assertIn('except ValueError as e:\n                        _json_response(self, 400, {"error": str(e)})', update_block)
         self.assertIn("with _file_write_lock(p):", update_block)
         self.assertLess(update_block.index("with _file_write_lock(p):"), update_block.index("_read_text_file_for_write(p"))
@@ -591,8 +605,8 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)', module_source)
         self.assertIn('def prune_video_preview_cache(', module_source)
         self.assertIn('prune_video_preview_cache(preview_dir, keep=out)', module_source)
-        self.assertIn('preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}"', server_source)
-        self.assertIn('preview_url=f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}"', server_source)
+        self.assertIn('preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}{git_suffix}"', server_source)
+        self.assertIn("preview_url=media_preview_url", server_source)
         self.assertIn('_send_inline_file_response(self, p, ctype or "application/octet-stream")', server_source)
         self.assertIn('_send_inline_file_response(self, path_obj, ctype or "application/octet-stream")', server_source)
         self.assertIn('_send_inline_file_response(self, preview, "video/mp4")', server_source)
