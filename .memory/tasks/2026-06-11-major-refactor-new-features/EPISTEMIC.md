@@ -1307,3 +1307,8 @@ Commitments:
 - Intervention: Removed static asset version memoization; `_static_asset_version()` again reads bytes to compute the hash. Launch defaults and tmux availability remain cached because their invalidation semantics are weaker and scoped to `/api/sessions` display/config defaults.
 - Evidence: Focused/static/full local/Docker validations passed after removal.
 - Scoped claim: `/api/sessions` no longer risks stale `app_version` from mtime/size-preserving static content changes.
+
+## 2026-06-13 08:34 — No-blocker scoped claim for session constants memoization
+- Observation: Final clean-room review found no blockers after removing static asset version caching.
+- Scoped claim: `/api/sessions` now avoids repeated launch-default and tmux probe work without caching live session rows or weakening static asset cache-busting identity.
+- Remaining uncertainty: Launch-default cache invalidation remains signature-based, not content-hash based; this is accepted because launch config changes are normal file writes with mtime/size changes in the supported workflow.

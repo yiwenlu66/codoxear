@@ -1541,3 +1541,9 @@
 - Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`.
 - Full local validation after repair: `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `664 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 08:34 — Session constants memoization final review
+- Clean-room critic review of finalized `/api/sessions` non-session helper memoization found no blockers.
+- Critic validation: `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`; `python3 -m py_compile codoxear/server.py` → passed; `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-session-constants-memoization-review.md`.
+- Residual risks noted: launch defaults use mtime/size signatures, so timestamp-preserving same-size config/cache edits can be missed until mtime/size changes; tmux availability display can be stale for TTL, but launch path still checks directly.
