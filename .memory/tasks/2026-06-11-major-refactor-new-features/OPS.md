@@ -1784,3 +1784,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_chat_scrollback_source.py tests/test_send_ack.py tests/test_server_queue_persistence.py -q` → `108 passed, 15 subtests passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:45 — Send-flow follow-up refresh 401 repair
+- Final review of send/queue auth handling found no blockers, but noted successful/commit-unknown/pending-clear send flows still logged `refreshSessions()` 401s instead of routing auth loss.
+- Repaired auth handling in follow-up refresh catches for attachment commit-unknown, successful send, send commit-unknown, and pending-attachment clear success.
+- Updated source tests to require auth-aware refresh catches and updated scrollback send tests that previously pinned console-only refresh failure handling.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_send_ack.py tests/test_chat_scrollback_source.py -q` → `41 passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

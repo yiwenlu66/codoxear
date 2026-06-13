@@ -80,6 +80,8 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertLess(send_catch.index("if (e2 && e2.status === 401)"), send_catch.index("setToast(`send error:"))
         self.assertIn("handleAppAuthLoss();\n              return false;", send_catch)
         self.assertIn("if (clearErr && clearErr.status === 401)", send_block)
+        self.assertGreaterEqual(send_block.count("if (e && e.status === 401) handleAppAuthLoss();"), 3)
+        self.assertIn("if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();", app)
 
         clear_start = app.index("async function clearCommitUnknownSend(")
         clear_end = app.index("async function refreshSessions", clear_start)

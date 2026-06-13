@@ -11106,7 +11106,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 	                setToast("attachment status unknown; check before retrying");
 	                pollFastUntilMs = Date.now() + 4000;
 	                kickPoll(0);
-	                void refreshSessions().catch((refreshErr) => console.error("refreshSessions failed", refreshErr));
+	                void refreshSessions().catch((refreshErr) => {
+                  if (refreshErr && refreshErr.status === 401) handleAppAuthLoss();
+                  else console.error("refreshSessions failed", refreshErr);
+                });
 	              } else {
 	                setToast(`attach error: ${e.message}`);
 	              }
@@ -11183,7 +11186,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             setAttachCount(0);
             pollFastUntilMs = Date.now() + 5000;
             kickPoll(0);
-            void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+            void refreshSessions().catch((e) => {
+              if (e && e.status === 401) handleAppAuthLoss();
+              else console.error("refreshSessions failed", e);
+            });
             return true;
           } catch (e2) {
             if (e2 && e2.status === 401) {
@@ -11205,7 +11211,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               syncAttachButtonState();
               pollFastUntilMs = Date.now() + 4000;
               kickPoll(0);
-              void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+              void refreshSessions().catch((e) => {
+                if (e && e.status === 401) handleAppAuthLoss();
+                else console.error("refreshSessions failed", e);
+              });
             } else setToast(`send error: ${e2.message}`);
             if (!commitUnknown && sessionInfo && sessionInfo.pending_attachment && /broker must be restarted/i.test(String(e2 && e2.message ? e2.message : ""))) {
               const clearPending = window.confirm("This session has a pending attachment but the current broker cannot confirm sends. Clear the browser pending-attachment state only if you already handled it in the terminal?");
@@ -11213,7 +11222,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 try {
                   await api(`/api/sessions/${sessionId}/pending_attachment/clear`, { method: "POST", body: {} });
                   setToast("pending attachment state cleared");
-                  void refreshSessions().catch((e) => console.error("refreshSessions failed", e));
+                  void refreshSessions().catch((e) => {
+                    if (e && e.status === 401) handleAppAuthLoss();
+                    else console.error("refreshSessions failed", e);
+                  });
                 } catch (clearErr) {
                   if (clearErr && clearErr.status === 401) {
                     handleAppAuthLoss();

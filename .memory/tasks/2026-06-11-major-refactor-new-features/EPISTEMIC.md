@@ -1503,3 +1503,9 @@ Commitments:
 - Intervention: Added 401 auth-loss handling before local clear-error UI.
 - Evidence: Source coverage and focused/full/Docker validation passed.
 - Scoped claim: The send/queue auth-loss policy now includes the unknown-send recovery action that can be triggered from send/queue attempts.
+
+## 2026-06-13 11:45 — Send-flow follow-up refreshes follow auth-loss policy
+- Observation: Review identified that a 401 from a send-flow follow-up `refreshSessions()` was still treated as console-only, despite occurring during the send user action.
+- Intervention: Added auth-loss handling to those follow-up refresh catches.
+- Evidence: Source tests and focused/full/Docker validation passed.
+- Scoped claim: Send-flow API work, including follow-up session refreshes after success/unknown/clear outcomes, now treats 401 as global auth loss.
