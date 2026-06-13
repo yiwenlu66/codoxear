@@ -356,6 +356,18 @@ def _clean_unattended_remaining_injections(raw: Any, *, allow_zero: bool) -> int
 
 _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
+_FILE_WRITE_LOCKS_LOCK = threading.Lock()
+_FILE_WRITE_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _file_write_lock(path: Path) -> threading.Lock:
+    key = str(path)
+    with _FILE_WRITE_LOCKS_LOCK:
+        lock = _FILE_WRITE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _FILE_WRITE_LOCKS[key] = lock
+        return lock
 
 
 def _record_metric(name: str, value_ms: float) -> None:
@@ -6774,35 +6786,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return
                 else:
                     p = _resolve_session_path(base, path_raw)
-                    try:
-                        _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
-                    except FileNotFoundError as e:
-                        _json_response(self, 404, {"error": str(e)})
-                        return
-                    except PermissionError as e:
-                        _json_response(self, 403, {"error": str(e)})
-                        return
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    if current_version != version_raw:
-                        _json_response(
-                            self,
-                            409,
-                            {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
-                        )
-                        return
-                    try:
-                        size, next_version = _write_text_file_atomic(p, text=text_raw)
-                    except FileNotFoundError as e:
-                        _json_response(self, 404, {"error": str(e)})
-                        return
-                    except PermissionError as e:
-                        _json_response(self, 403, {"error": str(e)})
-                        return
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
+                    with _file_write_lock(p):
+                        try:
+                            _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
+                        except FileNotFoundError as e:
+                            _json_response(self, 404, {"error": str(e)})
+                            return
+                        except PermissionError as e:
+                            _json_response(self, 403, {"error": str(e)})
+                            return
+                        except ValueError as e:
+                            _json_response(self, 400, {"error": str(e)})
+                            return
+                        if current_version != version_raw:
+                            _json_response(
+                                self,
+                                409,
+                                {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
+                            )
+                            return
+                        try:
+                            size, next_version = _write_text_file_atomic(p, text=text_raw)
+                        except FileNotFoundError as e:
+                            _json_response(self, 404, {"error": str(e)})
+                            return
+                        except PermissionError as e:
+                            _json_response(self, 403, {"error": str(e)})
+                            return
+                        except ValueError as e:
+                            _json_response(self, 400, {"error": str(e)})
+                            return
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
