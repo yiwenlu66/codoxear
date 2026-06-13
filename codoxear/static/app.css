@@ -1535,6 +1535,19 @@ select {
       .filePickerMenu.open {
         display: block;
       }
+      .fileMenuSection {
+        padding: 8px 12px 5px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: rgba(248, 250, 252, 0.92);
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+      }
+      .filePickerMenu .fileMenuSection:first-child {
+        border-top: 0;
+      }
       .fileMenuItem {
         width: 100%;
         border: 0;

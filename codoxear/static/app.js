@@ -7290,6 +7290,8 @@
         let fileNonDiffMode = storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
+        const fileCandidateCache = new Map();
+        const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerSessionId = "";
         let activeFilePath = "";
         let activeFileKind = "";
@@ -8764,19 +8766,60 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        function upsertFileEntry(entry) {
-          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) return;
-          const path = entry.path.trim();
-          const merged = {
-            path,
+        function normalizeFileCandidateSource(source) {
+          const value = String(source || "").trim();
+          return ["changed", "mentioned", "recent"].includes(value) ? value : "";
+        }
+
+        function cloneFileCandidateEntry(entry) {
+          if (!entry || typeof entry.path !== "string" || !entry.path.trim()) return null;
+          return {
+            path: entry.path.trim(),
             additions: entry.additions ?? null,
             deletions: entry.deletions ?? null,
             changed: Boolean(entry.changed),
+            source: normalizeFileCandidateSource(entry.source),
           };
-          if (!fileEntryMap.has(path)) {
-            fileCandidateList.push(path);
+        }
+
+        function applyFileCandidateEntries(entries) {
+          fileCandidateList = [];
+          fileEntryMap = new Map();
+          for (const raw of Array.isArray(entries) ? entries : []) {
+            const entry = cloneFileCandidateEntry(raw);
+            if (!entry || fileEntryMap.has(entry.path)) continue;
+            fileCandidateList.push(entry.path);
+            fileEntryMap.set(entry.path, entry);
           }
-          fileEntryMap.set(path, merged);
+        }
+
+        function currentFileCandidateEntries() {
+          return fileCandidateList
+            .map((path) => cloneFileCandidateEntry(fileEntryMap.get(path) || { path }))
+            .filter(Boolean);
+        }
+
+        function fileCandidateCacheKey(sid) {
+          const s = sid ? sessionIndex.get(sid) : null;
+          const filesKey = listFromFilesField(s && s.files).join("\n");
+          const refsKey = collectMessageFileRefs().join("\n");
+          return `${sid || ""}\u0000${filesKey}\u0000${refsKey}`;
+        }
+
+        function rememberFileCandidateCache(sid, key) {
+          if (!sid || !key) return;
+          fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });
+        }
+
+        function upsertFileEntry(entry) {
+          const merged = cloneFileCandidateEntry(entry);
+          if (!merged) return;
+          const current = fileEntryMap.get(merged.path);
+          if (current && !merged.source) merged.source = normalizeFileCandidateSource(current.source);
+          if (!fileEntryMap.has(merged.path)) {
+            fileCandidateList.push(merged.path);
+          }
+          fileEntryMap.set(merged.path, merged);
         }
 
         function rememberOpenedFile(relPath, absPath = null) {
@@ -8790,6 +8833,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             additions: current && current.changed ? current.additions : null,
             deletions: current && current.changed ? current.deletions : null,
             changed: Boolean(current && current.changed),
+            source: current && current.changed ? "changed" : "recent",
           });
           const s = sid ? sessionIndex.get(sid) : null;
           if (!s) return;
@@ -8802,6 +8846,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!abs) return;
           const nextFiles = [abs, ...files.filter((x) => x !== abs)];
           s.files = nextFiles;
+          fileCandidateCache.delete(sid);
         }
 
         function collectMessageFileRefs() {
@@ -8862,12 +8907,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function pickerEntryForPath(path, { score = 0 } = {}) {
-          const entry = fileEntryMap.get(path) || { path, additions: null, deletions: null, changed: false };
+          const entry = fileEntryMap.get(path) || { path, additions: null, deletions: null, changed: false, source: "" };
           return {
             path,
             additions: entry.additions ?? null,
             deletions: entry.deletions ?? null,
             changed: Boolean(entry.changed),
+            source: normalizeFileCandidateSource(entry.source),
             added: fileEntryMap.has(path),
             score,
           };
@@ -9115,6 +9161,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return resolved;
         }
 
+        function filePickerSectionLabel(source) {
+          if (source === "changed") return "Changed files";
+          if (source === "mentioned") return "Mentioned in chat";
+          if (source === "recent") return "Recently opened";
+          return "";
+        }
+
+        function appendFilePickerSection(label) {
+          if (!label) return;
+          filePickerMenu.appendChild(el("div", { class: "fileMenuSection", role: "presentation", text: label }));
+        }
+
         function appendDraftFileMenuItem(path, idx, active) {
           const btn = el("button", {
             id: `filePickerOption-${idx}`,
@@ -9159,7 +9217,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return entries;
           }
           if (fileMenuFocus >= entries.length) fileMenuFocus = entries.length ? entries.length - 1 : -1;
+          const showSourceSections = !query;
+          let lastSourceSection = "";
           for (const [idx, entry] of entries.entries()) {
+            const section = showSourceSections ? filePickerSectionLabel(entry.source) : "";
+            if (section && section !== lastSourceSection) {
+              appendFilePickerSection(section);
+              lastSourceSection = section;
+            }
             const path = entry.path;
             const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && !query);
             const btn = el("button", {
@@ -9280,11 +9345,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return null;
         }
 
-        async function refreshFileCandidates() {
-          fileCandidateList = [];
-          fileEntryMap = new Map();
+        async function refreshFileCandidates({ force = false } = {}) {
           const sid = fileViewerSessionId || selected || "";
-          if (!sid) return;
+          if (!sid) {
+            applyFileCandidateEntries([]);
+            return;
+          }
+          const cacheKey = fileCandidateCacheKey(sid);
+          const cached = fileCandidateCache.get(sid);
+          if (!force && cached && cached.key === cacheKey && Date.now() - Number(cached.ts || 0) < FILE_CANDIDATE_CACHE_TTL_MS) {
+            applyFileCandidateEntries(cached.entries);
+            renderFilePickerMenu();
+            return;
+          }
+          applyFileCandidateEntries([]);
           try {
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
@@ -9297,18 +9371,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 deletions:
                   typeof entry.deletions === "number" && Number.isFinite(entry.deletions) ? entry.deletions : entry.deletions == null ? null : null,
                 changed: true,
+                source: "changed",
               }));
             const messageEntries = collectMessageFileRefs().map((path) => ({
               path,
               additions: null,
               deletions: null,
               changed: false,
+              source: "mentioned",
             }));
             const s = sid ? sessionIndex.get(sid) : null;
             const manualEntries = listFromFilesField(s && s.files)
               .map((abs) => sessionRelativePath(abs, sid))
               .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-              .map((path) => ({ path, additions: null, deletions: null, changed: false }));
+              .map((path) => ({ path, additions: null, deletions: null, changed: false, source: "recent" }));
             const merged = [];
             const seen = new Set();
             for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
@@ -9316,10 +9392,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               seen.add(entry.path);
               merged.push(entry);
             }
-            fileCandidateList = merged.map((entry) => entry.path);
-            for (const entry of merged) {
-              fileEntryMap.set(entry.path, entry);
-            }
+            applyFileCandidateEntries(merged);
+            rememberFileCandidateCache(sid, cacheKey);
           } catch (e) {}
           renderFilePickerMenu();
         }

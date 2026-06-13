@@ -8,9 +8,26 @@ from pathlib import Path
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 
+def js_function(source: str, name: str) -> str:
+    raw_start = source.index(f"function {name}")
+    start = raw_start - len("async ") if source[max(0, raw_start - len("async ")) : raw_start] == "async " else raw_start
+    params_end = source.index(")", raw_start)
+    brace = source.index("{", params_end)
+    depth = 0
+    for idx in range(brace, len(source)):
+        ch = source[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : idx + 1]
+    raise AssertionError(f"could not extract {name}")
+
+
 def eval_file_picker_search_helpers(state: dict) -> dict:
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function fileSearchScore(candidate, query) {")
+    start = source.index("function normalizeFileCandidateSource(source) {")
     end = source.index("async function getKnownFileRefCandidates() {", start)
     snippet = source[start:end]
     js = textwrap.dedent(
@@ -37,6 +54,71 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           entries,
           local: ctx.__test_file_picker_search.localFilePickerSearchEntries(state.filePickerInputValue || ""),
         }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+def eval_file_candidate_cache_helpers() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    names = [
+        "listFromFilesField",
+        "parseFileLocation",
+        "stripPathLocationSuffix",
+        "normalizeFileCandidateSource",
+        "cloneFileCandidateEntry",
+        "applyFileCandidateEntries",
+        "currentFileCandidateEntries",
+        "collectMessageFileRefs",
+        "fileCandidateCacheKey",
+        "rememberFileCandidateCache",
+        "sessionRelativePath",
+        "refreshFileCandidates",
+    ]
+    snippet = "\n".join(js_function(source, name) for name in names)
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileCandidateList: [],
+          fileEntryMap: new Map(),
+          fileCandidateCache: new Map(),
+          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
+          fileViewerSessionId: "s1",
+          selected: "",
+          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
+          chatInner: {{ querySelectorAll() {{ return []; }} }},
+          renderCount: 0,
+          apiCalls: 0,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext(`
+          async function api(path) {{
+            apiCalls += 1;
+            return {{ entries: [{{ path: "changed.py", additions: 1, deletions: 0 }}] }};
+          }}
+          function renderFilePickerMenu() {{
+            renderCount += 1;
+          }}
+        ` + {json.dumps(snippet)}, ctx);
+        (async () => {{
+          await ctx.refreshFileCandidates();
+          const first = ctx.fileCandidateList.slice();
+          await ctx.refreshFileCandidates();
+          const second = ctx.fileCandidateList.slice();
+          await ctx.refreshFileCandidates({{ force: true }});
+          const third = ctx.fileCandidateList.slice();
+          process.stdout.write(JSON.stringify({{
+            apiCalls: ctx.apiCalls,
+            renderCount: ctx.renderCount,
+            first,
+            second,
+            third,
+            cacheSize: ctx.fileCandidateCache.size,
+            sources: ctx.fileCandidateList.map((path) => (ctx.fileEntryMap.get(path) || {{}}).source || ""),
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -78,12 +160,50 @@ class TestFilePickerSearchSource(unittest.TestCase):
         )
         self.assertTrue(any(entry["path"] == "src/server.py" for entry in result["entries"]))
 
+    def test_no_query_entries_preserve_source_metadata(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileCandidateList": ["changed.py", "mentioned.md", "recent.txt"],
+                "fileEntries": [
+                    {"path": "changed.py", "changed": True, "source": "changed"},
+                    {"path": "mentioned.md", "changed": False, "source": "mentioned"},
+                    {"path": "recent.txt", "changed": False, "source": "recent"},
+                ],
+                "filePickerSearchActive": False,
+                "filePickerInputValue": "",
+            }
+        )
+        self.assertEqual([entry["source"] for entry in result["entries"]], ["changed", "mentioned", "recent"])
+
     def test_source_shows_pending_full_project_footer(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function localFilePickerSearchEntries(query)", source)
         self.assertIn("function prependDraftFileEntry(entries, query)", source)
         self.assertIn('text: "Searching full project..."', source)
         self.assertNotIn("if (fileSearchPendingQuery === query) return null;", source)
+
+    def test_file_candidate_cache_reuses_same_session_key(self) -> None:
+        result = eval_file_candidate_cache_helpers()
+        self.assertEqual(result["apiCalls"], 2)
+        self.assertEqual(result["renderCount"], 3)
+        self.assertEqual(result["first"], ["changed.py", "recent.txt"])
+        self.assertEqual(result["second"], result["first"])
+        self.assertEqual(result["third"], result["first"])
+        self.assertEqual(result["cacheSize"], 1)
+        self.assertEqual(result["sources"], ["changed", "recent"])
+
+    def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
+        self.assertIn("function filePickerSectionLabel(source)", source)
+        self.assertIn('return "Changed files";', source)
+        self.assertIn('return "Mentioned in chat";', source)
+        self.assertIn('return "Recently opened";', source)
+        self.assertIn("const fileCandidateCache = new Map();", source)
+        self.assertIn("const FILE_CANDIDATE_CACHE_TTL_MS = 15000;", source)
+        self.assertIn("fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });", source)
+        self.assertIn("fileCandidateCache.delete(sid);", source)
+        self.assertIn(".fileMenuSection", css)
 
 
 if __name__ == "__main__":
