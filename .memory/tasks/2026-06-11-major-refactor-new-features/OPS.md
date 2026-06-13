@@ -1518,3 +1518,9 @@
 - Browser evidence on isolated `codoxear-sandbox-18936`: monkeypatched first `/messages/tail` to synthetic 503, selected a session, observed one transcript error row with visible `Retry`; clicking Retry restored transcript content and cleared error/loading rows. Artifacts: `/tmp/codoxear-transcript-retry-evidence/error-with-retry.json`, `retry-after.json`, `retry-after.png`.
 - Full local validation: `python3 -m pytest -q` → `664 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `663 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 08:20 — Transcript Retry final review
+- Clean-room critic review of inline transcript Retry found no blockers.
+- Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`; `node --check codoxear/static/app.js` → passed.
+- Review artifact: `/tmp/codoxear-transcript-retry-review.md`.
+- Reviewer residual risks noted source-shape tests and no assistive-technology verification; parent browser evidence already covered click behavior in `/tmp/codoxear-transcript-retry-evidence/retry-after.json`.

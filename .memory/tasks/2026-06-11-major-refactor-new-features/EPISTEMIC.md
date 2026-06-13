@@ -1288,3 +1288,8 @@ Commitments:
 - Intervention: Added selected-session guarded Retry button inside the non-transcript error bubble.
 - Evidence: Browser evidence demonstrates synthetic failure -> Retry -> transcript recovery; source/full local/Docker validations passed.
 - Scoped claim: Users can now recover from transient transcript load errors inline without introducing a new transcript fetch semantics path.
+
+## 2026-06-13 08:20 — No-blocker scoped claim for inline transcript Retry
+- Observation: Clean-room review found no blockers in the inline transcript Retry tranche.
+- Scoped claim: Transcript load errors now expose a selected-session guarded, non-transcript Retry action that reuses the existing `openSession()` path and clears on successful authoritative render.
+- Remaining uncertainty: Accessibility was checked structurally via button text/title/aria-label, but not with a real screen reader.
