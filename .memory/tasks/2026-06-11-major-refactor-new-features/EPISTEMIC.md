@@ -1319,3 +1319,8 @@ Commitments:
 - Intervention: Centralized browser storage access behind catching wrappers and replaced direct calls.
 - Evidence: VM tests exercise getter/method exceptions; source tests ensure selected-session/New Session paths use wrappers; full local/Docker suites pass; real Chromium with a pre-scripted throwing `localStorage` getter still reached the authenticated main UI without storage/security errors.
 - Scoped claim: Browser Web Storage denial or quota errors no longer prevent Codoxear from starting and using the main UI; the affected preference persistence may be lost for that browser context.
+
+## 2026-06-13 08:59 — No-blocker claim for optional browser storage
+- Observation: Clean-room review found no blockers and confirmed no remaining direct localStorage references outside the helper.
+- Scoped claim: storage-denied/quota-error browsers should still reach the main Codoxear UI; only convenience preferences are degraded.
+- Remaining uncertainty: behavior with pre-existing live sessions under denied storage was not separately browser-tested, but source flow still selects from `/api/sessions` independently of storage persistence.

@@ -1557,3 +1557,9 @@
 - Full local validation: `python3 -m pytest -q` → `668 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `667 passed, 1 skipped, 25 subtests passed`.
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-storage-18791`, stopped): Playwright injected a throwing `localStorage` getter before app scripts, logged in, and observed main UI rendered with `threadTitle: "No session selected"`, composer and file viewer present, no storage/server-contact errors. Artifact: `/tmp/codoxear-storage-denied-browser.json`.
+
+## 2026-06-13 08:59 — Storage-denial clean-room review
+- Clean-room critic review of storage-denied browser robustness found no blockers.
+- Critic validation: `node --check codoxear/static/app.js` → passed; focused pytest on requested storage/New Session/scrollback files → `35 passed`; full pytest → `668 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-storage-denial-review.md`.
+- Residual risks: browser evidence used no live sessions; denied/quota storage loses preference persistence by design; source regex would miss `window.localStorage.getItem(...)`, but grep found no direct calls outside helper.
