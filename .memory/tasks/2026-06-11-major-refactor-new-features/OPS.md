@@ -1747,3 +1747,9 @@
 - Focused validation: `python3 -m pytest tests/test_file_write_locks.py tests/test_file_viewer_source.py tests/test_file_inspect.py -q` → `42 passed`.
 - Full local validation: `python3 -m pytest -q` → `682 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `681 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 11:16 — File write lock cleanup review
+- Clean-room review of `ddcd803` found no blockers.
+- Critic validation: focused lock/source test subset → `3 passed`; `tests/test_file_*.py` → `75 passed`; full pytest → `682 passed, 25 subtests passed`.
+- Review confirmed route critical section still covers read/version-check/write, waiters increment refcount before blocking, cleanup runs in `finally`, and exceptions are not suppressed.
+- Residual accepted risks: locking remains process-local and string-path based; external writers, other server processes, hardlink/path aliases are not serialized. This is pre-existing and outside the server-process per-path invariant.

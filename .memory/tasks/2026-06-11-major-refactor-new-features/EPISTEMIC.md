@@ -1473,3 +1473,8 @@ Commitments:
 - Intervention: Converted the helper into a refcounted context manager that counts waiters before acquire and deletes the path entry after the last exit.
 - Evidence: Concurrency tests show waiter refcounting and final cleanup; focused/full/Docker validation passed.
 - Scoped claim: Repeated writes to many distinct paths no longer cause durable growth of `_FILE_WRITE_LOCKS` under normal helper use.
+
+## 2026-06-13 11:16 — File write lock cleanup accepted
+- Observation: Clean-room review found no blocker in refcounted file-write lock cleanup.
+- Scoped claim: Within one server process and one resolved string path, file write locks now serialize active saves without retaining historical path entries.
+- Remaining uncertainty: Cross-process/filesystem-alias serialization remains outside current guarantees.
