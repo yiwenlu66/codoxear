@@ -1454,3 +1454,10 @@ Commitments:
 - Observation: Final review found no blocker after moving 401 ahead of stale guards.
 - Scoped claim: Older-history page failures now have a correct user-visible recovery path for retryable errors while preserving global auth-loss behavior.
 - Remaining uncertainty: Browser proof covers the retryable 503 path; 401 behavior is pinned by source/runtime tests, not browser automation.
+
+## 2026-06-13 11:05 — New Session becomes a complete modal surface
+- Observation: Settings already had modal focus semantics, but New Session—the higher-use flow—had dialog role only, desktop-only focus, and no opener focus restoration.
+- Mechanism: Custom modal isolation already existed; the missing invariant was local ownership of focus on open and close.
+- Intervention: Added `aria-modal`, initial focus, and focus restoration without changing launch semantics or adding UI controls.
+- Evidence: Source tests, full local/Docker validation, and desktop/mobile browser focus evidence passed.
+- Scoped claim: Keyboard/screen-reader users now enter the New Session dialog predictably and return to the launcher on close under the tested desktop and mobile viewports.

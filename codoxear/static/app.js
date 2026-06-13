@@ -2656,6 +2656,7 @@
           html: iconSvg("x"),
         });
         const newSessionStatus = el("div", { class: "muted", id: "newSessionStatus", text: "" });
+        let newSessionReturnFocusEl = null;
         const newSessionCwdInput = el("input", {
           id: "newSessionCwdInput",
           type: "text",
@@ -2777,7 +2778,7 @@
           newSessionWorktreeInput,
         ]);
         const newSessionStartBtn = el("button", { class: "primary", id: "newSessionStartBtn", type: "button", text: "Start session" });
-        const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-label": "New session" }, [
+        const newSessionViewer = el("div", { class: "formViewer newSessionViewer", id: "newSessionViewer", role: "dialog", "aria-modal": "true", "aria-label": "New session" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "newSessionHeaderLead" }, [
               el("div", { class: "title", text: "New session" }),
@@ -6986,7 +6987,34 @@
           afterModalVisibilityChanged();
         }
 
+        function restoreNewSessionFocus() {
+          const target = newSessionReturnFocusEl;
+          newSessionReturnFocusEl = null;
+          if (!target || !target.isConnected || typeof target.focus !== "function") return;
+          if (typeof target.disabled === "boolean" && target.disabled) return;
+          requestAnimationFrame(() => {
+            if (isModalTargetOpen(newSessionViewer)) return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
+        }
+
+        function focusNewSessionInitialControl() {
+          const target = isMobile() ? newSessionCloseBtn : newSessionCwdInput;
+          requestAnimationFrame(() => {
+            if (!isModalTargetOpen(newSessionViewer)) return;
+            target.focus({ preventScroll: true });
+            if (target !== newSessionCwdInput) return;
+            const end = newSessionCwdInput.value.length;
+            try {
+              newSessionCwdInput.setSelectionRange(end, end);
+            } catch {}
+          });
+        }
+
         function hideNewSessionDialog() {
+          const wasOpen = isModalTargetOpen(newSessionViewer);
           newSessionStatus.textContent = "";
           newSessionCwdMenuOpen = false;
           newSessionCwdMenuFocus = -1;
@@ -6998,9 +7026,12 @@
           newSessionBackdrop.style.display = "none";
           newSessionViewer.style.display = "none";
           afterModalVisibilityChanged();
+          if (wasOpen) restoreNewSessionFocus();
+          else newSessionReturnFocusEl = null;
         }
 
         function openNewSessionDialog({ cwd = null, statusText = "" } = {}) {
+          newSessionReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           const cur = selected ? sessionIndex.get(selected) : null;
           const initialCwd = typeof cwd === "string" && cwd.trim() ? cwd.trim() : cur && cur.cwd && cur.cwd !== "?" ? cur.cwd : "";
@@ -7037,14 +7068,7 @@
           scheduleNewSessionResumeLoad();
           syncNewSessionTmuxUi();
           syncNewSessionWorktreeUi();
-          if (isMobile()) return;
-          requestAnimationFrame(() => {
-            newSessionCwdInput.focus({ preventScroll: true });
-            const end = newSessionCwdInput.value.length;
-            try {
-              newSessionCwdInput.setSelectionRange(end, end);
-            } catch {}
-          });
+          focusNewSessionInitialControl();
         }
 
         editPriorityRange.oninput = syncEditPriorityLabel;

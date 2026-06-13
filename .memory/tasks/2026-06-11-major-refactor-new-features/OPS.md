@@ -1722,3 +1722,13 @@
 - Critic validation: `node --check codoxear/static/app.js`; focused sets → `39 passed` and `49 passed`; full pytest → `679 passed, 25 subtests passed`.
 - Review confirmed: history 401 now outranks stale guards; stale non-auth responses remain suppressed; active 409 still reopens; active non-401/non-409 preserves rows/hasOlder and shows retry; Retry calls guarded `loadOlderMessages({ auto: false })`.
 - Residual accepted risk: a truly stale history 401 can force login, intentionally matching auth-loss-as-global semantics.
+
+## 2026-06-13 11:05 — New Session modal focus and ARIA
+- Added `aria-modal="true"` to the custom New Session dialog.
+- Added opener focus capture/restore via `newSessionReturnFocusEl` and `restoreNewSessionFocus()`; all existing close paths (`X`, Cancel, backdrop, Escape, successful start) still call `hideNewSessionDialog()` and now restore focus if the opener is still focusable.
+- Added initial focus behavior via `focusNewSessionInitialControl()`: desktop focuses the cwd combobox and preserves cursor-at-end; mobile focuses the stable close button so focus enters the dialog without forcing the keyboard open.
+- Preserved the original `hideNewSessionDialog()` signature after full-suite source tests exposed a signature-coupled test.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_overlay_accessibility_source.py tests/test_edit_session_source.py tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py -q` → `20 passed`.
+- Full local validation: `python3 -m pytest -q` → `680 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `679 passed, 1 skipped, 25 subtests passed`.
+- Browser evidence against isolated Docker sandbox (`codoxear-sandbox-new-session-a11y-18796`, stopped): desktop open focused `#newSessionCwdInput`, mobile open focused `#newSessionCloseBtn`, both had `role=dialog`/`aria-modal=true`, both isolated `.app`, and Escape restored focus to `#newBtn` with isolation removed. Artifact: `/tmp/codoxear-new-session-a11y-browser.json`.
