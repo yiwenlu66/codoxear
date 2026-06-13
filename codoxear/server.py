@@ -299,6 +299,7 @@ SIDEBAR_PRIORITY_BUCKET_SECONDS = float(os.environ.get("CODEX_WEB_SIDEBAR_PRIORI
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
 TRANSCRIPT_EXPORT_MAX_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES", str(50 * 1024 * 1024)))
+TRANSCRIPT_SEARCH_MAX_LINE_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES", str(4 * 1024 * 1024)))
 
 
 def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
@@ -2117,6 +2118,14 @@ def _parse_bounded_query_int(
     return max(min_value, min(max_value, value)), None
 
 
+def _chat_event_matches_query(event: dict[str, Any], needle: str) -> bool:
+    role = event.get("role")
+    if role not in {"user", "assistant"}:
+        return False
+    text = event.get("text")
+    return isinstance(text, str) and needle in text.casefold()
+
+
 def _search_chat_events(events: list[dict[str, Any]], query: str, *, limit: int = 20) -> tuple[int, list[dict[str, Any]]]:
     needle = query.strip().casefold()
     if not needle:
@@ -2127,11 +2136,78 @@ def _search_chat_events(events: list[dict[str, Any]], query: str, *, limit: int 
     for event in events:
         if not isinstance(event, dict):
             continue
-        role = event.get("role")
-        if role not in {"user", "assistant"}:
+        if not _chat_event_matches_query(event, needle):
             continue
-        text = event.get("text")
-        if not isinstance(text, str) or needle not in text.casefold():
+        count += 1
+        if len(matches) < max_matches:
+            matches.append(event)
+    return count, matches
+
+
+def _iter_jsonl_records_forward_bounded(log_path: Path, *, max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES):
+    limit = max(1, int(max_line_bytes))
+    with log_path.open("rb") as f:
+        offset = 0
+        while True:
+            start = offset
+            raw = f.readline(limit + 1)
+            if not raw:
+                break
+            offset += len(raw)
+            if len(raw) > limit and not raw.endswith(b"\n"):
+                while True:
+                    skipped = f.readline(64 * 1024)
+                    if not skipped:
+                        break
+                    offset += len(skipped)
+                    if skipped.endswith(b"\n"):
+                        break
+                continue
+            line = raw.rstrip(b"\r\n")
+            try:
+                obj = _rollout_log._parse_jsonl_line(line)
+            except Exception:
+                continue
+            if obj is None:
+                continue
+            yield _rollout_log.JsonlRecord(start=start, end=offset, obj=obj)
+
+
+def _iter_positioned_chat_events_forward(log_path: Path, *, max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES):
+    cc_pending_tool_ids: set[str] = set()
+    last_assistant_key: tuple[str, str] | None = None
+    for record in _iter_jsonl_records_forward_bounded(log_path, max_line_bytes=max_line_bytes):
+        try:
+            event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
+        except Exception:
+            continue
+        if event is None:
+            continue
+        event = _rollout_log._with_chat_position(event, before_byte=record.start)
+        role = event.get("role")
+        if role == "user":
+            last_assistant_key = None
+            yield event
+            continue
+        if role == "assistant":
+            key = _rollout_log._chat_assistant_dedupe_key(event)
+            if key is not None and key == last_assistant_key:
+                continue
+            last_assistant_key = key
+            yield event
+            continue
+        yield event
+
+
+def _search_chat_log(log_path: Path, query: str, *, limit: int = 20, max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES) -> tuple[int, list[dict[str, Any]]]:
+    needle = query.strip().casefold()
+    if not needle:
+        return 0, []
+    max_matches = max(0, int(limit))
+    count = 0
+    matches: list[dict[str, Any]] = []
+    for event in _iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes):
+        if not _chat_event_matches_query(event, needle):
             continue
         count += 1
         if len(matches) < max_matches:
@@ -6620,13 +6696,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if s.log_path is None or (not s.log_path.exists()):
                     _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "matches": []})
                     return
-                try:
-                    events = _read_chat_export_events(s.log_path)
-                except ValueError as e:
-                    _json_response(self, 413, {"error": str(e), "max_bytes": int(TRANSCRIPT_EXPORT_MAX_BYTES)})
-                    return
-                events = MANAGER._attach_notification_texts(events)
-                match_count, matches = _search_chat_events(events, query, limit=match_limit)
+                match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit)
+                matches = MANAGER._attach_notification_texts(matches)
                 _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "matches": matches})
                 return
 

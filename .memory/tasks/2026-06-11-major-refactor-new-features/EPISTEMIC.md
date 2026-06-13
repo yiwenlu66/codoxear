@@ -1759,3 +1759,12 @@ Intervention: `ensure_video_preview()` now uses a per-output in-process lock wit
 Observation: Clean-room review found two important refinements: an unbounded negative cache would leak across many failing source-stat keys, and caching all exception types could convert a repeated `PermissionError` into a `RuntimeError`, changing HTTP error semantics. The final implementation caps/prunes failures and only caches `RuntimeError` generation failures, preserving `PermissionError`/`FileNotFoundError`/`OSError` propagation.
 
 Scoped claim: Under focused, full, Docker, and clean-room evidence, same-process duplicate preview requests for one source-stat key produce at most one generation attempt, repeated ffmpeg-like `RuntimeError` failures are briefly throttled without permanent suppression, and non-ffmpeg file/permission errors are not transformed by the throttle. Residual: singleflight is process-local and source mutations that preserve path/size/mtime_ns can still reuse a stale key.
+
+## 2026-06-14 07:10
+Observation: `/messages/search` previously reused `_read_chat_export_events()`, so even count-only search inherited the transcript export byte cap and materialized all positioned chat events. That undermined long-session orientation on logs too large to export.
+
+Intervention: Search now streams bounded JSONL lines forward, normalizes one positioned chat event at a time, carries Claude pending-tool state, de-dupes adjacent assistant events across the scan, and returns exact counts plus the first limited matches without using the export path. `/messages/export` remains capped and returns 413 for oversized logs.
+
+Observation: Clean-room review found that malformed JSON, structurally invalid dict records, deeply nested non-dict JSON, and oversized/no-newline records could either abort the scan or force unbounded buffering. The final implementation bounds per-line reads, skips oversized records by bounded chunks, and isolates per-line parse/per-record normalization exceptions so later valid records remain searchable.
+
+Scoped claim: Under focused, full, Docker, and clean-room evidence, long-chat search no longer fails merely because the log exceeds the export cap, and corrupted/oversized individual records do not hide later valid newline-delimited records. Residual: exact counts still require O(file size) scanning per query, and valid chat records larger than `TRANSCRIPT_SEARCH_MAX_LINE_BYTES` are skipped as the memory-safety tradeoff.

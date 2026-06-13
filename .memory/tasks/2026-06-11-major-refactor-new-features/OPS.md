@@ -2105,3 +2105,12 @@
   - Full local: `python3 -m pytest -q` -> `767 passed, 77 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `766 passed, 1 skipped, 77 subtests passed`.
   - Clean-room review loop found and drove fixes for unbounded failure map and exception-semantics drift; final review -> no blockers.
+
+## 2026-06-14 07:10
+- Completed long-chat streaming search tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_transcript_export.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py tests/test_message_index.py -q` -> `35 passed, 3 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `774 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `773 passed, 1 skipped, 77 subtests passed`.
+  - Clean-room review loop found and drove fixes for malformed/non-dict/oversized record handling and bounded line buffering; final review -> no blockers.
