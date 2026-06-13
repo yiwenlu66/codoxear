@@ -4987,7 +4987,39 @@
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
             markMessagePollFailure();
-            if (e && e.status === 404) handleFileViewerSessionUnavailable(sessionId);
+            if (e && e.status === 404) {
+              handleFileViewerSessionUnavailable(sessionId);
+              selected = null;
+              if (unattendedMenuOpen) hideUnattendedMenu();
+              activeTranscriptState = "pending_bind";
+              activeLogPath = null;
+              activeThreadId = null;
+              liveCursor = null;
+              clearRenderedTranscriptRange();
+              if (pollTimer) clearTimeout(pollTimer);
+              pollTimer = null;
+              pollKickPending = false;
+              pollKickDelayMs = null;
+              turnOpen = false;
+              storageRemoveItem("codexweb.selected");
+              setSessionHash("");
+              titleLabel.textContent = "No session selected";
+              setStatus({ running: false, queueLen: 0 });
+              setContext(null);
+              setTyping(false);
+              setAttachCount(0);
+              resetChatRenderState();
+              updateQueueBadge();
+              updateUnattendedBtnState();
+              syncSendButtonState();
+              syncQueueSubmitState();
+              syncAttachButtonState();
+              void refreshSessions().catch((e2) => {
+                if (e2 && e2.status === 401) handleAppAuthLoss();
+                else console.error("refreshSessions failed after session disappeared", e2);
+              });
+              return null;
+            }
             if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
@@ -7607,6 +7639,7 @@
         const fileCandidateCache = new Map();
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerSessionId = "";
+        let fileViewerUnavailableSessionId = "";
         let activeFilePath = "";
         let activeFileKind = "";
         let activeFileText = "";
@@ -7658,6 +7691,16 @@
 
         function currentFileSessionId() {
           return String(fileViewerSessionId || selected || "").trim();
+        }
+
+        function isFileViewerSessionUnavailable() {
+          return Boolean(fileViewerUnavailableSessionId && fileViewerSessionId && fileViewerUnavailableSessionId === fileViewerSessionId);
+        }
+
+        function blockUnavailableFileAction() {
+          if (!isFileViewerSessionUnavailable()) return false;
+          fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+          return true;
         }
 
         function cancelPendingFileOpen() {
@@ -7788,6 +7831,7 @@
           cancelPendingFileOpen();
           rememberActiveFileSelection(fileViewerSessionId);
           fileViewerSessionId = sid;
+          fileViewerUnavailableSessionId = "";
           if (fileSearchSessionId !== fileViewerSessionId) {
             resetFileSearchState();
             fileSearchSessionId = fileViewerSessionId;
@@ -7901,6 +7945,7 @@
         }
 
         function activeFileCanEnterEditMode() {
+          if (isFileViewerSessionUnavailable()) return false;
           if (!activeFilePath || fileSavePending) return false;
           if (activeFileKind && !isTextFileKind(activeFileKind)) return false;
           if (fileEditorKind === "plain-fallback") return false;
@@ -7910,7 +7955,7 @@
 
         function syncFileEditorReadOnly() {
           if (fileEditorKind !== "file" || !fileEditor || typeof fileEditor.updateOptions !== "function") return;
-          fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file") });
+          fileEditor.updateOptions({ readOnly: !(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable()) });
         }
 
         function getActiveFileCodeEditor() {
@@ -8000,7 +8045,7 @@
             fileTouchPasteBtn.style.display = "none";
             return;
           }
-          const canPaste = fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending;
+          const canPaste = fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending && !isFileViewerSessionUnavailable();
           const hasSelection = Boolean(getActiveFileSelectionText());
           fileTouchSelectBtn.classList.toggle("active", fileTouchSelectMode);
           fileTouchDpad.style.display = fileTouchSelectMode ? "grid" : "none";
@@ -8094,7 +8139,7 @@
           const key = String(e.key || "").toLowerCase();
           const command = fileEditorDeleteCommandForKey(key);
           if (!command) return false;
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file")) return false;
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && !isFileViewerSessionUnavailable())) return false;
           const target = e.target instanceof HTMLElement ? e.target : null;
           if (!isActiveFileEditorInput(target)) return false;
           const editor = getActiveFileCodeEditor();
@@ -8197,7 +8242,7 @@
         }
 
         async function pasteFromClipboardIntoActiveFile() {
-          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending)) return;
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && isTextFileKind(activeFileKind) && !fileSavePending && !isFileViewerSessionUnavailable())) return;
           if (!(window.isSecureContext && navigator.clipboard && typeof navigator.clipboard.readText === "function")) {
             setToast("paste unavailable");
             focusActiveFileCodeEditor();
@@ -8205,6 +8250,7 @@
           }
           try {
             const text = await navigator.clipboard.readText();
+            if (blockUnavailableFileAction()) return;
             if (!text) {
               setToast("clipboard empty");
               focusActiveFileCodeEditor();
@@ -8233,6 +8279,7 @@
         }
 
         function insertIntoActiveFileEditor(text) {
+          if (!(fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending && !isFileViewerSessionUnavailable())) return false;
           const editor = getActiveFileCodeEditor();
           if (!editor || !monacoNs || typeof editor.executeEdits !== "function") return false;
           const current = normalizeFileEditorPosition(editor, editor.getPosition && editor.getPosition()) || { lineNumber: 1, column: 1 };
@@ -8262,8 +8309,9 @@
         }
 
         function updateFileEditButton() {
+          const unavailable = isFileViewerSessionUnavailable();
           const canEdit = activeFileCanEnterEditMode();
-          fileEditBtn.disabled = !canEdit;
+          fileEditBtn.disabled = unavailable || !canEdit;
           const saveStyle = fileEditMode || fileSavePending;
           fileEditBtn.classList.toggle("active", saveStyle);
           fileEditBtn.classList.toggle("primary", saveStyle);
@@ -8271,8 +8319,8 @@
           if (fileSavePending) fileEditBtn.innerHTML = iconSvg("save");
           else if (fileEditMode) fileEditBtn.innerHTML = iconSvg("save");
           else fileEditBtn.innerHTML = iconSvg("edit");
-          fileEditBtn.title = fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
-          fileEditBtn.setAttribute("aria-label", fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
+          fileEditBtn.title = unavailable ? "Session unavailable; copy edits before closing" : fileSavePending ? "Saving file" : fileEditMode ? "Save file" : canEdit ? "Edit file" : "File is read-only";
+          fileEditBtn.setAttribute("aria-label", unavailable ? "Session unavailable; copy edits before closing" : fileSavePending ? "Saving file" : fileEditMode ? "Save file" : "Edit file");
           updateFileTouchToolbar();
         }
 
@@ -8516,7 +8564,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditor = monaco.editor.create(host, {
               language: lang || "plaintext",
               value: String(text || ""),
-              readOnly: !(fileEditMode && activeFileEditable),
+              readOnly: !(fileEditMode && activeFileEditable && !isFileViewerSessionUnavailable()),
               theme: "codoxear-github-light",
               lineNumbers: "on",
               minimap: { enabled: false },
@@ -8855,6 +8903,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function saveActiveFileEdits({ exitEditMode = true } = {}) {
+          if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId || !activeFilePath || !isTextFileKind(activeFileKind) || !activeFileEditable) return false;
           if (!fileDirty && !activeFileDraft) {
             if (exitEditMode) setFileEditMode(false);
@@ -8867,7 +8916,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const text = getFileEditorText();
           const saveToken = ++fileSaveSeq;
           activeFileSaveToken = saveToken;
-          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken;
+          const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();
           fileSavePending = true;
           updateFileEditButton();
           syncFileEditorReadOnly();
@@ -8923,9 +8972,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function openFilePathWithGuard(path, { line = null, mode = null, isCurrent = null } = {}) {
+          if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
-          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart;
+          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          if (blockUnavailableFileAction()) return false;
           if (!currentGuard()) return false;
           setFilePath(path, { line });
           if (mode) setFileViewMode(mode);
@@ -8935,14 +8986,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function openDraftFilePathWithGuard(path) {
+          if (blockUnavailableFileAction()) return false;
           const rel = normalizeDraftFilePath(path);
           if (!rel) {
             fileStatus.textContent = "Choose a valid relative file path.";
             return false;
           }
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          if (blockUnavailableFileAction()) return false;
           try {
             const inspect = await inspectSessionFilePath(rel);
+            if (blockUnavailableFileAction()) return false;
             if (inspect && inspect.exists) {
               if (inspect.kind === "directory") {
                 fileStatus.textContent = `${rel} - path is a directory`;
@@ -8951,9 +9005,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               return await openFilePathWithGuard(rel, { line: null, mode: "file" });
             }
           } catch (e) {
+            if (blockUnavailableFileAction()) return false;
             fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
             return false;
           }
+          if (blockUnavailableFileAction()) return false;
           setFileViewMode("file");
           setFilePath(rel, { line: null });
           renderFilePickerMenu();
@@ -8962,10 +9018,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function setFileViewModeWithGuard(mode) {
+          if (blockUnavailableFileAction()) return false;
           const next = mode === "preview" ? "preview" : mode === "file" ? "file" : "diff";
           if (next === fileViewMode) return true;
           if (activeFileDraft && next !== "file") return false;
           if (!(await maybeHandleUnsavedFileChanges())) return false;
+          if (blockUnavailableFileAction()) return false;
           setFileViewMode(next);
           renderFilePickerMenu();
           await openFilePath(activeFilePath, { line: activeFileLine });
@@ -9066,14 +9124,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function openFilePathWithResolvedMode(path, { line = null, changed = null, isCurrent = null } = {}) {
+          if (blockUnavailableFileAction()) return false;
           const sessionAtStart = currentFileSessionId();
-          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart;
-          const mode = await resolveFileOpenMode(path, { changed });
+          const currentGuard = typeof isCurrent === "function" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();
+          let mode;
+          try {
+            mode = await resolveFileOpenMode(path, { changed });
+          } catch (e) {
+            if (blockUnavailableFileAction()) return false;
+            throw e;
+          }
           if (!currentGuard()) return false;
           return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });
         }
 
         async function openDraftFilePath(path, { line = null } = {}) {
+          if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId) return;
           const request = beginFileOpenRequest(path, { line });
           const rel = normalizeDraftFilePath(path);
@@ -9311,6 +9377,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function requestSessionFileSearch(query) {
+          if (blockUnavailableFileAction()) return [];
           const trimmed = String(query || "").trim();
           const sid = fileViewerSessionId || selected || "";
           if (!trimmed || !sid) {
@@ -9370,6 +9437,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         function scheduleSessionFileSearch(query) {
+          if (blockUnavailableFileAction()) return;
           const trimmed = String(query || "").trim();
           const sid = fileViewerSessionId || selected || "";
           if (fileSearchTimer) {
@@ -9693,6 +9761,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function refreshFileCandidates({ force = false, sessionId = null, syncToken = null } = {}) {
+          if (!sessionId && blockUnavailableFileAction()) return;
           const sid = String(sessionId || fileViewerSessionId || selected || "").trim();
           const requestSeq = ++fileCandidateRequestSeq;
           const current = () => requestSeq === fileCandidateRequestSeq && (!sessionId || isFileViewerSessionCurrent(sid, syncToken));
@@ -9768,6 +9837,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const sid = String(selected || "").trim();
           const syncToken = ++fileViewerSessionSyncToken;
           fileViewerSessionId = sid;
+          fileViewerUnavailableSessionId = "";
           if (fileSearchSessionId !== fileViewerSessionId) {
             resetFileSearchState();
             fileSearchSessionId = fileViewerSessionId;
@@ -9817,6 +9887,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileBackdrop.style.display = "none";
           fileViewer.style.display = "none";
           fileViewerSessionId = "";
+          fileViewerUnavailableSessionId = "";
           activeFileLine = null;
           updateFileTouchToolbar();
           afterModalVisibilityChanged();
@@ -9830,13 +9901,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             return;
           }
           fileViewerSessionSyncToken += 1;
+          fileViewerUnavailableSessionId = sid;
+          activeFileSaveToken = 0;
+          fileSavePending = false;
+          fileEditMode = false;
+          hideFileUnsavedDialog("cancel");
           cancelPendingFileOpen();
           resetFileSearchState();
           closeFilePickerMenu({ restoreInput: true });
+          syncFileEditorReadOnly();
           fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+          updateFileEditButton();
           updateFileTouchToolbar();
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
+          if (blockUnavailableFileAction()) return false;
           if (!fileViewerSessionId) return false;
           const request = beginFileOpenRequest(nextPath, { line });
           const rel = request.path;
@@ -10101,6 +10180,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (blockUnavailableFileAction()) return;
           if (!fileViewerSessionId || !activeFilePath) return;
           const url = resolveAppUrl(`/api/sessions/${fileViewerSessionId}/file/download?path=${encodeURIComponent(activeFilePath)}`);
           const link = document.createElement("a");

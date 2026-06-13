@@ -177,6 +177,7 @@ def eval_resolved_open_current_guard() -> dict:
           renderFilePickerMenu: () => calls.push("renderFilePickerMenu"),
           openFilePath: async (...args) => calls.push(["openFilePath", ...args]),
           currentFileSessionId: () => "sid-b",
+          blockUnavailableFileAction: () => false,
           resolveFileOpenMode: () => new Promise((resolve) => {{ resolveMode = resolve; }}),
         }};
         vm.createContext(ctx);
@@ -261,20 +262,26 @@ class TestFileViewerSource(unittest.TestCase):
         resolved_block = source[resolved_start:resolved_end]
         self.assertIn("isCurrent = null", resolved_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", resolved_block)
-        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart;", resolved_block)
+        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", resolved_block)
         self.assertIn("if (!currentGuard()) return false;", resolved_block)
+        self.assertIn("try {", resolved_block)
+        self.assertIn("mode = await resolveFileOpenMode(path, { changed });", resolved_block)
+        self.assertIn("if (blockUnavailableFileAction()) return false;", resolved_block)
         self.assertIn("return await openFilePathWithGuard(path, { line, mode, isCurrent: currentGuard });", resolved_block)
         guard_start = source.index("async function openFilePathWithGuard")
         guard_end = source.index("async function openFilePathWithResolvedMode", guard_start)
         guard_block = source[guard_start:guard_end]
         self.assertIn("isCurrent = null", guard_block)
         self.assertIn("const sessionAtStart = currentFileSessionId();", guard_block)
-        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart;", guard_block)
+        self.assertIn("const currentGuard = typeof isCurrent === \"function\" ? isCurrent : () => currentFileSessionId() === sessionAtStart && !isFileViewerSessionUnavailable();", guard_block)
         self.assertIn("if (!currentGuard()) return false;", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
 
     def test_file_viewer_handles_selected_session_removal(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("let fileViewerUnavailableSessionId = \"\";", source)
+        self.assertIn("function isFileViewerSessionUnavailable()", source)
+        self.assertIn("function blockUnavailableFileAction()", source)
         self.assertIn("function handleFileViewerSessionUnavailable(sessionId)", source)
         helper_start = source.index("function handleFileViewerSessionUnavailable(sessionId)")
         helper_end = source.index("async function openFilePath", helper_start)
@@ -282,9 +289,38 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (fileViewerSessionId && fileViewerSessionId !== sid) return;", helper_block)
         self.assertIn("if (!fileDirty) {\n            hideFileViewer();\n            return;\n          }", helper_block)
         self.assertIn("fileViewerSessionSyncToken += 1;", helper_block)
+        self.assertIn("fileViewerUnavailableSessionId = sid;", helper_block)
+        self.assertIn("activeFileSaveToken = 0;", helper_block)
+        self.assertIn("fileSavePending = false;", helper_block)
+        self.assertIn("fileEditMode = false;", helper_block)
+        self.assertIn('hideFileUnsavedDialog("cancel");', helper_block)
         self.assertIn("cancelPendingFileOpen();", helper_block)
         self.assertIn("resetFileSearchState();", helper_block)
         self.assertIn("Session is no longer available; copy unsaved edits before closing.", helper_block)
+        self.assertIn("syncFileEditorReadOnly();", helper_block)
+        self.assertIn("updateFileEditButton();", helper_block)
+        self.assertIn("fileViewerUnavailableSessionId = \"\";", source)
+        self.assertIn("if (isFileViewerSessionUnavailable()) return false;", source)
+        self.assertIn("if (blockUnavailableFileAction()) return false;", source)
+        open_primitive_start = source.index("async function openFilePath(nextPath")
+        open_primitive_end = source.index("fileBtn.onclick", open_primitive_start)
+        open_primitive_block = source[open_primitive_start:open_primitive_end]
+        self.assertIn("if (blockUnavailableFileAction()) return false;", open_primitive_block)
+        self.assertIn("if (blockUnavailableFileAction()) return [];", source)
+        draft_guard_start = source.index("async function openDraftFilePathWithGuard")
+        draft_guard_end = source.index("async function setFileViewModeWithGuard", draft_guard_start)
+        draft_guard_block = source[draft_guard_start:draft_guard_end]
+        self.assertGreaterEqual(draft_guard_block.count("if (blockUnavailableFileAction()) return false;"), 4)
+        draft_start = source.index("async function openDraftFilePath(path")
+        draft_end = source.index("function normalizeFileCandidateSource", draft_start)
+        draft_block = source[draft_start:draft_end]
+        self.assertIn("if (blockUnavailableFileAction()) return;", draft_block)
+        self.assertIn("if (blockUnavailableFileAction()) return;", source)
+        self.assertIn("if (blockUnavailableFileAction()) return;\n            if (!text)", source)
+        self.assertIn("function insertIntoActiveFileEditor(text)", source)
+        self.assertIn('fileEditMode && activeFileEditable && fileViewMode === "file" && !fileSavePending && !isFileViewerSessionUnavailable()', source)
+        self.assertIn("!isFileViewerSessionUnavailable()", source)
+        self.assertIn("activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable()", source)
         sessions_start = source.index("async function refreshSessionsOnce()")
         sessions_end = source.index("function appendEvent", sessions_start)
         sessions_block = source[sessions_start:sessions_end]
@@ -295,7 +331,14 @@ class TestFileViewerSource(unittest.TestCase):
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)
         open_block = source[open_start:open_end]
-        self.assertIn("if (e && e.status === 404) handleFileViewerSessionUnavailable(sessionId);", open_block)
+        self.assertIn("if (e && e.status === 404) {", open_block)
+        self.assertIn("handleFileViewerSessionUnavailable(sessionId);", open_block)
+        self.assertIn("selected = null;", open_block)
+        self.assertIn('storageRemoveItem("codexweb.selected");', open_block)
+        self.assertIn('setSessionHash("");', open_block)
+        self.assertIn('titleLabel.textContent = "No session selected";', open_block)
+        self.assertIn("syncAttachButtonState();", open_block)
+        self.assertIn('console.error("refreshSessions failed after session disappeared", e2);', open_block)
 
     def test_file_open_requests_are_single_owner(self) -> None:
         result = eval_file_open_request_sequence()
@@ -424,7 +467,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const saveVersion = activeFileVersion;", block)
         self.assertIn("const saveToken = ++fileSaveSeq;", block)
         self.assertIn("activeFileSaveToken = saveToken;", block)
-        self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken;", block)
+        self.assertIn("const saveStillCurrent = () => fileViewerSessionId === saveSessionId && activeFilePath === savePath && activeFileSaveToken === saveToken && !isFileViewerSessionUnavailable();", block)
         self.assertIn("? { path: savePath, text, create: true }", block)
         self.assertIn(": { path: savePath, text, version: saveVersion };", block)
         self.assertIn("await api(`/api/sessions/${saveSessionId}/file/write`", block)

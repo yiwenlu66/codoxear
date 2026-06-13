@@ -154,6 +154,9 @@ def eval_file_candidate_cache_helpers() -> dict:
           function isFileViewerSessionCurrent() {{
             return true;
           }}
+          function blockUnavailableFileAction() {{
+            return false;
+          }}
         ` + {json.dumps(snippet)}, ctx);
         (async () => {{
           await ctx.refreshFileCandidates();

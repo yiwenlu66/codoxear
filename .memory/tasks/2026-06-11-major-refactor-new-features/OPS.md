@@ -1996,3 +1996,10 @@
 - Full local validation: `python3 -m pytest -q` → `700 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `699 passed, 1 skipped, 25 subtests passed`.
 - Clean-room review: no blockers; residuals are dirty old non-selected session disappearance and future dirty-viewer actions may still replace the explicit status with API errors.
+
+## 2026-06-14 00:41 - Dirty removed-session file viewer hardening validation
+- Changed files: `codoxear/static/app.js`, `tests/test_file_viewer_source.py`, `tests/test_file_picker_search_source.py`.
+- Focused validation: `python3 -m py_compile tests/test_file_viewer_source.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_chat_scrollback_source.py tests/test_session_polling_source.py -q` -> 66 passed.
+- Full local validation: `python3 -m pytest -q` -> 700 passed, 25 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 699 passed, 1 skipped, 25 subtests passed.
+- Clean-room critic re-runs found and drove fixes for unsaved-dialog continuations, paste continuations, stale-selected tail-404 replay, draft-open continuation after inspect, and primitive open/resolve sharp edges. Final adversarial review: no blockers; focused source tests and diff check passed.

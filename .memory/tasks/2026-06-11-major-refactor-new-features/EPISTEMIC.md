@@ -1641,3 +1641,14 @@ Commitments:
 - Intervention: Added a selected-session-unavailable handler that closes non-dirty viewers and preserves dirty editors with explicit unavailable status and invalidated pending work.
 - Evidence: Focused tests, isolated browser proof, full local and Docker validation, and clean-room review passed.
 - Scoped claim: In the tested selected-session disappearance path, non-dirty file viewer state is closed rather than left visible for a removed session.
+
+## 2026-06-14 00:41 - Dirty removed-session file viewer copy-only invariant
+Observation:
+- A dirty file viewer for a removed selected session can be preserved safely only if the removed session becomes an explicit unavailable state, not merely a closed/non-closed viewer distinction.
+- Review found several async continuation mechanisms that could violate this: pending unsaved dialogs, pending clipboard reads, stale selected-session `/messages/tail` 404s, and pending draft inspect requests.
+Intervention:
+- Added unavailable-session state and guards for save/open/search/download/paste/draft/mode paths; forced Monaco read-only and invalidated save/open/search/unsaved-dialog state on removal; cleared selected session UI on `/messages/tail` 404; guarded low-level open primitives and post-await continuations.
+Scoped claim:
+- Under the tested source paths, removed-session dirty edits remain copyable/read-only and session-scoped file actions no longer proceed against the unavailable session from the guarded UI flows.
+Remaining uncertainty:
+- Dirty Monaco preservation is validated by source/review, not browser e2e; live server-side writes already accepted before removal observation cannot be retroactively aborted.
