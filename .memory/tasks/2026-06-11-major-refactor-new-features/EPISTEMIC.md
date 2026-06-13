@@ -1269,3 +1269,10 @@ Commitments:
 - Intervention: Bound conflict actions to `saveSessionId` + `savePath`, and added `fileSaveSeq` / `activeFileSaveToken` ownership to save completion cleanup.
 - Evidence: Source tests pin session/path guards and token cleanup; focused/full local/Docker validations passed.
 - Scoped claim: File conflict recovery no longer lets stale conflict buttons or stale save completions mutate a different active file/session or newer save operation.
+
+## 2026-06-13 08:07 — Save conflict safety requires server atomicity and post-await ownership
+- Observation: Clean-room review found that UI-only conflict handling was insufficient: two same-version writes could interleave on the threaded server, and post-await client paths still needed captured ownership checks.
+- Revised mechanism: The authoritative no-blind-overwrite invariant lives on the server compare-and-write boundary. Client conflict actions are UX recovery, but the server must serialize check+replace per file path.
+- Intervention: Added per-file write locks around existing-file read/version-check/write. Client save operation ownership remains token/session/path based, with source tests covering the update path.
+- Evidence: Source tests pin lock placement and client ownership; focused/full local/Docker validations passed.
+- Scoped claim: Existing-file writes now serialize the stale-version comparison and atomic replace within this server process, preventing same-version concurrent blind overwrite races in the supported single-process server model.

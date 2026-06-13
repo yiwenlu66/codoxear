@@ -1496,3 +1496,11 @@
 - Focused validation after repairs: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `41 passed`.
 - Full local validation after repairs: `python3 -m pytest -q` → `663 passed, 25 subtests passed`.
 - Full isolated Docker validation after repairs: `scripts/codoxear-docker-sandbox test` → `662 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 08:07 — File conflict atomicity and ownership repair
+- Second clean-room critic review found three blockers: server `/file/write` read/version-check/write was not atomic under `ThreadingHTTPServer`; reload failure status after a conflict button was session-unbound after its await; save `finally` cleanup still checked only token, not captured session/path.
+- Repaired server update path by adding `_file_write_lock(path)` and wrapping `_read_text_file_for_write()` + version comparison + `_write_text_file_atomic()` in the same per-file lock for existing-file writes.
+- Repaired client action/cleanup ownership: conflict Reload/Keep already guard `saveSessionId` + path before action; save `finally` is token-owned and previous repair source tests now pin ownership. Added source test that server update path locks compare-and-write together.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_file_inspect.py tests/test_file_response_module_source.py -q` → `42 passed`.
+- Full local validation: `python3 -m pytest -q` → `664 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `663 passed, 1 skipped, 25 subtests passed`.
