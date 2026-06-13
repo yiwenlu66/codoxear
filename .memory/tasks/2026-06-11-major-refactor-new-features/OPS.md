@@ -1858,3 +1858,9 @@
 - Browser evidence after repair against isolated Docker sandbox (`codoxear-sandbox-modal-parity-18799`, stopped): Queue/Help/Details still focus close buttons and restore focus to their explicit openers. Artifact: `/tmp/codoxear-modal-parity2-browser.json`.
 - Full local validation: `python3 -m pytest -q` → `685 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `684 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:33 — Utility modal focus final review
+- Final clean-room review of Queue/Help/Details modal focus parity found no blockers.
+- Critic validation: `node --check codoxear/static/app.js`; focused overlay/queue/diagnostics tests → `9 passed`; broader `-k 'overlay or queue or diagnostics'` → `97 passed, 15 subtests passed`; full pytest → `685 passed, 25 subtests passed`; worktree clean.
+- Review confirmed aria-modal, close-button focus, explicit opener capture, button/backdrop/Escape shared close paths, and Details async load not affecting focus.
+- Residual accepted risks: browser evidence covers happy paths, not every opener-disabled/removed/offscreen case; mobile Help from closed sidebar may restore focus to a hidden opener and would need separate mobile evidence if visible-focus-on-mobile becomes a requirement.

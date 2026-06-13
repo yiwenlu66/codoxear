@@ -1556,3 +1556,8 @@ Commitments:
 - Intervention: Pass `event.currentTarget` into Queue/Help/Details show functions while retaining active-element fallback for programmatic opens.
 - Evidence: Source tests, updated browser focus proof, full local and Docker validation passed.
 - Scoped claim: For current click handlers, utility modal focus returns to the actual opener independent of browser click-focus behavior.
+
+## 2026-06-13 12:33 — Utility modal focus parity accepted
+- Observation: Clean-room review found no blocker after explicit opener capture.
+- Scoped claim: Queue/Help/Details now satisfy the same modal focus ownership pattern as the other repaired custom dialogs under tested desktop behavior.
+- Remaining uncertainty: Mobile hidden-sidebar opener restoration needs separate evidence if user-visible focus location after close becomes a requirement.
