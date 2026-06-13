@@ -1809,3 +1809,11 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_server_queue_persistence.py -q` → `75 passed, 15 subtests passed`.
 - Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 12:04 — Disposed queue update late-401 race repair
+- Clean-room review found a blocker: an in-flight queue update from a disposed app could reject with 401 and call the old closure's `handleAppAuthLoss()`, potentially tearing down a fresh app after re-login.
+- Repaired by making `appDisposed` outrank 401 inside the queue update timer catch. Active queue-update 401 still routes to auth loss; disposed late 401s are ignored.
+- Updated source coverage for catch ordering.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_auth_cleanup_source.py tests/test_queue_button_source.py tests/test_server_queue_persistence.py -q` → `75 passed, 15 subtests passed`.
+- Full local validation: `python3 -m pytest -q` → `684 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `683 passed, 1 skipped, 25 subtests passed`.

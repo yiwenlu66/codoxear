@@ -10328,11 +10328,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               if (appDisposed) return;
               updateQueueBadge();
             } catch (e) {
+              if (appDisposed) return;
               if (e && e.status === 401) {
                 handleAppAuthLoss();
                 return;
               }
-              if (appDisposed) return;
               setToast(`queue update error: ${e && e.message ? e.message : "unknown error"}`);
             } finally {
               queueMutationLocks.delete(itemKey);

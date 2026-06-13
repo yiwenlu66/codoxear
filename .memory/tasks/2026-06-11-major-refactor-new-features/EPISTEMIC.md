@@ -1521,3 +1521,9 @@ Commitments:
 - Intervention: Added disposal checks inside the async queue update path so cleanup prevents subsequent detached UI work and pending-delete actions.
 - Evidence: Source coverage and focused/full/Docker validation passed.
 - Scoped claim: Debounced queue update work now stops both before execution and at key async boundaries after app disposal.
+
+## 2026-06-13 12:04 — Disposed queue updates must not tear down fresh apps
+- Observation: Auth loss is global only for the active app instance. A late 401 from a disposed app's in-flight queue update is stale evidence and must not call its old `handleAppAuthLoss()` closure after re-login.
+- Intervention: In the queue update timer catch, check `appDisposed` before handling 401.
+- Evidence: Source catch-order test and focused/full/Docker validation passed.
+- Scoped claim: Active queue-update 401s still route to login, while late 401s from disposed queue-update work are suppressed.

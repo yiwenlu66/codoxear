@@ -120,6 +120,7 @@ class TestAuthCleanupSource(unittest.TestCase):
         update_end = app.index("function renderQueueList", update_start)
         update_block = app[update_start:update_end]
         update_catch = update_block[update_block.index("} catch (e) {") : update_block.index("} finally {", update_block.index("} catch (e) {"))]
+        self.assertLess(update_catch.index("if (appDisposed) return;"), update_catch.index("if (e && e.status === 401)"))
         self.assertLess(update_catch.index("if (e && e.status === 401)"), update_catch.index("setToast(`queue update error:"))
         self.assertIn("if (appDisposed) return;", update_block)
         self.assertIn("if (appDisposed) return;\n              queueLastEditMs = 0;", update_block)
