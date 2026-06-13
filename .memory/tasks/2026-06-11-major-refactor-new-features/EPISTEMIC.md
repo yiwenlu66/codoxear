@@ -1332,3 +1332,10 @@ Commitments:
 - Evidence: VM test shows a second same-key refresh reuses cache while forced refresh refetches; focused/full/Docker suites pass.
 - Scoped claim: Reopening the file picker shortly after candidate discovery avoids redundant changed-file requests for the same loaded session state, and the no-query menu now communicates why candidates are present.
 - Remaining uncertainty: This tranche is validated structurally/with VM behavior, not by a real browser screenshot with populated fake sessions.
+
+## 2026-06-13 09:14 — File picker cache must not become an authority
+- Observation: Clean-room review falsified part of the initial file-picker claim. The candidate cache did not just affect display: cached `changed` flags could choose diff-vs-file mode, and query ordering still privileged known candidates over better-scored server matches.
+- Revised mechanism: candidate cache is safe only if it remains a convenience layer. Fresh git state may influence review-oriented diff defaults; cached git state must not.
+- Intervention: Search ordering now follows score first. Cache hits explicitly mark git state stale, and `resolveFileOpenMode()` only treats candidate `changed` as authoritative when the candidate set came from a fresh `/git/changed_files` response.
+- Evidence: Targeted VM/source tests cover the critic's counterexamples; full local and Docker suites passed after repair.
+- Scoped claim: The file picker may show cached candidate labels briefly, but stale cache metadata no longer decides whether opening a file enters diff mode.

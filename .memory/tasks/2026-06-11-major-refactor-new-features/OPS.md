@@ -1572,3 +1572,14 @@
 - Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` → `26 passed`.
 - Full local validation: `python3 -m pytest -q` → `671 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `670 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:14 — File picker review repairs
+- Clean-room review found two blockers in the first file-picker candidate implementation:
+  1. loaded search results were still sorted by candidate membership before score;
+  2. cached `changed` metadata could affect diff-vs-file open mode within the cache TTL.
+- Repaired search sorting so score wins before changed/candidate tie-breakers.
+- Added `fileCandidateGitStateFresh`: fresh `/git/changed_files` responses can drive diff-mode defaults; cache hits mark git state stale so cached changed flags are visual/candidate metadata only and do not decide open mode.
+- Extended tests with the exact ordering counterexample and a VM cache test that verifies fresh→cached→forced freshness transitions.
+- Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` → `27 passed`.
+- Full local validation after repair: `python3 -m pytest -q` → `672 passed, 25 subtests passed`.
+- Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `671 passed, 1 skipped, 25 subtests passed`.

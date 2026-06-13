@@ -83,6 +83,7 @@ def eval_file_candidate_cache_helpers() -> dict:
         const ctx = {{
           fileCandidateList: [],
           fileEntryMap: new Map(),
+          fileCandidateGitStateFresh: false,
           fileCandidateCache: new Map(),
           FILE_CANDIDATE_CACHE_TTL_MS: 15000,
           fileViewerSessionId: "s1",
@@ -105,16 +106,22 @@ def eval_file_candidate_cache_helpers() -> dict:
         (async () => {{
           await ctx.refreshFileCandidates();
           const first = ctx.fileCandidateList.slice();
+          const firstFresh = ctx.fileCandidateGitStateFresh;
           await ctx.refreshFileCandidates();
           const second = ctx.fileCandidateList.slice();
+          const secondFresh = ctx.fileCandidateGitStateFresh;
           await ctx.refreshFileCandidates({{ force: true }});
           const third = ctx.fileCandidateList.slice();
+          const thirdFresh = ctx.fileCandidateGitStateFresh;
           process.stdout.write(JSON.stringify({{
             apiCalls: ctx.apiCalls,
             renderCount: ctx.renderCount,
             first,
             second,
             third,
+            firstFresh,
+            secondFresh,
+            thirdFresh,
             cacheSize: ctx.fileCandidateCache.size,
             sources: ctx.fileCandidateList.map((path) => (ctx.fileEntryMap.get(path) || {{}}).source || ""),
           }}));
@@ -160,6 +167,19 @@ class TestFilePickerSearchSource(unittest.TestCase):
         )
         self.assertTrue(any(entry["path"] == "src/server.py" for entry in result["entries"]))
 
+    def test_loaded_search_results_are_ordered_by_score_before_candidate_membership(self) -> None:
+        result = eval_file_picker_search_helpers(
+            {
+                "fileCandidateList": ["zzz/src/app.js"],
+                "fileEntries": [{"path": "zzz/src/app.js", "changed": False, "source": "recent"}],
+                "filePickerSearchActive": True,
+                "filePickerInputValue": "src/app.js",
+                "fileSearchLoadedQuery": "src/app.js",
+                "fileSearchResults": [{"path": "src/app.js", "score": 12000}],
+            }
+        )
+        self.assertEqual(result["entries"][0]["path"], "src/app.js")
+
     def test_no_query_entries_preserve_source_metadata(self) -> None:
         result = eval_file_picker_search_helpers(
             {
@@ -191,6 +211,9 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["third"], result["first"])
         self.assertEqual(result["cacheSize"], 1)
         self.assertEqual(result["sources"], ["changed", "recent"])
+        self.assertTrue(result["firstFresh"])
+        self.assertFalse(result["secondFresh"])
+        self.assertTrue(result["thirdFresh"])
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

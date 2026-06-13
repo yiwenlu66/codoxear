@@ -7290,6 +7290,7 @@
         let fileNonDiffMode = storageGetItem("codexweb.fileNonDiffMode") === "preview" ? "preview" : "file";
         let fileCandidateList = [];
         let fileEntryMap = new Map();
+        let fileCandidateGitStateFresh = false;
         const fileCandidateCache = new Map();
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
         let fileViewerSessionId = "";
@@ -8715,7 +8716,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const inspect = await inspectSessionFilePath(path);
           if (!inspect || !inspect.exists) throw new Error("file not found");
           const kind = String(inspect.kind || "").trim();
-          const isChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
+          const candidateChanged = changed == null ? Boolean(fileEntryMap.get(String(path || "").trim())?.changed) : Boolean(changed);
+          const isChanged = fileCandidateGitStateFresh && candidateChanged;
           if (isChanged && isDiffableFileKind(kind)) return "diff";
           if (kind === "markdown" && fileNonDiffMode === "preview") return "preview";
           return "file";
@@ -9076,7 +9078,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             seen.add(path);
             out.push(pickerEntryForPath(path, { score }));
           }
-          out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
+          out.sort((a, b) => b.score - a.score || Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added) || a.path.localeCompare(b.path));
           return out.slice(0, 120);
         }
 
@@ -9124,7 +9126,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (score < 0) continue;
             out.push(pickerEntryForPath(path, { score }));
           }
-          out.sort((a, b) => Number(b.added) - Number(a.added) || b.score - a.score || Number(b.changed) - Number(a.changed) || a.path.localeCompare(b.path));
+          out.sort((a, b) => b.score - a.score || Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added) || a.path.localeCompare(b.path));
           const limited = out.slice(0, 120);
           return prependDraftFileEntry(limited, query);
         }
@@ -9348,16 +9350,19 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         async function refreshFileCandidates({ force = false } = {}) {
           const sid = fileViewerSessionId || selected || "";
           if (!sid) {
+            fileCandidateGitStateFresh = false;
             applyFileCandidateEntries([]);
             return;
           }
           const cacheKey = fileCandidateCacheKey(sid);
           const cached = fileCandidateCache.get(sid);
           if (!force && cached && cached.key === cacheKey && Date.now() - Number(cached.ts || 0) < FILE_CANDIDATE_CACHE_TTL_MS) {
+            fileCandidateGitStateFresh = false;
             applyFileCandidateEntries(cached.entries);
             renderFilePickerMenu();
             return;
           }
+          fileCandidateGitStateFresh = false;
           applyFileCandidateEntries([]);
           try {
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
@@ -9393,6 +9398,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               merged.push(entry);
             }
             applyFileCandidateEntries(merged);
+            fileCandidateGitStateFresh = true;
             rememberFileCandidateCache(sid, cacheKey);
           } catch (e) {}
           renderFilePickerMenu();
