@@ -1358,3 +1358,10 @@ Commitments:
 - Intervention: `renderSessionTail()` accepts a one-shot `scrollBehavior`; `jumpToLatest()` passes `tailScrollBehavior: "smooth"` into `openSession()`. Default live-tail/render callers remain instant.
 - Evidence: Focused source tests pin single smooth option flow through Jump-to-latest; full local and Docker suites passed.
 - Scoped claim: User-triggered Jump-to-latest now requests smooth behavior on the authoritative tail-render scroll, while live-tail autoscroll remains immediate.
+
+## 2026-06-13 09:37 — Smooth jump requires scheduler-level propagation
+- Observation: Re-review found the previous repair still allowed instant scroll scheduling inside `rebuildDecorations()` and `setTyping()` to neutralize smooth navigation.
+- Revised mechanism: Smooth Jump-to-latest is not a property of `renderSessionTail()` alone; it must be propagated to every bottom-scroll scheduler in the synchronous tail-render path before animation frames run.
+- Intervention: Propagated the scroll behavior through decoration rebuild and typing insertion; default live-tail scheduling remains instant by default argument.
+- Evidence: Targeted source tests now cover the scheduler-level path; full local and Docker suites passed.
+- Scoped claim: For Jump-to-latest tail renders, the first scheduled bottom correction now carries `smooth`; for live/default paths the correction remains `auto`.

@@ -1604,3 +1604,11 @@
 - Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `33 passed`.
 - Full local validation after repair: `python3 -m pytest -q` → `673 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `672 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:37 — Jump-to-latest autoscroll scheduler repair
+- Second clean-room review found a remaining blocker: even after passing `tailScrollBehavior` into `renderSessionTail()`, `renderTranscript()`/`rebuildDecorations()` queued an instant bottom scroll before the smooth tail-render scroll. Busy tails could also queue an instant scroll via `setTyping(true)`.
+- Repaired by threading scroll behavior through `renderTranscript()` → `rebuildDecorations()` and through `applySessionRuntimeFromTail()` → `setTyping()`, so the first scheduled bottom correction during Jump-to-latest uses the requested smooth behavior. Default/live callers still use `auto`.
+- Added source assertions that `rebuildDecorations()` schedules `scrollToBottom({ behavior: scrollBehavior })`, `renderSessionTail()` passes behavior into `renderTranscript()`, and busy typing uses `typingScrollBehavior`.
+- Focused validation after second repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `34 passed`.
+- Full local validation after second repair: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
+- Full isolated Docker validation after second repair: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.

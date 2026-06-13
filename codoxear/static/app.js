@@ -3681,7 +3681,7 @@
 	          return row;
 	        }
 
-	        function setTyping(show) {
+	        function setTyping(show, { scrollBehavior = "auto" } = {}) {
 	          if (!show) {
 	            if (typingRow && typingRow.isConnected) typingRow.remove();
 	            return;
@@ -3692,7 +3692,7 @@
 	          } else if (row.nextSibling !== bottomSentinel) {
 	            chatInner.insertBefore(row, bottomSentinel);
 	          }
-	          if (autoScroll) requestAnimationFrame(() => scrollToBottom());
+	          if (autoScroll) requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));
 	        }
 
         function isNearBottom() {
@@ -3739,7 +3739,7 @@
           return `${hh}:${mm}`;
         }
 
-        function rebuildDecorations({ preserveScroll }) {
+        function rebuildDecorations({ preserveScroll, scrollBehavior = "auto" }) {
           const oldTop = chat.scrollTop;
           const oldH = chat.scrollHeight;
 
@@ -3773,7 +3773,7 @@
             chat.scrollTop = oldTop + (chat.scrollHeight - oldH);
           }
           if (autoScroll) {
-            requestAnimationFrame(() => scrollToBottom());
+            requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));
           }
           syncJumpButton();
           updateChatNavButtons();
@@ -4544,7 +4544,7 @@
           syncJumpButton();
         }
 
-        function renderTranscript(events, { preserveScroll = false } = {}) {
+        function renderTranscript(events, { preserveScroll = false, scrollBehavior = "auto" } = {}) {
           const msgs = [];
           const seen = new Set();
           for (const ev of events || []) {
@@ -4559,7 +4559,7 @@
           clearTranscriptDom();
           if (!msgs.length) {
             restorePendingUserRowsForSession(selected);
-            return;
+            return false;
           }
           recentEventKeys.length = 0;
           recentEventKeySet.clear();
@@ -4570,8 +4570,9 @@
             frag.appendChild(safeMakeRow(ev, { ts, pending: false }).row);
           }
           chatInner.insertBefore(frag, bottomSentinel);
-          rebuildDecorations({ preserveScroll });
+          rebuildDecorations({ preserveScroll, scrollBehavior });
           restorePendingUserRowsForSession(selected);
+          return true;
         }
 
         function prependOlderEvents(allEvents, { preserveViewport = false } = {}) {
@@ -4657,7 +4658,7 @@
           void loadOlderMessages({ auto: true });
         }
 
-        function applySessionRuntimeFromTail(sessionId, data) {
+        function applySessionRuntimeFromTail(sessionId, data, { typingScrollBehavior = "auto" } = {}) {
           const slot = syncActiveTranscriptSlot(sessionId);
           liveCursor = slot.state === "bound" && typeof data.live_cursor === "string" && data.live_cursor ? data.live_cursor : null;
           setOlderState({ hasMore: slot.state === "bound" && Boolean(data && data.has_older), isLoading: false });
@@ -4666,7 +4667,7 @@
           const queueLen = data && Number.isFinite(Number(data.queue_len)) ? Number(data.queue_len) : 0;
           setStatus({ running: nowBusy, queueLen });
           setContext(data ? data.token : null);
-          setTyping(nowBusy);
+          setTyping(nowBusy, { scrollBehavior: typingScrollBehavior });
           if (slot.state === "bound") {
             const s = sessionIndex.get(sessionId);
             if (s) rememberTailSnapshot(sessionId, s, data);
@@ -4676,12 +4677,14 @@
         }
 
         function renderSessionTail(events, { scrollBehavior = "auto" } = {}) {
-          renderTranscript(events, { preserveScroll: false });
+          const rendered = renderTranscript(events, { preserveScroll: false, scrollBehavior });
           markClickFirstPaint();
-          requestAnimationFrame(() => {
-            scrollToBottom({ behavior: scrollBehavior });
-            if (scrollBehavior !== "smooth" || prefersReducedMotion()) requestAnimationFrame(() => scrollToBottom());
-          });
+          if (!rendered) {
+            requestAnimationFrame(() => {
+              scrollToBottom({ behavior: scrollBehavior });
+              if (scrollBehavior !== "smooth" || prefersReducedMotion()) requestAnimationFrame(() => scrollToBottom());
+            });
+          }
         }
 
         function renderPendingTranscriptSlot(sessionId) {
@@ -4761,7 +4764,7 @@
           turnOpen = cachedBusy;
           setStatus({ running: cachedBusy, queueLen });
           setContext(cache.token || (sessionMeta ? sessionMeta.token : null));
-          setTyping(cachedBusy);
+          setTyping(cachedBusy, { scrollBehavior });
         }
 
         async function openSession(sessionId, { useCache = true, fallbackToCacheOnFailure = false, tailScrollBehavior = "auto" } = {}) {
@@ -4848,7 +4851,7 @@
           }
           if (slotChange.current.state === "bound" || slotChange.current.state === "failed") renderSessionTail(Array.isArray(data.events) ? data.events : [], { scrollBehavior: tailScrollBehavior });
           else renderPendingTranscriptSlot(sessionId);
-          applySessionRuntimeFromTail(sessionId, data);
+          applySessionRuntimeFromTail(sessionId, data, { typingScrollBehavior: tailScrollBehavior });
 
           if (slotChange.current.state !== "failed") kickPoll(900);
           if (isMobile()) setSidebarOpen(false);
