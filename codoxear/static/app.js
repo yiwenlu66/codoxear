@@ -1718,6 +1718,8 @@
         let pollGen = 0;
         let pollLoopBusy = false;
         let pollKickPending = false;
+        let pollKickDelayMs = null;
+        let messagePollErrorStreak = 0;
 	        let pollFastUntilMs = 0;
 	         let turnOpen = false;
 	         let sessionsTimer = null;
@@ -1728,6 +1730,13 @@
          const SESSION_POLL_HIDDEN_MS = 15000;
          const SECONDARY_POLL_VISIBLE_MS = 10000;
          const SECONDARY_POLL_HIDDEN_MS = 60000;
+         const MESSAGE_POLL_FAST_MS = 200;
+         const MESSAGE_POLL_RUNNING_MS = 250;
+         const MESSAGE_POLL_IDLE_MS = 900;
+         const MESSAGE_POLL_HIDDEN_MS = 5000;
+         const MESSAGE_POLL_OFFLINE_MS = 15000;
+         const MESSAGE_POLL_ERROR_MIN_MS = 2000;
+         const MESSAGE_POLL_ERROR_MAX_MS = 30000;
          let currentRunning = false;
          let openSwipeContent = null;
          let openSwipeSessionId = null;
@@ -1858,6 +1867,8 @@
           if (pollTimer) clearTimeout(pollTimer);
           pollTimer = null;
           pollKickPending = false;
+          pollKickDelayMs = null;
+          messagePollErrorStreak = 0;
           pollFastUntilMs = 0;
           turnOpen = false;
         }
@@ -1930,6 +1941,35 @@
         }
         function secondaryPollDelayMs() {
           return document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS;
+        }
+        function browserOffline() {
+          return typeof navigator !== "undefined" && navigator.onLine === false;
+        }
+        function messagePollErrorDelayMs() {
+          if (!messagePollErrorStreak) return 0;
+          const exponent = Math.min(6, Math.max(0, messagePollErrorStreak - 1));
+          return Math.min(MESSAGE_POLL_ERROR_MAX_MS, MESSAGE_POLL_ERROR_MIN_MS * 2 ** exponent);
+        }
+        function messagePollDelayMs(now = Date.now()) {
+          const errorDelay = messagePollErrorDelayMs();
+          if (browserOffline()) return Math.max(MESSAGE_POLL_OFFLINE_MS, errorDelay);
+          if (document.visibilityState === "hidden") return Math.max(MESSAGE_POLL_HIDDEN_MS, errorDelay);
+          let delay = MESSAGE_POLL_IDLE_MS;
+          if (now < pollFastUntilMs) delay = MESSAGE_POLL_FAST_MS;
+          else if (turnOpen) delay = MESSAGE_POLL_RUNNING_MS;
+          return Math.max(delay, errorDelay);
+        }
+        function markMessagePollSuccess() {
+          messagePollErrorStreak = 0;
+        }
+        function markMessagePollFailure() {
+          messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
+        }
+        function normalizeMessagePollKickDelay(ms = 0) {
+          const requested = Math.max(0, Number(ms) || 0);
+          const errorDelay = messagePollErrorDelayMs();
+          if (browserOffline() || document.visibilityState === "hidden") return Math.max(requested, messagePollDelayMs());
+          return Math.max(requested, errorDelay);
         }
         function stopSessionsPolling() {
           if (sessionsTimer) clearTimeout(sessionsTimer);
@@ -4878,6 +4918,7 @@
             pollTimer = null;
           }
           pollKickPending = false;
+          pollKickDelayMs = null;
 
           selected = sessionId;
           if (unattendedMenuOpen && unattendedMenuSessionId !== sessionId) hideUnattendedMenu();
@@ -4942,14 +4983,17 @@
               return null;
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
+            markMessagePollFailure();
             if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
             }
             renderTranscriptLoadError(sessionId, e, { preserveTranscript: displayedCachedTail });
+            if (!appDisposed && selected === sessionId && pollGen === myGen) kickPoll(messagePollDelayMs());
             return null;
           }
           if (pollGen !== myGen || selected !== sessionId) return null;
+          markMessagePollSuccess();
           const slotChange = updateSessionTranscriptSlot(sessionId, data);
           if (slotChange.ignoredStaleBound) {
             renderPendingTranscriptSlot(sessionId);
@@ -4979,6 +5023,7 @@
 	              if (activeTranscriptState === "pending_bind") {
 		                const data = await api(`/api/sessions/${sid}/messages/tail?limit=${initPageLimit()}`);
 		                if (gen !== pollGen || sid !== selected) return;
+                    markMessagePollSuccess();
 		                const slotChange = updateSessionTranscriptSlot(sid, data);
 		                if (slotChange.ignoredStaleBound) {
 		                  renderPendingTranscriptSlot(sid);
@@ -4996,6 +5041,7 @@
 	            const reqCursor = liveCursor;
 		            const data = await api(`/api/sessions/${sid}/messages/live?cursor=${encodeURIComponent(reqCursor)}`);
 	            if (gen !== pollGen || sid !== selected) return;
+                markMessagePollSuccess();
 	            const slotInfo = transcriptSnapshotFromData(data);
 	            const nowBusy = Boolean(data.busy);
 	            if (activeTranscriptState === "bound" && slotInfo.state === "pending_bind") {
@@ -5059,6 +5105,7 @@
               if (pollTimer) clearTimeout(pollTimer);
               pollTimer = null;
               pollKickPending = false;
+              pollKickDelayMs = null;
               turnOpen = false;
               storageRemoveItem("codexweb.selected");
               setSessionHash("");
@@ -5075,6 +5122,7 @@
                 }
                 return;
             }
+            markMessagePollFailure();
             toast.textContent = `error: ${e.message}`;
           }
         }
@@ -5094,29 +5142,29 @@
             pollLoopBusy = false;
           }
           if (pollKickPending) {
+            const delay = pollKickDelayMs == null ? 0 : pollKickDelayMs;
             pollKickPending = false;
-            kickPoll(0);
+            pollKickDelayMs = null;
+            kickPoll(delay);
             return;
           }
           if (appDisposed || selected !== mySid || pollGen !== myGen) return;
-          const now = Date.now();
-          let nextMs = 900;
-          if (now < pollFastUntilMs) nextMs = 200;
-          else if (turnOpen) nextMs = 250;
-          pollTimer = setTimeout(pollLoop, nextMs);
+          pollTimer = setTimeout(pollLoop, messagePollDelayMs());
         }
 
         function kickPoll(ms = 0) {
           if (appDisposed) return;
+          const delay = normalizeMessagePollKickDelay(ms);
           if (pollTimer) {
             clearTimeout(pollTimer);
             pollTimer = null;
           }
           if (pollLoopBusy) {
             pollKickPending = true;
+            pollKickDelayMs = delay;
             return;
           }
-          pollTimer = setTimeout(pollLoop, ms);
+          pollTimer = setTimeout(pollLoop, delay);
         }
 
         async function jumpToLatest() {
@@ -11591,12 +11639,24 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 if (appDisposed) return;
                 if (document.visibilityState === "visible") {
                   resumeAnnouncementRuntime({ resetSource: false });
+                  if (selected) kickPoll(0);
                   scheduleSessionsPoll(0);
                   scheduleSecondaryPoll(0);
                   return;
                 }
+                if (selected) kickPoll(messagePollDelayMs());
                 scheduleSessionsPoll(sessionsPollDelayMs());
                 scheduleSecondaryPoll(secondaryPollDelayMs());
+              });
+              addAppEvent(window, "online", () => {
+                if (appDisposed) return;
+                messagePollErrorStreak = 0;
+                if (selected) kickPoll(0);
+                scheduleSessionsPoll(0);
+              });
+              addAppEvent(window, "offline", () => {
+                if (appDisposed) return;
+                if (selected) kickPoll(messagePollDelayMs());
               });
               addAppEvent(window, "pageshow", () => {
                 if (!appDisposed) resumeAnnouncementRuntime({ resetSource: false });

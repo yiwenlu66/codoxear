@@ -1629,3 +1629,9 @@ Commitments:
 - Intervention: Added modal ARIA, deterministic initial focus, opener capture, and focus restoration for dismiss and action paths.
 - Evidence: Focused tests, two isolated browser focus proofs, full local and Docker validation, and clean-room review passed.
 - Scoped claim: In the tested keyboard paths, the busy-send choice dialog no longer leaves keyboard focus outside the active choice or stranded on hidden controls after close/action.
+
+## 2026-06-13 23:35 — Active transcript polling now has bounded background/error cadence
+- Observation: Active transcript polling had a fixed visible-rate loop and could continue tight polling while hidden/offline or after failures; early repairs also exposed races where delayed state changes during in-flight polls collapsed into immediate retries.
+- Intervention: Centralized message poll delay policy, carried pending kick delays through in-flight polls, composed offline/hidden/error delays, and made session rebind tail failures schedule backoff retries.
+- Evidence: Focused policy tests, hidden/in-flight and openSession-failure browser proofs, full local and Docker validation, and clean-room review passed.
+- Scoped claim: In the tested active-poll paths, hidden/offline/error conditions slow `/messages/*` polling without poll-loop overlap, while visible/online transitions regain prompt polling.

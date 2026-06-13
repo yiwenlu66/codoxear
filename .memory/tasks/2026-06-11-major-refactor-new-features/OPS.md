@@ -1972,3 +1972,17 @@
 - Full local validation: `python3 -m pytest -q` → `697 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `696 passed, 1 skipped, 25 subtests passed`.
 - Clean-room review after fixing action-path focus: no blockers; residuals are no explicit Tab trap and untested browser paths for Cancel/backdrop/Send now/attachment-disabled fallback, though source paths are direct.
+
+## 2026-06-13 23:35 — Active message polling visibility/offline/error backoff
+- Repaired active `/messages/*` poll cadence for slow/mobile/background reliability.
+- Added explicit message poll delay policy: fast/running/idle visible rates, hidden slowdown, offline slowdown, exponential error backoff capped at 30s, and online/visible catch-up hooks.
+- Preserved delayed kicks while a poll is in flight via `pollKickDelayMs`; hidden/offline/error transitions during an in-flight poll no longer collapse to immediate follow-up requests.
+- Made `openSession()` tail success/failure participate in message poll health; tail failure now schedules a backoff retry after `pollGen` invalidation instead of stopping the active poll loop.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_session_polling_source.py tests/test_chat_scrollback_source.py tests/test_chat_transcript_runtime.py -q` → `44 passed`.
+- Browser evidence in isolated Docker sandboxes:
+  - `/tmp/codoxear-message-poll-visible-browser.json`: hidden visibility state suppresses steady live polling and visible state catches up.
+  - `/tmp/codoxear-message-poll-hidden-inflight-browser.json`: hiding during a held in-flight message request does not produce an immediate follow-up after release; visible state resumes.
+  - `/tmp/codoxear-message-poll-openfail-browser.json`: live `409` followed by tail `500` retries tail after ~2s error backoff instead of stopping polling.
+- Full local validation: `python3 -m pytest -q` → `699 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `698 passed, 1 skipped, 25 subtests passed`.
+- Clean-room review: no blockers; residuals are that source/runtime tests do not simulate every browser timer interleaving, direct openSession calls can overlap an existing poll outside the poll loop, and a pending error-derived delay can survive a success in some visible in-flight cases.
