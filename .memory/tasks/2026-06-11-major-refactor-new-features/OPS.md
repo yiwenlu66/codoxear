@@ -1524,3 +1524,13 @@
 - Critic validation: `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` → `32 passed`; `node --check codoxear/static/app.js` → passed.
 - Review artifact: `/tmp/codoxear-transcript-retry-review.md`.
 - Reviewer residual risks noted source-shape tests and no assistive-technology verification; parent browser evidence already covered click behavior in `/tmp/codoxear-transcript-retry-evidence/retry-after.json`.
+
+## 2026-06-13 08:26 — `/api/sessions` non-session helper memoization
+- Implemented narrow server-side memoization for `/api/sessions` non-session helpers while leaving `SessionManager.list_sessions()` and backend/busy/log state uncached.
+- `_read_new_session_defaults()` now caches by stat signatures of launch config/cache files and returns deep copies so caller mutation cannot poison the cache.
+- `_static_asset_version()` now caches by static asset stat signatures and only rereads asset bytes when a signature changes.
+- `_tmux_available()` now caches `shutil.which("tmux")` result behind `CODEX_WEB_TMUX_AVAILABLE_TTL_SECONDS` (default 30s).
+- Added targeted launch-defaults cache test covering reuse, deep-copy isolation, and invalidation after config mtime/size change.
+- Focused validation: `python3 -m py_compile codoxear/server.py`; `python3 -m pytest tests/test_static_assets.py tests/test_launch_defaults.py tests/test_session_polling_source.py -q` → `34 passed`.
+- Full local validation: `python3 -m pytest -q` → `665 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `664 passed, 1 skipped, 25 subtests passed`.

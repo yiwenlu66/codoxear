@@ -1293,3 +1293,10 @@ Commitments:
 - Observation: Clean-room review found no blockers in the inline transcript Retry tranche.
 - Scoped claim: Transcript load errors now expose a selected-session guarded, non-transcript Retry action that reuses the existing `openSession()` path and clears on successful authoritative render.
 - Remaining uncertainty: Accessibility was checked structurally via button text/title/aria-label, but not with a real screen reader.
+
+## 2026-06-13 08:26 — Cache only non-session constants on `/api/sessions`
+- Observation: Client ETag/304 avoids transfer and DOM work, but the server still recomputed launch defaults, static asset version, and tmux availability on every `/api/sessions` request before it could produce a 304.
+- Mechanism: These helpers are not per-session live state; they can be cached with file-signature invalidation or short TTL without changing session/busy/log semantics. `list_sessions()` remains uncached because it observes live broker/log/git state.
+- Intervention: Added signature/TTL caches for launch defaults, static asset version, and tmux availability only.
+- Evidence: Targeted cache test shows launch-default reuse, deep-copy isolation, and invalidation; existing static asset tests still pass; full local/Docker suites passed.
+- Scoped claim: Repeated `/api/sessions` polls avoid repeated config/static/tmux helper work while preserving live session-list computation and visible invalidation on file changes represented by mtime/size signatures.
