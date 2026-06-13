@@ -273,6 +273,30 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("if (!currentGuard()) return false;", guard_block)
         self.assertIn("return Boolean(currentGuard());", guard_block)
 
+    def test_file_viewer_handles_selected_session_removal(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function handleFileViewerSessionUnavailable(sessionId)", source)
+        helper_start = source.index("function handleFileViewerSessionUnavailable(sessionId)")
+        helper_end = source.index("async function openFilePath", helper_start)
+        helper_block = source[helper_start:helper_end]
+        self.assertIn("if (fileViewerSessionId && fileViewerSessionId !== sid) return;", helper_block)
+        self.assertIn("if (!fileDirty) {\n            hideFileViewer();\n            return;\n          }", helper_block)
+        self.assertIn("fileViewerSessionSyncToken += 1;", helper_block)
+        self.assertIn("cancelPendingFileOpen();", helper_block)
+        self.assertIn("resetFileSearchState();", helper_block)
+        self.assertIn("Session is no longer available; copy unsaved edits before closing.", helper_block)
+        sessions_start = source.index("async function refreshSessionsOnce()")
+        sessions_end = source.index("function appendEvent", sessions_start)
+        sessions_block = source[sessions_start:sessions_end]
+        self.assertIn("const removedSelected = selected;", sessions_block)
+        self.assertIn("handleFileViewerSessionUnavailable(removedSelected);", sessions_block)
+        self.assertIn("handleFileViewerSessionUnavailable(s.session_id);", source)
+        self.assertIn("handleFileViewerSessionUnavailable(sid);", source)
+        open_start = source.index("async function openSession(sessionId")
+        open_end = source.index("async function pollMessages", open_start)
+        open_block = source[open_start:open_end]
+        self.assertIn("if (e && e.status === 404) handleFileViewerSessionUnavailable(sessionId);", open_block)
+
     def test_file_open_requests_are_single_owner(self) -> None:
         result = eval_file_open_request_sequence()
         self.assertEqual(result["currentSessionId"], "sid-1")

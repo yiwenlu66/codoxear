@@ -1986,3 +1986,13 @@
 - Full local validation: `python3 -m pytest -q` → `699 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `698 passed, 1 skipped, 25 subtests passed`.
 - Clean-room review: no blockers; residuals are that source/runtime tests do not simulate every browser timer interleaving, direct openSession calls can overlap an existing poll outside the poll loop, and a pending error-derived delay can survive a success in some visible in-flight cases.
+
+## 2026-06-13 23:49 — Removed-session file viewer cleanup
+- Repaired a stale selected-session UI path: when the selected session disappears from `/api/sessions`, is deleted, or produces message 404, a non-dirty file viewer for that session now closes instead of showing stale files under "No session selected".
+- Dirty file viewer state is preserved, but pending file open/search work is invalidated and the status explicitly says the session is no longer available and edits should be copied before closing.
+- Added `handleFileViewerSessionUnavailable(sessionId)` and wired it into selected-missing refresh, selected delete, `openSession()` tail 404, and live poll 404 paths.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_viewer_source.py tests/test_chat_scrollback_source.py tests/test_session_polling_source.py -q` → `58 passed`.
+- Browser evidence in isolated Docker sandbox: `/tmp/codoxear-fileviewer-session-gone-browser.json` opens a non-dirty viewer for `sid-gone`, then `/api/sessions` returns empty; the viewer closes and File becomes disabled.
+- Full local validation: `python3 -m pytest -q` → `700 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `699 passed, 1 skipped, 25 subtests passed`.
+- Clean-room review: no blockers; residuals are dirty old non-selected session disappearance and future dirty-viewer actions may still replace the explicit status with API errors.

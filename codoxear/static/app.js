@@ -4296,7 +4296,9 @@
               sessionIndex = new Map();
 		          for (const s of sessions) sessionIndex.set(s.session_id, s);
               if (selected && !sessionIndex.has(selected)) {
+                const removedSelected = selected;
                 selected = null;
+                handleFileViewerSessionUnavailable(removedSelected);
                 if (unattendedMenuOpen) hideUnattendedMenu();
                 activeTranscriptState = "pending_bind";
                 activeLogPath = null;
@@ -4392,6 +4394,7 @@
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
                 if (selected === s.session_id) {
                   selected = null;
+                  handleFileViewerSessionUnavailable(s.session_id);
                    activeTranscriptState = "pending_bind";
                    activeLogPath = null;
                    activeThreadId = null;
@@ -4984,6 +4987,7 @@
             }
             if (pollGen !== myGen || selected !== sessionId) return null;
             markMessagePollFailure();
+            if (e && e.status === 404) handleFileViewerSessionUnavailable(sessionId);
             if (fallbackToCacheOnFailure && !displayedCachedTail && !useCache && s && cachedTail && tailCacheMatchesSession(cachedTail, s) && Array.isArray(cachedTail.events) && cachedTail.events.length) {
               applyCachedTail(sessionId, cachedTail, s);
               displayedCachedTail = true;
@@ -5096,6 +5100,7 @@
             }
             if (e && e.status === 404) {
               selected = null;
+              handleFileViewerSessionUnavailable(sid);
               if (unattendedMenuOpen) hideUnattendedMenu();
               activeLogPath = null;
               activeThreadId = null;
@@ -9815,6 +9820,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           activeFileLine = null;
           updateFileTouchToolbar();
           afterModalVisibilityChanged();
+        }
+        function handleFileViewerSessionUnavailable(sessionId) {
+          const sid = String(sessionId || "").trim();
+          if (!sid || !isFileViewerOpen()) return;
+          if (fileViewerSessionId && fileViewerSessionId !== sid) return;
+          if (!fileDirty) {
+            hideFileViewer();
+            return;
+          }
+          fileViewerSessionSyncToken += 1;
+          cancelPendingFileOpen();
+          resetFileSearchState();
+          closeFilePickerMenu({ restoreInput: true });
+          fileStatus.textContent = "Session is no longer available; copy unsaved edits before closing.";
+          updateFileTouchToolbar();
         }
         async function openFilePath(nextPath = null, { line = undefined } = {}) {
           if (!fileViewerSessionId) return false;

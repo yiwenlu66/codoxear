@@ -1635,3 +1635,9 @@ Commitments:
 - Intervention: Centralized message poll delay policy, carried pending kick delays through in-flight polls, composed offline/hidden/error delays, and made session rebind tail failures schedule backoff retries.
 - Evidence: Focused policy tests, hidden/in-flight and openSession-failure browser proofs, full local and Docker validation, and clean-room review passed.
 - Scoped claim: In the tested active-poll paths, hidden/offline/error conditions slow `/messages/*` polling without poll-loop overlap, while visible/online transitions regain prompt polling.
+
+## 2026-06-13 23:49 — File viewer no longer displays non-dirty files for removed selected sessions
+- Observation: A selected session could disappear while the file viewer still showed its last file, making stale content appear current under "No session selected".
+- Intervention: Added a selected-session-unavailable handler that closes non-dirty viewers and preserves dirty editors with explicit unavailable status and invalidated pending work.
+- Evidence: Focused tests, isolated browser proof, full local and Docker validation, and clean-room review passed.
+- Scoped claim: In the tested selected-session disappearance path, non-dirty file viewer state is closed rather than left visible for a removed session.
