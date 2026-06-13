@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import copy
 import errno
 import hashlib
 import hmac
@@ -243,6 +244,7 @@ URL_PREFIX = _normalize_url_prefix(os.environ.get("CODEX_WEB_URL_PREFIX"))
 COOKIE_PATH = (URL_PREFIX + "/") if URL_PREFIX else "/"
 TMUX_SESSION_NAME = (os.environ.get("CODEX_WEB_TMUX_SESSION") or "codoxear").strip() or "codoxear"
 TMUX_META_WAIT_SECONDS = 3.0
+TMUX_AVAILABLE_TTL_SECONDS = float(os.environ.get("CODEX_WEB_TMUX_AVAILABLE_TTL_SECONDS", "30.0"))
 
 _CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
 if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
@@ -358,6 +360,22 @@ _METRICS_LOCK = threading.Lock()
 _METRICS: dict[str, list[float]] = {}
 _FILE_WRITE_LOCKS_LOCK = threading.Lock()
 _FILE_WRITE_LOCKS: dict[str, threading.Lock] = {}
+_TMUX_AVAILABLE_CACHE: tuple[float, bool] | None = None
+_TMUX_AVAILABLE_CACHE_LOCK = threading.Lock()
+_LAUNCH_DEFAULTS_CACHE: tuple[tuple[tuple[str, bool, int | None, int | None], ...], dict[str, Any]] | None = None
+_LAUNCH_DEFAULTS_CACHE_LOCK = threading.Lock()
+_STATIC_ASSET_VERSION_CACHE: dict[str, tuple[tuple[tuple[str, bool, int | None, int | None], ...], str]] = {}
+_STATIC_ASSET_VERSION_CACHE_LOCK = threading.Lock()
+
+
+def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return (str(path), False, None, None)
+    except OSError:
+        return (str(path), False, None, None)
+    return (str(path), True, int(st.st_mtime_ns), int(st.st_size))
 
 
 def _file_write_lock(path: Path) -> threading.Lock:
@@ -439,7 +457,18 @@ def _drain_stream(f: Any) -> None:
 
 
 def _tmux_available() -> bool:
-    return shutil.which("tmux") is not None
+    global _TMUX_AVAILABLE_CACHE
+    now = time.time()
+    ttl = max(0.0, float(TMUX_AVAILABLE_TTL_SECONDS))
+    with _TMUX_AVAILABLE_CACHE_LOCK:
+        if _TMUX_AVAILABLE_CACHE is not None:
+            cached_at, cached = _TMUX_AVAILABLE_CACHE
+            if ttl > 0 and (now - cached_at) < ttl:
+                return bool(cached)
+    available = shutil.which("tmux") is not None
+    with _TMUX_AVAILABLE_CACHE_LOCK:
+        _TMUX_AVAILABLE_CACHE = (now, bool(available))
+    return bool(available)
 
 
 def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_META_WAIT_SECONDS) -> dict[str, Any]:
@@ -1650,8 +1679,21 @@ def _launch_defaults_warning(exc: BaseException) -> str:
     return _launch_defaults_warning_impl(exc)
 
 
+def _launch_defaults_signature(paths: LaunchConfigPaths) -> tuple[tuple[str, bool, int | None, int | None], ...]:
+    return tuple(_path_signature(path) for path in vars(paths).values() if isinstance(path, Path))
+
+
 def _read_new_session_defaults() -> dict[str, Any]:
-    return _launch_read_new_session_defaults(_launch_config_paths(), default_agent_backend=DEFAULT_AGENT_BACKEND)
+    global _LAUNCH_DEFAULTS_CACHE
+    paths = _launch_config_paths()
+    signature = _launch_defaults_signature(paths)
+    with _LAUNCH_DEFAULTS_CACHE_LOCK:
+        if _LAUNCH_DEFAULTS_CACHE is not None and _LAUNCH_DEFAULTS_CACHE[0] == signature:
+            return copy.deepcopy(_LAUNCH_DEFAULTS_CACHE[1])
+    defaults = _launch_read_new_session_defaults(paths, default_agent_backend=DEFAULT_AGENT_BACKEND)
+    with _LAUNCH_DEFAULTS_CACHE_LOCK:
+        _LAUNCH_DEFAULTS_CACHE = (signature, copy.deepcopy(defaults))
+    return defaults
 
 
 def _codex_launch_defaults_for_request() -> dict[str, Any]:
@@ -5038,18 +5080,30 @@ MANAGER = SessionManager()
 
 def _static_asset_version(static_dir: Path = STATIC_DIR) -> str:
     base = static_dir.resolve()
-    digest = hashlib.sha256()
+    paths: list[tuple[str, Path]] = []
     for rel in STATIC_ASSET_VERSION_FILES:
         path = (base / rel).resolve()
         if not str(path).startswith(str(base)):
             raise ValueError(f"static asset escaped static dir: {path}")
+        paths.append((rel, path))
+    signature = tuple((rel, *_path_signature(path)[1:]) for rel, path in paths)
+    cache_key = str(base)
+    with _STATIC_ASSET_VERSION_CACHE_LOCK:
+        cached = _STATIC_ASSET_VERSION_CACHE.get(cache_key)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+    digest = hashlib.sha256()
+    for rel, path in paths:
         if not path.is_file():
             continue
         digest.update(rel.encode("utf-8"))
         digest.update(b"\0")
         digest.update(path.read_bytes())
         digest.update(b"\0")
-    return digest.hexdigest()[:12]
+    version = digest.hexdigest()[:12]
+    with _STATIC_ASSET_VERSION_CACHE_LOCK:
+        _STATIC_ASSET_VERSION_CACHE[cache_key] = (signature, version)
+    return version
 
 
 def _read_static_bytes(path: Path) -> bytes:

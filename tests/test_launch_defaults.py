@@ -1,8 +1,11 @@
+import os
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import codoxear.server as server
 from codoxear.server import _normalize_requested_model_provider
 from codoxear.server import _normalize_requested_pi_reasoning_effort
 from codoxear.server import _normalize_requested_preferred_auth_method
@@ -14,6 +17,44 @@ from codoxear.server import _read_pi_launch_defaults
 
 
 class TestLaunchDefaults(unittest.TestCase):
+    def test_read_new_session_defaults_cache_uses_config_signatures(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            paths = server.LaunchConfigPaths(
+                codex_config_path=root / "config.toml",
+                models_cache_path=root / "models.json",
+                pi_settings_path=root / "pi-settings.json",
+                pi_models_path=root / "pi-models.json",
+                pi_auth_path=root / "pi-auth.json",
+                cc_settings_path=root / "cc-settings.json",
+            )
+            paths.codex_config_path.write_text("model = 'a'\n", encoding="utf-8")
+            calls = {"n": 0}
+
+            def fake_read(_paths, *, default_agent_backend: str):
+                calls["n"] += 1
+                return {"default_backend": default_agent_backend, "call": calls["n"], "backends": {}}
+
+            old_cache = server._LAUNCH_DEFAULTS_CACHE
+            try:
+                server._LAUNCH_DEFAULTS_CACHE = None
+                with patch.object(server, "_launch_config_paths", return_value=paths):
+                    with patch.object(server, "_launch_read_new_session_defaults", side_effect=fake_read):
+                        first = server._read_new_session_defaults()
+                        first["mutated"] = True
+                        second = server._read_new_session_defaults()
+                        self.assertEqual(calls["n"], 1)
+                        self.assertNotIn("mutated", second)
+                        self.assertEqual(second["call"], 1)
+                        paths.codex_config_path.write_text("model = 'b'\nchanged = true\n", encoding="utf-8")
+                        future = time.time() + 2
+                        os.utime(paths.codex_config_path, (future, future))
+                        third = server._read_new_session_defaults()
+                        self.assertEqual(calls["n"], 2)
+                        self.assertEqual(third["call"], 2)
+            finally:
+                server._LAUNCH_DEFAULTS_CACHE = old_cache
+
     def test_read_codex_launch_defaults_includes_provider_list_and_service_tier(self) -> None:
         with TemporaryDirectory() as td:
             config_path = Path(td) / "config.toml"
