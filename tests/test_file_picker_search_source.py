@@ -62,6 +62,48 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_picker_identity_helpers() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    snippet = "\n".join(
+        js_function(source, name)
+        for name in ["filePickerIdentityHint", "filePickerTitle", "duplicateFilePickerPaths"]
+    )
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{}};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        const duplicateEntries = [
+          {{ path: "foo.py", gitPath: false, changed: false }},
+          {{ path: "foo.py", gitPath: true, changed: true, additions: 1, deletions: 0 }},
+          {{ path: "bar.py", gitPath: true, changed: true }},
+          {{ path: "draft.py", createNew: true }},
+        ];
+        const duplicatePaths = ctx.duplicateFilePickerPaths(duplicateEntries);
+        const sessionHint = ctx.filePickerIdentityHint(duplicateEntries[0], duplicatePaths);
+        const gitHint = ctx.filePickerIdentityHint(duplicateEntries[1], duplicatePaths);
+        const changedOnlySectionHint = ctx.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: true }});
+        const changedOnlySearchHint = ctx.filePickerIdentityHint(duplicateEntries[2], duplicatePaths, {{ showSourceSections: false }});
+        const createHint = ctx.filePickerIdentityHint(duplicateEntries[3], duplicatePaths);
+        const pendingHint = ctx.filePickerIdentityHint({{ path: "foo.py", gitPath: false, pendingSessionPath: true }}, new Set(["foo.py"]));
+        process.stdout.write(JSON.stringify({{
+          duplicatePaths: Array.from(duplicatePaths),
+          sessionHint,
+          gitHint,
+          changedOnlySectionHint,
+          changedOnlySearchHint,
+          createHint,
+          pendingHint,
+          title: ctx.filePickerTitle(duplicateEntries[1], gitHint),
+          plainTitle: ctx.filePickerTitle({{ path: "plain.txt" }}, ""),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_resolve_file_open_mode_cases() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     snippet = "\n".join(js_function(source, name) for name in ["fileCandidateKey", "isGitFileCandidatePath", "resolveFileOpenMode"])
@@ -484,6 +526,18 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["staleRememberedGitPath"], "file")
         self.assertEqual(result["deletedChanged"], "diff")
 
+    def test_file_picker_identity_hints_only_explain_ambiguous_resolution(self) -> None:
+        result = eval_file_picker_identity_helpers()
+        self.assertEqual(result["duplicatePaths"], ["foo.py"])
+        self.assertEqual(result["sessionHint"], "current folder")
+        self.assertEqual(result["gitHint"], "git root · changed")
+        self.assertEqual(result["changedOnlySectionHint"], "")
+        self.assertEqual(result["changedOnlySearchHint"], "git root · changed")
+        self.assertEqual(result["pendingHint"], "current folder")
+        self.assertEqual(result["createHint"], "")
+        self.assertEqual(result["title"], "foo.py — git root · changed")
+        self.assertEqual(result["plainTitle"], "plain.txt")
+
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
@@ -506,6 +560,12 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("fileCandidateKeyForEntry(entry)", source)
         self.assertIn("fileEntryMap.has(entry.key)", source)
         self.assertIn(".fileMenuSection", css)
+        self.assertIn("function filePickerIdentityHint(entry, duplicatePaths, options)", source)
+        self.assertIn("function duplicateFilePickerPaths(entries)", source)
+        self.assertNotIn('"aria-label": filePickerTitle(entry, identityHint)', source)
+        self.assertIn("title: filePickerTitle(entry, identityHint)", source)
+        self.assertIn("fileMenuHint fileMenuIdentity", source)
+        self.assertIn(".fileMenuIdentity", css)
 
 
 if __name__ == "__main__":

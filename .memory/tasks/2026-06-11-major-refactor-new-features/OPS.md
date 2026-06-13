@@ -2087,3 +2087,12 @@
   - Full local: `python3 -m pytest -q` -> `761 passed, 77 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `760 passed, 1 skipped, 77 subtests passed`.
   - Clean-room review -> no blockers after replacing a non-transitive comparator attempt with same-display score normalization.
+
+## 2026-06-14 06:34
+- Completed file-picker identity hint UI/UX tranche.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_file_picker_session_state.py -q` -> `42 passed`.
+  - Full local: `python3 -m pytest -q` -> `762 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `761 passed, 1 skipped, 77 subtests passed`.
+  - Final clean-room review -> no blockers. Prior review found an accessibility blocker from overriding picker option `aria-label`; fixed by relying on visible hint spans plus `title` instead.

@@ -1743,3 +1743,10 @@ Observation: A naive comparator change that forced `gitPath:false` before `gitPa
 Intervention: The picker now normalizes sort scores by exact display-path group before sorting. Same-display session/Git twins share the group's max relevance score, then the ordinary score/path/gitPath comparator places the session/cwd identity before the Git identity. Unrelated paths still compare by score against the group's max score.
 
 Scoped claim: The same-display session-before-Git invariant no longer depends on backend/local score equality and no longer makes the comparator cyclic. This is scoped to exact `entry.path` equality; aliases such as case variants, Unicode-normalized variants, and symlink-equivalent paths are not grouped unless earlier layers already produce the same display path.
+
+## 2026-06-14 06:34
+Observation: After the `(gitPath,path)` candidate-identity fix, two file-picker rows could still render as the same visible path even though one opened the session/cwd file and the other opened the repo-root Git changed file. Internal correctness alone did not explain the choice to the user.
+
+Intervention: The file picker now adds compact identity hints only where the surrounding UI does not already disambiguate enough: duplicate same-display rows, pending session-path probes, and Git-root rows during search mode where source sections are hidden. Hints are visible text and tooltip title metadata; they do not override the option accessible name.
+
+Scoped claim: Under source/runtime tests and clean-room review, ambiguous same-display picker rows are now distinguishable without changing ordering, click/Enter routing, literal path text, create/draft behavior, or changed-stat display. Residual: browser visual/screen-reader evidence is source-based rather than a live assistive-tech pass; existing ellipsis/nowrap behavior still limits forensic display of trailing-space/newline filenames.

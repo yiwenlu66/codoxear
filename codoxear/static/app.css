@@ -1624,6 +1624,10 @@ select {
         font-size: 12px;
         color: var(--muted);
       }
+      .fileMenuIdentity {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
       .fileMenuStat {
         flex: 0 0 auto;
         display: inline-flex;

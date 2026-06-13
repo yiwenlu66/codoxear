@@ -9737,6 +9737,38 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           filePickerMenu.appendChild(btn);
         }
 
+        function filePickerIdentityHint(entry, duplicatePaths, options) {
+          const showSourceSections = Boolean(options && options.showSourceSections);
+          if (!entry || entry.createNew) return "";
+          const path = String(entry.path || "");
+          const duplicated = duplicatePaths && duplicatePaths.has(path);
+          if (entry.pendingSessionPath) return "current folder";
+          if (entry.gitPath && (duplicated || !showSourceSections)) return entry.changed ? "git root · changed" : "git root";
+          if (!entry.gitPath && duplicated) return "current folder";
+          return "";
+        }
+
+        function filePickerTitle(entry, hint = "") {
+          const path = String(entry && entry.path || "");
+          if (!hint) return path;
+          return `${path} — ${hint}`;
+        }
+
+        function duplicateFilePickerPaths(entries) {
+          const counts = new Map();
+          for (const entry of Array.isArray(entries) ? entries : []) {
+            if (!entry || entry.createNew) continue;
+            const path = String(entry.path || "");
+            if (!path) continue;
+            counts.set(path, Number(counts.get(path) || 0) + 1);
+          }
+          const out = new Set();
+          for (const [path, count] of counts.entries()) {
+            if (count > 1) out.add(path);
+          }
+          return out;
+        }
+
         function renderFilePickerMenu() {
           filePickerMenu.innerHTML = "";
           const entries = visibleFilePickerEntries();
@@ -9764,6 +9796,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           if (fileMenuFocus >= entries.length) fileMenuFocus = entries.length ? entries.length - 1 : -1;
           const showSourceSections = !query;
+          const duplicatePaths = duplicateFilePickerPaths(entries);
           let lastSourceSection = "";
           for (const [idx, entry] of entries.entries()) {
             const section = showSourceSections ? filePickerSectionLabel(entry.source) : "";
@@ -9772,6 +9805,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               lastSourceSection = section;
             }
             const path = entry.path;
+            const identityHint = filePickerIdentityHint(entry, duplicatePaths, { showSourceSections });
             const active = fileMenuFocus === idx || (fileMenuFocus < 0 && activeFilePath === path && activeFileGitPath === Boolean(entry.gitPath) && !query);
             const btn = el("button", {
               id: `filePickerOption-${idx}`,
@@ -9779,19 +9813,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               type: "button",
               role: "option",
               "aria-selected": active ? "true" : "false",
-              title: path,
+              title: filePickerTitle(entry, identityHint),
             });
             if (entry.createNew) {
               btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
               btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
             } else if (entry.changed) {
               btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
+              if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
               const stat = el("span", { class: "fileMenuStat changed" });
               stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
               stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
               btn.appendChild(stat);
             } else {
               btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
+              if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
             }
             btn.onmousedown = (e) => e.preventDefault();
             btn.onclick = async () => {
