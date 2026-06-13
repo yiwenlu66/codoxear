@@ -1700,3 +1700,11 @@
 - Full local validation: `python3 -m pytest -q` → `677 passed, 25 subtests passed`.
 - Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `676 passed, 1 skipped, 25 subtests passed`.
 - Browser evidence against isolated Docker sandbox (`codoxear-sandbox-history-retry-18795`, stopped): forced first history request to 503, verified row count stayed 30, inline error+Retry appeared, retry made second history call, prepended 4 older rows, and cleared the error. Artifact: `/tmp/codoxear-history-retry-browser.json`.
+
+## 2026-06-13 10:52 — Older-history 401 repair
+- Clean-room review of `feat: retry failed history loads` found no blockers, but noted that a 401 from `/messages/history` would still flow to the new retry chip instead of immediate auth-loss handling.
+- Repaired by adding an explicit `e.status === 401` branch before 409/non-409 retry handling in `loadOlderMessages()`, calling `handleAppAuthLoss()` and returning without showing the retry error.
+- Added source and runtime VM coverage for 401 auth-loss behavior.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `41 passed`.
+- Full local validation: `python3 -m pytest -q` → `678 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `677 passed, 1 skipped, 25 subtests passed`.

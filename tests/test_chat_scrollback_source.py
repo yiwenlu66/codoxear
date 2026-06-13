@@ -175,6 +175,9 @@ class TestChatScrollbackSource(unittest.TestCase):
         load_end = source.index("function maybeAutoLoadOlder()", load_start)
         load_block = source[load_start:load_end]
         self.assertIn("clearOlderLoadError();\n            setOlderState({ hasMore: nextHasOlder, isLoading: false });", load_block)
+        self.assertIn("handleAppAuthLoss();", load_block)
+        self.assertLess(load_block.index("if (e && e.status === 401)"), load_block.index("if (e && e.status === 409)"))
+        self.assertLess(load_block.index("if (e && e.status === 409)"), load_block.index("showOlderLoadError();"))
         self.assertIn("await openSession(sid, { useCache: false });", load_block)
         self.assertIn("setOlderState({ hasMore: hasOlder, isLoading: false });\n            showOlderLoadError();", load_block)
         self.assertNotIn("clearTranscriptDom();", load_block)

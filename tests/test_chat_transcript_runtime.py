@@ -182,6 +182,50 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertTrue(out["showedOlderError"])
         self.assertFalse(out["prepended"])
 
+    def test_history_401_triggers_auth_loss_without_retry_error(self) -> None:
+        snippet = _source_between("async function loadOlderMessages({ auto = false, cancelOnScroll = true } = {}) {", "function maybeAutoLoadOlder()")
+        js = textwrap.dedent(
+            f"""
+            const ctx = {{
+              selected: "sid",
+              hasOlder: true,
+              loadingOlder: false,
+              pollGen: 7,
+              olderLoadRequestId: 0,
+              olderAutoTriggerAt: 0,
+              OLDER_AUTO_COOLDOWN_MS: 450,
+              olderLoadController: null,
+              performance: {{ now: () => 1000 }},
+              AbortController,
+              encodeURIComponent,
+              olderPageLimit: () => 60,
+              oldestRenderedHistoryCursor: () => "cursor-oldest-row",
+              setOlderState: (state) => {{ ctx.lastOlderState = state; ctx.hasOlder = Boolean(state.hasMore); ctx.loadingOlder = Boolean(state.isLoading); }},
+              clearOlderLoadError: () => {{ ctx.clearedOlderError = true; }},
+              showOlderLoadError: () => {{ ctx.showedOlderError = true; }},
+              handleAppAuthLoss: () => {{ ctx.authLoss = true; }},
+              prependOlderEvents: () => {{ ctx.prepended = true; }},
+              openSession: async () => {{ throw new Error("should not reopen"); }},
+              api: async () => {{ const err = new Error("unauthorized"); err.status = 401; throw err; }},
+            }};
+            vm = require("vm");
+            vm.createContext(ctx);
+            vm.runInContext({json.dumps(snippet)}, ctx);
+            ctx.loadOlderMessages({{ auto: false }}).then(() => {{
+              process.stdout.write(JSON.stringify({{
+                authLoss: Boolean(ctx.authLoss),
+                showedOlderError: Boolean(ctx.showedOlderError),
+                prepended: Boolean(ctx.prepended),
+              }}));
+            }});
+            """
+        )
+        out = _run_node(js)
+
+        self.assertTrue(out["authLoss"])
+        self.assertFalse(out["showedOlderError"])
+        self.assertFalse(out["prepended"])
+
     def test_live_delta_does_not_splice_into_history_window(self) -> None:
         snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
         js = textwrap.dedent(

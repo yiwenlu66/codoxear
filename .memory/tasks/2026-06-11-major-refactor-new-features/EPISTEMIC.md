@@ -1437,3 +1437,9 @@ Commitments:
 - Intervention: Added an inline non-transcript error/retry affordance near the older button. It does not clear transcript rows, does not mutate server state, and does not change 409 mismatch behavior.
 - Evidence: Focused/runtime tests, full local/Docker validation, and browser forced-503/retry proof passed.
 - Scoped claim: In loaded transcripts with older history available, non-409 history page failures are now visible and retryable without losing already loaded messages.
+
+## 2026-06-13 10:52 — History retry excludes auth loss
+- Observation: The new history retry affordance correctly handled transient non-409 failures, but review identified a distinct mechanism for 401: authentication loss should route to the app auth-loss path, not appear as a retryable history load.
+- Intervention: Added explicit 401 handling before retry-error display.
+- Evidence: Runtime test confirms 401 calls `handleAppAuthLoss()` and does not show retry UI; focused/full/Docker validation passed.
+- Scoped claim: Older-history retry UI now represents retryable history-load failures, not authentication expiration.
