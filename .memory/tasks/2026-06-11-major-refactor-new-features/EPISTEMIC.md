@@ -1378,3 +1378,8 @@ Commitments:
 - Rejected hypothesis: A one-shot behavior parameter on the visible Jump-to-latest path is sufficient. Evidence falsified this because reset, render, decoration, typing, pending echoes, and live polling all interact with bottom correction.
 - Decision: Roll back the smooth-scroll code. Preserve the lesson for a future tranche: any smooth scrolling should follow a deliberate scroll-scheduler refactor or runtime harness, not incremental patching.
 - Scoped claim: The branch returns to the previously validated instant-scroll behavior; no low-confidence smooth-scroll feature remains active.
+
+## 2026-06-13 09:54 — No-blocker claim after smooth-scroll rollback
+- Observation: Clean-room rollback review confirmed the branch no longer contains active smooth Jump-to-latest behavior and chat code/tests match the pre-smooth validated state.
+- Scoped claim: The unsafe smooth-scroll polish is removed without rolling back storage-denial or file-picker candidate work.
+- Remaining uncertainty: Pi model registry test flaked once during critic validation; immediate rerun and full rerun passed, so this is tracked as unrelated possible suite flakiness rather than evidence against the rollback.

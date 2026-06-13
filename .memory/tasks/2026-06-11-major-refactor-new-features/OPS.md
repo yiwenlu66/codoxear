@@ -1627,3 +1627,10 @@
 - Focused validation after rollback: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `37 passed`.
 - Full local validation after rollback: `python3 -m pytest -q` → `672 passed, 25 subtests passed`.
 - Full isolated Docker validation after rollback: `scripts/codoxear-docker-sandbox test` → `671 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:54 — Smooth Jump rollback review
+- Clean-room review of rollback commit `c3fbae1` found no rollback-specific blockers.
+- Critic confirmed active Jump-to-latest code/tests match the pre-smooth validated state (`git diff b550f34 c3fbae1 -- codoxear/static/app.js tests/test_chat_scrollback_source.py tests/test_chat_transcript_runtime.py tests/test_chat_navigation_source.py` empty), and no storage/file-picker rollback occurred.
+- Critic validation: `node --check codoxear/static/app.js` → passed; focused chat tests → `37 passed`; full pytest rerun → `672 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-smooth-jump-rollback-review.md`.
+- Residual risk: one transient unrelated Pi model registry test failed once and passed on isolated/full rerun; no connection found to rollback.
