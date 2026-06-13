@@ -1583,3 +1583,9 @@
 - Focused validation after repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` → `27 passed`.
 - Full local validation after repair: `python3 -m pytest -q` → `672 passed, 25 subtests passed`.
 - Full isolated Docker validation after repair: `scripts/codoxear-docker-sandbox test` → `671 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:17 — File picker final review
+- Clean-room re-review after repair commit `e44d548` found no blockers.
+- Critic validation: `node --check codoxear/static/app.js` → passed; focused file-picker tests → `27 passed`; full pytest → `672 passed, 25 subtests passed`.
+- Review artifact: `/tmp/codoxear-file-picker-candidate-review.md`.
+- Residual risks: `fileCandidateGitStateFresh` can remain true during an open viewer if external git state changes; no direct behavioral test for `resolveFileOpenMode()` fresh/non-fresh branch; cache hits intentionally disable automatic diff mode.

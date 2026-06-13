@@ -1339,3 +1339,8 @@ Commitments:
 - Intervention: Search ordering now follows score first. Cache hits explicitly mark git state stale, and `resolveFileOpenMode()` only treats candidate `changed` as authoritative when the candidate set came from a fresh `/git/changed_files` response.
 - Evidence: Targeted VM/source tests cover the critic's counterexamples; full local and Docker suites passed after repair.
 - Scoped claim: The file picker may show cached candidate labels briefly, but stale cache metadata no longer decides whether opening a file enters diff mode.
+
+## 2026-06-13 09:17 — No-blocker scoped claim for file-picker candidate UX
+- Observation: Clean-room re-review found no blockers after score-first ordering and non-authoritative cache repair.
+- Scoped claim: File-picker candidate sections and short cache improve orientation/reopen behavior without making cached candidate metadata authoritative for file open content or diff-mode selection.
+- Remaining uncertainty: A real populated browser screenshot was not captured; evidence is source/VM behavior plus full local/Docker suites and adversarial review.
