@@ -51,6 +51,17 @@ def _session(*, sid: str, start_ts: float, last_chat_ts: float | None = None, ow
 
 
 class TestSessionSidebarPriority(unittest.TestCase):
+    def test_list_sessions_tolerates_malformed_cwd_metadata(self) -> None:
+        mgr = _make_manager()
+        s = _session(sid="target", start_ts=time.time())
+        s.cwd = "/tmp/bad\x00cwd"
+        mgr._sessions = {s.session_id: s}
+
+        [item] = mgr.list_sessions()
+
+        self.assertEqual(item["session_id"], "target")
+        self.assertIsNone(item["git_branch"])
+
     def test_list_sessions_masks_stale_unattended_enabled_zero_remaining(self) -> None:
         mgr = _make_manager()
         s = _session(sid="target", start_ts=time.time())

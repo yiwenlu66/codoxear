@@ -1032,6 +1032,25 @@ def _resolve_under(base: Path, rel: str) -> Path:
     return resolved
 
 
+def _expanduser_path(path: Path) -> Path:
+    try:
+        return path.expanduser()
+    except RuntimeError as e:
+        raise ValueError(str(e)) from e
+
+
+def _resolve_session_cwd(raw_cwd: str) -> Path:
+    if not isinstance(raw_cwd, str) or not raw_cwd.strip() or "\x00" in raw_cwd:
+        raise ValueError("invalid session cwd")
+    try:
+        cwd = _expanduser_path(Path(raw_cwd))
+        if not cwd.is_absolute():
+            cwd = cwd.resolve()
+    except (OSError, ValueError) as e:
+        raise ValueError(str(e)) from e
+    return cwd
+
+
 def _resolve_session_path(base: Path, raw_path: str) -> Path:
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise ValueError("path required")
@@ -1039,8 +1058,8 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
         raise ValueError("invalid path")
     p = Path(raw_path)
     if p.is_absolute():
-        return p.expanduser().resolve()
-    resolved_base = base.expanduser()
+        return _expanduser_path(p).resolve()
+    resolved_base = _expanduser_path(base)
     if not resolved_base.is_absolute():
         resolved_base = resolved_base.resolve()
     return (resolved_base / p).resolve()
@@ -1059,7 +1078,7 @@ def _resolve_existing_session_file(base: Path, raw_path: str) -> Path:
 
 
 def _resolve_existing_absolute_file(raw_path: str) -> Path:
-    return _require_existing_file(Path(raw_path).expanduser().resolve())
+    return _require_existing_file(_expanduser_path(Path(raw_path)).resolve())
 
 
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
@@ -1103,7 +1122,7 @@ def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | 
         return None
     match: Path | None = None
     for raw in tracked:
-        candidate = Path(raw).expanduser().resolve()
+        candidate = _expanduser_path(Path(raw)).resolve()
         if candidate.name != name:
             continue
         if match is None:
@@ -1115,7 +1134,7 @@ def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | 
 
 
 def _list_session_relative_files(base: Path) -> list[str]:
-    root = base.expanduser()
+    root = _expanduser_path(base)
     if not root.is_absolute():
         root = root.resolve()
     if not root.exists():
@@ -1139,14 +1158,17 @@ def _list_session_relative_files(base: Path) -> list[str]:
 
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int) -> str:
     cmd = ["git", *args]
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        timeout=timeout_s,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_s,
+            check=False,
+        )
+    except (OSError, ValueError) as e:
+        raise RuntimeError(str(e)) from e
     if proc.returncode != 0:
         err = proc.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(err or f"git failed with code {proc.returncode}")
@@ -1508,32 +1530,31 @@ def _current_git_branch(cwd: Path) -> str | None:
 
 
 def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    path_obj = Path(raw_path).expanduser()
+    s: Session | None = None
+    if session_id:
+        MANAGER.refresh_session_meta(session_id)
+        s = MANAGER.get_session(session_id)
+        if s is None:
+            raise FileNotFoundError("unknown session")
+    path_obj = _expanduser_path(Path(raw_path))
     if not path_obj.is_absolute():
-        if session_id:
-            MANAGER.refresh_session_meta(session_id)
-            s = MANAGER.get_session(session_id)
-            if s:
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                direct = (base / path_obj).resolve()
-                if direct.exists():
-                    path_obj = direct
-                else:
-                    tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
-                    if tracked is not None:
-                        path_obj = tracked
-                        return path_obj
-                    try:
-                        repo_root = Path(
-                            _run_git(base, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
-                        ).resolve()
-                    except RuntimeError:
-                        repo_root = base.resolve()
-                    path_obj = _resolve_unique_bare_filename(repo_root, raw_path) or direct
+        if s is not None:
+            base = _resolve_session_cwd(s.cwd)
+            direct = (base / path_obj).resolve()
+            if direct.exists():
+                path_obj = direct
             else:
-                path_obj = (Path.cwd() / path_obj).resolve()
+                tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
+                if tracked is not None:
+                    path_obj = tracked
+                    return path_obj
+                try:
+                    repo_root = Path(
+                        _run_git(base, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
+                    ).resolve()
+                except RuntimeError:
+                    repo_root = base.resolve()
+                path_obj = _resolve_unique_bare_filename(repo_root, raw_path) or direct
         else:
             path_obj = (Path.cwd() / path_obj).resolve()
     else:
@@ -3241,7 +3262,7 @@ class SessionManager:
             alias = self._aliases.get(session_id)
             if isinstance(alias, str) and alias.strip():
                 return alias.strip()
-            cwd_name = Path(s.cwd).expanduser().name.strip()
+            cwd_name = Path(str(s.cwd)).name.strip()
             return cwd_name or "Session"
 
     def _observe_rollout_delta(self, session_id: str, *, log_path: Path | None = None, old_off: int = 0, objs: list[dict[str, Any]], new_off: int) -> None:
@@ -3976,9 +3997,10 @@ class SessionManager:
                 blocked = dependency_session_id is not None
                 snoozed = snooze_until is not None and snooze_until > now_ts
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
-                cwd_path = Path(s.cwd).expanduser()
-                if not cwd_path.is_absolute():
-                    cwd_path = cwd_path.resolve()
+                try:
+                    cwd_path: Path | None = _resolve_session_cwd(s.cwd)
+                except ValueError:
+                    cwd_path = None
                 items.append(
                     {
                         "session_id": s.session_id,
@@ -5615,10 +5637,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     if reasoning_effort is None:
                         reasoning_effort = log_effort
                 sidebar_meta = MANAGER.sidebar_meta_get(session_id)
-                cwd_path = Path(s.cwd).expanduser()
-                if not cwd_path.is_absolute():
-                    cwd_path = cwd_path.resolve()
-                git_branch = _current_git_branch(cwd_path)
+                try:
+                    cwd_path = _resolve_session_cwd(s.cwd)
+                    git_branch = _current_git_branch(cwd_path)
+                except ValueError:
+                    git_branch = None
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
                 elapsed_s = max(0.0, time.time() - updated_ts)
                 time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
@@ -5704,10 +5727,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
                 try:
+                    base = _resolve_session_cwd(s.cwd)
                     p = _resolve_existing_session_file(base, rel)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -5826,10 +5847,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if limit < 1:
                     _json_response(self, 400, {"error": "limit must be >= 1"})
                     return
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
                 try:
+                    base = _resolve_session_cwd(s.cwd)
                     result = _search_session_relative_files(base, query=query_raw[0], limit=limit)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -5865,10 +5884,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
                 try:
+                    base = _resolve_session_cwd(s.cwd)
                     files = _list_session_relative_files(base)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -5898,10 +5915,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
                 try:
+                    base = _resolve_session_cwd(s.cwd)
                     p = _resolve_existing_session_file(base, rel)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -5937,10 +5952,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
                 try:
+                    base = _resolve_session_cwd(s.cwd)
                     p = _resolve_existing_session_file(base, rel)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -6038,11 +6051,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
-                p = _resolve_session_path(base, rel)
                 try:
+                    base = _resolve_session_cwd(s.cwd)
+                    p = _resolve_session_path(base, rel)
                     size = _inspect_downloadable_file(p)
                 except FileNotFoundError as e:
                     _json_response(self, 404, {"error": str(e)})
@@ -6066,11 +6077,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                cwd = Path(s.cwd).expanduser()
-                if not cwd.is_absolute():
-                    cwd = cwd.resolve()
                 try:
+                    cwd = _resolve_session_cwd(s.cwd)
                     _require_git_repo(cwd)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
@@ -6165,11 +6177,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 rel = path_q[0]
                 staged_q = qs.get("staged")
                 staged = bool(staged_q and staged_q[0] == "1")
-                cwd = Path(s.cwd).expanduser()
-                if not cwd.is_absolute():
-                    cwd = cwd.resolve()
                 try:
+                    cwd = _resolve_session_cwd(s.cwd)
                     _require_git_repo(cwd)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
@@ -6207,11 +6220,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 rel = path_q[0]
-                cwd = Path(s.cwd).expanduser()
-                if not cwd.is_absolute():
-                    cwd = cwd.resolve()
                 try:
+                    cwd = _resolve_session_cwd(s.cwd)
                     _require_git_repo(cwd)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
@@ -6649,6 +6663,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 session_id_raw = obj.get("session_id")
+                if session_id_raw is not None and not isinstance(session_id_raw, str):
+                    _json_response(self, 400, {"error": "session_id must be a string"})
+                    return
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
@@ -6747,6 +6764,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 400, {"error": "path required"})
                     return
                 session_id_raw = obj.get("session_id")
+                if session_id_raw is not None and not isinstance(session_id_raw, str):
+                    _json_response(self, 400, {"error": "session_id must be a string"})
+                    return
                 session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
                 try:
                     path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
@@ -6860,9 +6880,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not s:
                     _json_response(self, 404, {"error": "unknown session"})
                     return
-                base = Path(s.cwd).expanduser()
-                if not base.is_absolute():
-                    base = base.resolve()
+                try:
+                    base = _resolve_session_cwd(s.cwd)
+                except ValueError as e:
+                    _json_response(self, 400, {"error": str(e)})
+                    return
                 if create:
                     try:
                         p = _resolve_under(base, path_raw)
@@ -6891,7 +6913,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         _json_response(self, 400, {"error": str(e)})
                         return
                 else:
-                    p = _resolve_session_path(base, path_raw)
+                    try:
+                        p = _resolve_session_path(base, path_raw)
+                    except ValueError as e:
+                        _json_response(self, 400, {"error": str(e)})
+                        return
                     with _file_write_lock(p):
                         try:
                             _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)

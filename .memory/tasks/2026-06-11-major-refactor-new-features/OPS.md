@@ -2010,3 +2010,10 @@
 - Clean-room review: no blockers; residual risk is source-level rather than DOM/browser proof for focus/click behavior.
 - Full local validation: `python3 -m pytest -q` -> 700 passed, 25 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 699 passed, 1 skipped, 25 subtests passed.
+
+## 2026-06-14 01:36 - File path/session cwd fail-closed hardening
+- Changed files: `codoxear/server.py`, `tests/test_file_inspect.py`, `tests/test_file_viewer_source.py`, `tests/test_session_sidebar_priority.py`.
+- Focused validation: `python3 -m py_compile codoxear/server.py tests/test_file_inspect.py tests/test_file_viewer_source.py tests/test_session_sidebar_priority.py`; `python3 -m pytest tests/test_file_inspect.py tests/test_file_viewer_source.py tests/test_session_sidebar_priority.py -q` -> 74 passed, 20 subtests passed.
+- Full local validation: `python3 -m pytest -q` -> 711 passed, 45 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 710 passed, 1 skipped, 45 subtests passed.
+- Clean-room critic re-runs found and drove fixes for validation-before-expanduser, malformed `~user`, non-string `session_id`, session-scoped malformed cwd, write-update path validation, git cwd OS errors, and NUL cwd in session listing. Final review: no blockers.

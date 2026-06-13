@@ -519,7 +519,8 @@ class TestFileViewerSource(unittest.TestCase):
         route_start = source.index('session_id = _match_session_route(path, "file", "write")')
         route_end = source.index('session_id = _match_session_route(path, "delete")', route_start)
         block = source[route_start:route_end]
-        update_block = block[block.index("else:\n                    p = _resolve_session_path(base, path_raw)") :]
+        update_block = block[block.index("else:\n                    try:\n                        p = _resolve_session_path(base, path_raw)") :]
+        self.assertIn('except ValueError as e:\n                        _json_response(self, 400, {"error": str(e)})', update_block)
         self.assertIn("with _file_write_lock(p):", update_block)
         self.assertLess(update_block.index("with _file_write_lock(p):"), update_block.index("_read_text_file_for_write(p"))
         self.assertLess(update_block.index("_read_text_file_for_write(p"), update_block.index("_write_text_file_atomic(p"))

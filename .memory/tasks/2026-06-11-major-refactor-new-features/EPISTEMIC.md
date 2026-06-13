@@ -1662,3 +1662,13 @@ Scoped claim:
 - In the guarded source paths, users closing a dirty unavailable viewer see a truthful copy-before-close prompt rather than a blocked Save option.
 Remaining uncertainty:
 - This is validated by source tests and review, not a behavioral browser proof of focus/visibility.
+
+## 2026-06-14 01:36 - File path resolution fails closed for stale or malformed session context
+Observation:
+- Client removed-session guards reduce stale file actions, but server-side path resolution still matters: unknown `session_id`, malformed `~user` paths, corrupt tracked paths, malformed session cwd, and invalid write paths could otherwise fall back to server cwd or escape local error handling as 500s.
+Intervention:
+- Session ids are validated before file path expansion; malformed path/cwd expansion is converted to controlled `ValueError`; session-scoped file/git routes resolve cwd inside error boundaries; write-update path validation moved under the 400 boundary; session list/detail tolerate malformed cwd for branch display.
+Scoped claim:
+- In the tested stale/malformed session/path/cwd cases, file read/inspect/list/search/blob/video/download/write and git file helpers fail with controlled 400/404/409 responses instead of cwd fallback or traceback.
+Remaining uncertainty:
+- Later git command races/timeouts and unreadable preview files can still surface as broader route errors; those are adjacent hardening targets, not observed regressions in this tranche.

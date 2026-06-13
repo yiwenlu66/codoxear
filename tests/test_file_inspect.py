@@ -1,23 +1,42 @@
 import hashlib
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
+import urllib.parse
+import uuid
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from codoxear import server
+from codoxear.server import _current_git_branch
 from codoxear.server import _download_disposition
 from codoxear.server import _ensure_video_preview
 from codoxear.server import _inspect_client_path
 from codoxear.server import _inspect_downloadable_file
 from codoxear.server import _inspect_openable_file
 from codoxear.server import _read_client_file_view
+from codoxear.server import _resolve_client_file_path
+from codoxear.server import _resolve_existing_absolute_file
+from codoxear.server import _resolve_session_cwd
 from codoxear.server import _read_text_file_for_client
 from codoxear.server import _read_text_file_for_write
 from codoxear.server import _read_text_or_image
 from codoxear.server import _single_byte_range
 from codoxear.server import _write_new_text_file_atomic
 from codoxear.server import _write_text_file_atomic
+
+
+REPO_CWD = Path(__file__).resolve().parents[1]
+
+
+def _safe_cwd() -> Path:
+    try:
+        return Path.cwd()
+    except FileNotFoundError:
+        return REPO_CWD
 
 
 class TestInspectOpenableFile(unittest.TestCase):
@@ -233,6 +252,160 @@ class TestInspectOpenableFile(unittest.TestCase):
                 self.assertIn("pix_fmt=yuv420p", info)
             finally:
                 server.VIDEO_PREVIEW_DIR = old_dir
+
+    def test_unknown_session_file_resolution_does_not_fallback_to_server_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            (td_path / "note.md").write_text("cwd fallback should not win\n", encoding="utf-8")
+            old_cwd = _safe_cwd()
+            try:
+                os.chdir(td_path)
+                with self.assertRaisesRegex(FileNotFoundError, "unknown session"):
+                    _resolve_client_file_path(session_id=f"missing-{uuid.uuid4().hex}", raw_path="note.md")
+                with self.assertRaisesRegex(FileNotFoundError, "unknown session"):
+                    _resolve_client_file_path(session_id=f"missing-{uuid.uuid4().hex}", raw_path="~definitely-no-such-codoxear-user/note.md")
+            finally:
+                os.chdir(old_cwd if old_cwd.exists() else REPO_CWD)
+
+    def test_no_session_file_resolution_keeps_server_cwd_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            expected = td_path / "note.md"
+            expected.write_text("local fallback still works\n", encoding="utf-8")
+            old_cwd = _safe_cwd()
+            try:
+                os.chdir(td_path)
+                self.assertEqual(_resolve_client_file_path(session_id="", raw_path="note.md"), expected.resolve())
+            finally:
+                os.chdir(old_cwd if old_cwd.exists() else REPO_CWD)
+
+    def test_no_session_absolute_file_resolution_still_works(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            expected = (Path(td) / "note.md").resolve()
+            expected.write_text("absolute local ref still works\n", encoding="utf-8")
+            self.assertEqual(_resolve_client_file_path(session_id="", raw_path=str(expected)), expected)
+
+    def test_bad_expanduser_path_is_bad_request_not_runtime_error(self) -> None:
+        bad_path = f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/note.md"
+        with self.assertRaisesRegex(ValueError, "home directory"):
+            _resolve_client_file_path(session_id="", raw_path=bad_path)
+        with self.assertRaisesRegex(ValueError, "home directory"):
+            _resolve_existing_absolute_file(bad_path)
+
+    def test_bad_session_cwd_expanduser_path_is_bad_request_not_runtime_error(self) -> None:
+        bad_cwd = f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/repo"
+
+        class FakeManager:
+            def refresh_session_meta(self, _session_id: str) -> None:
+                return None
+
+            def get_session(self, _session_id: str) -> object:
+                return SimpleNamespace(cwd=bad_cwd)
+
+        with patch.object(server, "MANAGER", FakeManager()):
+            with self.assertRaisesRegex(ValueError, "home directory"):
+                _resolve_client_file_path(session_id="session-with-bad-cwd", raw_path="note.md")
+        with self.assertRaisesRegex(ValueError, "invalid session cwd"):
+            _resolve_session_cwd("/tmp/bad\x00cwd")
+
+    def test_bad_tracked_file_expanduser_path_is_bad_request_not_runtime_error(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            bad_tracked = f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/note.md"
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=td)
+
+                def files_get(self, _session_id: str) -> list[str]:
+                    return [bad_tracked]
+
+            with patch.object(server, "MANAGER", FakeManager()):
+                with self.assertRaisesRegex(ValueError, "home directory"):
+                    _resolve_client_file_path(session_id="session-with-bad-tracked", raw_path="note.md")
+
+    def test_session_file_routes_return_400_for_bad_session_cwd(self) -> None:
+        bad_cwds = [f"~definitely-no-such-codoxear-user-{uuid.uuid4().hex}/repo", "/tmp/bad\x00cwd"]
+
+        routes = [
+            "/api/sessions/s/file/read?path=note.md",
+            "/api/sessions/s/file/search?q=note",
+            "/api/sessions/s/file/list",
+            "/api/sessions/s/file/blob?path=note.md",
+            "/api/sessions/s/file/video_preview?path=clip.mp4",
+            "/api/sessions/s/file/download?path=note.md",
+            "/api/sessions/s/git/changed_files",
+            "/api/sessions/s/git/diff?path=note.md",
+            "/api/sessions/s/git/file_versions?path=note.md",
+        ]
+        for bad_cwd in bad_cwds:
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=bad_cwd)
+
+            for route in routes:
+                with self.subTest(route=route, bad_cwd=bad_cwd):
+                    parsed = urllib.parse.urlparse(route)
+                    handler = server.Handler.__new__(server.Handler)
+                    handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                    handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+                    handler._handle_voice_get = lambda _path, _query: False  # type: ignore[attr-defined]
+                    responses = []
+                    with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                        server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                    ):
+                        server.Handler.do_GET(handler)
+                    self.assertEqual(len(responses), 1)
+                    status, payload = responses[0]
+                    self.assertEqual(status, 400)
+                    self.assertTrue(any(fragment in str(payload.get("error", "")) for fragment in ("home directory", "invalid session cwd")))
+
+    def test_file_write_update_rejects_invalid_path_without_500(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=td)
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+            handler._read_json_body = lambda **_kwargs: {"path": "bad\x00name", "text": "new", "version": "old"}  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_POST(handler)
+            self.assertEqual(responses, [(400, {"error": "invalid path"})])
+
+    def test_git_branch_probe_tolerates_file_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            cwd_file = Path(td) / "not-a-directory"
+            cwd_file.write_text("not a cwd", encoding="utf-8")
+            self.assertIsNone(_current_git_branch(cwd_file))
+
+    def test_global_file_routes_reject_non_string_session_id(self) -> None:
+        for route in ("/api/files/read", "/api/files/inspect"):
+            with self.subTest(route=route):
+                parsed = urllib.parse.urlparse(route)
+                handler = server.Handler.__new__(server.Handler)
+                handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+                handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+                handler._read_json_body = lambda **_kwargs: {"path": "note.md", "session_id": 123}  # type: ignore[attr-defined]
+                responses = []
+                with patch.object(server, "_require_auth", return_value=True), patch.object(
+                    server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+                ):
+                    server.Handler.do_POST(handler)
+                self.assertEqual(responses, [(400, {"error": "session_id must be a string"})])
 
     def test_text_file_for_client_marks_utf8_as_editable(self) -> None:
         with tempfile.TemporaryDirectory() as td:
