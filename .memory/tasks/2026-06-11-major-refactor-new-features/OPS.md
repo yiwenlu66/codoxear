@@ -1612,3 +1612,11 @@
 - Focused validation after second repair: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py -q` → `34 passed`.
 - Full local validation after second repair: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
 - Full isolated Docker validation after second repair: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.
+
+## 2026-06-13 09:46 — Jump-to-latest remaining instant-scroll repairs
+- Third clean-room review found two remaining instant-scroll paths that could neutralize smooth Jump-to-latest: immediate `kickPoll(0)` after jump could run a live poll during animation, and restored pending local user rows used default instant append autoscroll.
+- Repaired by removing the immediate post-jump live poll (the fresh tail open already schedules the normal poll) and threading `scrollBehavior` through `restorePendingUserRowsForSession()` and `appendEvent()` so pending-row restoration during tail render uses the same behavior.
+- Updated runtime/source tests for the new `appendEvent(ev, { scrollBehavior })` signature and pending-row behavior propagation.
+- Focused validation: `node --check codoxear/static/app.js`; `python3 -m pytest tests/test_chat_scrollback_source.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` → `39 passed`.
+- Full local validation: `python3 -m pytest -q` → `674 passed, 25 subtests passed`.
+- Full isolated Docker validation: `scripts/codoxear-docker-sandbox test` → `673 passed, 1 skipped, 25 subtests passed`.

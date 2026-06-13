@@ -3593,7 +3593,7 @@
           });
         }
 
-        function restorePendingUserRowsForSession(sessionId) {
+        function restorePendingUserRowsForSession(sessionId, { scrollBehavior = "auto" } = {}) {
           if (!sessionId) return;
           const slot = getSessionTranscriptSlot(sessionId);
           const items = pendingUser
@@ -3602,7 +3602,7 @@
           for (const item of items) {
             if (!item || !item.id) continue;
             if (chatInner.querySelector(`.msg.user[data-local-id="${item.id}"]`)) continue;
-            appendEvent({ role: "user", text: item.text, pending: true, localId: item.id, ts: item.t0 });
+            appendEvent({ role: "user", text: item.text, pending: true, localId: item.id, ts: item.t0 }, { scrollBehavior });
           }
         }
 
@@ -4513,7 +4513,7 @@
           return sessions;
         }
 
-        function appendEvent(ev) {
+        function appendEvent(ev, { scrollBehavior = "auto" } = {}) {
           if (!ev || (ev.role !== "user" && ev.role !== "assistant")) return;
           if (consumePendingUserIfMatches(ev)) return;
           if (isDuplicateEvent(ev)) return;
@@ -4534,12 +4534,12 @@
 	          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: stick });
-          rebuildDecorations({ preserveScroll: false });
+          rebuildDecorations({ preserveScroll: false, scrollBehavior });
             if (!ev.pending) markClickFirstPaint();
           markEventSeen(ev);
 
           if (stick) {
-            requestAnimationFrame(() => scrollToBottom());
+            requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));
           }
           syncJumpButton();
         }
@@ -4558,7 +4558,7 @@
           renderedAtLiveTail = true;
           clearTranscriptDom();
           if (!msgs.length) {
-            restorePendingUserRowsForSession(selected);
+            restorePendingUserRowsForSession(selected, { scrollBehavior });
             return false;
           }
           recentEventKeys.length = 0;
@@ -4571,7 +4571,7 @@
           }
           chatInner.insertBefore(frag, bottomSentinel);
           rebuildDecorations({ preserveScroll, scrollBehavior });
-          restorePendingUserRowsForSession(selected);
+          restorePendingUserRowsForSession(selected, { scrollBehavior });
           return true;
         }
 
@@ -5021,7 +5021,6 @@
           requestAnimationFrame(() => {
             syncJumpButton();
           });
-          kickPoll(0);
         }
 
         async function selectSession(id) {

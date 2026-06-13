@@ -138,7 +138,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
         self.assertEqual(out["prepended"]["events"][0]["text"], "older")
 
     def test_live_delta_does_not_splice_into_history_window(self) -> None:
-        snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
+        snippet = _source_between('function appendEvent(ev, { scrollBehavior = "auto" } = {}) {', "function renderTranscript(")
         js = textwrap.dedent(
             f"""
             const ctx = {{
@@ -194,7 +194,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
 
     def test_live_delta_dedupes_adjacent_assistant_text_across_polls(self) -> None:
         helper_snippet = _source_between("function eventKey(ev) {", "function isTranscriptRenewalCommand(")
-        append_snippet = _source_between("function appendEvent(ev) {", "function renderTranscript(")
+        append_snippet = _source_between('function appendEvent(ev, { scrollBehavior = "auto" } = {}) {', "function renderTranscript(")
         js = textwrap.dedent(
             f"""
             const ctx = {{

@@ -15,7 +15,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("invalidateOlderLoad();", block)
         self.assertIn('await openSession(sid, { useCache: false, fallbackToCacheOnFailure: true, tailScrollBehavior: "smooth" });', block)
         self.assertNotIn('scrollToBottom({ behavior: "smooth" });', block)
-        self.assertIn("kickPoll(0);", block)
+        self.assertNotIn("kickPoll(0);", block)
 
     def test_scroll_to_bottom_smooth_is_user_jump_only(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -135,7 +135,7 @@ class TestChatScrollbackSource(unittest.TestCase):
     def test_refresh_sessions_does_not_fetch_messages(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         start = source.index("async function refreshSessions() {")
-        end = source.index("function appendEvent(ev) {", start)
+        end = source.index("function appendEvent(ev,", start)
         block = source[start:end]
         self.assertNotIn("/messages/tail", block)
         self.assertNotIn("/messages/live", block)
@@ -173,7 +173,7 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_live_append_does_not_splice_into_history_window(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function appendEvent(ev) {")
+        start = source.index('function appendEvent(ev, { scrollBehavior = "auto" } = {}) {')
         end = source.index("function renderTranscript(", start)
         block = source[start:end]
         self.assertIn("const stick = pending || (renderedAtLiveTail && (autoScroll || isNearBottom()));", block)
@@ -259,11 +259,12 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_restore_pending_rows_is_bound_to_current_transcript_slot(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function restorePendingUserRowsForSession(sessionId) {")
+        start = source.index('function restorePendingUserRowsForSession(sessionId, { scrollBehavior = "auto" } = {}) {')
         end = source.index("function updateQueueBadge()", start)
         block = source[start:end]
         self.assertIn("const slot = getSessionTranscriptSlot(sessionId);", block)
         self.assertIn("Number(item.epoch || 0) === Number(slot.epoch || 0)", block)
+        self.assertIn('appendEvent({ role: "user", text: item.text, pending: true, localId: item.id, ts: item.t0 }, { scrollBehavior });', block)
 
     def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -273,6 +274,7 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn("takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", block)
         self.assertIn("msgs.push(ev);", block)
         self.assertIn("rebuildDecorations({ preserveScroll, scrollBehavior });", block)
+        self.assertIn("restorePendingUserRowsForSession(selected, { scrollBehavior });", block)
         self.assertIn("return true;", block)
         self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
 
@@ -291,6 +293,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         runtime_end = source.index("function renderSessionTail", runtime_start)
         runtime_block = source[runtime_start:runtime_end]
         self.assertIn('setTyping(nowBusy, { scrollBehavior: typingScrollBehavior });', runtime_block)
+        append_start = source.index('function appendEvent(ev, { scrollBehavior = "auto" } = {})')
+        append_end = source.index('function renderTranscript(', append_start)
+        append_block = source[append_start:append_end]
+        self.assertIn('rebuildDecorations({ preserveScroll: false, scrollBehavior });', append_block)
+        self.assertIn('requestAnimationFrame(() => scrollToBottom({ behavior: scrollBehavior }));', append_block)
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

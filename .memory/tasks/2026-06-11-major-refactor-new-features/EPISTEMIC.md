@@ -1365,3 +1365,10 @@ Commitments:
 - Intervention: Propagated the scroll behavior through decoration rebuild and typing insertion; default live-tail scheduling remains instant by default argument.
 - Evidence: Targeted source tests now cover the scheduler-level path; full local and Docker suites passed.
 - Scoped claim: For Jump-to-latest tail renders, the first scheduled bottom correction now carries `smooth`; for live/default paths the correction remains `auto`.
+
+## 2026-06-13 09:46 — Smooth jump closure over pending rows and live poll timing
+- Observation: Re-review found two more mechanisms that could cancel smooth navigation: immediate live polling after jump and pending-row restoration with default append autoscroll.
+- Revised mechanism: A smooth jump must control the whole synchronous tail-render/pending-restore path and avoid starting an immediate asynchronous live path during the animation window.
+- Intervention: Removed immediate `kickPoll(0)` from Jump-to-latest, relying on `openSession()`'s normal poll scheduling; propagated scroll behavior through pending row restoration and append events.
+- Evidence: Focused runtime tests include the `appendEvent` behavior path; full local and Docker suites passed.
+- Scoped claim: Known synchronous bottom-scroll schedulers in the Jump-to-latest tail render now receive the same smooth behavior, and the immediate post-jump live poll no longer injects an instant scroll during the animation.
