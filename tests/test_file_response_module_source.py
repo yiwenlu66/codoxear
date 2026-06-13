@@ -1,8 +1,10 @@
+import contextlib
 import io
 import tempfile
 import unittest
 from pathlib import Path
 
+from codoxear.file_response import _stream_open_file_bytes
 from codoxear.file_response import send_attachment_file_response
 from codoxear.file_response import send_inline_file_response
 
@@ -19,6 +21,7 @@ class FakeHandler:
         self.sent_headers = []
         self.wfile = io.BytesIO()
         self.error = None
+        self.logged_errors = []
 
     def send_response(self, status: int) -> None:
         self.status = status
@@ -32,6 +35,19 @@ class FakeHandler:
     def send_error(self, status: int, message: str = "") -> None:
         self.status = status
         self.error = message
+
+    def log_error(self, fmt: str, *args: object) -> None:
+        self.logged_errors.append(fmt % args if args else fmt)
+
+
+class BrokenWrite(io.BytesIO):
+    def write(self, b: bytes) -> int:  # type: ignore[override]
+        raise BrokenPipeError("client disconnected")
+
+
+class FailingRead(io.BytesIO):
+    def read(self, size: int = -1) -> bytes:  # type: ignore[override]
+        raise OSError("disk read failed")
 
 
 class TestFileResponseModuleSource(unittest.TestCase):
@@ -48,6 +64,7 @@ class TestFileResponseModuleSource(unittest.TestCase):
 
         self.assertIn("def _open_file_for_response(", module_source)
         self.assertIn("def _stream_open_file_bytes(", module_source)
+        self.assertIn("def _log_late_stream_error(", module_source)
         self.assertIn("def _stream_file_bytes(", module_source)
         self.assertIn("def single_byte_range(", module_source)
         self.assertIn("def send_inline_file_response(", module_source)
@@ -59,6 +76,7 @@ class TestFileResponseModuleSource(unittest.TestCase):
         self.assertIn("def _open_file_size(", module_source)
         self.assertIn("os.fstat(f.fileno()).st_size", module_source)
         self.assertIn("_stream_open_file_bytes(handler, stream, length=length)", module_source)
+        self.assertIn("file response stream failed after headers", module_source)
 
     def test_inline_response_maps_missing_file_before_headers(self) -> None:
         path = Path("/tmp/codoxear-missing-inline-response.bin")
@@ -118,6 +136,30 @@ class TestFileResponseModuleSource(unittest.TestCase):
             self.assertEqual(handler.status, 200)
             self.assertIn(("Content-Length", str(len(raw))), handler.sent_headers)
             self.assertEqual(handler.wfile.getvalue(), raw)
+
+    def test_inline_response_logs_late_write_error_after_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "blob.bin"
+            path.write_bytes(b"hello")
+            handler = FakeHandler()
+            handler.wfile = BrokenWrite()
+
+            send_inline_file_response(handler, path, "application/octet-stream")
+
+            self.assertEqual(handler.status, 200)
+            self.assertTrue(handler.ended)
+            self.assertEqual(handler.error, None)
+            self.assertTrue(any("client disconnected" in msg for msg in handler.logged_errors))
+
+    def test_stream_open_file_bytes_logs_late_read_error(self) -> None:
+        handler = FakeHandler()
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            _stream_open_file_bytes(handler, FailingRead())
+
+        self.assertTrue(any("disk read failed" in msg for msg in handler.logged_errors))
+        self.assertIn("error: file response stream failed after headers: OSError: disk read failed", stderr.getvalue())
+        self.assertEqual(handler.wfile.getvalue(), b"")
 
     def test_attachment_response_streams_without_read_bytes_and_caps_to_declared_size(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -2068,3 +2068,13 @@
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `755 passed, 1 skipped, 77 subtests passed`.
   - `git diff --check` -> clean.
 - Clean-room review loop found and drove fixes for timing-dependent pending Enter, normalized `./foo.py` pending/loaded/error search, stale cached/fresh diff enablement, and no-session candidate clear recompute. Final review before the no-session residual found no blockers; the residual was patched and all validation rerun.
+
+## 2026-06-14 05:57
+- Completed late file-response stream error hardening tranche.
+- Changed artifacts: `codoxear/file_response.py`, `tests/test_file_response_module_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_response_module_source.py tests/test_video_preview_cache.py tests/test_file_inspect.py -q` -> `75 passed, 52 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `758 passed, 77 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `757 passed, 1 skipped, 77 subtests passed`.
+  - Clean-room review -> no blockers; noted unused `_stream_file_bytes()` direct-open residual and unavoidable post-header `Content-Length` mismatch on truncation.
+- `git diff --check` was clean before staging.

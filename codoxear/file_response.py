@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.server
 import os
+import sys
 import urllib.parse
 from pathlib import Path
 from typing import BinaryIO
@@ -55,16 +56,43 @@ def _open_file_size(f: BinaryIO) -> int:
     return int(os.fstat(f.fileno()).st_size)
 
 
+def _log_late_stream_error(handler: http.server.BaseHTTPRequestHandler, exc: OSError) -> None:
+    message = f"file response stream failed after headers: {type(exc).__name__}: {exc}"
+    log_error = getattr(handler, "log_error", None)
+    if callable(log_error):
+        try:
+            log_error("%s", message)
+        except Exception:
+            pass
+    try:
+        sys.stderr.write(f"error: {message}\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
 def _stream_open_file_bytes(handler: http.server.BaseHTTPRequestHandler, f: BinaryIO, *, start: int = 0, length: int | None = None) -> None:
-    if start:
-        f.seek(start)
+    try:
+        if start:
+            f.seek(start)
+    except OSError as exc:
+        _log_late_stream_error(handler, exc)
+        return
     remaining = length
     while remaining is None or remaining > 0:
         max_read = 1024 * 1024 if remaining is None else min(1024 * 1024, remaining)
-        chunk = f.read(max_read)
+        try:
+            chunk = f.read(max_read)
+        except OSError as exc:
+            _log_late_stream_error(handler, exc)
+            break
         if not chunk:
             break
-        handler.wfile.write(chunk)
+        try:
+            handler.wfile.write(chunk)
+        except OSError as exc:
+            _log_late_stream_error(handler, exc)
+            break
         if remaining is not None:
             remaining -= len(chunk)
 

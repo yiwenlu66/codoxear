@@ -1729,3 +1729,10 @@ Observation: Clean-room review found that exact pending search could still route
 Observation: Diff enablement can become stale when changed-file metadata is restored from cache or refreshed. The final implementation recomputes file mode state after no-session clears, cache restores, stale clears, and fresh changed entries. Diff remains available only for an active `gitPath:true` file with fresh identity-matched changed metadata and a diffable kind.
 
 Scoped claim: Under the tested source/runtime harnesses, file-picker display-path collisions no longer collapse session/cwd paths and repo-root Git paths, and Enter/click/remembered/first/preferred opens preserve the intended resolution identity. Remaining residuals are outside this tranche: non-UTF-8 Git filenames are still replacement-decoded, symlink containment is still non-atomic, and broader live credentialed backend/mobile/slow-network evidence remains incomplete.
+
+## 2026-06-14 05:57
+Observation: File preview/download responses already map missing or permission-denied files before headers, but late stream failures after headers were still capable of propagating as request-handler tracebacks. After headers are committed, status cannot truthfully be remapped; the only available product-safe behavior is to stop streaming and preserve evidence.
+
+Intervention: `_stream_open_file_bytes()` now catches post-header `seek`, `read`, and `wfile.write` `OSError`s, including client disconnect subclasses, logs through `handler.log_error`, and writes a concise stderr error line because the main server suppresses default request logs.
+
+Scoped claim: Under focused, full, Docker, and clean-room review evidence, late file streaming read/write failures no longer crash the request handler and remain observable in logs, while pre-header 404/403 mapping and range/content-length header logic remain unchanged. Residual: late truncation can still make the already-sent `Content-Length` inaccurate, which is inherent once headers are committed.
