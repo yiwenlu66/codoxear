@@ -6,11 +6,11 @@ Completion requires user-facing workflows to work end-to-end under scoped eviden
 Prioritize reliability, UX/accessibility, bounded refactors that preserve invariants, feature polish, and safe live/backend validation where the evidence justifies it. Broad structural/frontend refactoring may proceed only after product gaps are fixed or explicitly scoped.
 
 ## Workbench
-1. Finish the markdown rendering tranche: verify light/readable fenced code blocks, contained/wrapping markdown tables, browser evidence, full local validation, Docker validation, memory evidence, atomic commit, and checkpoint refresh.
-2. Continue product-gap recovery from `recon/refactor-entry-checkpoint.md`, choosing the next highest-value UX/reliability/backend gap with discriminating evidence.
-3. For each tranche, state the user-facing invariant first, implement the smallest causal change, validate with focused tests plus browser/runtime evidence where feasible, run full local and Docker validation before claiming complete, and commit atomically.
-4. Re-run clean-room critic or architecture review when a change touches provider semantics, recovery state, queue/send boundaries, file/path identity, accessibility/focus, or broad UI structure.
-5. Keep task evidence current in `OPS.md` and `EPISTEMIC.md`; promote durable conclusions to `recon/refactor-entry-checkpoint.md` or project documentation when they affect future work.
+1. Implement failed-launch in-chat recovery panel. See: Send/queue recovery promise; Backend/capability promise; Sparse UI promise.
+2. Validate failed-launch recovery panel. See: Validation criteria; Evidence criteria.
+3. Investigate and repair video preview/transcoding. See: File/context promise; Video preview/transcoding bug.
+4. Investigate and repair Pi busy-after-interrupt state. See: Backend/capability promise; Responsiveness promise; Pi interrupt/busy bug.
+5. Pick the next responsiveness or UX/refactor tranche from `recon/refactor-entry-checkpoint.md`. See: Responsiveness promise; Refactor promise.
 
 ## Context
 Active checkout: `/home/yiwen/codex-web-product-recovery`.
@@ -33,6 +33,18 @@ Recent recovery work established or hardened send/queue recovery, transcript sea
 
 User-reported active markdown issues from 2026-06-15: chat markdown code blocks render with an undesirable dark style; markdown tables should not overflow chat width and should wrap or stay contained.
 
+User-reported active backend/media issues from 2026-06-13: ffmpeg video transcoding/preview does not work and may never have worked; Pi sessions can stay busy after interruption.
+
+Credential and provider context for integrated testing: use the user's existing local backend/provider configuration under `~/.pi/agent` and installed CLI backends when safe; never print, copy, or commit credential values.
+
+Preferred cost-efficient model/provider for general integrated workloads: `deepseek-v4-flash`.
+
+Preferred Claude-specific workload: `occ-claude` with `claude-haiku-4-5`.
+
+Use headless agent-browser for UI testing when useful.
+
+User wants long unattended progress on features, refactoring, and deep UI/UX experience, with minimal turns and no repetition.
+
 Parked limits include incomplete Codex/Claude live-response evidence, real mobile-device and assistive-tech evidence, slow-network and huge-transcript evidence, smooth Jump to latest, non-UTF-8 Git filename byte-literal behavior, and atomic symlink containment against concurrent local mutation.
 
 ## Task specifications
@@ -49,6 +61,10 @@ Long-session orientation promise: users can search, navigate, and regain positio
 File/context promise: file picker, viewer, refs, Git paths, and fuzzy search preserve literal identity while giving clear empty/loading/error/mobile states.
 
 Markdown rendering promise: fenced code blocks should be readable and visually consistent with Codoxear's minimal light UI; markdown tables should stay within chat width by wrapping/containing cell content, including on mobile-sized layouts.
+
+Video preview/transcoding bug: reproduce the user-reported ffmpeg preview failure with representative fixtures, identify the exact failing mechanism, and repair without hiding conversion errors behind silent fallback.
+
+Pi interrupt/busy bug: reproduce or fixture Pi busy state after interruption, identify whether the mechanism is Pi log normalization, broker/sessiond state, interrupt route semantics, or UI state clearing, and repair with scoped evidence.
 
 Responsiveness promise: polling, transcript loading, rendering, and network behavior avoid stale confusion or avoidable busywork under realistic isolated browser/session conditions.
 
