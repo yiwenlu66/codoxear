@@ -1708,7 +1708,9 @@
         let chatSearchMatches = [];
         let chatSearchIndex = -1;
         const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
+        const CHAT_SEARCH_ALL_COUNT_MAX = 1000;
         let chatSearchAllCount = null;
+        let chatSearchAllCountTruncated = false;
         let chatSearchAllHint = "";
         let chatSearchAllRequestId = 0;
         let chatSearchAllAbort = null;
@@ -3289,18 +3291,18 @@
             ? chatSearchLoadingOlder
               ? " · loading older"
               : Number.isFinite(chatSearchAllCount)
-                ? ` · ${chatSearchAllCount} all`
+                ? ` · ${chatSearchAllCount}${chatSearchAllCountTruncated ? "+" : ""} all`
                 : ""
             : "";
           const canLoadOlderMatch = Boolean(
             chatSearchQuery &&
               Number.isFinite(chatSearchAllCount) &&
-              chatSearchAllCount > total &&
+              (chatSearchAllCountTruncated || chatSearchAllCount > total) &&
               hasOlder &&
               !chatSearchLoadingOlder &&
               !loadingOlder
           );
-          const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > total && chatSearchAllHint);
+          const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(chatSearchAllCount) && (chatSearchAllCountTruncated || chatSearchAllCount > total) && chatSearchAllHint);
           chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
           chatSearchAllHintEl.textContent = showAllHint ? `all: ${chatSearchAllHint}` : "";
           chatSearchAllHintEl.title = showAllHint ? chatSearchAllHint : "";
@@ -3311,6 +3313,7 @@
 
         function resetAllChatSearchCount() {
           chatSearchAllCount = null;
+          chatSearchAllCountTruncated = false;
           chatSearchAllHint = "";
           chatSearchAllRequestId += 1;
           if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
@@ -3349,9 +3352,10 @@
           const ctl = new AbortController();
           chatSearchAllAbort = ctl;
           try {
-            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1&text_max=96`, { signal: ctl.signal });
+            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1&text_max=96&count_max=${CHAT_SEARCH_ALL_COUNT_MAX}`, { signal: ctl.signal });
             if (selected !== sid || reqId !== chatSearchAllRequestId || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
             chatSearchAllCount = Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0;
+            chatSearchAllCountTruncated = Boolean(data.match_count_truncated);
             const firstMatch = Array.isArray(data.matches) && data.matches.length ? data.matches[0] : null;
             chatSearchAllHint = chatSearchTranscriptHint(firstMatch, cleanQuery);
             syncChatSearchStatus();
@@ -3359,6 +3363,7 @@
             if (e && e.name === "AbortError") return;
             if (selected !== sid || reqId !== chatSearchAllRequestId) return;
             chatSearchAllCount = null;
+            chatSearchAllCountTruncated = false;
             chatSearchAllHint = "";
             syncChatSearchStatus();
           } finally {
@@ -3498,7 +3503,7 @@
             return;
           }
           const startIndex = chatSearchIndex;
-          const unloadedTranscriptMatches = Number.isFinite(chatSearchAllCount) ? chatSearchAllCount > chatSearchMatches.length : true;
+          const unloadedTranscriptMatches = Number.isFinite(chatSearchAllCount) ? (chatSearchAllCountTruncated || chatSearchAllCount > chatSearchMatches.length) : true;
           const canLoadOlderMatches = Boolean(chatSearchQuery && unloadedTranscriptMatches && hasOlder);
           const atForwardWrap = delta > 0 && startIndex >= chatSearchMatches.length - 1;
           const atBackwardWrap = delta < 0 && startIndex <= 0;

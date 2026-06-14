@@ -1914,3 +1914,10 @@ Observation: After non-git changed-files failure was made safe, file-picker ment
 Intervention: `refreshFileCandidates()` now renders mentioned/recent fallback entries immediately with git freshness false, then replaces them with fresh changed+mentioned+recent entries and writes cache only if changed-files succeeds.
 
 Scoped claim: Under VM timing tests, full local/Docker suites, and clean-room review, file picker fallback candidates are no longer blocked by changed-files latency. Residual: uncached refreshes with fallback now render twice on successful changed-files, and empty-fallback sessions still have nothing useful to show before git state settles.
+
+## 2026-06-14 12:37
+Observation: The UI all-transcript search hint requested only one match but still forced the server to scan the whole transcript for an exact count on every debounced query. Large common-query transcripts could therefore pay full-log parse cost for a small hint.
+
+Intervention: Added exact-by-default bounded count support via `count_max`. The UI hint now asks for at most 1000 counted matches, displays `N+ all` when truncated, and treats truncation as evidence that older unloaded matches may still exist. Nearest-older `order=latest` searches remain exact; `count_max` is rejected with latest-order semantics.
+
+Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, common-match all-transcript search hints can stop after the count cap while preserving exact default API behavior. Residual: rare/zero-match queries still scan the full log to prove the low count; truncated lower-bound displays can be visually imperfect when more matches are already loaded than the cap.

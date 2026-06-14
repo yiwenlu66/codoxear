@@ -121,6 +121,7 @@ from .transcript_search import iter_jsonl_records_forward_bounded as _iter_jsonl
 from .transcript_search import iter_positioned_chat_events_forward as _iter_positioned_chat_events_forward
 from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log as _search_chat_log
+from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .queue_store import QueueStore
@@ -6704,9 +6705,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if text_max_error is not None:
                     _json_response(self, 400, {"error": text_max_error})
                     return
+                count_max, count_max_error = _parse_bounded_query_int(qs, "count_max", default=0, min_value=0, max_value=100000)
+                if count_max_error is not None:
+                    _json_response(self, 400, {"error": count_max_error})
+                    return
                 order = (qs.get("order") or ["first"])[0]
                 if order not in {"first", "latest"}:
                     _json_response(self, 400, {"error": "order must be first or latest"})
+                    return
+                if count_max > 0 and order == "latest":
+                    _json_response(self, 400, {"error": "count_max is only supported with order=first"})
                     return
                 before_byte: int | None = None
                 before_q = qs.get("before")
@@ -6718,16 +6726,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return
                 transcript = _message_transcript_identity(s)
                 if not isinstance(query, str) or not query.strip():
-                    _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
+                    _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
                     return
                 if s.log_path is None or (not s.log_path.exists()):
-                    _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "matches": []})
+                    _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "match_count_truncated": False, "matches": []})
                     return
-                match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)
+                if count_max > 0:
+                    match_count, matches, match_count_truncated = _search_chat_log_bounded(
+                        s.log_path,
+                        query,
+                        limit=match_limit,
+                        before_byte=before_byte,
+                        order=order,
+                        count_limit=count_max,
+                    )
+                else:
+                    match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)
+                    match_count_truncated = False
                 matches = _attach_search_load_cursors(matches, session=s)
                 matches = MANAGER._attach_notification_texts(matches)
                 matches = _clip_search_match_text(matches, text_max, query=query)
-                _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "matches": matches})
+                _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "match_count_truncated": bool(match_count_truncated), "matches": matches})
                 return
 
             session_id = _match_session_route(path, "messages", "tail")

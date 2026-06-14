@@ -14,6 +14,7 @@ from codoxear.transcript_search import clip_search_match_text
 from codoxear.transcript_search import clip_search_text_around_query
 from codoxear.transcript_search import search_chat_events
 from codoxear.transcript_search import search_chat_log
+from codoxear.transcript_search import search_chat_log_bounded
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
@@ -58,6 +59,22 @@ class TestTranscriptExport(unittest.TestCase):
             _write_assistant_rows(path, 2)
             with self.assertRaisesRegex(ValueError, "too large to export"):
                 _read_chat_export_events(path, max_bytes=1)
+
+    def test_streaming_search_can_bound_count_without_changing_default(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(path, 25)
+
+            exact_count, exact_matches = search_chat_log(path, "a", limit=1, max_line_bytes=4096)
+            bounded_count, bounded_matches, truncated = search_chat_log_bounded(path, "a", limit=1, max_line_bytes=4096, count_limit=5)
+
+        self.assertEqual(exact_count, 25)
+        self.assertEqual(len(exact_matches), 1)
+        self.assertEqual(bounded_count, 5)
+        self.assertEqual(len(bounded_matches), 1)
+        self.assertTrue(truncated)
+        with self.assertRaisesRegex(ValueError, "count_limit is only supported"):
+            search_chat_log_bounded(path, "a", limit=1, max_line_bytes=4096, count_limit=5, order="latest")
 
     def test_streaming_search_counts_logs_that_export_rejects(self) -> None:
         with TemporaryDirectory() as td:
@@ -299,6 +316,10 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)', source)
         self.assertIn('match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)', source)
         self.assertIn('text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)', source)
+        self.assertIn('count_max, count_max_error = _parse_bounded_query_int(qs, "count_max", default=0, min_value=0, max_value=100000)', source)
+        self.assertIn('if count_max > 0 and order == "latest":', source)
+        self.assertIn('match_count_truncated = False', source)
+        self.assertIn('"match_count_truncated": bool(match_count_truncated)', source)
         self.assertIn('matches = _clip_search_match_text(matches, text_max, query=query)', source)
         self.assertIn('TRANSCRIPT_SEARCH_MAX_LINE_BYTES', source)
         self.assertIn('def _parse_bounded_query_int(', source)
@@ -383,6 +404,67 @@ class TestTranscriptExport(unittest.TestCase):
             window_events, _next_before, _has_older = server._read_chat_history_page(log_path, before_byte=load_pos, limit=20)
             self.assertEqual(window_events[-1]["text"], text)
 
+    def test_messages_search_route_can_bound_match_count(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            _write_assistant_rows(log_path, 12)
+            session = Session(
+                session_id="s1",
+                thread_id="thread-1",
+                broker_pid=1,
+                codex_pid=1,
+                agent_backend="codex",
+                owned=False,
+                start_ts=0.0,
+                cwd=str(Path(td)),
+                log_path=log_path,
+                sock_path=Path(td) / "s1.sock",
+            )
+            fake_manager = types.SimpleNamespace(
+                refresh_session_meta=lambda _sid: None,
+                get_session=lambda _sid: session,
+                _attach_notification_texts=lambda matches: matches,
+            )
+            responses = []
+            handler = server.Handler.__new__(server.Handler)
+            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=a&limit=1&count_max=5")
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+
+            with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server,
+                "_json_response",
+                side_effect=lambda _handler, status, obj: responses.append((status, obj)),
+            ):
+                server.Handler.do_GET(handler)
+
+            self.assertEqual(len(responses), 1)
+            status, body = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(body["match_count"], 5)
+            self.assertTrue(body["match_count_truncated"])
+            self.assertEqual(len(body["matches"]), 1)
+
+    def test_messages_search_rejects_count_max_with_latest_order(self) -> None:
+        fake_manager = types.SimpleNamespace(
+            refresh_session_meta=lambda _sid: None,
+            get_session=lambda _sid: object(),
+        )
+        responses = []
+        handler = server.Handler.__new__(server.Handler)
+        parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&count_max=5&order=latest")
+        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+
+        with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+            server,
+            "_json_response",
+            side_effect=lambda _handler, status, obj: responses.append((status, obj)),
+        ):
+            server.Handler.do_GET(handler)
+
+        self.assertEqual(responses, [(400, {"error": "count_max is only supported with order=first"})])
+
     def test_messages_search_rejects_malformed_text_max(self) -> None:
         fake_manager = types.SimpleNamespace(
             refresh_session_meta=lambda _sid: None,
@@ -410,6 +492,7 @@ class TestTranscriptExport(unittest.TestCase):
         )
         paths = [
             "/api/sessions/s1/messages/search?q=needle&limit=not-an-int",
+            "/api/sessions/s1/messages/search?q=needle&count_max=not-an-int",
             "/api/sessions/s1/messages/tail?limit=not-an-int",
             "/api/sessions/s1/messages/history?cursor=dummy&limit=not-an-int",
         ]
@@ -428,7 +511,8 @@ class TestTranscriptExport(unittest.TestCase):
                 ):
                     server.Handler.do_GET(handler)
 
-                self.assertEqual(responses, [(400, {"error": "limit must be an integer"})])
+                expected_error = "count_max must be an integer" if "count_max=" in path else "limit must be an integer"
+                self.assertEqual(responses, [(400, {"error": expected_error})])
 
     def test_ui_has_copy_conversation_action(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

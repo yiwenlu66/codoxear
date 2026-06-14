@@ -159,7 +159,7 @@ def iter_positioned_chat_events_forward(
         yield event
 
 
-def search_chat_log(
+def search_chat_log_bounded(
     log_path: Path,
     query: str,
     *,
@@ -167,14 +167,19 @@ def search_chat_log(
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
     before_byte: int | None = None,
     order: str = "first",
-) -> tuple[int, list[dict[str, Any]]]:
+    count_limit: int | None = None,
+) -> tuple[int, list[dict[str, Any]], bool]:
     needle = query.strip().casefold()
     if not needle:
-        return 0, []
+        return 0, [], False
     max_matches = max(0, int(limit))
     stop_before = None if before_byte is None else max(0, int(before_byte))
     keep_latest = order == "latest"
+    max_count = None if count_limit is None else max(0, int(count_limit))
+    if keep_latest and max_count is not None:
+        raise ValueError("count_limit is only supported with order=first")
     count = 0
+    truncated = False
     matches: list[dict[str, Any]] = []
     for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes):
         event_before = event.get("_before_byte")
@@ -182,6 +187,9 @@ def search_chat_log(
             break
         if not chat_event_matches_query(event, needle):
             continue
+        if max_count is not None and count >= max_count:
+            truncated = True
+            break
         count += 1
         if max_matches <= 0:
             continue
@@ -191,4 +199,25 @@ def search_chat_log(
                 matches.pop(0)
         elif len(matches) < max_matches:
             matches.append(event)
+    return count, matches, truncated
+
+
+def search_chat_log(
+    log_path: Path,
+    query: str,
+    *,
+    limit: int = 20,
+    max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+    before_byte: int | None = None,
+    order: str = "first",
+) -> tuple[int, list[dict[str, Any]]]:
+    count, matches, _truncated = search_chat_log_bounded(
+        log_path,
+        query,
+        limit=limit,
+        max_line_bytes=max_line_bytes,
+        before_byte=before_byte,
+        order=order,
+        count_limit=None,
+    )
     return count, matches

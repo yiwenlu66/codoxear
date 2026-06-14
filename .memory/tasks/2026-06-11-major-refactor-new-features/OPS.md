@@ -2295,3 +2295,12 @@
   - Clean-room review: no blockers; confirmed fallback renders before changed-files awaits, cache/freshness still only commit on successful changed-files, and stale request guards remain effective.
   - Full local: `python3 -m pytest -q` -> `823 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `822 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 12:37
+- Completed bounded transcript search count tranche.
+- Changed artifacts: `codoxear/transcript_search.py`, `codoxear/server.py`, `codoxear/static/app.js`, `tests/test_transcript_export.py`, `tests/test_chat_navigation_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile codoxear/transcript_search.py codoxear/server.py tests/test_transcript_export.py && python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_message_index.py tests/test_message_route_source.py -q` -> `38 passed, 4 subtests passed`.
+  - Clean-room review: initial blockers fixed (truncated count treated as lower bound in client; `count_max` rejected with `order=latest`); final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `826 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `825 passed, 1 skipped, 89 subtests passed`.
