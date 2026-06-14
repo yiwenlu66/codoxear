@@ -1800,3 +1800,10 @@ Observation: The first ambiguous inline-ref fix only detected basename ambiguity
 Intervention: Bare inline file refs now use known candidates first and, when those are inconclusive, issue a bounded project file search for exact basename matches. Duplicate exact matches produce the existing `choose` affordance, a unique non-truncated exact match becomes the inspect target, and any truncated or failed search is treated as ambiguous/inconclusive rather than proof of uniqueness. Failed search results are not cached.
 
 Scoped claim: Under focused, full, Docker, and clean-room evidence, bare inline refs can discover project-wide exact-basename ambiguity beyond the local candidate cache without changing non-bare refs or overclaiming uniqueness from capped/failed search. Residual: successful search results are cached per session/query until session refresh clears the cache, so same-lifetime file-tree changes can leave stale inline-ref resolution.
+
+## 2026-06-14 08:55
+Observation: Backend transcript search now streams full-log matches and can return bounded match objects, but the browser still requested `limit=0` and displayed only an all-transcript count. Users could learn that older matches exist without seeing any clue about where or what the first transcript match is.
+
+Intervention: The loaded-chat search bar now requests one full-transcript match with the count and renders a compact `all:` role/snippet hint only when transcript matches exceed currently loaded matches. Loaded-row search, Prev/Next behavior, and older-page loading semantics remain unchanged. The hint is textContent-rendered, truncated in the existing search bar, and hidden on narrow mobile widths to preserve the input/buttons.
+
+Scoped claim: Under focused, full, Docker, and clean-room evidence, full-transcript search evidence is now surfaced as a sparse contextual hint instead of count-only metadata, without introducing a results panel or changing navigation semantics. Residual: the hint is source/test validated rather than browser-layout validated, and count requests now fetch one full matching event before client truncation.

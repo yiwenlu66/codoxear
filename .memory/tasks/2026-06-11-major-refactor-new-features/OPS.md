@@ -2150,3 +2150,12 @@
   - Full local: `python3 -m pytest -q` -> `789 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `788 passed, 1 skipped, 88 subtests passed`.
   - Clean-room review loop found and drove the truncated-zero-match fix; final review -> no blockers.
+
+## 2026-06-14 08:55
+- Completed chat transcript-search hint UX tranche.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_chat_navigation_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_chat_navigation_source.py tests/test_transcript_export.py tests/test_chat_transcript_runtime.py -q` -> `31 passed, 3 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `789 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `788 passed, 1 skipped, 88 subtests passed`.
+  - Clean-room review loop found no blockers; mobile-width layout risk addressed by hiding the hint under `max-width: 520px`.

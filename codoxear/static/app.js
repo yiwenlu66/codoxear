@@ -1669,9 +1669,11 @@
         const chatSearchNextBtn = el("button", { id: "chatSearchNextBtn", class: "icon-btn", type: "button", title: "Next match", "aria-label": "Next match", html: iconSvg("down") });
         const chatSearchCloseBtn = el("button", { id: "chatSearchCloseBtn", class: "icon-btn", type: "button", title: "Close search", "aria-label": "Close search", html: iconSvg("x") });
         const chatSearchStatus = el("span", { id: "chatSearchStatus", class: "chatSearchStatus", text: "Loaded" });
+        const chatSearchAllHintEl = el("span", { id: "chatSearchAllHint", class: "chatSearchAllHint", text: "" });
         const chatSearchBar = el("div", { id: "chatSearchBar", class: "chatSearchBar", role: "search", "aria-label": "Search loaded chat messages" }, [
           chatSearchInput,
           chatSearchStatus,
+          chatSearchAllHintEl,
           chatSearchPrevBtn,
           chatSearchNextBtn,
           chatSearchCloseBtn,
@@ -1707,6 +1709,7 @@
         let chatSearchIndex = -1;
         const CHAT_SEARCH_ALL_DEBOUNCE_MS = 300;
         let chatSearchAllCount = null;
+        let chatSearchAllHint = "";
         let chatSearchAllRequestId = 0;
         let chatSearchAllAbort = null;
         let chatSearchAllTimer = null;
@@ -3248,6 +3251,30 @@
           return String((md || row || {}).textContent || "");
         }
 
+        function compactChatSearchSnippet(text, query, limit = 96) {
+          const clean = String(text || "").replace(/\s+/g, " ").trim();
+          const maxLen = Math.max(24, Number(limit) || 96);
+          if (!clean) return "";
+          const needle = String(query || "").trim().toLowerCase();
+          let start = 0;
+          if (needle) {
+            const idx = clean.toLowerCase().indexOf(needle);
+            if (idx > 24) start = Math.max(0, idx - 24);
+          }
+          const prefix = start > 0 ? "…" : "";
+          const remaining = maxLen - prefix.length;
+          const body = clean.slice(start, start + remaining);
+          const suffix = start + remaining < clean.length ? "…" : "";
+          return `${prefix}${body}${suffix}`;
+        }
+
+        function chatSearchTranscriptHint(match, query) {
+          if (!match || typeof match !== "object") return "";
+          const role = match.role === "user" ? "user" : match.role === "assistant" ? "assistant" : "match";
+          const snippet = compactChatSearchSnippet(match.text, query);
+          return snippet ? `${role}: ${snippet}` : "";
+        }
+
         function syncChatSearchStatus() {
           const total = chatSearchMatches.length;
           const allSuffix = chatSearchQuery
@@ -3258,13 +3285,18 @@
                 : ""
             : "";
           const canLoadOlderMatch = Boolean(chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > total && hasOlder && !chatSearchLoadingOlder && !loadingOlder);
+          const showAllHint = Boolean(chatSearchQuery && !chatSearchLoadingOlder && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > total && chatSearchAllHint);
           chatSearchStatus.textContent = chatSearchQuery ? `${total ? chatSearchIndex + 1 : 0}/${total} loaded${allSuffix}` : "Loaded";
+          chatSearchAllHintEl.textContent = showAllHint ? `all: ${chatSearchAllHint}` : "";
+          chatSearchAllHintEl.title = showAllHint ? chatSearchAllHint : "";
+          chatSearchAllHintEl.style.display = showAllHint ? "" : "none";
           chatSearchPrevBtn.disabled = total <= 0;
           chatSearchNextBtn.disabled = total <= 0 && !canLoadOlderMatch;
         }
 
         function resetAllChatSearchCount() {
           chatSearchAllCount = null;
+          chatSearchAllHint = "";
           chatSearchAllRequestId += 1;
           if (chatSearchAllTimer) clearTimeout(chatSearchAllTimer);
           chatSearchAllTimer = null;
@@ -3302,14 +3334,17 @@
           const ctl = new AbortController();
           chatSearchAllAbort = ctl;
           try {
-            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=0`, { signal: ctl.signal });
+            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1`, { signal: ctl.signal });
             if (selected !== sid || reqId !== chatSearchAllRequestId || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
             chatSearchAllCount = Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0;
+            const firstMatch = Array.isArray(data.matches) && data.matches.length ? data.matches[0] : null;
+            chatSearchAllHint = chatSearchTranscriptHint(firstMatch, cleanQuery);
             syncChatSearchStatus();
           } catch (e) {
             if (e && e.name === "AbortError") return;
             if (selected !== sid || reqId !== chatSearchAllRequestId) return;
             chatSearchAllCount = null;
+            chatSearchAllHint = "";
             syncChatSearchStatus();
           } finally {
             if (chatSearchAllAbort === ctl) chatSearchAllAbort = null;

@@ -896,6 +896,15 @@
         white-space: nowrap;
         text-align: center;
       }
+      .chatSearchAllHint {
+        flex: 0 1 220px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
       .chatSearchBar .icon-btn {
         width: 32px;
         height: 32px;
@@ -2495,6 +2504,9 @@ select {
         .chatTimeChip {
           top: auto;
           bottom: 14px;
+        }
+        .chatSearchAllHint {
+          display: none !important;
         }
         .topbar {
           padding: calc(8px + env(safe-area-inset-top)) 10px 8px 10px;
