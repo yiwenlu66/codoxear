@@ -1844,3 +1844,10 @@ Observation: `inspectFileRefPath` cached failed `/api/files/inspect` results in 
 Intervention: Kept pending singleflight, but now only successful file-ref validation results are stored in the long-lived validation cache. Added a VM test where `late.py` fails inspection once, then succeeds on the second inspection with two POST attempts.
 
 Scoped claim: Under focused, full, Docker, and clean-room review evidence, stale failed inline file-ref inspections no longer persist for the lifetime of the page. Residual: successful empty project-search results can still remain cached until existing session-cache invalidation; permanently missing refs may generate repeated inspect attempts across repeated upgrades.
+
+## 2026-06-14 10:25
+Observation: Web Push notification clicks already navigate/focus `#session=...`, but desktop `new Notification(...)` instances had no click handler and were not given the originating session id from the notification feed. Desktop users could receive a final-response notification with no app-specific clickthrough.
+
+Intervention: Threaded `session_id` into desktop notifications, added a click handler that prevents default, closes the notification, focuses the window, updates the session hash, and calls `selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true })`. Delayed live-summary resolution now snapshots the originating session id before async lookup.
+
+Scoped claim: Under focused, full, Docker, VM behavior, and clean-room review evidence, feed-backed desktop notifications now click through to the originating session when the app page is alive. Residual: real browser notification/focus permission behavior is not exercised by the Node VM; direct live-event desktop notification delivery appears structurally unused, with the feed remaining the canonical path.

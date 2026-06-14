@@ -1,3 +1,6 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -6,6 +9,76 @@ ROOT = Path(__file__).resolve().parents[1]
 VOICE_PUSH = ROOT / "codoxear" / "voice_push.py"
 SERVICE_WORKER = ROOT / "codoxear" / "static" / "service-worker.js"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+
+
+def js_function(source: str, name: str) -> str:
+    raw_start = source.index(f"function {name}")
+    start = raw_start - len("async ") if source[max(0, raw_start - len("async ")) : raw_start] == "async " else raw_start
+    params_end = source.index(")", raw_start)
+    brace = source.index("{", params_end)
+    depth = 0
+    for idx in range(brace, len(source)):
+        ch = source[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : idx + 1]
+    raise AssertionError(f"could not extract {name}")
+
+
+def eval_desktop_notification_clickthrough() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    snippet = "\n".join(js_function(source, name) for name in ["focusSessionFromDesktopNotification", "showDesktopNotification"])
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const notifications = [];
+        let focusCalls = 0;
+        let closeCalls = 0;
+        let prevented = 0;
+        const ctx = {{
+          deliveredDesktopNotificationIds: new Set(),
+          desktopNotificationsEnabled: () => true,
+          sessionHash: "",
+          selectCalls: [],
+          window: {{ focus: () => {{ focusCalls += 1; }} }},
+          Notification: class {{
+            constructor(title, options) {{
+              this.title = title;
+              this.options = options;
+              this.close = () => {{ closeCalls += 1; }};
+              notifications.push(this);
+            }}
+          }},
+          Date: {{ now: () => 12345 }},
+          sessionIdFromHash: () => ctx.sessionHash,
+          setSessionHash: (sid) => {{ ctx.sessionHash = sid; }},
+          selectSessionFromHash: async (options) => {{ ctx.selectCalls.push(options); }},
+          handleAppAuthLoss: () => {{ ctx.authLost = true; }},
+          console,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        ctx.showDesktopNotification({{ messageId: "m1", title: "Session A", body: "  hello   world  ", sessionId: "s2" }});
+        notifications[0].onclick({{ preventDefault: () => {{ prevented += 1; }} }});
+        process.stdout.write(JSON.stringify({{
+          count: notifications.length,
+          title: notifications[0].title,
+          body: notifications[0].options.body,
+          tag: notifications[0].options.tag,
+          delivered: ctx.deliveredDesktopNotificationIds.has("m1"),
+          focusCalls,
+          closeCalls,
+          prevented,
+          sessionHash: ctx.sessionHash,
+          selectCalls: ctx.selectCalls,
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 class TestVoicePushSource(unittest.TestCase):
@@ -70,6 +143,29 @@ class TestVoicePushSource(unittest.TestCase):
         self.assertIn("const navigated = await client.navigate(target);", sw_source)
         self.assertIn("return (navigated || client).focus();", sw_source)
         self.assertNotIn("client.navigate(target);\n          return client.focus();", sw_source)
+
+    def test_desktop_notification_click_focuses_origin_session(self) -> None:
+        result = eval_desktop_notification_clickthrough()
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["title"], "Session A")
+        self.assertEqual(result["body"], "hello world")
+        self.assertEqual(result["tag"], "m1")
+        self.assertTrue(result["delivered"])
+        self.assertEqual(result["focusCalls"], 1)
+        self.assertEqual(result["closeCalls"], 1)
+        self.assertEqual(result["prevented"], 1)
+        self.assertEqual(result["sessionHash"], "s2")
+        self.assertEqual(result["selectCalls"], [{"refreshIfMissing": True, "deferIfMissing": True}])
+        app_source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn("function focusSessionFromDesktopNotification(sessionId)", app_source)
+        self.assertIn("if (sessionIdFromHash() !== sid) setSessionHash(sid);", app_source)
+        self.assertIn("selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true })", app_source)
+        self.assertIn("const notification = new Notification(safeTitle", app_source)
+        self.assertIn("notification.onclick = (event) => {", app_source)
+        self.assertIn("focusSessionFromDesktopNotification(sid);", app_source)
+        self.assertIn("sessionId: item && item.session_id", app_source)
+        self.assertIn("showDesktopNotification({ messageId, title, body, sessionId });", app_source)
+        self.assertIn("scheduleDesktopNotificationResolve({ ...ev, session_id: sessionId });", app_source)
 
     def test_hashchange_refreshes_and_defers_missing_notification_target(self) -> None:
         app_source = APP_JS.read_text(encoding="utf-8")

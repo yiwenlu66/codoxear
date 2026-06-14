@@ -2204,3 +2204,12 @@
   - Clean-room review: no blockers; confirmed failed inspect results are no longer cached while pending singleflight and successful validation cache remain.
   - Full local: `python3 -m pytest -q` -> `807 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `806 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 10:25
+- Completed desktop notification clickthrough UX tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_voice_push_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_voice_push_source.py tests/test_voice_push.py tests/test_static_assets.py -q` -> `48 passed`.
+  - Clean-room review: no blockers; VM test now exercises `Notification.onclick` behavior with fake Notification/window/session selection.
+  - Full local: `python3 -m pytest -q` -> `808 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `807 passed, 1 skipped, 88 subtests passed`.

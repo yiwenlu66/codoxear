@@ -6052,18 +6052,41 @@
           return activeNotificationTransport() === "desktop";
         }
 
-        function showDesktopNotification({ messageId, title, body }) {
+        function focusSessionFromDesktopNotification(sessionId) {
+          const sid = String(sessionId || "").trim();
+          try {
+            if (typeof window.focus === "function") window.focus();
+          } catch {}
+          if (!sid) return;
+          if (sessionIdFromHash() !== sid) setSessionHash(sid);
+          void selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true }).catch((e) => {
+            if (e && e.status === 401) handleAppAuthLoss();
+            else console.error("desktop notification session select failed", e);
+          });
+        }
+
+        function showDesktopNotification({ messageId, title, body, sessionId }) {
           if (!desktopNotificationsEnabled()) return;
           const id = String(messageId || "").trim();
           if (id && deliveredDesktopNotificationIds.has(id)) return;
+          const sid = String(sessionId || "").trim();
           const safeTitle = String(title || "Session").trim() || "Session";
           const safeBody = String(body || "").replace(/\s+/g, " ").trim();
           if (!safeBody) return;
           try {
-            new Notification(safeTitle, {
+            const notification = new Notification(safeTitle, {
               body: safeBody.length <= 180 ? safeBody : `${safeBody.slice(0, 179).trimEnd()}...`,
               tag: id || `desktop:${Date.now()}`,
             });
+            if (sid) {
+              notification.onclick = (event) => {
+                if (event && typeof event.preventDefault === "function") event.preventDefault();
+                try {
+                  if (typeof notification.close === "function") notification.close();
+                } catch {}
+                focusSessionFromDesktopNotification(sid);
+              };
+            }
             if (id) deliveredDesktopNotificationIds.add(id);
           } catch (e) {
             console.error("desktop notification failed", e);
@@ -6085,6 +6108,7 @@
                 messageId: item && item.message_id,
                 title: item && item.session_display_name,
                 body: item && item.notification_text,
+                sessionId: item && item.session_id,
               });
             }
           } catch (e) {
@@ -6099,15 +6123,16 @@
           if (ev.message_class !== "final_response") return;
           if (!desktopNotificationsEnabled()) return;
           const messageId = typeof ev.message_id === "string" ? ev.message_id : "";
+          const sessionId = typeof ev.session_id === "string" && ev.session_id.trim() ? ev.session_id.trim() : (selected || "");
           if (messageId && !ev.notification_text) {
-            scheduleDesktopNotificationResolve(ev);
+            scheduleDesktopNotificationResolve({ ...ev, session_id: sessionId });
             return;
           }
-          const s = selected ? sessionIndex.get(selected) : null;
+          const s = sessionId ? sessionIndex.get(sessionId) : null;
           const title = s ? sessionDisplayName(s) : "Session";
           const body = String(ev.notification_text || ev.text || "").replace(/\s+/g, " ").trim();
           if (!body) return;
-          showDesktopNotification({ messageId, title, body });
+          showDesktopNotification({ messageId, title, body, sessionId });
         }
 
         function scheduleDesktopNotificationResolve(ev) {
