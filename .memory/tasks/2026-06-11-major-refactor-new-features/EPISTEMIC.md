@@ -1865,3 +1865,10 @@ Observation: Bare inline file refs could be falsely marked ambiguous when a sess
 Intervention: Inline file-ref candidates now preserve git/session identity; changed-file candidates are inspected with `git_path`, validation cache keys include identity, and multiple git/session suffix-compatible bare matches are collapsed only when `/api/files/inspect` reports the same resolved absolute path for every candidate.
 
 Scoped claim: Under focused, full, Docker, and clean-room review evidence, the same physical file named by git-root and session-cwd paths no longer becomes a false inline ambiguity. Residual: unrelated same-basename files remain ambiguous unless inspection proves identity; successful inspect cache entries can still stale if files are moved/deleted later.
+
+## 2026-06-14 11:03
+Observation: After discovery/refresh sidecar metadata hardening, the tmux launch wait path still parsed sidecar JSON directly and accepted `broker_pid: true` because `bool` is an `int` subclass in Python.
+
+Intervention: `_wait_for_spawned_broker_meta` now uses the shared sidecar JSON reader and non-bool integer metadata validator before accepting matching `spawn_nonce` metadata. Added tests for skipping bool broker pids and malformed JSON in favor of valid matching sidecars.
+
+Scoped claim: Under focused, full, Docker, and clean-room review evidence, the tmux launch metadata wait no longer accepts boolean broker pids or malformed sidecar JSON. Residual: this path remains type-only for integer pid values; impossible integer pids are not range/live checked here.

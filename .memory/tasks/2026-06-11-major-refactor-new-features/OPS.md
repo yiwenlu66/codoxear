@@ -2231,3 +2231,12 @@
   - Clean-room review: no blockers; confirmed git/session identity cache keys, fail-closed truncation, and same-physical-file collapse only when inspected absolute paths match.
   - Full local: `python3 -m pytest -q` -> `809 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `808 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 11:03
+- Completed launch sidecar metadata wait hardening tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_session_resume.py`.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py tests/test_session_resume.py && python3 -m pytest tests/test_session_resume.py tests/test_stale_sidecars.py -q` -> `50 passed`.
+  - Clean-room review: no blockers; confirmed `_wait_for_spawned_broker_meta` skips malformed JSON and `broker_pid: true` before returning metadata.
+  - Full local: `python3 -m pytest -q` -> `811 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `810 passed, 1 skipped, 88 subtests passed`.

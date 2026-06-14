@@ -502,16 +502,16 @@ def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_M
     deadline = time.time() + max(timeout_s, 0.0)
     while time.time() <= deadline:
         for meta_path in sorted(SOCK_DIR.glob("*.json")):
+            sock = meta_path.with_suffix(".sock")
             try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            except (FileNotFoundError, json.JSONDecodeError, OSError):
-                continue
-            if not isinstance(meta, dict):
+                meta = _read_sidecar_metadata(meta_path, sock=sock)
+            except ValueError:
                 continue
             if _clean_optional_text(meta.get("spawn_nonce")) != spawn_nonce:
                 continue
-            broker_pid = meta.get("broker_pid")
-            if not isinstance(broker_pid, int):
+            try:
+                _metadata_required_int(meta, "broker_pid", sock=sock)
+            except ValueError:
                 continue
             return meta
         time.sleep(0.05)

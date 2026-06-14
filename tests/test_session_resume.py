@@ -14,6 +14,7 @@ from codoxear.server import _describe_session_cwd
 from codoxear.server import _default_worktree_path
 from codoxear.server import _first_user_message_preview_from_log
 from codoxear.server import _list_resume_candidates_for_cwd
+from codoxear.server import _wait_for_spawned_broker_meta
 
 
 def _write_jsonl(path: Path, objs: list[dict]) -> None:
@@ -22,6 +23,32 @@ def _write_jsonl(path: Path, objs: list[dict]) -> None:
 
 
 class TestSessionResumeCandidates(unittest.TestCase):
+    def test_wait_for_spawned_broker_meta_skips_bool_broker_pid(self) -> None:
+        with TemporaryDirectory() as td:
+            sock_dir = Path(td)
+            bad = sock_dir / "a-bad.json"
+            bad.write_text(json.dumps({"spawn_nonce": "nonce", "broker_pid": True}) + "\n", encoding="utf-8")
+            good = sock_dir / "b-good.json"
+            good.write_text(json.dumps({"spawn_nonce": "nonce", "broker_pid": 1234}) + "\n", encoding="utf-8")
+
+            with patch("codoxear.server.SOCK_DIR", sock_dir):
+                meta = _wait_for_spawned_broker_meta("nonce", timeout_s=0.01)
+
+        self.assertEqual(meta["broker_pid"], 1234)
+
+    def test_wait_for_spawned_broker_meta_ignores_malformed_json(self) -> None:
+        with TemporaryDirectory() as td:
+            sock_dir = Path(td)
+            bad = sock_dir / "bad.json"
+            bad.write_text("{not-json}\n", encoding="utf-8")
+            good = sock_dir / "good.json"
+            good.write_text(json.dumps({"spawn_nonce": "nonce", "broker_pid": 5678}) + "\n", encoding="utf-8")
+
+            with patch("codoxear.server.SOCK_DIR", sock_dir):
+                meta = _wait_for_spawned_broker_meta("nonce", timeout_s=0.01)
+
+        self.assertEqual(meta["broker_pid"], 5678)
+
     def test_describe_session_cwd_marks_missing_dir_for_creation(self) -> None:
         with TemporaryDirectory() as td:
             target = Path(td) / "missing" / "child"
