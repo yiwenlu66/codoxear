@@ -4,11 +4,23 @@ import unittest
 from pathlib import Path
 
 from codoxear.server import _resolve_git_path
+from codoxear.server import _resolve_under
 from codoxear.server import _resolve_unique_bare_filename
 from codoxear.server import _resolve_session_path
 
 
 class TestPathResolution(unittest.TestCase):
+    def test_resolve_under_allows_root_cwd_descendant(self) -> None:
+        resolved = _resolve_under(Path("/"), "tmp/codoxear-root-cwd-test.txt")
+        self.assertEqual(resolved, Path("/tmp/codoxear-root-cwd-test.txt").resolve())
+
+    def test_resolve_under_rejects_parent_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td) / "base"
+            base.mkdir()
+            with self.assertRaisesRegex(ValueError, "path escapes session cwd"):
+                _resolve_under(base, "../escape.txt")
+
     def test_resolve_session_path_allows_absolute(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)

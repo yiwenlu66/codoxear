@@ -2381,3 +2381,17 @@
 - Checkpoint records branch/head, closed product gaps, latest validation evidence, invariants broad refactoring must preserve, and parked limits/decisions. It explicitly states it is not merge approval and that `/home/yiwen/codex-web` on `main` was not modified or merged.
 - Clean-room review: `/tmp/codoxear-refactor-entry-checkpoint-review.md` -> no blockers. Reviewer independently verified branch/head, live checkout state, scoped live-evidence claims, and reran focused + full local tests (`19 passed`; `833 passed, 89 subtests passed`).
 - Applied reviewer precision suggestion: Pi live validation used isolated Codoxear app/session state while provider configuration came from the user's existing real Pi environment without printing secret values.
+
+## 2026-06-14 18:32
+- Fixed root-cwd file-create containment bug found by reliability scout.
+- Mechanism: `_resolve_under()` previously checked `str(resolved).startswith(str(resolved_base) + os.sep)`. For `base == /`, that prefix becomes `//`, so valid descendants such as `/tmp/x` were rejected as escaping.
+- Patch: `_resolve_under()` now resolves base/target and uses component-aware `resolved.relative_to(resolved_base)`, preserving resolved symlink containment semantics while handling `/` naturally.
+- Added tests:
+  - helper regression for `_resolve_under(Path('/'), 'tmp/codoxear-root-cwd-test.txt')`;
+  - parent escape rejection regression;
+  - route-level `/api/sessions/<id>/file/write` create regression for a session with `cwd='/'` writing under a fresh `/tmp` directory.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py tests/test_path_resolution.py tests/test_file_inspect.py && python3 -m pytest tests/test_path_resolution.py tests/test_file_inspect.py tests/test_file_write_locks.py -q` -> `78 passed, 52 subtests passed`.
+  - Clean-room review: `/tmp/codoxear-root-cwd-resolve-review.md` -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `836 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `835 passed, 1 skipped, 89 subtests passed`.

@@ -1060,8 +1060,10 @@ def _resolve_under(base: Path, rel: str) -> Path:
         raise ValueError("path must be relative")
     resolved_base = base.resolve()
     resolved = (resolved_base / p).resolve()
-    if not str(resolved).startswith(str(resolved_base) + os.sep) and resolved != resolved_base:
-        raise ValueError("path escapes session cwd")
+    try:
+        resolved.relative_to(resolved_base)
+    except ValueError as e:
+        raise ValueError("path escapes session cwd") from e
     return resolved
 
 

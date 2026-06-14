@@ -1978,3 +1978,10 @@ Scoped claim: Under source tests, full local/Docker suites, clean-room review, a
 Commitment: `recon/refactor-entry-checkpoint.md` is now the current branch handoff artifact for entering broad refactor work. It supersedes the historical `develop` acceptance summary for current-state reasoning but does not approve merge to `main`.
 
 Scope: The checkpoint supports starting bounded refactor tranches only if the named invariants are treated as contracts and validation remains evidence-preserving. It does not close parked Codex/Claude live-response, mobile/AT/performance, non-UTF-8 filename, symlink-race, or merge-approval gaps.
+
+## 2026-06-14 18:32
+Observation: A string-prefix containment check treated `/` specially by accident: `str(Path('/')) + os.sep` is `//`, so valid root-cwd descendants failed the session-file create path.
+
+Intervention: Replaced the prefix check with `Path.relative_to()` after resolving base and target. This keeps the existing pre-open symlink containment scope but removes the root-specific false rejection.
+
+Scoped claim: Under focused route/helper tests, full local/Docker suites, and clean-room review, sessions whose cwd is `/` can create valid relative descendant files through `/file/write` without weakening parent/symlink escape rejection under the existing pre-open containment model.

@@ -1409,6 +1409,39 @@ class TestInspectOpenableFile(unittest.TestCase):
                 server.Handler.do_POST(handler)
             self.assertEqual(responses, [(400, {"error": "invalid path"})])
 
+    def test_file_write_create_allows_root_cwd_descendant(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as td:
+            target = Path(td) / "created-from-root.txt"
+            rel_from_root = str(target.relative_to(Path("/")))
+            added: list[str] = []
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd="/")
+
+                def files_add(self, _session_id: str, path: str) -> None:
+                    added.append(path)
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+            handler._read_json_body = lambda **_kwargs: {"path": rel_from_root, "text": "root cwd create\n", "create": True}  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_POST(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["path"], str(target.resolve()))
+            self.assertEqual(target.read_text(encoding="utf-8"), "root cwd create\n")
+            self.assertEqual(added, [str(target.resolve())])
+
     def test_git_branch_probe_tolerates_file_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             cwd_file = Path(td) / "not-a-directory"
