@@ -2022,3 +2022,6 @@ Observation: The Details dialog exposed exact session diagnostics in rendered la
 Intervention: Added a `Copy details` action that formats only the rows rendered by `showDiagViewer`; it does not serialize the raw diagnostics object. The copied surface is therefore scoped to information already visible in the dialog.
 
 Scoped claim: Under focused source/VM tests, clean-room review, full local validation, and Docker validation, session details can be copied safely from the Details dialog without exposing hidden diagnostics fields or weakening selected-session binding.
+
+## 2026-06-15 01:28
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `0802e3f` and the Details-copy UX fix. It remains a refactor-entry/handoff artifact, not merge approval.

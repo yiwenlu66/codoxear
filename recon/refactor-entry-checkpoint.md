@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `a4d24ac refactor: extract sidecar metadata validation`
+Current HEAD: `0802e3f feat: copy session details`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -43,15 +43,16 @@ Recent committed recovery checkpoints include:
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
-  - long-transcript per-message copy controls now use a roving active button so the accessibility/tab order has one enabled copy control instead of one repeated control per rendered message.
+  - long-transcript per-message copy controls now use a roving active button so the accessibility/tab order has one enabled copy control instead of one repeated control per rendered message;
+  - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object.
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last architectural/runtime change:
+Latest code-validation evidence after the last UX/runtime change:
 
-- Focused sidecar extraction validation: `python3 -m py_compile codoxear/server.py codoxear/sidecar_metadata.py tests/test_sidecar_metadata.py && python3 -m pytest tests/test_sidecar_metadata.py tests/test_stale_sidecars.py tests/test_session_resume.py tests/test_launch_provenance.py tests/test_process_liveness_source.py tests/test_file_upload_module_source.py tests/test_server_queue_persistence.py -q` -> `150 passed, 25 subtests passed`.
-- Full local suite: `python3 -m pytest -q` -> `850 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `849 passed, 1 skipped, 92 subtests passed`.
+- Focused Details-copy validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_diagnostics_source.py && python3 -m pytest tests/test_diagnostics_source.py tests/test_overlay_accessibility_source.py -q` -> `10 passed`.
+- Full local suite: `python3 -m pytest -q` -> `852 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `851 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -62,6 +63,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - `/tmp/codoxear-oversized-search-review.md`
 - `/tmp/codoxear-recovery-panel-review6.md`
 - Clean-room critic subagent review of sidecar extraction diff and call sites -> no blocker findings; non-blocking source-test brittleness was reduced before commit.
+- Clean-room critic subagent review of Details-copy diff -> no blocker findings for stale-session binding, secret-copy risk, accessibility/focus, or sparse-UI risk.
 
 Recent isolated browser evidence:
 
@@ -84,7 +86,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 8. **Transcript scale:** live JSONL readers stay bounded; impossible-sized partial records may be skipped rather than repeatedly re-read unboundedly.
 9. **Search semantics:** count is exact by default only when all records in scope were parseable under the bounded line cap; skipped oversized records make `match_count_truncated` true. Bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
 10. **Search navigation:** navigation refresh may recompute loaded DOM matches without discarding already-known all-transcript count evidence.
-11. **Modal/accessibility focus:** active dialogs must receive focus immediately; focus must not remain in inert/`aria-hidden` content; message-copy controls must not flood tab/accessibility traversal.
+11. **Modal/accessibility focus:** active dialogs must receive focus immediately; focus must not remain in inert/`aria-hidden` content; message-copy controls must not flood tab/accessibility traversal. Dialog copy actions should copy rendered/allowlisted rows rather than hidden raw response objects.
 12. **Pi launch providers:** Pi CLI/config is authority for provider names. UI defaults are hints, not an API whitelist; explicit provider/model pairs must not inherit stale bare-model reasoning constraints.
 13. **Minimal UI philosophy:** keep the topbar sparse; utility controls belong in contextual rails/surfaces, not a generic dumping-ground menu.
 14. **No silent fallbacks:** absence, malformed contracts, or unsupported combinations should fail loudly with recoverable UI when possible.

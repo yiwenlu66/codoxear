@@ -2462,3 +2462,7 @@
   - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_diagnostics_source.py && python3 -m pytest tests/test_diagnostics_source.py tests/test_overlay_accessibility_source.py -q` -> `10 passed`.
   - Full local: `python3 -m pytest -q` -> `852 passed, 92 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `851 passed, 1 skipped, 92 subtests passed`.
+
+## 2026-06-15 01:28
+- Refreshed `recon/refactor-entry-checkpoint.md` after Details-copy commit `0802e3f`.
+- Updated current HEAD, latest validation counts, closed UX bullet, review evidence, and modal/copy invariant wording.
