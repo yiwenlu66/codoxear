@@ -2168,3 +2168,12 @@
   - Full local: `python3 -m pytest -q` -> `791 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `790 passed, 1 skipped, 88 subtests passed`.
   - Clean-room review loop found and drove fixes for prefix clipping removing the match, Unicode casefold offset expansion, and boundary-length match truncation; final review -> no blockers.
+
+## 2026-06-14 09:25
+- Completed route-level transcript search `text_max` evidence tranche.
+- Changed artifact: `tests/test_transcript_export.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` -> `35 passed, 3 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `793 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `792 passed, 1 skipped, 88 subtests passed`.
+  - Clean-room review found no blockers; strengthened the test to prove total `match_count` can exceed returned `matches` under `limit=1`.

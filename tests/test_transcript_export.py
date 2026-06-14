@@ -13,6 +13,7 @@ from codoxear.server import _clip_search_text_around_query
 from codoxear.server import _read_chat_export_events
 from codoxear.server import _search_chat_events
 from codoxear.server import _search_chat_log
+from codoxear.server import Session
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
@@ -254,6 +255,95 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('def _parse_bounded_query_int(', source)
         self.assertIn('_json_response(self, 400, {"error": limit_error})', source)
         self.assertIn('_json_response(self, 413', source)
+
+    def test_messages_search_route_applies_text_max_to_response_matches(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            text = "x" * 40 + "needle" + "y" * 40
+            row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": text}],
+                    "phase": "final_answer",
+                },
+                "ts": 1.0,
+            }
+            second = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "second needle match"}],
+                    "phase": "final_answer",
+                },
+                "ts": 2.0,
+            }
+            log_path.write_text(json.dumps(row) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
+            session = Session(
+                session_id="s1",
+                thread_id="thread-1",
+                broker_pid=1,
+                codex_pid=1,
+                agent_backend="codex",
+                owned=False,
+                start_ts=0.0,
+                cwd=str(Path(td)),
+                log_path=log_path,
+                sock_path=Path(td) / "s1.sock",
+            )
+            fake_manager = types.SimpleNamespace(
+                refresh_session_meta=lambda _sid: None,
+                get_session=lambda _sid: session,
+                _attach_notification_texts=lambda matches: matches,
+            )
+            responses = []
+            handler = server.Handler.__new__(server.Handler)
+            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&limit=1&text_max=18")
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+
+            with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server,
+                "_json_response",
+                side_effect=lambda _handler, status, obj: responses.append((status, obj)),
+            ):
+                server.Handler.do_GET(handler)
+
+            self.assertEqual(len(responses), 1)
+            status, body = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(body["transcript_state"], "bound")
+            self.assertEqual(body["thread_id"], "thread-1")
+            self.assertEqual(body["log_path"], str(log_path))
+            self.assertEqual(body["match_count"], 2)
+            self.assertEqual(len(body["matches"]), 1)
+            match = body["matches"][0]
+            self.assertLessEqual(len(match["text"]), 18)
+            self.assertIn("needle", match["text"])
+            self.assertTrue(match["text_truncated"])
+            self.assertIsInstance(match.get("_before_byte"), int)
+
+    def test_messages_search_rejects_malformed_text_max(self) -> None:
+        fake_manager = types.SimpleNamespace(
+            refresh_session_meta=lambda _sid: None,
+            get_session=lambda _sid: object(),
+        )
+        responses = []
+        handler = server.Handler.__new__(server.Handler)
+        parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&text_max=bad")
+        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+        handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+
+        with patch.object(server, "MANAGER", fake_manager), patch.object(server, "_require_auth", return_value=True), patch.object(
+            server,
+            "_json_response",
+            side_effect=lambda _handler, status, obj: responses.append((status, obj)),
+        ):
+            server.Handler.do_GET(handler)
+
+        self.assertEqual(responses, [(400, {"error": "text_max must be an integer"})])
 
     def test_message_routes_reject_malformed_limits(self) -> None:
         fake_manager = types.SimpleNamespace(

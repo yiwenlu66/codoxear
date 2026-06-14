@@ -1816,3 +1816,10 @@ Intervention: `/messages/search` now accepts optional `text_max`; default `0` pr
 Observation: Clean-room review found that prefix clipping could remove the query, casefold offsets are not original-string offsets when Unicode expands (`ß` -> `ss`), and adding ellipses inside a fixed-width snippet could overwrite boundary matches. The final implementation maps folded positions back to original indices and returns a bounded raw snippet without server-inserted ellipses; the UI leaves already bounded snippets unchanged.
 
 Scoped claim: Under focused, full, Docker, and clean-room evidence, the full-transcript search hint is response-payload bounded while still preserving the match term when it can fit in the snippet. Residual: clipping is bounded by character count rather than JSON byte count, and the server still builds/searches the full matched event text before clipping.
+
+## 2026-06-14 09:25
+Observation: The `text_max` search contract had helper/source coverage, but no route-level evidence that `Handler.do_GET` preserved transcript identity, total `match_count`, and positional metadata after clipping HTTP response matches.
+
+Intervention: Added runtime route tests that drive `/api/sessions/<id>/messages/search?q=needle&limit=1&text_max=18` through `Handler.do_GET` with a synthetic two-match log. The test proves `match_count` remains total (`2`) while one clipped match is returned with `needle`, `text_truncated`, `_before_byte`, and transcript identity. A separate route test proves malformed `text_max` returns `400`.
+
+Scoped claim: Under focused, full, Docker, and clean-room evidence, the response-level `text_max` contract is now constrained at the HTTP route boundary, not only by helper tests. Residual: the test patches Handler dependencies rather than running a socket-level HTTP server, so serialization/header behavior remains covered by broader route/json tests rather than this specific test.
