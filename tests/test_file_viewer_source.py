@@ -10,6 +10,52 @@ APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css
 SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
 
 
+def eval_video_preview_failure_path() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    start = source.index("function fileVideoPreviewErrorText(err) {")
+    end = source.index("function clearFileVideo() {", start)
+    snippet = source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          activeVideoFallback: {{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }},
+          activeFilePath: "clip.mkv",
+          applyCount: 0,
+          authLost: false,
+          fileStatus: {{ textContent: "" }},
+          fileVideo: {{ src: "", loadCount: 0, load() {{ this.loadCount += 1; }} }},
+          resolveAppUrl: (url) => `resolved:${{url}}`,
+          handleAppAuthLoss: () => {{ ctx.authLost = true; }},
+          fetch: async (_url, _opts) => ({{
+            ok: false,
+            status: 500,
+            clone: () => ({{ json: async () => ({{ error: "video preview failed: bad codec" }}) }}),
+            text: async () => "fallback text",
+          }}),
+        }};
+        ctx.applyFileMode = () => {{ ctx.applyCount += 1; }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_loadCompatibleVideoPreview = loadCompatibleVideoPreview;\n")}, ctx);
+        (async () => {{
+          const ok = await ctx.__test_loadCompatibleVideoPreview("video-1", {{ explicit: true }});
+          process.stdout.write(JSON.stringify({{
+            ok,
+            status: ctx.fileStatus.textContent,
+            used: ctx.activeVideoFallback.used,
+            preparing: ctx.activeVideoFallback.preparing,
+            applyCount: ctx.applyCount,
+            videoSrc: ctx.fileVideo.src,
+            loadCount: ctx.fileVideo.loadCount,
+            authLost: ctx.authLost,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function useTouchFileEditorControls() {")
@@ -572,6 +618,9 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("disposePdfRender();", source)
         self.assertIn("PDF renderer timed out", source)
         self.assertIn("pdfjsReadyPromise.catch(() => {", source)
+        self.assertIn('const fileVideoPreviewBtn = el("button", {', source)
+        self.assertIn('id: "fileVideoPreviewBtn"', source)
+        self.assertIn('title: "Use compatible MP4 preview"', source)
         self.assertIn('const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });', source)
         self.assertIn('res.kind === "video"', source)
         self.assertIn("function clearFileVideo()", source)
@@ -580,13 +629,23 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("const previewUrl = typeof res.video_preview_url === \"string\" ? res.video_preview_url : \"\";", source)
         self.assertIn('const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);', source)
         self.assertIn('const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));', source)
-        self.assertIn('const usePreview = () => {', source)
+        self.assertIn('async function prepareCompatibleVideoPreview(previewUrl) {', source)
+        self.assertIn('headers: { Range: "bytes=0-0" }', source)
+        self.assertIn('if (res.status === 401) {', source)
+        self.assertIn('handleAppAuthLoss();', source)
+        self.assertIn('const obj = await res.clone().json();', source)
+        self.assertIn('if (obj && typeof obj.error === "string") detail = obj.error;', source)
+        self.assertIn('throw new Error(detail || `video preview failed (${res.status})`);', source)
+        self.assertIn('async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {})', source)
+        self.assertIn('fileVideoPreviewBtn.onclick = (e) => {', source)
+        self.assertIn('void loadCompatibleVideoPreview(token, { explicit: true });', source)
         self.assertIn('if (shouldPreviewFirst) {', source)
+        self.assertIn('void loadCompatibleVideoPreview(videoToken, { explicit: false });', source)
         self.assertIn("fileVideo.onerror = () => {", source)
-        self.assertIn("fileStatus.textContent = `${rel} - building compatible video preview...`;", source)
+        self.assertIn("fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;", source)
         self.assertIn("fileVideo.src = resolveAppUrl(state.previewUrl);", source)
         self.assertIn("fileStatus.textContent = `${rel} - compatible video preview - ${fmtBytes(size)}`;", source)
-        self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable (ffmpeg missing or conversion failed)`;", source)
+        self.assertIn("fileStatus.textContent = `${rel} - video preview unavailable after conversion`;", source)
         self.assertIn('fileVideo.style.display = "block";', source)
         self.assertIn('fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;', source)
         self.assertIn('res.kind === "download_only"', source)
@@ -598,6 +657,18 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn(".filePdfPage {", css_source)
         self.assertIn(".fileVideo {", css_source)
         self.assertIn(".fileBlockedNotice {", css_source)
+
+    def test_video_preview_failure_path_surfaces_route_error(self) -> None:
+        result = eval_video_preview_failure_path()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["status"], "clip.mkv - video preview failed: bad codec")
+        self.assertFalse(result["used"])
+        self.assertFalse(result["preparing"])
+        self.assertGreaterEqual(result["applyCount"], 2)
+        self.assertEqual(result["videoSrc"], "")
+        self.assertEqual(result["loadCount"], 0)
+        self.assertFalse(result["authLost"])
 
     def test_video_preview_uses_browser_safe_server_transcode(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")

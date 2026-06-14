@@ -2339,6 +2339,15 @@
           "aria-label": "Edit file",
           html: iconSvg("edit"),
         });
+        const fileVideoPreviewBtn = el("button", {
+          id: "fileVideoPreviewBtn",
+          class: "icon-btn",
+          type: "button",
+          title: "Use compatible MP4 preview",
+          "aria-label": "Use compatible MP4 preview",
+          html: iconSvg("play"),
+        });
+        fileVideoPreviewBtn.style.display = "none";
         const fileDownloadBtn = el("button", {
           id: "fileDownloadBtn",
           class: "icon-btn",
@@ -2426,7 +2435,7 @@
         const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
-            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileDownloadBtn, fileCloseBtn]),
+            el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileVideoPreviewBtn, fileDownloadBtn, fileCloseBtn]),
           ]),
           el("div", { class: "fileCandRow", id: "fileCandRow" }, [filePickerField]),
           fileStatus,
@@ -8511,8 +8520,63 @@
           return historyFileSelectionForSession(sid);
         }
 
+        function fileVideoPreviewErrorText(err) {
+          const raw = err && err.message ? String(err.message) : String(err || "");
+          return raw.trim() || "compatible video preview failed";
+        }
+
+        async function prepareCompatibleVideoPreview(previewUrl) {
+          const res = await fetch(resolveAppUrl(previewUrl), { headers: { Range: "bytes=0-0" } });
+          if (res.status === 401) {
+            handleAppAuthLoss();
+            throw new Error("authentication required");
+          }
+          if (!res.ok) {
+            let detail = "";
+            try {
+              const obj = await res.clone().json();
+              if (obj && typeof obj.error === "string") detail = obj.error;
+            } catch (_) {
+              try {
+                detail = await res.text();
+              } catch (_) {}
+            }
+            throw new Error(detail || `video preview failed (${res.status})`);
+          }
+          return true;
+        }
+
+        async function loadCompatibleVideoPreview(expectedToken = "", { explicit = false } = {}) {
+          const state = activeVideoFallback;
+          if (!state || (expectedToken && state.token !== expectedToken) || state.used || state.preparing) return false;
+          state.preparing = true;
+          applyFileMode();
+          const rel = state.rel || activeFilePath || "video";
+          fileStatus.textContent = explicit ? `${rel} - building compatible video preview...` : `${rel} - trying compatible video preview...`;
+          try {
+            await prepareCompatibleVideoPreview(state.previewUrl);
+            if (activeVideoFallback !== state || (expectedToken && state.token !== expectedToken)) return false;
+            state.used = true;
+            state.preparing = false;
+            applyFileMode();
+            fileStatus.textContent = `${rel} - loading compatible video preview...`;
+            fileVideo.src = resolveAppUrl(state.previewUrl);
+            fileVideo.load();
+            return true;
+          } catch (err) {
+            if (activeVideoFallback === state) {
+              state.preparing = false;
+              applyFileMode();
+              fileStatus.textContent = `${rel} - ${fileVideoPreviewErrorText(err)}`;
+            }
+            return false;
+          }
+        }
+
         function clearFileVideo() {
           activeVideoFallback = null;
+          fileVideoPreviewBtn.style.display = "none";
+          fileVideoPreviewBtn.disabled = true;
           fileVideo.onerror = null;
           fileVideo.onloadedmetadata = null;
           fileVideo.pause();
@@ -9817,6 +9881,11 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileModeDiffBtn.disabled = !diffable;
           fileModePreviewBtn.disabled = !canToggleMode;
           fileDownloadBtn.disabled = !hasPath || activeFileDraft;
+          const videoPreviewAvailable = Boolean(activeVideoFallback && activeVideoFallback.previewUrl && !activeVideoFallback.used);
+          fileVideoPreviewBtn.style.display = videoPreviewAvailable ? "" : "none";
+          fileVideoPreviewBtn.disabled = !videoPreviewAvailable || Boolean(activeVideoFallback && activeVideoFallback.preparing);
+          fileVideoPreviewBtn.title = activeVideoFallback && activeVideoFallback.preparing ? "Building compatible MP4 preview" : "Use compatible MP4 preview";
+          fileVideoPreviewBtn.setAttribute("aria-label", fileVideoPreviewBtn.title);
           fileModePreviewBtn.style.display = previewable ? "" : "none";
           if (fileViewMode !== "file") hideFilePasteDialog();
           if (fileViewMode !== "file" && fileEditMode) setFileEditMode(false);
@@ -11201,16 +11270,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 const videoToken = `${request.requestId}:${rel}:${Date.now()}`;
                 const browserSafeVideoTypes = new Set(["video/mp4", "video/webm", "video/ogg"]);
                 const shouldPreviewFirst = Boolean(previewUrl && contentType && !browserSafeVideoTypes.has(contentType));
-                activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false } : null;
-                const usePreview = () => {
-                  const state = activeVideoFallback;
-                  if (!state || state.token !== videoToken) return false;
-                  state.used = true;
-                  fileStatus.textContent = `${rel} - building compatible video preview...`;
-                  fileVideo.src = resolveAppUrl(state.previewUrl);
-                  fileVideo.load();
-                  return true;
-                };
+                activeVideoFallback = previewUrl ? { token: videoToken, previewUrl, used: false, preparing: false, rel, size } : null;
+                applyFileMode();
                 fileVideo.onerror = () => {
                   const state = activeVideoFallback;
                   if (!state || state.token !== videoToken) {
@@ -11219,12 +11280,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                   }
                   if (state.used) {
                     activeVideoFallback = null;
+                    applyFileMode();
                     fileVideo.onerror = null;
                     fileVideo.onloadedmetadata = null;
-                    fileStatus.textContent = `${rel} - video preview unavailable (ffmpeg missing or conversion failed)`;
+                    fileStatus.textContent = `${rel} - video preview unavailable after conversion`;
                     return;
                   }
-                  usePreview();
+                  void loadCompatibleVideoPreview(videoToken, { explicit: false });
                 };
                 fileVideo.onloadedmetadata = () => {
                   const state = activeVideoFallback;
@@ -11235,7 +11297,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 fileDiff.style.display = "none";
                 fileVideo.style.display = "block";
                 if (shouldPreviewFirst) {
-                  usePreview();
+                  void loadCompatibleVideoPreview(videoToken, { explicit: false });
                 } else {
                   fileVideo.src = resolveAppUrl(res.video_url);
                   fileStatus.textContent = `${rel} - video - ${fmtBytes(size)}`;
@@ -11413,6 +11475,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!activeFileEditable || !isTextFileKind(activeFileKind)) return;
           setFileEditMode(true);
         };
+        fileVideoPreviewBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const token = activeVideoFallback && activeVideoFallback.token ? activeVideoFallback.token : "";
+          void loadCompatibleVideoPreview(token, { explicit: true });
+        };
+
         fileDownloadBtn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
