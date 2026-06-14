@@ -2123,3 +2123,12 @@
   - Full local: `python3 -m pytest -q` -> `784 passed, 82 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `783 passed, 1 skipped, 82 subtests passed`.
   - Clean-room review loop found and drove fixes for overbroad stale-busy override, log-path/size race, queue sidecar refresh, pending attachment, and malformed broker state; final review -> no blockers.
+
+## 2026-06-14 08:14
+- Completed ambiguous inline file-reference UX tranche.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_markdown_tables.py`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_markdown_tables.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `52 passed`.
+  - Full local: `python3 -m pytest -q` -> `785 passed, 82 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `784 passed, 1 skipped, 82 subtests passed`.
+  - Clean-room review loop found and drove fixes for programmatic-focus query reset and ambiguity-launched create-new defaults; final review -> no blockers.

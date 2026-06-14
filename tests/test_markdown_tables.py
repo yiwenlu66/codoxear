@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
 
 def render_markdown(markdown: str) -> str:
@@ -188,6 +189,32 @@ class TestMarkdownTables(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('const resolvedPath = String(result.resolvedPath || result.inspectPath || path);', source)
         self.assertIn('"data-file-path": resolvedPath,', source)
+
+    def test_ambiguous_candidate_file_refs_open_identity_picker(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn("function replaceAmbiguousFileRefNode(node, path, line = null)", source)
+        self.assertIn('class: "inlineFileLink inlineFileAmbiguousRef"', source)
+        self.assertIn('"data-file-picker-query": query,', source)
+        self.assertIn('class: "inlineFileChoiceHint", text: "choose"', source)
+        self.assertIn("if (result && result.ambiguous) {", source)
+        self.assertIn("replaceAmbiguousFileRefNode(node, result.path || path, line);", source)
+        self.assertIn("async function openAmbiguousFileReferenceChoice(query, line = null)", source)
+        self.assertIn("await showFileViewer({ pickerQuery: rawQuery, line });", source)
+        self.assertIn('const choice = source.closest("a[data-file-picker-query]");', source)
+        self.assertIn('fileDiff.addEventListener("click", (e) => {', source)
+        self.assertIn("function filePickerSelectionLine()", source)
+        self.assertIn("let filePickerPreserveSearchOnFocus = false;", source)
+        self.assertIn("if (filePickerPreserveSearchOnFocus && filePickerSearchActive) {", source)
+        self.assertIn("openFilePickerSearchQuery(query, { line, suppressDraft: true });", source)
+        self.assertIn("function filePickerDraftSuppressed()", source)
+        self.assertIn("function filePickerAmbiguousChoiceActive()", source)
+        self.assertIn("if (filePickerAmbiguousChoiceActive()) {", source)
+        self.assertIn("const showDraft = draftPath && !filePickerDraftSuppressed();", source)
+        self.assertIn("await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(),", source)
+        self.assertIn("void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(),", source)
+        self.assertIn(".inlineFileAmbiguousRef", css)
+        self.assertIn(".inlineFileChoiceHint", css)
 
 
 if __name__ == "__main__":

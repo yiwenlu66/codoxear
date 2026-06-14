@@ -7656,6 +7656,10 @@
         let fileMenuOpen = false;
         let fileMenuFocus = -1;
         let filePickerSearchActive = false;
+        let filePickerReferenceLineQuery = "";
+        let filePickerReferenceLine = null;
+        let filePickerPreserveSearchOnFocus = false;
+        let filePickerSuppressDraftQuery = "";
         let fileSearchResults = [];
         let fileSearchLoadedQuery = "";
         let fileSearchPendingQuery = "";
@@ -9104,6 +9108,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function resetFilePickerInput() {
           filePickerSearchActive = false;
+          filePickerReferenceLineQuery = "";
+          filePickerReferenceLine = null;
+          filePickerPreserveSearchOnFocus = false;
+          filePickerSuppressDraftQuery = "";
           fileMenuFocus = -1;
           filePickerInput.value = activeFilePath || "";
           filePickerInput.removeAttribute("aria-activedescendant");
@@ -9114,6 +9122,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileMenuFocus = -1;
           if (restoreInput) resetFilePickerInput();
           applyFileMenuState();
+        }
+
+        function filePickerSelectionLine() {
+          const line = normalizeLineNumber(filePickerReferenceLine);
+          if (!line || !filePickerSearchActive) return null;
+          const query = String(filePickerInput.value || "");
+          if (query === "" || query !== filePickerReferenceLineQuery) return null;
+          return line;
+        }
+
+        function openFilePickerSearchQuery(query, { line = null, suppressDraft = false } = {}) {
+          const rawQuery = String(query ?? "");
+          if (rawQuery === "") return false;
+          filePickerSearchActive = true;
+          filePickerReferenceLineQuery = rawQuery;
+          filePickerReferenceLine = normalizeLineNumber(line);
+          filePickerSuppressDraftQuery = suppressDraft ? rawQuery : "";
+          fileMenuOpen = true;
+          fileMenuFocus = 0;
+          filePickerInput.value = rawQuery;
+          scheduleSessionFileSearch(rawQuery);
+          renderFilePickerMenu();
+          applyFileMenuState();
+          return true;
         }
 
         function setFilePath(rel, { line = null, gitPath = undefined } = {}) {
@@ -9621,7 +9653,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return [pendingSessionPathEntry(draftPath), ...entries];
         }
 
+        function filePickerDraftSuppressed() {
+          if (typeof filePickerSuppressDraftQuery === "undefined") return false;
+          const rawQuery = String(filePickerInput.value || "");
+          return Boolean(filePickerSuppressDraftQuery && rawQuery === filePickerSuppressDraftQuery);
+        }
+
+        function filePickerAmbiguousChoiceActive() {
+          return Boolean(filePickerSearchActive && filePickerDraftSuppressed());
+        }
+
         function prependDraftFileEntry(entries, query) {
+          if (filePickerDraftSuppressed()) return entries;
           const draftPath = normalizeDraftFilePath(query);
           if (draftPath && !entries.some((entry) => entry.path === draftPath)) {
             return [draftFileEntry(draftPath), ...entries];
@@ -9775,12 +9818,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const query = filePickerSearchActive ? String(filePickerInput.value || "").trim() : "";
           const draftPath = normalizeDraftFilePath(query);
           if (entries === null) {
-            if (draftPath) appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
+            const showDraft = draftPath && !filePickerDraftSuppressed();
+            if (showDraft) appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
             filePickerMenu.appendChild(el("div", { class: "pickerEmpty", text: "Searching files..." }));
-            return draftPath ? [draftFileEntry(draftPath)] : [];
+            return showDraft ? [draftFileEntry(draftPath)] : [];
           }
           if (!entries.length) {
-            if (draftPath) {
+            const showDraft = draftPath && !filePickerDraftSuppressed();
+            if (showDraft) {
               appendDraftFileMenuItem(draftPath, 0, fileMenuFocus === 0);
               filePickerInput.setAttribute("aria-activedescendant", "filePickerOption-0");
               return [draftFileEntry(draftPath)];
@@ -9836,7 +9881,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 return;
               }
               try {
-                await openFilePathWithResolvedMode(path, { line: null, changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) });
+                await openFilePathWithResolvedMode(path, { line: filePickerSelectionLine(), changed: Boolean(entry.changed), gitPath: Boolean(entry.gitPath) });
               } catch (e) {
                 fileStatus.textContent = `error: ${e && e.message ? e.message : "unable to inspect path"}`;
               }
@@ -9893,6 +9938,21 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return result;
         }
 
+        function replaceAmbiguousFileRefNode(node, path, line = null) {
+          const query = String(path ?? "");
+          if (!node || query === "") return;
+          const link = el("a", {
+            href: "#",
+            class: "inlineFileLink inlineFileAmbiguousRef",
+            "data-file-picker-query": query,
+            title: `Choose which ${query} to open`,
+          });
+          if (line) link.setAttribute("data-file-line", String(line));
+          link.appendChild(el("span", { text: node.textContent || query }));
+          link.appendChild(el("span", { class: "inlineFileChoiceHint", text: "choose" }));
+          node.replaceWith(link);
+        }
+
         async function upgradeCandidateFileRefs(root) {
           if (!root) return;
           const nodes = Array.from(root.querySelectorAll("[data-candidate-file-path]"));
@@ -9901,6 +9961,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             const line = normalizeLineNumber(node.getAttribute("data-candidate-file-line"));
             if (path === "") continue;
             const result = await inspectFileRefPath(path);
+            if (result && result.ambiguous) {
+              replaceAmbiguousFileRefNode(node, result.path || path, line);
+              continue;
+            }
             if (!result || !result.ok) continue;
             const resolvedPath = String(result.resolvedPath || result.inspectPath || path);
             const link = el("a", {
@@ -10000,7 +10064,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           renderFilePickerMenu();
         }
 
-        async function showFileViewer({ path = "", mode = "", manual = false, line = null } = {}) {
+        async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
           if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
           cancelPendingFileOpen();
           prepareModalOpen();
@@ -10022,6 +10086,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           await refreshFileCandidates({ sessionId: sid, syncToken });
           if (!isFileViewerSessionCurrent(sid, syncToken)) return;
           const explicitPath = String(path ?? "");
+          const query = String(pickerQuery ?? "");
+          if (!explicitPath && query !== "") {
+            resetFileViewerPanel();
+            activeFilePath = "";
+            activeFileGitPath = false;
+            activeFileLine = normalizeLineNumber(line);
+            fileStatus.textContent = "Choose which file to open.";
+            openFilePickerSearchQuery(query, { line, suppressDraft: true });
+            filePickerPreserveSearchOnFocus = true;
+            try {
+              filePickerInput.focus({ preventScroll: true });
+            } catch (_) {
+              filePickerInput.focus();
+            }
+            return;
+          }
           const preferredSelection = preferredFileSelectionForSession(fileViewerSessionId);
           const preferred = explicitPath || preferredSelection.path;
           const preferredLine = explicitPath ? normalizeLineNumber(line) : preferredSelection.line;
@@ -10255,6 +10335,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         };
         filePickerInput.onfocus = async () => {
           if (!(await ensureCurrentFileViewerSession())) return;
+          if (filePickerPreserveSearchOnFocus && filePickerSearchActive) {
+            filePickerPreserveSearchOnFocus = false;
+            renderFilePickerMenu();
+            fileMenuOpen = true;
+            applyFileMenuState();
+            return;
+          }
+          filePickerPreserveSearchOnFocus = false;
           resetFilePickerInput();
           renderFilePickerMenu();
           fileMenuOpen = true;
@@ -10263,6 +10351,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         filePickerInput.onclick = async (e) => {
           e.stopPropagation();
           if (!(await ensureCurrentFileViewerSession())) return;
+          if (filePickerAmbiguousChoiceActive()) {
+            renderFilePickerMenu();
+            fileMenuOpen = true;
+            applyFileMenuState();
+            return;
+          }
           resetFilePickerInput();
           renderFilePickerMenu();
           fileMenuOpen = true;
@@ -10271,11 +10365,18 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         filePickerInput.oninput = async () => {
           if (!(await ensureCurrentFileViewerSession())) return;
           filePickerSearchActive = true;
+          const rawQuery = String(filePickerInput.value || "");
+          if (rawQuery !== filePickerReferenceLineQuery) {
+            filePickerReferenceLineQuery = "";
+            filePickerReferenceLine = null;
+          }
+          if (rawQuery !== filePickerSuppressDraftQuery) filePickerSuppressDraftQuery = "";
+          filePickerPreserveSearchOnFocus = false;
+          const query = rawQuery.trim();
           fileMenuFocus = -1;
           renderFilePickerMenu();
           fileMenuOpen = true;
           applyFileMenuState();
-          const query = String(filePickerInput.value || "").trim();
           if (!query || !(fileViewerSessionId || selected)) {
             resetFileSearchState();
             fileSearchSessionId = fileViewerSessionId || selected || "";
@@ -10317,7 +10418,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               void openDraftFilePathWithGuard(active.path);
               return;
             }
-            void openFilePathWithResolvedMode(active.path, { line: null, changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) }).catch((err) => {
+            void openFilePathWithResolvedMode(active.path, { line: filePickerSelectionLine(), changed: Boolean(active.changed), gitPath: Boolean(active.gitPath) }).catch((err) => {
               fileStatus.textContent = `error: ${err && err.message ? err.message : "unable to inspect path"}`;
             });
             return;
@@ -10418,6 +10519,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         };
         $("#filePasteCancelBtn").onclick = () => hideFilePasteDialog();
         filePasteBackdrop.onclick = () => hideFilePasteDialog();
+        async function openAmbiguousFileReferenceChoice(query, line = null) {
+          const rawQuery = String(query ?? "");
+          if (rawQuery === "") return;
+          if (!selected) {
+            setToast("select a session first");
+            return;
+          }
+          await showFileViewer({ pickerQuery: rawQuery, line });
+        }
+
         async function openFileReference(ref) {
           if (!ref || typeof ref.path !== "string") return;
           const rawPath = String(ref.path ?? "");
@@ -10468,18 +10579,36 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           });
         }
 
-        chatInner.addEventListener("click", async (e) => {
-          const target = e.target instanceof Element ? e.target.closest("a[data-file-path]") : null;
-          if (!target) return;
+        async function handleInlineFileReferenceClick(e) {
+          const source = e.target instanceof Element ? e.target : null;
+          if (!source) return false;
+          const choice = source.closest("a[data-file-picker-query]");
+          if (choice) {
+            e.preventDefault();
+            const query = String(choice.getAttribute("data-file-picker-query") ?? "");
+            const line = normalizeLineNumber(choice.getAttribute("data-file-line"));
+            await openAmbiguousFileReferenceChoice(query, line);
+            return true;
+          }
+          const target = source.closest("a[data-file-path]");
+          if (!target) return false;
           e.preventDefault();
           const path = String(target.getAttribute("data-file-path") ?? "");
           const kind = String(target.getAttribute("data-file-kind") || "").trim();
           const line = normalizeLineNumber(target.getAttribute("data-file-line"));
           if (kind === "directory") {
             await confirmDirectorySession(path);
-            return;
+            return true;
           }
           await openFileReference({ path, line, literal: true });
+          return true;
+        }
+
+        chatInner.addEventListener("click", (e) => {
+          void handleInlineFileReferenceClick(e);
+        });
+        fileDiff.addEventListener("click", (e) => {
+          void handleInlineFileReferenceClick(e);
         });
         addAppEvent(document, "click", (e) => {
           const t = e.target instanceof Element ? e.target : null;
