@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `856300f refactor: extract git helper operations`
+Current HEAD: `dd75bb1 feat: copy launch settings from details`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -46,15 +46,16 @@ Recent committed recovery checkpoints include:
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
   - long-transcript per-message copy controls now use a roving active button so the accessibility/tab order has one enabled copy control instead of one repeated control per rendered message;
   - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object;
+  - Details can open a review-only New Session dialog with copied launch settings from an allowlisted diagnostics subset; Pi provider semantics use actual `model_provider`, not synthetic `provider_choice`, including providerless and sparse-metadata cases;
   - file picker search results highlight exact/fuzzy query matches using DOM text nodes and Unicode-safe folded-index mapping, without changing path identity.
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last architectural/runtime change:
+Latest code-validation evidence after the last UX launch-copy change:
 
-- Focused git extraction validation: `python3 -m py_compile codoxear/server.py codoxear/git_ops.py tests/test_git_ops.py && python3 -m pytest tests/test_git_ops.py tests/test_path_resolution.py tests/test_file_inspect.py tests/test_file_search_module_source.py tests/test_session_resume.py::TestSpawnWebSessionResume::test_create_git_worktree_creates_new_checkout tests/test_session_resume.py::TestSpawnWebSessionResume::test_spawn_web_session_uses_created_worktree_as_cwd tests/test_session_sidebar_priority.py::TestSessionSidebarPriority::test_list_sessions_reads_git_branch_outside_manager_lock -q` -> `86 passed, 52 subtests passed`.
-- Full local suite: `python3 -m pytest -q` -> `860 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `859 passed, 1 skipped, 92 subtests passed`.
+- Focused Details/New-like validation: `node --check codoxear/static/app.js` passed; `python3 -m pytest tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py tests/test_new_session_launch_request.py tests/test_overlay_accessibility_source.py tests/test_diagnostics_source.py -q` -> `44 passed`.
+- Full local suite: `python3 -m pytest -q` -> `871 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `870 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -68,6 +69,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - Clean-room critic subagent review of Details-copy diff -> no blocker findings for stale-session binding, secret-copy risk, accessibility/focus, or sparse-UI risk.
 - Clean-room critic review of file-picker highlight diff found a Unicode slicing bug; folded-index mapping plus `İfoo.py`/emoji regressions fixed it. Re-review found no blockers.
 - Clean-room architecture review of git helper extraction found detached-HEAD semantic drift; `git_ops.current_git_branch()` was corrected to preserve `HEAD`. Targeted re-review and critic review found no blockers.
+- Clean-room critic review of Details → New like this found Pi provider corruption risks in direct presets, diagnostics provider display, duplicate/recent options, remembered providerless choices, and sparse metadata. Each counterexample was fixed with regressions; final re-review found no blockers for Pi provider corruption, auto-start, focus, or sparse UI behavior.
 
 Recent isolated browser evidence:
 
@@ -91,7 +93,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 9. **Search semantics:** count is exact by default only when all records in scope were parseable under the bounded line cap; skipped oversized records make `match_count_truncated` true. Bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
 10. **Search navigation:** navigation refresh may recompute loaded DOM matches without discarding already-known all-transcript count evidence.
 11. **Modal/accessibility focus:** active dialogs must receive focus immediately; focus must not remain in inert/`aria-hidden` content; message-copy controls must not flood tab/accessibility traversal. Dialog copy actions should copy rendered/allowlisted rows rather than hidden raw response objects.
-12. **Pi launch providers:** Pi CLI/config is authority for provider names. UI defaults are hints, not an API whitelist; explicit provider/model pairs must not inherit stale bare-model reasoning constraints.
+12. **Pi launch providers:** Pi CLI/config is authority for provider names. UI defaults are hints, not an API whitelist; explicit provider/model pairs must not inherit stale bare-model reasoning constraints. Synthetic diagnostics `provider_choice` must not be treated as actual Pi provider state; providerless Pi sessions must remain providerless through copied launch presets, recent model selection, memory, parsing, and start request construction.
 13. **Minimal UI philosophy:** keep the topbar sparse; utility controls belong in contextual rails/surfaces, not a generic dumping-ground menu.
 14. **No silent fallbacks:** absence, malformed contracts, or unsupported combinations should fail loudly with recoverable UI when possible.
 
@@ -101,6 +103,7 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 - Merge/promote to `main` still requires explicit user approval.
 - Broad structural/frontend refactor is not complete; this checkpoint only defines its entry state.
+- Real-browser/manual backend exercise of the Details → New like this button remains incomplete; source/VM tests, full pytest, Docker, and critic review cover the implemented semantics.
 - Codex live response evidence remains incomplete: current work proved the real interactive TUI can be reached with the trust override, but not a full web-send/final-response path.
 - Claude Code live response evidence remains incomplete under isolated HOME because first-run theme/onboarding blocked log binding.
 - Real mobile-device, assistive-tech, slow-network, huge-transcript, and full live backend lifecycle evidence remain incomplete.

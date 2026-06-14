@@ -2500,3 +2500,11 @@
   - code blocks in markdown use ugly dark rendering;
   - markdown tables should not run over width and should wrap/stay contained.
 - Updated `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` under `User-reported issue updates, 2026-06-15` with both issues, scoped as unverified UI/readability/layout bugs requiring isolated browser validation.
+
+## 2026-06-15 02:37 — Details New-like launch preset validation
+- Implemented Details dialog "New like this" launch preset review path in `codoxear/static/app.js` with allowlisted diagnostics fields only; action opens New Session for review and does not auto-start.
+- Added/updated focused source/runtime tests in `tests/test_new_session_model_options_source.py`, `tests/test_launch_ui_source.py`, `tests/test_diagnostics_source.py`, and `tests/test_overlay_accessibility_source.py`.
+- Focused validation: `node --check codoxear/static/app.js` passed; `python3 -m pytest tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py tests/test_new_session_launch_request.py tests/test_overlay_accessibility_source.py tests/test_diagnostics_source.py -q` -> 44 passed.
+- Clean-room critic re-review after final sparse Pi provider fixes: no blockers found for Pi provider corruption, auto-start, focus, or sparse UI behavior.
+- Full validation: `python3 -m pytest -q` -> 871 passed, 92 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 870 passed, 1 skipped, 92 subtests passed.

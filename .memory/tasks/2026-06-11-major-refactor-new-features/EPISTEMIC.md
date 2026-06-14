@@ -2052,3 +2052,10 @@ Observation: User reported two markdown rendering problems: code blocks have und
 Interpretation: These are live UX/product issue reports, not yet locally verified mechanisms. Likely mechanisms include markdown CSS/theme choices for `pre`/`code` and table layout/overflow/wrapping rules in chat message rendering.
 
 Next discriminating evidence: inspect markdown renderer/CSS, create representative fenced-code and wide-table fixtures in isolated browser state, and verify whether fixes preserve readability, containment, copy behavior, and mobile layout.
+
+## 2026-06-15 02:37 — Launch preset provider semantics scoped claim
+- Observation: direct and re-reviewed VM/source tests now cover Pi sessions whose diagnostics contain synthetic/stale `provider_choice: "openai-api"` with absent `model_provider`, slash-containing bare model ids, providerless recent selections under a default provider, and sparse metadata with missing model both with and without actual `model_provider`.
+- Interpretation: The previous failures were caused by generic Codex-oriented provider helpers treating `provider_choice` as backend-agnostic truth and by modal prefill state leaking into copied Pi presets when copied metadata was sparse.
+- Intervention: Pi launch presets and recent/duplicate provider helpers now use actual `model_provider` as authoritative; providerless Pi selections carry an explicit `providerAbsent` state through display, parsing, memory, and start request construction.
+- Evidence: focused validation passed (44 tests), full local pytest passed (871 passed, 92 subtests), Docker sandbox passed (870 passed, 1 skipped, 92 subtests), and final critic review found no blocker in Pi provider corruption/auto-start/focus/sparse UI scope.
+- Scoped claim: Under the tested source/VM and pytest/Docker paths, Details → New like this opens a review-only new-session modal and does not invent Pi providers from synthetic diagnostics provider choices or inherited defaults. Remaining uncertainty: no real-browser/manual backend launch exercise of the new button has yet been performed.
