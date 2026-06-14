@@ -2042,3 +2042,6 @@ Observation: Git subprocess/pathspec/path-resolution/numstat/worktree helper log
 Intervention: Extracted pure git helpers into `codoxear/git_ops.py` and kept server-level wrappers that inject `_run_git`. Clean-room review found and corrected one semantic drift (`HEAD` branch handling), preserving the previous observable detached-head behavior.
 
 Scoped claim: Under focused git/path/file/worktree tests, clean-room architecture/critic review, full local validation, and Docker validation, git helper logic is now modularized without changing route semantics or path identity/security behavior in the tested paths.
+
+## 2026-06-15 01:51
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `856300f` and the git helper extraction. It remains a refactor-entry/handoff artifact, not merge approval.

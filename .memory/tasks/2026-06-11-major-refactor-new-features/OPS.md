@@ -2490,3 +2490,7 @@
   - Focused: `python3 -m py_compile codoxear/server.py codoxear/git_ops.py tests/test_git_ops.py && python3 -m pytest tests/test_git_ops.py tests/test_path_resolution.py tests/test_file_inspect.py tests/test_file_search_module_source.py tests/test_session_resume.py::TestSpawnWebSessionResume::test_create_git_worktree_creates_new_checkout tests/test_session_resume.py::TestSpawnWebSessionResume::test_spawn_web_session_uses_created_worktree_as_cwd tests/test_session_sidebar_priority.py::TestSessionSidebarPriority::test_list_sessions_reads_git_branch_outside_manager_lock -q` -> `86 passed, 52 subtests passed`.
   - Full local: `python3 -m pytest -q` -> `860 passed, 92 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `859 passed, 1 skipped, 92 subtests passed`.
+
+## 2026-06-15 01:51
+- Refreshed `recon/refactor-entry-checkpoint.md` after git helper extraction commit `856300f`.
+- Updated current HEAD, latest validation counts, closed architecture bullet, clean-room review evidence, and git/file identity invariant wording.

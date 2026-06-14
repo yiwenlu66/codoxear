@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `495e752 feat: highlight file picker matches`
+Current HEAD: `856300f refactor: extract git helper operations`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -34,7 +34,8 @@ Recent committed recovery checkpoints include:
   - equivalent inline refs merge only after inspected identity;
   - failed inline file inspections are not cached as durable facts;
   - file viewer modal focus restored;
-  - sessions rooted at `/` can create valid relative descendant files through `/file/write` without the prior root-prefix false rejection.
+  - sessions rooted at `/` can create valid relative descendant files through `/file/write` without the prior root-prefix false rejection;
+  - git subprocess/path/pathspec/numstat/worktree helper logic now lives in `codoxear/git_ops.py`, with server wrappers preserving private names and `_run_git` patch seams.
 - Queue/send/unattended UX:
   - unattended prompts gate on final assistant turns;
   - mobile composer stop control added;
@@ -49,11 +50,11 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last UX/runtime change:
+Latest code-validation evidence after the last architectural/runtime change:
 
-- Focused file-picker highlight validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_file_picker_search_source.py && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `45 passed`.
-- Full local suite: `python3 -m pytest -q` -> `854 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `853 passed, 1 skipped, 92 subtests passed`.
+- Focused git extraction validation: `python3 -m py_compile codoxear/server.py codoxear/git_ops.py tests/test_git_ops.py && python3 -m pytest tests/test_git_ops.py tests/test_path_resolution.py tests/test_file_inspect.py tests/test_file_search_module_source.py tests/test_session_resume.py::TestSpawnWebSessionResume::test_create_git_worktree_creates_new_checkout tests/test_session_resume.py::TestSpawnWebSessionResume::test_spawn_web_session_uses_created_worktree_as_cwd tests/test_session_sidebar_priority.py::TestSessionSidebarPriority::test_list_sessions_reads_git_branch_outside_manager_lock -q` -> `86 passed, 52 subtests passed`.
+- Full local suite: `python3 -m pytest -q` -> `860 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `859 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -66,6 +67,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - Clean-room critic subagent review of sidecar extraction diff and call sites -> no blocker findings; non-blocking source-test brittleness was reduced before commit.
 - Clean-room critic subagent review of Details-copy diff -> no blocker findings for stale-session binding, secret-copy risk, accessibility/focus, or sparse-UI risk.
 - Clean-room critic review of file-picker highlight diff found a Unicode slicing bug; folded-index mapping plus `İfoo.py`/emoji regressions fixed it. Re-review found no blockers.
+- Clean-room architecture review of git helper extraction found detached-HEAD semantic drift; `git_ops.current_git_branch()` was corrected to preserve `HEAD`. Targeted re-review and critic review found no blockers.
 
 Recent isolated browser evidence:
 
@@ -80,7 +82,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 
 1. **Send commit boundary:** HTTP `/send` success means the broker/sessiond path accepted the prompt or returned explicit unknown-commit recovery state; reads must not promote queued prompts.
 2. **Unknown commit state blocks unsafe actions:** unresolved direct/queued uncertainty blocks send, enqueue, attach, sweep, reorder, and silent destructive cleanup bypasses; recovery UI may explain/review/clear explicit markers but must not silently resume mutation paths.
-3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively. Visual highlighting may wrap displayed substrings but must preserve original path strings for titles, copy/open actions, and identity keys.
+3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively. Visual highlighting may wrap displayed substrings but must preserve original path strings for titles, copy/open actions, and identity keys. Git helper extraction must preserve literal pathspec handling and existing server wrapper/patch seams.
 4. **Inline refs:** ambiguous inline refs route through the identity-aware picker; failed/truncated project search is ambiguity, not uniqueness proof.
 5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced.
 6. **Stale busy override:** stale broker busy can be overridden only with idle log evidence, empty queue, same-log last-send barrier cleared, and a bound log.
