@@ -120,7 +120,6 @@ from .transcript_search import clip_search_text_around_query as _clip_search_tex
 from .transcript_search import iter_jsonl_records_forward_bounded as _iter_jsonl_records_forward_bounded
 from .transcript_search import iter_positioned_chat_events_forward as _iter_positioned_chat_events_forward
 from .transcript_search import search_chat_events as _search_chat_events
-from .transcript_search import search_chat_log as _search_chat_log
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
@@ -6740,18 +6739,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if s.log_path is None or (not s.log_path.exists()):
                     _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "match_count_truncated": False, "matches": []})
                     return
-                if count_max > 0:
-                    match_count, matches, match_count_truncated = _search_chat_log_bounded(
-                        s.log_path,
-                        query,
-                        limit=match_limit,
-                        before_byte=before_byte,
-                        order=order,
-                        count_limit=count_max,
-                    )
-                else:
-                    match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)
-                    match_count_truncated = False
+                match_count, matches, match_count_truncated = _search_chat_log_bounded(
+                    s.log_path,
+                    query,
+                    limit=match_limit,
+                    max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+                    before_byte=before_byte,
+                    order=order,
+                    count_limit=count_max if count_max > 0 else None,
+                )
                 matches = _attach_search_load_cursors(matches, session=s)
                 matches = MANAGER._attach_notification_texts(matches)
                 matches = _clip_search_match_text(matches, text_max, query=query)

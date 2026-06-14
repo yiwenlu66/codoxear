@@ -1985,3 +1985,10 @@ Observation: A string-prefix containment check treated `/` specially by accident
 Intervention: Replaced the prefix check with `Path.relative_to()` after resolving base and target. This keeps the existing pre-open symlink containment scope but removes the root-specific false rejection.
 
 Scoped claim: Under focused route/helper tests, full local/Docker suites, and clean-room review, sessions whose cwd is `/` can create valid relative descendant files through `/file/write` without weakening parent/symlink escape rejection under the existing pre-open containment model.
+
+## 2026-06-14 18:42
+Observation: Transcript search intentionally skips oversized JSONL records, but the API previously had no way to distinguish "no matches found after searching all records" from "no matches found among the records we were willing to parse".
+
+Intervention: Oversized skipped lines now mark `match_count_truncated` when they are inside the searched byte range. This is conservative: it means the count may be incomplete, not that a hidden match definitely exists.
+
+Scoped claim: Under focused tests, route-level tests, full local/Docker suites, and clean-room review, `/messages/search` no longer overstates exactness when bounded line reading skips oversized transcript records.

@@ -23,8 +23,9 @@ class TestRouteDecompositionSource(unittest.TestCase):
     def test_transcript_search_helpers_live_outside_server(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")
         module_source = TRANSCRIPT_SEARCH_PY.read_text(encoding="utf-8")
-        self.assertIn("from .transcript_search import search_chat_log as _search_chat_log", server_source)
+        self.assertIn("from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded", server_source)
         self.assertIn("from .transcript_search import clip_search_match_text as _clip_search_match_text", server_source)
+        self.assertIn("def search_chat_log_bounded(", module_source)
         self.assertIn("def search_chat_log(", module_source)
         self.assertIn("def clip_search_match_text(", module_source)
         self.assertNotIn("def _search_chat_log(", server_source)

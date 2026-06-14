@@ -76,6 +76,60 @@ class TestTranscriptExport(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "count_limit is only supported"):
             search_chat_log_bounded(path, "a", limit=1, max_line_bytes=4096, count_limit=5, order="latest")
 
+    def test_streaming_search_marks_count_truncated_when_oversized_record_skipped(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "x" * 200 + " needle " + "y" * 200}],
+                    "phase": "final_answer",
+                },
+                "ts": 1.0,
+            }
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+            count, matches, truncated = search_chat_log_bounded(path, "needle", limit=3, max_line_bytes=80)
+
+        self.assertEqual(count, 0)
+        self.assertEqual(matches, [])
+        self.assertTrue(truncated)
+
+    def test_streaming_search_oversized_skip_after_boundary_does_not_truncate_count(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            first = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "needle before boundary"}],
+                    "phase": "final_answer",
+                },
+                "ts": 1.0,
+            }
+            oversized = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "x" * 200 + " needle after boundary"}],
+                    "phase": "final_answer",
+                },
+                "ts": 2.0,
+            }
+            first_line = json.dumps(first) + "\n"
+            path.write_text(first_line + json.dumps(oversized) + "\n", encoding="utf-8")
+            before_oversized = len(first_line.encode("utf-8"))
+
+            count, matches, truncated = search_chat_log_bounded(path, "needle", limit=3, max_line_bytes=256, before_byte=before_oversized)
+
+        self.assertEqual(count, 1)
+        self.assertEqual([match.get("text") for match in matches], ["needle before boundary"])
+        self.assertFalse(truncated)
+
     def test_streaming_search_counts_logs_that_export_rejects(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "rollout.jsonl"
@@ -314,11 +368,12 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('"match_count": match_count', source)
         self.assertIn('order = (qs.get("order") or ["first"])[0]', source)
         self.assertIn('before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)', source)
-        self.assertIn('match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)', source)
+        self.assertIn('match_count, matches, match_count_truncated = _search_chat_log_bounded(', source)
+        self.assertIn('max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,', source)
+        self.assertIn('count_limit=count_max if count_max > 0 else None,', source)
         self.assertIn('text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)', source)
         self.assertIn('count_max, count_max_error = _parse_bounded_query_int(qs, "count_max", default=0, min_value=0, max_value=100000)', source)
         self.assertIn('if count_max > 0 and order == "latest":', source)
-        self.assertIn('match_count_truncated = False', source)
         self.assertIn('"match_count_truncated": bool(match_count_truncated)', source)
         self.assertIn('matches = _clip_search_match_text(matches, text_max, query=query)', source)
         self.assertIn('TRANSCRIPT_SEARCH_MAX_LINE_BYTES', source)
@@ -403,6 +458,55 @@ class TestTranscriptExport(unittest.TestCase):
             self.assertGreater(load_pos, match["_before_byte"])
             window_events, _next_before, _has_older = server._read_chat_history_page(log_path, before_byte=load_pos, limit=20)
             self.assertEqual(window_events[-1]["text"], text)
+
+    def test_messages_search_route_marks_truncated_when_oversized_record_skipped(self) -> None:
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "rollout.jsonl"
+            oversized = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "x" * 200 + " needle hidden by line cap"}],
+                    "phase": "final_answer",
+                },
+                "ts": 1.0,
+            }
+            log_path.write_text(json.dumps(oversized) + "\n", encoding="utf-8")
+            session = Session(
+                session_id="s1",
+                thread_id="thread-1",
+                broker_pid=1,
+                codex_pid=1,
+                agent_backend="codex",
+                owned=False,
+                start_ts=0.0,
+                cwd=str(Path(td)),
+                log_path=log_path,
+                sock_path=Path(td) / "s1.sock",
+            )
+            fake_manager = types.SimpleNamespace(
+                refresh_session_meta=lambda _sid: None,
+                get_session=lambda _sid: session,
+                _attach_notification_texts=lambda matches: matches,
+            )
+            responses = []
+            handler = server.Handler.__new__(server.Handler)
+            parsed = urllib.parse.urlparse("/api/sessions/s1/messages/search?q=needle&limit=1")
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_static_get = lambda _path: False  # type: ignore[attr-defined]
+
+            with patch.object(server, "TRANSCRIPT_SEARCH_MAX_LINE_BYTES", 80), patch.object(server, "MANAGER", fake_manager), patch.object(
+                server, "_require_auth", return_value=True
+            ), patch.object(server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))):
+                server.Handler.do_GET(handler)
+
+            self.assertEqual(len(responses), 1)
+            status, body = responses[0]
+            self.assertEqual(status, 200)
+            self.assertEqual(body["match_count"], 0)
+            self.assertEqual(body["matches"], [])
+            self.assertTrue(body["match_count_truncated"])
 
     def test_messages_search_route_can_bound_match_count(self) -> None:
         with TemporaryDirectory() as td:

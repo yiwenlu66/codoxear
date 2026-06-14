@@ -2395,3 +2395,15 @@
   - Clean-room review: `/tmp/codoxear-root-cwd-resolve-review.md` -> no blockers.
   - Full local: `python3 -m pytest -q` -> `836 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `835 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 18:42
+- Fixed transcript-search count certainty when oversized JSONL records are skipped by the bounded line reader.
+- Mechanism: `iter_jsonl_records_forward_bounded()` skipped lines over `TRANSCRIPT_SEARCH_MAX_LINE_BYTES`, but `/messages/search` default exact-count mode could still report `match_count_truncated=false`, implying all records had been searched.
+- Patch: bounded JSONL iteration now accepts an oversized-skip callback. `search_chat_log_bounded()` marks the count truncated when a skipped oversized line starts inside the searched byte range. `/messages/search` now uses `_search_chat_log_bounded()` for both exact/default and `count_max` modes, passing `TRANSCRIPT_SEARCH_MAX_LINE_BYTES` explicitly.
+- Added tests for skipped oversized matching records, boundary-scoped oversized skips, route-level `match_count_truncated`, and updated route decomposition/source guards.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/transcript_search.py codoxear/server.py tests/test_transcript_export.py && python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py -q` -> `38 passed, 4 subtests passed`.
+  - Clean-room review: `/tmp/codoxear-oversized-search-review.md` -> no blockers.
+  - Post-source-guard focused: `python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py tests/test_route_decomposition_source.py -q` -> `40 passed, 4 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `839 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `838 passed, 1 skipped, 89 subtests passed`.

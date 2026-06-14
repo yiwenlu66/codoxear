@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -97,6 +98,7 @@ def iter_jsonl_records_forward_bounded(
     log_path: Path,
     *,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+    on_oversized_skip: Callable[[int, int], None] | None = None,
 ) -> Iterator[_rollout_log.JsonlRecord]:
     limit = max(1, int(max_line_bytes))
     with log_path.open("rb") as f:
@@ -115,6 +117,8 @@ def iter_jsonl_records_forward_bounded(
                     offset += len(skipped)
                     if skipped.endswith(b"\n"):
                         break
+                if on_oversized_skip is not None:
+                    on_oversized_skip(start, offset)
                 continue
             if not raw.endswith(b"\n"):
                 break
@@ -132,10 +136,11 @@ def iter_positioned_chat_events_forward(
     log_path: Path,
     *,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+    on_oversized_skip: Callable[[int, int], None] | None = None,
 ) -> Iterator[dict[str, Any]]:
     cc_pending_tool_ids: set[str] = set()
     last_assistant_key: tuple[str, str] | None = None
-    for record in iter_jsonl_records_forward_bounded(log_path, max_line_bytes=max_line_bytes):
+    for record in iter_jsonl_records_forward_bounded(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=on_oversized_skip):
         try:
             event = _rollout_log._single_chat_event(record.obj, cc_pending_tool_ids=cc_pending_tool_ids)
         except Exception:
@@ -180,8 +185,15 @@ def search_chat_log_bounded(
         raise ValueError("count_limit is only supported with order=first")
     count = 0
     truncated = False
+    skipped_oversized = False
     matches: list[dict[str, Any]] = []
-    for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes):
+
+    def mark_oversized_skip(start: int, _end: int) -> None:
+        nonlocal skipped_oversized
+        if stop_before is None or start < stop_before:
+            skipped_oversized = True
+
+    for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes, on_oversized_skip=mark_oversized_skip):
         event_before = event.get("_before_byte")
         if stop_before is not None and isinstance(event_before, int) and event_before >= stop_before:
             break
@@ -199,7 +211,7 @@ def search_chat_log_bounded(
                 matches.pop(0)
         elif len(matches) < max_matches:
             matches.append(event)
-    return count, matches, truncated
+    return count, matches, truncated or skipped_oversized
 
 
 def search_chat_log(
