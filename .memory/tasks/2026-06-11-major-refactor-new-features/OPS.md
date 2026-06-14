@@ -2466,3 +2466,13 @@
 ## 2026-06-15 01:28
 - Refreshed `recon/refactor-entry-checkpoint.md` after Details-copy commit `0802e3f`.
 - Updated current HEAD, latest validation counts, closed UX bullet, review evidence, and modal/copy invariant wording.
+
+## 2026-06-15 01:37
+- Completed bounded UX feature: file picker result paths now highlight fuzzy/exact query matches.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_file_picker_search_source.py`.
+- Mechanism: `appendHighlightedFileMenuPath()` renders literal path text through text nodes and `<mark class="fileMenuMatch">` children; open/selection logic still uses original `entry.path` / `active.path` and existing title/identity hints. No raw path `innerHTML` is introduced.
+- Clean-room review found a Unicode slicing issue in the first implementation: indexes computed on `toLowerCase()` could diverge from original UTF-16 indexes (`İfoo.py`) and split surrogate pairs (`a😀-b.txt`). Fixed by adding folded-string-to-original-range maps and regressions for those counterexamples. Re-review found no blockers.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_file_picker_search_source.py && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `45 passed`.
+  - Full local: `python3 -m pytest -q` -> `854 passed, 92 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `853 passed, 1 skipped, 92 subtests passed`.

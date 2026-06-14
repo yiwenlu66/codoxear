@@ -1676,6 +1676,12 @@ select {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .fileMenuMatch {
+        padding: 0 1px;
+        border-radius: 3px;
+        color: inherit;
+        background: rgba(250, 204, 21, 0.42);
+      }
       .fileMenuHint {
         font-size: 12px;
         color: var(--muted);

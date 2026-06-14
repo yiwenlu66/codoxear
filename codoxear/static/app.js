@@ -9989,6 +9989,99 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           };
         }
 
+        function filePickerFoldedSearchText(text) {
+          const value = String(text || "");
+          let folded = "";
+          const startMap = [];
+          const endMap = [];
+          for (let idx = 0; idx < value.length; ) {
+            const codePoint = value.codePointAt(idx);
+            const raw = String.fromCodePoint(codePoint);
+            const nextIdx = idx + raw.length;
+            const lower = raw.toLowerCase();
+            for (let lowerIdx = 0; lowerIdx < lower.length; lowerIdx += 1) {
+              startMap.push(idx);
+              endMap.push(nextIdx);
+            }
+            folded += lower;
+            idx = nextIdx;
+          }
+          return { folded, startMap, endMap };
+        }
+
+        function filePickerOriginalRangeForFolded(mapped, start, end) {
+          const foldedStart = Math.max(0, Math.floor(Number(start) || 0));
+          const foldedEnd = Math.max(foldedStart, Math.floor(Number(end) || 0));
+          if (!mapped || foldedEnd <= foldedStart || foldedStart >= mapped.startMap.length) return null;
+          const last = Math.min(mapped.endMap.length - 1, foldedEnd - 1);
+          const originalStart = mapped.startMap[foldedStart];
+          const originalEnd = mapped.endMap[last];
+          if (!Number.isFinite(originalStart) || !Number.isFinite(originalEnd) || originalEnd <= originalStart) return null;
+          return [originalStart, originalEnd];
+        }
+
+        function filePickerMatchRanges(text, query) {
+          const mapped = filePickerFoldedSearchText(text);
+          const folded = mapped.folded;
+          const raw = filePickerFoldedSearchText(String(query || "").trim()).folded;
+          if (!raw || !folded) return [];
+          const ranges = [];
+          for (const token of raw.split(/\s+/).filter(Boolean)) {
+            const exactIdx = folded.indexOf(token);
+            if (exactIdx >= 0) {
+              const range = filePickerOriginalRangeForFolded(mapped, exactIdx, exactIdx + token.length);
+              if (range) ranges.push(range);
+              continue;
+            }
+            let pos = -1;
+            const positions = [];
+            for (const ch of token) {
+              pos = folded.indexOf(ch, pos + 1);
+              if (pos < 0) return [];
+              positions.push([pos, pos + ch.length]);
+            }
+            for (const [start, end] of positions) {
+              const range = filePickerOriginalRangeForFolded(mapped, start, end);
+              if (range) ranges.push(range);
+            }
+          }
+          ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+          const merged = [];
+          for (const [start, end] of ranges) {
+            if (!merged.length || start > merged[merged.length - 1][1]) merged.push([start, end]);
+            else merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
+          }
+          return merged;
+        }
+
+        function filePickerMatchRangesForQuery(text, query) {
+          const rawRanges = filePickerMatchRanges(text, query);
+          if (rawRanges.length) return rawRanges;
+          const normalized = normalizeDraftFilePath(query);
+          if (!normalized || normalized === String(query || "").trim()) return [];
+          return filePickerMatchRanges(text, normalized);
+        }
+
+        function appendHighlightedFileMenuPath(parent, text, query) {
+          const value = String(text || "");
+          const span = el("span", { class: "fileMenuPath" });
+          const ranges = String(query || "").trim() ? filePickerMatchRangesForQuery(value, query) : [];
+          if (!ranges.length) {
+            span.textContent = value;
+            parent.appendChild(span);
+            return span;
+          }
+          let cursor = 0;
+          for (const [start, end] of ranges) {
+            if (start > cursor) span.appendChild(document.createTextNode(value.slice(cursor, start)));
+            span.appendChild(el("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));
+            cursor = Math.max(cursor, end);
+          }
+          if (cursor < value.length) span.appendChild(document.createTextNode(value.slice(cursor)));
+          parent.appendChild(span);
+          return span;
+        }
+
         function resetFileSearchState() {
           if (fileSearchTimer) {
             clearTimeout(fileSearchTimer);
@@ -10403,17 +10496,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               title: filePickerTitle(entry, identityHint),
             });
             if (entry.createNew) {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: `Create new file: ${path}` }));
+              appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query);
               btn.appendChild(el("span", { class: "fileMenuHint", text: "Creates only when you save" }));
             } else if (entry.changed) {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
+              appendHighlightedFileMenuPath(btn, path, query);
               if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
               const stat = el("span", { class: "fileMenuStat changed" });
               stat.appendChild(el("span", { class: "fileMenuAdd", text: entry.additions == null ? "+?" : `+${entry.additions}` }));
               stat.appendChild(el("span", { class: "fileMenuDel", text: entry.deletions == null ? "-?" : `-${entry.deletions}` }));
               btn.appendChild(stat);
             } else {
-              btn.appendChild(el("span", { class: "fileMenuPath", text: path }));
+              appendHighlightedFileMenuPath(btn, path, query);
               if (identityHint) btn.appendChild(el("span", { class: "fileMenuHint fileMenuIdentity", text: identityHint }));
             }
             btn.onmousedown = (e) => e.preventDefault();

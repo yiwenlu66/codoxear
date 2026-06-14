@@ -62,6 +62,46 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_picker_match_range_helpers() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    snippet = "\n".join(
+        js_function(source, name)
+        for name in [
+            "normalizeDraftFilePath",
+            "filePickerFoldedSearchText",
+            "filePickerOriginalRangeForFolded",
+            "filePickerMatchRanges",
+            "filePickerMatchRangesForQuery",
+        ]
+    )
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{}};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        function slices(text, ranges) {{ return ranges.map(([start, end]) => text.slice(start, end)); }}
+        const turkishText = "İfoo.py";
+        const emojiText = "a😀-b.txt";
+        const turkish = ctx.filePickerMatchRangesForQuery(turkishText, "foo");
+        const emoji = ctx.filePickerMatchRangesForQuery(emojiText, "😀b");
+        process.stdout.write(JSON.stringify({{
+          exact: ctx.filePickerMatchRangesForQuery("src/foo_bar.py", "foo"),
+          fuzzy: ctx.filePickerMatchRangesForQuery("src/foo_bar.py", "fb"),
+          normalized: ctx.filePickerMatchRangesForQuery("foo.py", "./foo.py"),
+          none: ctx.filePickerMatchRangesForQuery("src/foo.py", "zz"),
+          merged: ctx.filePickerMatchRangesForQuery("src/foo.py", "src foo"),
+          turkish,
+          turkishSlices: slices(turkishText, turkish),
+          emoji,
+          emojiSlices: slices(emojiText, emoji),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_inline_file_ref_inspection_cases() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     snippet = "\n".join(
@@ -896,6 +936,31 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["createHint"], "")
         self.assertEqual(result["title"], "foo.py — git root · changed")
         self.assertEqual(result["plainTitle"], "plain.txt")
+
+    def test_file_picker_match_ranges_support_exact_fuzzy_and_normalized_queries(self) -> None:
+        result = eval_file_picker_match_range_helpers()
+        self.assertEqual(result["exact"], [[4, 7]])
+        self.assertEqual(result["fuzzy"], [[4, 5], [8, 9]])
+        self.assertEqual(result["normalized"], [[0, 6]])
+        self.assertEqual(result["none"], [])
+        self.assertEqual(result["merged"], [[0, 3], [4, 7]])
+        self.assertEqual(result["turkishSlices"], ["foo"])
+        self.assertEqual(result["emojiSlices"], ["😀", "b"])
+
+    def test_file_picker_highlights_matches_without_rewriting_path_identity(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
+        start = source.index("function appendHighlightedFileMenuPath(parent, text, query) {")
+        end = source.index("function resetFileSearchState()", start)
+        block = source[start:end]
+        self.assertIn('span.appendChild(document.createTextNode(value.slice(cursor, start)));', block)
+        self.assertIn('span.appendChild(el("mark", { class: "fileMenuMatch", text: value.slice(start, end) }));', block)
+        self.assertIn("parent.appendChild(span);", block)
+        self.assertNotIn("innerHTML", block)
+        self.assertIn("appendHighlightedFileMenuPath(btn, path, query);", source)
+        self.assertIn("appendHighlightedFileMenuPath(btn, `Create new file: ${path}`, query);", source)
+        self.assertIn("title: filePickerTitle(entry, identityHint)", source)
+        self.assertIn(".fileMenuMatch", css)
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
