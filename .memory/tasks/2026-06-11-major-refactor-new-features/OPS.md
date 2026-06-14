@@ -2195,3 +2195,12 @@
   - Clean-room review loop found and drove fixes for late `start_ts` validation, refresh trusting bad typed metadata, bool/int coercion, non-finite and overflowing timestamps, overflowing optional `updated_ts`, and directory `log_path`; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `807 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `806 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 10:17
+- Completed inline file-reference negative validation cache freshness fix.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `41 passed`.
+  - Clean-room review: no blockers; confirmed failed inspect results are no longer cached while pending singleflight and successful validation cache remain.
+  - Full local: `python3 -m pytest -q` -> `807 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `806 passed, 1 skipped, 88 subtests passed`.

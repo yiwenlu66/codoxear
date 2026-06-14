@@ -85,6 +85,7 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           searchByQuery: {{}},
           truncatedByQuery: {{}},
           failQueries: {{}},
+          inspectFailures: {{}},
           apiCalls: [],
           inspectBodies: [],
           getKnownFileRefCandidates: async () => ctx.knownCandidates,
@@ -99,6 +100,11 @@ def eval_inline_file_ref_inspection_cases() -> dict:
             }}
             if (String(url) === "/api/files/inspect") {{
               ctx.inspectBodies.push(options.body || {{}});
+              const bodyPath = options && options.body ? String(options.body.path || "") : "";
+              if ((ctx.inspectFailures[bodyPath] || 0) > 0) {{
+                ctx.inspectFailures[bodyPath] -= 1;
+                throw new Error("missing");
+              }}
               return {{ kind: "text", path: options.body.path }};
             }}
             throw new Error("unexpected api call " + url);
@@ -136,6 +142,14 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           ctx.searchByQuery["retry.py"] = ["src/retry.py"];
           const retriedSearch = await ctx.inspectFileRefPath("retry.py");
 
+          ctx.knownCandidates = [];
+          ctx.searchByQuery["late.py"] = [];
+          ctx.inspectFailures["late.py"] = 1;
+          const missingFirst = await ctx.inspectFileRefPath("late.py");
+          const inspectCallsAfterMissingFirst = ctx.inspectBodies.filter((body) => body.path === "late.py").length;
+          const missingSecond = await ctx.inspectFileRefPath("late.py");
+          const inspectCallsAfterMissingSecond = ctx.inspectBodies.filter((body) => body.path === "late.py").length;
+
           process.stdout.write(JSON.stringify({{
             knownDuplicate,
             callsAfterKnown,
@@ -145,6 +159,10 @@ def eval_inline_file_ref_inspection_cases() -> dict:
             truncatedEmpty,
             failedSearch,
             retriedSearch,
+            missingFirst,
+            missingSecond,
+            inspectCallsAfterMissingFirst,
+            inspectCallsAfterMissingSecond,
             apiCalls: ctx.apiCalls,
             inspectBodies: ctx.inspectBodies,
           }}));
@@ -636,6 +654,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertTrue(result["failedSearch"]["ambiguous"])
         self.assertTrue(result["retriedSearch"]["ok"])
         self.assertEqual(result["retriedSearch"]["inspectPath"], "src/retry.py")
+        self.assertFalse(result["missingFirst"]["ok"])
+        self.assertTrue(result["missingSecond"]["ok"])
+        self.assertEqual(result["inspectCallsAfterMissingFirst"], 1)
+        self.assertEqual(result["inspectCallsAfterMissingSecond"], 2)
         self.assertIn("/api/sessions/s1/file/search?q=bar.py&limit=80", result["apiCalls"])
         self.assertEqual(result["apiCalls"].count("/api/sessions/s1/file/search?q=retry.py&limit=80"), 2)
         self.assertIn({"session_id": "s1", "path": "src/only.py"}, result["inspectBodies"])

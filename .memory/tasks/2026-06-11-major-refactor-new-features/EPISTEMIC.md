@@ -1837,3 +1837,10 @@ Observation: Discovery already skipped malformed broker runtime state, but malfo
 Intervention: Added sidecar metadata validators used by discovery and refresh before trusting metadata: JSON object shape, non-bool integer pids, required cwd text, log-path text plus existing regular-file shape, ignored-rollout path shape, and finite/non-overflowing `start_ts`. Discovery logs/skips malformed sidecars; refresh logs/returns while preserving the existing session. Optional `updated_ts` overflow in recent-CWD bookkeeping now degrades to current time.
 
 Scoped claim: Under focused, full, Docker, and iterative clean-room review evidence, deterministic malformed sidecar metadata no longer takes down discovery/refresh or mutates an existing session with inconsistent metadata. Residual: malformed sidecars are preserved and may re-log until rewritten/removed; log-path validation remains check-then-use against local races; `_wait_for_spawned_broker_meta` has separate, narrower sidecar parsing semantics.
+
+## 2026-06-14 10:17
+Observation: `inspectFileRefPath` cached failed `/api/files/inspect` results in `fileRefValidationCache`. A file mentioned before creation could therefore remain non-clickable in later transcript rows until a full reload, even after the file existed.
+
+Intervention: Kept pending singleflight, but now only successful file-ref validation results are stored in the long-lived validation cache. Added a VM test where `late.py` fails inspection once, then succeeds on the second inspection with two POST attempts.
+
+Scoped claim: Under focused, full, Docker, and clean-room review evidence, stale failed inline file-ref inspections no longer persist for the lifetime of the page. Residual: successful empty project-search results can still remain cached until existing session-cache invalidation; permanently missing refs may generate repeated inspect attempts across repeated upgrades.

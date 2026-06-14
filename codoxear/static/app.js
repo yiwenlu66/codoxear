@@ -10010,7 +10010,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileRefValidationPending.set(key, task);
           const result = await task;
           fileRefValidationPending.delete(key);
-          fileRefValidationCache.set(key, result);
+          if (result && result.ok) fileRefValidationCache.set(key, result);
           return result;
         }
 
