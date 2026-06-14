@@ -481,9 +481,13 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn("async function renderMonacoFile(rel, text, lineNumber = null, langOverride = \"\", request = null)", source)
         self.assertIn("async function renderMonacoDiff(rel, originalText, modifiedText, lineNumber = null, request = null)", source)
         self.assertIn("if (request && !isCurrentFileOpenRequest(request)) return false;", source)
+        self.assertIn("const requestedLine = normalizeLineNumber(lineNumber);", source)
+        self.assertIn("if (requestedLine) {", source)
+        self.assertIn("applyEditorLineFocus(requestedLine);", source)
+        self.assertNotIn("applyEditorLineFocus(targetLine);", source)
         self.assertIn("renderPlainTextFallback(rel, text, lineNumber", source)
         self.assertIn("renderPlainTextFallback(rel, modifiedText, lineNumber", source)
-        self.assertIn("cancelPendingFileOpen();\n          prepareModalOpen();\n          fileBackdrop.style.display = \"block\";", source)
+        self.assertIn("cancelPendingFileOpen();\n          if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;\n          prepareModalOpen();\n          const explicitPath = String(path ?? \"\");\n          const query = String(pickerQuery ?? \"\");\n          const queryOpen = !explicitPath && query !== \"\";\n          fileBackdrop.style.display = \"block\";", source)
         self.assertIn("cancelPendingFileOpen();\n          hideFileUnsavedDialog();", source)
 
     def test_file_save_response_is_bound_to_original_session_and_path(self) -> None:

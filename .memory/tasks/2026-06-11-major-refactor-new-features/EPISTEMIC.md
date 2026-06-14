@@ -1851,3 +1851,10 @@ Observation: Web Push notification clicks already navigate/focus `#session=...`,
 Intervention: Threaded `session_id` into desktop notifications, added a click handler that prevents default, closes the notification, focuses the window, updates the session hash, and calls `selectSessionFromHash({ refreshIfMissing: true, deferIfMissing: true })`. Delayed live-summary resolution now snapshots the originating session id before async lookup.
 
 Scoped claim: Under focused, full, Docker, VM behavior, and clean-room review evidence, feed-backed desktop notifications now click through to the originating session when the app page is alive. Residual: real browser notification/focus permission behavior is not exercised by the Node VM; direct live-event desktop notification delivery appears structurally unused, with the feed remaining the canonical path.
+
+## 2026-06-14 10:48
+Observation: The file viewer was a custom dialog without the same accessibility invariants as queue/help/details/new-session: missing `aria-modal`, non-live status updates, no opener focus restoration, ambiguous-ref picker opens that could leave focus in inert app content during async refresh, unsaved changes dialog layered over a still-focusable viewer, and Monaco post-load focus stealing for ordinary opens.
+
+Intervention: Added `aria-modal`/live-status attributes, opener capture/restore for the main viewer, immediate picker focus and pre-refresh query initialization for ambiguity opens, unsaved-dialog focus/isolation/restore, and line-request-gated Monaco editor focus. Added source tests for these invariants and iterated against clean-room focus counterexamples.
+
+Scoped claim: Under focused, full, Docker, syntax, and iterative clean-room review evidence, deterministic file-viewer modal focus/accessibility regressions are constrained at the source level. Residual: actual browser/AT focus order and `inert` behavior remain unproven without Playwright/manual assistive-tech testing; `filePasteDialog` still lacks a proven open path and would need equivalent focus handling if re-enabled.

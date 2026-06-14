@@ -2213,3 +2213,12 @@
   - Clean-room review: no blockers; VM test now exercises `Notification.onclick` behavior with fake Notification/window/session selection.
   - Full local: `python3 -m pytest -q` -> `808 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `807 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 10:48
+- Completed file viewer accessibility/focus tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_overlay_accessibility_source.py`, `tests/test_file_viewer_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_overlay_accessibility_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py -q` -> `48 passed`.
+  - Syntax/full local: `node --check codoxear/static/app.js && python3 -m pytest -q` -> `809 passed, 88 subtests passed`.
+  - Clean-room review loop found and drove fixes for unsaved-dialog focus/isolation, picker-query initial focus before async refresh, picker-query input overwrite risk, and Monaco post-load focus stealing; final review -> no blockers.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `808 passed, 1 skipped, 88 subtests passed`.

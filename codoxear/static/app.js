@@ -2266,7 +2266,7 @@
           type: "button",
           html: iconSvg("x"),
         });
-        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", text: "" });
+        const fileStatus = el("div", { class: "muted fileStatus", id: "fileStatus", role: "status", "aria-live": "polite", text: "" });
         const filePickerInput = el("input", {
           id: "filePickerInput",
           class: "filePickerInput",
@@ -2393,7 +2393,7 @@
         const fileDiff = el("div", { class: "fileDiff", id: "fileDiff" });
         const fileImage = el("img", { id: "fileImage", class: "fileImage", alt: "" });
         const fileVideo = el("video", { id: "fileVideo", class: "fileVideo", controls: true, preload: "metadata" });
-        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-label": "File viewer" }, [
+        const fileViewer = el("div", { class: "fileViewer", id: "fileViewer", role: "dialog", "aria-modal": "true", "aria-label": "File viewer" }, [
           el("div", { class: "fileViewerHeader" }, [
             el("div", { class: "title", text: "View file" }),
             el("div", { class: "actions" }, [fileModeDiffBtn, fileModePreviewBtn, fileEditBtn, fileDownloadBtn, fileCloseBtn]),
@@ -2409,7 +2409,7 @@
         root.appendChild(fileViewer);
 
         const fileUnsavedBackdrop = el("div", { class: "modalBackdrop", id: "fileUnsavedBackdrop" });
-        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-label": "Unsaved file changes" }, [
+        const fileUnsavedDialog = el("div", { class: "sendChoice fileUnsavedDialog", id: "fileUnsavedDialog", role: "dialog", "aria-modal": "true", "aria-label": "Unsaved file changes" }, [
           el("div", { class: "title", text: "Unsaved changes" }),
           el("div", { class: "muted", text: "Save this file before leaving the editor?" }),
           el("div", { class: "sendChoiceActions" }, [
@@ -2430,7 +2430,7 @@
           autocomplete: "off",
           autocorrect: "off",
         });
-        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-label": "Paste into file" }, [
+        const filePasteDialog = el("div", { class: "sendChoice filePasteDialog", id: "filePasteDialog", role: "dialog", "aria-modal": "true", "aria-label": "Paste into file" }, [
           el("div", { class: "title", text: "Paste into file" }),
           el("div", { class: "muted", text: "Long-press in this box to use the browser paste menu, then insert into the editor." }),
           filePasteInput,
@@ -7706,6 +7706,7 @@
         let fileCandidateGitStateFresh = false;
         const fileCandidateCache = new Map();
         const FILE_CANDIDATE_CACHE_TTL_MS = 15000;
+        let fileViewerReturnFocusEl = null;
         let fileViewerSessionId = "";
         let fileViewerUnavailableSessionId = "";
         let activeFilePath = "";
@@ -7750,6 +7751,7 @@
         let fileSaveSeq = 0;
         let activeFileSaveToken = 0;
         let fileEditorProgrammaticChange = false;
+        let fileUnsavedReturnFocusEl = null;
         let fileUnsavedResolver = null;
         let fileOpenRequestId = 0;
         let fileOpenAbortController = null;
@@ -8680,23 +8682,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileEditorProgrammaticChange = false;
           }
           syncFileEditorReadOnly();
-          const targetLine = normalizeLineNumber(lineNumber) || 1;
+          const requestedLine = normalizeLineNumber(lineNumber);
+          const targetLine = requestedLine || 1;
           fileEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           fileEditor.setPosition({ lineNumber: targetLine, column: 1 });
           fileEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
           fileEditor.layout();
-          requestAnimationFrame(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          });
-          setTimeout(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          }, 60);
+          if (requestedLine) {
+            requestAnimationFrame(() => {
+              if (!fileEditor) return;
+              if (request && !isCurrentFileOpenRequest(request)) return;
+              fileEditor.layout();
+              applyEditorLineFocus(requestedLine);
+            });
+            setTimeout(() => {
+              if (!fileEditor) return;
+              if (request && !isCurrentFileOpenRequest(request)) return;
+              fileEditor.layout();
+              applyEditorLineFocus(requestedLine);
+            }, 60);
+          }
           updateFileTouchToolbar();
           return true;
         }
@@ -8758,25 +8763,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             lineDecorationsWidth: 0,
             lineNumbersMinChars: 3,
           });
-          const targetLine = normalizeLineNumber(lineNumber) || 1;
+          const requestedLine = normalizeLineNumber(lineNumber);
+          const targetLine = requestedLine || 1;
           originalEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           modifiedEditor.setScrollPosition({ scrollTop: 0, scrollLeft: 0 });
           originalEditor.setPosition({ lineNumber: targetLine, column: 1 });
           modifiedEditor.setPosition({ lineNumber: targetLine, column: 1 });
           modifiedEditor.revealPositionInCenter({ lineNumber: targetLine, column: 1 });
           fileEditor.layout();
-          requestAnimationFrame(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          });
-          setTimeout(() => {
-            if (!fileEditor) return;
-            if (request && !isCurrentFileOpenRequest(request)) return;
-            fileEditor.layout();
-            applyEditorLineFocus(targetLine);
-          }, 60);
+          if (requestedLine) {
+            requestAnimationFrame(() => {
+              if (!fileEditor) return;
+              if (request && !isCurrentFileOpenRequest(request)) return;
+              fileEditor.layout();
+              applyEditorLineFocus(requestedLine);
+            });
+            setTimeout(() => {
+              if (!fileEditor) return;
+              if (request && !isCurrentFileOpenRequest(request)) return;
+              fileEditor.layout();
+              applyEditorLineFocus(requestedLine);
+            }, 60);
+          }
           updateFileTouchToolbar();
           return true;
         }
@@ -8926,11 +8934,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
         function hideFileUnsavedDialog(choice = "cancel") {
           const resolve = fileUnsavedResolver;
+          const focusTarget = fileUnsavedReturnFocusEl;
           fileUnsavedResolver = null;
+          fileUnsavedReturnFocusEl = null;
           fileUnsavedBackdrop.style.display = "none";
           fileUnsavedDialog.style.display = "none";
+          fileViewer.removeAttribute("inert");
+          fileViewer.removeAttribute("aria-hidden");
           afterModalVisibilityChanged();
+          restoreModalFocus(focusTarget, () => isModalTargetOpen(fileUnsavedDialog) || !isModalTargetOpen(fileViewer));
           if (resolve) resolve(choice);
+        }
+
+        function focusFileUnsavedInitialControl() {
+          requestAnimationFrame(() => {
+            if (!isModalTargetOpen(fileUnsavedDialog)) return;
+            const saveBtn = $("#fileUnsavedSaveBtn");
+            const discardBtn = $("#fileUnsavedDiscardBtn");
+            const cancelBtn = $("#fileUnsavedCancelBtn");
+            const target = saveBtn && !saveBtn.hidden && !saveBtn.disabled ? saveBtn : discardBtn || cancelBtn;
+            if (!target || typeof target.focus !== "function") return;
+            try {
+              target.focus({ preventScroll: true });
+            } catch {}
+          });
         }
 
         function syncFileUnsavedDialogMode() {
@@ -8952,10 +8979,14 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!fileDirty) return Promise.resolve("discard");
           if (fileUnsavedResolver) return Promise.resolve("cancel");
           prepareModalOpen();
+          fileUnsavedReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           syncFileUnsavedDialogMode();
+          fileViewer.setAttribute("inert", "");
+          fileViewer.setAttribute("aria-hidden", "true");
           fileUnsavedBackdrop.style.display = "block";
           fileUnsavedDialog.style.display = "flex";
           afterModalVisibilityChanged();
+          focusFileUnsavedInitialControl();
           return new Promise((resolve) => {
             fileUnsavedResolver = resolve;
           });
@@ -10166,12 +10197,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         }
 
         async function showFileViewer({ path = "", mode = "", manual = false, line = null, pickerQuery = "" } = {}) {
-          if (isFileViewerOpen() && !(await maybeHandleUnsavedFileChanges())) return;
+          const wasOpen = isFileViewerOpen();
+          if (wasOpen && !(await maybeHandleUnsavedFileChanges())) return;
           cancelPendingFileOpen();
+          if (!wasOpen) fileViewerReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
+          const explicitPath = String(path ?? "");
+          const query = String(pickerQuery ?? "");
+          const queryOpen = !explicitPath && query !== "";
           fileBackdrop.style.display = "block";
           fileViewer.style.display = "flex";
           afterModalVisibilityChanged();
+          if (!wasOpen && queryOpen) {
+            try {
+              filePickerInput.focus({ preventScroll: true });
+            } catch (_) {
+              filePickerInput.focus();
+            }
+          } else if (!wasOpen) {
+            focusModalCloseButton(fileViewer, fileCloseBtn);
+          }
           updateFileTouchToolbar();
           rememberActiveFileSelection(fileViewerSessionId);
           const sid = String(selected || "").trim();
@@ -10184,11 +10229,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
           if (mode === "file" || mode === "diff" || mode === "preview") setFileViewMode(mode);
           else applyFileMode();
-          await refreshFileCandidates({ sessionId: sid, syncToken });
-          if (!isFileViewerSessionCurrent(sid, syncToken)) return;
-          const explicitPath = String(path ?? "");
-          const query = String(pickerQuery ?? "");
-          if (!explicitPath && query !== "") {
+          if (queryOpen) {
             resetFileViewerPanel();
             activeFilePath = "";
             activeFileGitPath = false;
@@ -10196,6 +10237,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             fileStatus.textContent = "Choose which file to open.";
             openFilePickerSearchQuery(query, { line, suppressDraft: true });
             filePickerPreserveSearchOnFocus = true;
+          }
+          await refreshFileCandidates({ sessionId: sid, syncToken });
+          if (!isFileViewerSessionCurrent(sid, syncToken)) return;
+          if (queryOpen) {
             try {
               filePickerInput.focus({ preventScroll: true });
             } catch (_) {
@@ -10234,6 +10279,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileStatus.textContent = "Type to search files.";
         }
         function hideFileViewer() {
+          const wasOpen = isModalTargetOpen(fileViewer);
+          const focusTarget = fileViewerReturnFocusEl;
+          fileViewerReturnFocusEl = null;
           fileViewerSessionSyncToken += 1;
           cancelPendingFileOpen();
           hideFileUnsavedDialog();
@@ -10250,6 +10298,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           activeFileLine = null;
           updateFileTouchToolbar();
           afterModalVisibilityChanged();
+          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(fileViewer));
         }
         function handleFileViewerSessionUnavailable(sessionId) {
           const sid = String(sessionId || "").trim();
