@@ -2144,6 +2144,63 @@ def _search_chat_events(events: list[dict[str, Any]], query: str, *, limit: int 
     return count, matches
 
 
+def _casefold_match_span(text: str, query: str) -> tuple[int, int] | None:
+    needle = query.strip().casefold()
+    if not needle:
+        return None
+    folded_parts: list[str] = []
+    folded_to_original: list[int] = []
+    for idx, ch in enumerate(text):
+        folded = ch.casefold()
+        if not folded:
+            continue
+        folded_parts.append(folded)
+        folded_to_original.extend([idx] * len(folded))
+    folded_text = "".join(folded_parts)
+    folded_idx = folded_text.find(needle)
+    if folded_idx < 0 or not folded_to_original:
+        return None
+    folded_end = min(len(folded_to_original) - 1, folded_idx + len(needle) - 1)
+    return folded_to_original[folded_idx], folded_to_original[folded_end] + 1
+
+
+def _clip_search_text_around_query(text: str, query: str, limit: int) -> tuple[str, bool]:
+    max_chars = max(0, int(limit))
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text, False
+    span = _casefold_match_span(text, query)
+    if span is not None:
+        idx, match_end = span
+        match_len = max(1, match_end - idx)
+        context = max(0, (max_chars - min(match_len, max_chars)) // 2)
+        start = max(0, idx - context)
+    else:
+        start = 0
+    end = min(len(text), start + max_chars)
+    if end - start < max_chars:
+        start = max(0, end - max_chars)
+    return text[start:end], True
+
+
+def _clip_search_match_text(matches: list[dict[str, Any]], text_max: int, *, query: str = "") -> list[dict[str, Any]]:
+    limit = max(0, int(text_max))
+    if limit <= 0:
+        return matches
+    clipped: list[dict[str, Any]] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        item = dict(match)
+        text = item.get("text")
+        if isinstance(text, str):
+            clipped_text, was_clipped = _clip_search_text_around_query(text, query, limit)
+            if was_clipped:
+                item["text"] = clipped_text
+                item["text_truncated"] = True
+        clipped.append(item)
+    return clipped
+
+
 def _iter_jsonl_records_forward_bounded(log_path: Path, *, max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES):
     limit = max(1, int(max_line_bytes))
     with log_path.open("rb") as f:
@@ -6739,6 +6796,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if limit_error is not None:
                     _json_response(self, 400, {"error": limit_error})
                     return
+                text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)
+                if text_max_error is not None:
+                    _json_response(self, 400, {"error": text_max_error})
+                    return
                 transcript = _message_transcript_identity(s)
                 if not isinstance(query, str) or not query.strip():
                     _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
@@ -6748,6 +6809,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit)
                 matches = MANAGER._attach_notification_texts(matches)
+                matches = _clip_search_match_text(matches, text_max, query=query)
                 _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "matches": matches})
                 return
 

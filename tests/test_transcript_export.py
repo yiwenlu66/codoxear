@@ -7,6 +7,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear import server
+from codoxear.server import _casefold_match_span
+from codoxear.server import _clip_search_match_text
+from codoxear.server import _clip_search_text_around_query
 from codoxear.server import _read_chat_export_events
 from codoxear.server import _search_chat_events
 from codoxear.server import _search_chat_log
@@ -191,6 +194,39 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle after oversized")
 
+    def test_search_match_text_clipping_is_opt_in_and_query_centered(self) -> None:
+        matches = [
+            {"role": "assistant", "text": "x" * 40 + "needle" + "y" * 40, "_before_byte": 1},
+            {"role": "user", "text": "xy", "_before_byte": 2},
+        ]
+
+        self.assertIs(_clip_search_match_text(matches, 0, query="needle"), matches)
+        clipped = _clip_search_match_text(matches, 18, query="needle")
+
+        self.assertLessEqual(len(clipped[0]["text"]), 18)
+        self.assertIn("needle", clipped[0]["text"])
+        self.assertFalse(clipped[0]["text"].startswith("…"))
+        self.assertFalse(clipped[0]["text"].endswith("…"))
+        self.assertTrue(clipped[0]["text_truncated"])
+        self.assertEqual(clipped[0]["_before_byte"], 1)
+        self.assertEqual(clipped[1]["text"], "xy")
+        self.assertNotIn("text_truncated", clipped[1])
+        self.assertEqual(matches[0]["text"], "x" * 40 + "needle" + "y" * 40)
+        prefix, truncated = _clip_search_text_around_query("abcdef", "missing", 3)
+        self.assertEqual(prefix, "abc")
+        self.assertTrue(truncated)
+
+    def test_search_text_clipping_maps_casefold_offsets_to_original_text(self) -> None:
+        self.assertEqual(_casefold_match_span("ß" * 4 + "needle", "needle"), (4, 10))
+        snippet, truncated = _clip_search_text_around_query("ß" * 40 + "needle" + "y" * 40, "needle", 18)
+
+        self.assertTrue(truncated)
+        self.assertIn("needle", snippet)
+        self.assertNotEqual(snippet, "y" * 18)
+        exact, exact_truncated = _clip_search_text_around_query("xxxneedlezzz", "needle", 6)
+        self.assertEqual(exact, "needle")
+        self.assertTrue(exact_truncated)
+
     def test_search_counts_all_matching_chat_events(self) -> None:
         events = [
             {"role": "user", "text": "Needle in first user turn", "_before_byte": 1},
@@ -212,6 +248,8 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('"event_count": len(events)', source)
         self.assertIn('"match_count": match_count', source)
         self.assertIn('match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit)', source)
+        self.assertIn('text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)', source)
+        self.assertIn('matches = _clip_search_match_text(matches, text_max, query=query)', source)
         self.assertIn('TRANSCRIPT_SEARCH_MAX_LINE_BYTES', source)
         self.assertIn('def _parse_bounded_query_int(', source)
         self.assertIn('_json_response(self, 400, {"error": limit_error})', source)

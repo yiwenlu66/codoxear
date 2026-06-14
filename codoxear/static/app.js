@@ -3255,6 +3255,7 @@
           const clean = String(text || "").replace(/\s+/g, " ").trim();
           const maxLen = Math.max(24, Number(limit) || 96);
           if (!clean) return "";
+          if (clean.length <= maxLen) return clean;
           const needle = String(query || "").trim().toLowerCase();
           let start = 0;
           if (needle) {
@@ -3334,7 +3335,7 @@
           const ctl = new AbortController();
           chatSearchAllAbort = ctl;
           try {
-            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1`, { signal: ctl.signal });
+            const data = await api(`/api/sessions/${sid}/messages/search?q=${encodeURIComponent(cleanQuery)}&limit=1&text_max=96`, { signal: ctl.signal });
             if (selected !== sid || reqId !== chatSearchAllRequestId || String(chatSearchQuery || "") !== cleanQuery.toLowerCase()) return;
             chatSearchAllCount = Number.isFinite(Number(data.match_count)) ? Number(data.match_count) : 0;
             const firstMatch = Array.isArray(data.matches) && data.matches.length ? data.matches[0] : null;

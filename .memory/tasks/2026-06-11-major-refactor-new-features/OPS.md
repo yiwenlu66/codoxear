@@ -2159,3 +2159,12 @@
   - Full local: `python3 -m pytest -q` -> `789 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `788 passed, 1 skipped, 88 subtests passed`.
   - Clean-room review loop found no blockers; mobile-width layout risk addressed by hiding the hint under `max-width: 520px`.
+
+## 2026-06-14 09:13
+- Completed payload-bound transcript search hint tranche.
+- Changed artifacts: `codoxear/server.py`, `codoxear/static/app.js`, `tests/test_transcript_export.py`, `tests/test_chat_navigation_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py -q` -> `33 passed, 3 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `791 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `790 passed, 1 skipped, 88 subtests passed`.
+  - Clean-room review loop found and drove fixes for prefix clipping removing the match, Unicode casefold offset expansion, and boundary-length match truncation; final review -> no blockers.

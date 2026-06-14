@@ -1807,3 +1807,12 @@ Observation: Backend transcript search now streams full-log matches and can retu
 Intervention: The loaded-chat search bar now requests one full-transcript match with the count and renders a compact `all:` role/snippet hint only when transcript matches exceed currently loaded matches. Loaded-row search, Prev/Next behavior, and older-page loading semantics remain unchanged. The hint is textContent-rendered, truncated in the existing search bar, and hidden on narrow mobile widths to preserve the input/buttons.
 
 Scoped claim: Under focused, full, Docker, and clean-room evidence, full-transcript search evidence is now surfaced as a sparse contextual hint instead of count-only metadata, without introducing a results panel or changing navigation semantics. Residual: the hint is source/test validated rather than browser-layout validated, and count requests now fetch one full matching event before client truncation.
+
+## 2026-06-14 09:13
+Observation: The chat search hint commit changed the UI count request from `limit=0` to `limit=1`, which could return the full text of a large matched event merely to render a compact hint. Client-side truncation bounded display size but not response payload size.
+
+Intervention: `/messages/search` now accepts optional `text_max`; default `0` preserves existing full-match API semantics. The UI hint request uses `limit=1&text_max=96`. When clipping is requested, match dictionaries are copied, metadata and `match_count` are preserved, and `text` is clipped around the query with `text_truncated:true` rather than prefix-clipped.
+
+Observation: Clean-room review found that prefix clipping could remove the query, casefold offsets are not original-string offsets when Unicode expands (`ß` -> `ss`), and adding ellipses inside a fixed-width snippet could overwrite boundary matches. The final implementation maps folded positions back to original indices and returns a bounded raw snippet without server-inserted ellipses; the UI leaves already bounded snippets unchanged.
+
+Scoped claim: Under focused, full, Docker, and clean-room evidence, the full-transcript search hint is response-payload bounded while still preserving the match term when it can fit in the snippet. Residual: clipping is bounded by character count rather than JSON byte count, and the server still builds/searches the full matched event text before clipping.
