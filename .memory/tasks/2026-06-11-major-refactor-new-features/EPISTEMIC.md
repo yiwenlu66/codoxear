@@ -1992,3 +1992,6 @@ Observation: Transcript search intentionally skips oversized JSONL records, but 
 Intervention: Oversized skipped lines now mark `match_count_truncated` when they are inside the searched byte range. This is conservative: it means the count may be incomplete, not that a hidden match definitely exists.
 
 Scoped claim: Under focused tests, route-level tests, full local/Docker suites, and clean-room review, `/messages/search` no longer overstates exactness when bounded line reading skips oversized transcript records.
+
+## 2026-06-14 18:43
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `da93073` and includes the two post-checkpoint reliability fixes. It remains a refactor-entry/handoff artifact, not merge approval.

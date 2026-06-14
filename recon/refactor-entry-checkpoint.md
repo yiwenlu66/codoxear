@@ -2,7 +2,7 @@
 
 Date: 2026-06-14
 Branch: `recovery/product-gaps`
-Current HEAD: `92b656e fix: rove per-message copy controls`
+Current HEAD: `da93073 fix: mark skipped transcript search records`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -15,7 +15,8 @@ Recent committed recovery checkpoints include:
   - bounded transcript search hint payloads and bounded count hints;
   - older-match search paging from unloaded transcript windows;
   - exact-by-default search-count API semantics, with bounded lower-bound UI hints;
-  - search navigation now preserves all-transcript count evidence during Next/Previous navigation so an enabled `0 loaded · N all` path can load the offscreen match.
+  - search navigation now preserves all-transcript count evidence during Next/Previous navigation so an enabled `0 loaded · N all` path can load the offscreen match;
+  - oversized JSONL records skipped by bounded transcript search now mark `match_count_truncated` instead of overstating exactness.
 - Transcript/log robustness:
   - malformed sidecars skipped fail-closed;
   - live JSONL partial reads bounded;
@@ -31,7 +32,8 @@ Recent committed recovery checkpoints include:
   - file candidates remain visible without git state;
   - equivalent inline refs merge only after inspected identity;
   - failed inline file inspections are not cached as durable facts;
-  - file viewer modal focus restored.
+  - file viewer modal focus restored;
+  - sessions rooted at `/` can create valid relative descendant files through `/file/write` without the prior root-prefix false rejection.
 - Queue/send/unattended UX:
   - unattended prompts gate on final assistant turns;
   - mobile composer stop control added;
@@ -43,17 +45,20 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last runtime/UI change:
+Latest code-validation evidence after the last runtime/search change:
 
-- Focused roving-copy validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_navigation_source.py && python3 -m pytest tests/test_chat_navigation_source.py tests/test_button_tooltips_source.py tests/test_overlay_accessibility_source.py -q` -> `19 passed`.
-- Full local suite: `python3 -m pytest -q` -> `833 passed, 89 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `832 passed, 1 skipped, 89 subtests passed`.
+- Focused oversized-search validation: `python3 -m py_compile codoxear/transcript_search.py codoxear/server.py tests/test_transcript_export.py && python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py -q` -> `38 passed, 4 subtests passed`.
+- Post-source-guard focused validation: `python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py tests/test_route_decomposition_source.py -q` -> `40 passed, 4 subtests passed`.
+- Full local suite: `python3 -m pytest -q` -> `839 passed, 89 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `838 passed, 1 skipped, 89 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
 - `/tmp/codoxear-pi-provider-ui-behavior-review2.md`
 - `/tmp/codoxear-search-navigation-count-review.md`
 - `/tmp/codoxear-roving-copy-buttons-review3.md`
+- `/tmp/codoxear-root-cwd-resolve-review.md`
+- `/tmp/codoxear-oversized-search-review.md`
 
 Recent isolated browser evidence:
 
@@ -73,7 +78,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 6. **Stale busy override:** stale broker busy can be overridden only with idle log evidence, empty queue, same-log last-send barrier cleared, and a bound log.
 7. **Sidecar discovery:** malformed sidecar metadata is skipped/logged; fresh launch metadata requires a live broker pid; stale discovery still tolerates pid placeholders where explicitly allowed.
 8. **Transcript scale:** live JSONL readers stay bounded; impossible-sized partial records may be skipped rather than repeatedly re-read unboundedly.
-9. **Search semantics:** count is exact by default; bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
+9. **Search semantics:** count is exact by default only when all records in scope were parseable under the bounded line cap; skipped oversized records make `match_count_truncated` true. Bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
 10. **Search navigation:** navigation refresh may recompute loaded DOM matches without discarding already-known all-transcript count evidence.
 11. **Modal/accessibility focus:** active dialogs must receive focus immediately; focus must not remain in inert/`aria-hidden` content; message-copy controls must not flood tab/accessibility traversal.
 12. **Pi launch providers:** Pi CLI/config is authority for provider names. UI defaults are hints, not an API whitelist; explicit provider/model pairs must not inherit stale bare-model reasoning constraints.

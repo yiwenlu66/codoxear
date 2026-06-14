@@ -2407,3 +2407,7 @@
   - Post-source-guard focused: `python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py tests/test_route_decomposition_source.py -q` -> `40 passed, 4 subtests passed`.
   - Full local: `python3 -m pytest -q` -> `839 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `838 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 18:43
+- Refreshed `recon/refactor-entry-checkpoint.md` after post-checkpoint reliability commits `892961a` and `da93073`.
+- Updated current HEAD, latest validation counts, closed gap bullets for root-cwd file creation and oversized transcript-search truncation, review artifact list, and search invariant wording.
