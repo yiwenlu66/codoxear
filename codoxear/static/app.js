@@ -9820,12 +9820,17 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const task = (async () => {
             const out = new Set();
             const s = sessionIndex.get(sid);
+            const addCandidate = (path, gitPath = false) => {
+              const rel = String(path || "");
+              if (!rel || rel === ".") return;
+              out.add(JSON.stringify({ path: rel, gitPath: Boolean(gitPath) }));
+            };
             for (const abs of listFromFilesField(s && s.files)) {
               const rel = sessionRelativePath(abs);
-              if (typeof rel === "string" && rel && rel !== ".") out.add(rel);
+              if (typeof rel === "string") addCandidate(rel, false);
             }
             for (const rel of collectMessageFileRefs()) {
-              if (rel) out.add(rel);
+              addCandidate(rel, false);
             }
             try {
               const res = await api(`/api/sessions/${sid}/git/changed_files`);
@@ -9833,10 +9838,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               for (const entry of entries) {
                 if (!entry || typeof entry.path !== "string") continue;
                 const path = entry.path;
-                if (path !== "") out.add(path);
+                if (path !== "") addCandidate(path, true);
               }
             } catch {}
-            return [...out];
+            return [...out].map((raw) => {
+              try {
+                return JSON.parse(raw);
+              } catch {
+                return null;
+              }
+            }).filter(Boolean);
           })();
           fileRefCandidateCache.set(sid, task);
           const resolved = await task;
@@ -9994,8 +10005,16 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return entries;
         }
 
-        function fileRefValidationKey(path) {
-          return `${selected || ""}|${String(path ?? "")}`;
+        function fileRefValidationKey(path, gitPath = false) {
+          return `${selected || ""}|${gitPath ? "git" : "session"}|${String(path ?? "")}`;
+        }
+
+        function normalizeFileRefCandidate(candidate) {
+          if (typeof candidate === "string") return candidate ? { path: candidate, gitPath: false } : null;
+          if (!candidate || typeof candidate !== "object") return null;
+          const path = typeof candidate.path === "string" ? candidate.path : "";
+          if (!path) return null;
+          return { path, gitPath: Boolean(candidate.gitPath) };
         }
 
         function exactBareFileRefMatches(paths, rawPath) {
@@ -10003,14 +10022,30 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const out = [];
           const seen = new Set();
           for (const candidate of Array.isArray(paths) ? paths : []) {
-            const path = typeof candidate === "string" ? candidate : "";
-            if (!path || seen.has(path)) continue;
+            const entry = normalizeFileRefCandidate(candidate);
+            if (!entry) continue;
+            const path = entry.path;
+            const key = `${entry.gitPath ? "git" : "session"}\u0000${path}`;
+            if (seen.has(key)) continue;
             const tail = path.split("/").pop() || "";
             if (tail !== target) continue;
-            seen.add(path);
-            out.push(path);
+            seen.add(key);
+            out.push(entry);
           }
           return out;
+        }
+
+        function fileRefEntriesMayReferToSamePath(entries) {
+          const normalized = (Array.isArray(entries) ? entries : []).map(normalizeFileRefCandidate).filter(Boolean);
+          for (let i = 0; i < normalized.length; i += 1) {
+            for (let j = i + 1; j < normalized.length; j += 1) {
+              const a = normalized[i];
+              const b = normalized[j];
+              if (a.gitPath === b.gitPath) continue;
+              if (a.path === b.path || a.path.endsWith(`/${b.path}`) || b.path.endsWith(`/${a.path}`)) return true;
+            }
+          }
+          return false;
         }
 
         async function searchBareFileRefCandidates(rawPath) {
@@ -10037,30 +10072,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return resolved;
         }
 
-        async function inspectFileRefPath(path) {
-          const rawPath = String(path ?? "");
-          if (rawPath === "") return { ok: false };
-          let inspectPath = rawPath;
-          if (!rawPath.includes("/") && selected) {
-            const candidates = await getKnownFileRefCandidates();
-            const matches = exactBareFileRefMatches(candidates, rawPath);
-            const searched = matches.length > 1 ? { matches: [], truncated: false } : await searchBareFileRefCandidates(rawPath);
-            const merged = exactBareFileRefMatches([...matches, ...searched.matches], rawPath);
-            if (merged.length === 1 && !searched.truncated) inspectPath = merged[0];
-            else if (merged.length > 1 || searched.truncated) return { ok: false, ambiguous: true, path: rawPath };
-          }
-          const key = fileRefValidationKey(inspectPath);
-          if (fileRefValidationCache.has(key)) return fileRefValidationCache.get(key);
+        async function inspectFileRefCandidate(entry, rawPath) {
+          const candidate = normalizeFileRefCandidate(entry) || { path: String(rawPath ?? ""), gitPath: false };
+          const inspectPath = candidate.path;
+          const key = fileRefValidationKey(inspectPath, candidate.gitPath);
+          if (fileRefValidationCache.has(key)) return { ...fileRefValidationCache.get(key), path: rawPath };
           const pending = fileRefValidationPending.get(key);
-          if (pending) return pending;
+          if (pending) {
+            const pendingResult = await pending;
+            return pendingResult && typeof pendingResult === "object" ? { ...pendingResult, path: rawPath } : pendingResult;
+          }
           const task = (async () => {
             try {
               const body = { path: inspectPath };
               if (selected) body.session_id = selected;
+              if (candidate.gitPath) body.git_path = true;
               const res = await api("/api/files/inspect", { method: "POST", body });
-              return { ok: true, path: rawPath, inspectPath, kind: res.kind, resolvedPath: res.path };
+              return { ok: true, path: rawPath, inspectPath, gitPath: candidate.gitPath, kind: res.kind, resolvedPath: res.path };
             } catch {
-              return { ok: false, path: rawPath, inspectPath };
+              return { ok: false, path: rawPath, inspectPath, gitPath: candidate.gitPath };
             }
           })();
           fileRefValidationPending.set(key, task);
@@ -10068,6 +10098,38 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileRefValidationPending.delete(key);
           if (result && result.ok) fileRefValidationCache.set(key, result);
           return result;
+        }
+
+        async function equivalentFileRefInspection(entries, rawPath) {
+          if (!fileRefEntriesMayReferToSamePath(entries)) return null;
+          const inspected = [];
+          for (const entry of entries) {
+            const result = await inspectFileRefCandidate(entry, rawPath);
+            if (!result || !result.ok || !result.resolvedPath) return null;
+            inspected.push(result);
+          }
+          const resolved = new Set(inspected.map((result) => String(result.resolvedPath || "")));
+          if (resolved.size !== 1) return null;
+          return inspected.find((result) => !result.gitPath) || inspected[0] || null;
+        }
+
+        async function inspectFileRefPath(path) {
+          const rawPath = String(path ?? "");
+          if (rawPath === "") return { ok: false };
+          let inspectEntry = { path: rawPath, gitPath: false };
+          if (!rawPath.includes("/") && selected) {
+            const candidates = await getKnownFileRefCandidates();
+            const matches = exactBareFileRefMatches(candidates, rawPath);
+            const searched = matches.length > 1 && !fileRefEntriesMayReferToSamePath(matches) ? { matches: [], truncated: false } : await searchBareFileRefCandidates(rawPath);
+            const merged = exactBareFileRefMatches([...matches, ...searched.matches], rawPath);
+            if (merged.length === 1 && !searched.truncated) inspectEntry = merged[0];
+            else if (merged.length > 1 && !searched.truncated) {
+              const equivalent = await equivalentFileRefInspection(merged, rawPath);
+              if (equivalent) return equivalent;
+              return { ok: false, ambiguous: true, path: rawPath };
+            } else if (searched.truncated) return { ok: false, ambiguous: true, path: rawPath };
+          }
+          return await inspectFileRefCandidate(inspectEntry, rawPath);
         }
 
         function replaceAmbiguousFileRefNode(node, path, line = null) {

@@ -2222,3 +2222,12 @@
   - Syntax/full local: `node --check codoxear/static/app.js && python3 -m pytest -q` -> `809 passed, 88 subtests passed`.
   - Clean-room review loop found and drove fixes for unsaved-dialog focus/isolation, picker-query initial focus before async refresh, picker-query input overwrite risk, and Monaco post-load focus stealing; final review -> no blockers.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `808 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 10:57
+- Completed inline bare-file-ref identity merge tranche for repo subdirectory sessions.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `41 passed`.
+  - Clean-room review: no blockers; confirmed git/session identity cache keys, fail-closed truncation, and same-physical-file collapse only when inspected absolute paths match.
+  - Full local: `python3 -m pytest -q` -> `809 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `808 passed, 1 skipped, 88 subtests passed`.

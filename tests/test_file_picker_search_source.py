@@ -68,8 +68,12 @@ def eval_inline_file_ref_inspection_cases() -> dict:
         js_function(source, name)
         for name in [
             "fileRefValidationKey",
+            "normalizeFileRefCandidate",
             "exactBareFileRefMatches",
+            "fileRefEntriesMayReferToSamePath",
             "searchBareFileRefCandidates",
+            "inspectFileRefCandidate",
+            "equivalentFileRefInspection",
             "inspectFileRefPath",
         ]
     )
@@ -86,6 +90,7 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           truncatedByQuery: {{}},
           failQueries: {{}},
           inspectFailures: {{}},
+          inspectResolvedPaths: {{}},
           apiCalls: [],
           inspectBodies: [],
           getKnownFileRefCandidates: async () => ctx.knownCandidates,
@@ -105,7 +110,8 @@ def eval_inline_file_ref_inspection_cases() -> dict:
                 ctx.inspectFailures[bodyPath] -= 1;
                 throw new Error("missing");
               }}
-              return {{ kind: "text", path: options.body.path }};
+              const identityKey = `${{options.body.git_path ? "git" : "session"}}:${{bodyPath}}`;
+              return {{ kind: "text", path: ctx.inspectResolvedPaths[identityKey] || options.body.path }};
             }}
             throw new Error("unexpected api call " + url);
           }},
@@ -124,6 +130,12 @@ def eval_inline_file_ref_inspection_cases() -> dict:
           ctx.knownCandidates = [];
           ctx.searchByQuery["only.py"] = ["src/only.py"];
           const searchedUnique = await ctx.inspectFileRefPath("only.py");
+
+          ctx.knownCandidates = [{{ path: "sub/a.txt", gitPath: true }}];
+          ctx.searchByQuery["a.txt"] = ["a.txt"];
+          ctx.inspectResolvedPaths["git:sub/a.txt"] = "/repo/sub/a.txt";
+          ctx.inspectResolvedPaths["session:a.txt"] = "/repo/sub/a.txt";
+          const samePhysical = await ctx.inspectFileRefPath("a.txt");
 
           ctx.knownCandidates = [];
           ctx.searchByQuery["wide.py"] = ["src/wide.py"];
@@ -155,6 +167,7 @@ def eval_inline_file_ref_inspection_cases() -> dict:
             callsAfterKnown,
             searchedDuplicate,
             searchedUnique,
+            samePhysical,
             truncatedUnique,
             truncatedEmpty,
             failedSearch,
@@ -646,6 +659,10 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertTrue(result["searchedDuplicate"]["ambiguous"])
         self.assertTrue(result["searchedUnique"]["ok"])
         self.assertEqual(result["searchedUnique"]["inspectPath"], "src/only.py")
+        self.assertTrue(result["samePhysical"]["ok"])
+        self.assertFalse(result["samePhysical"].get("ambiguous", False))
+        self.assertEqual(result["samePhysical"]["inspectPath"], "a.txt")
+        self.assertEqual(result["samePhysical"]["resolvedPath"], "/repo/sub/a.txt")
         self.assertFalse(result["truncatedUnique"]["ok"])
         self.assertTrue(result["truncatedUnique"]["ambiguous"])
         self.assertFalse(result["truncatedEmpty"]["ok"])
@@ -661,6 +678,8 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn("/api/sessions/s1/file/search?q=bar.py&limit=80", result["apiCalls"])
         self.assertEqual(result["apiCalls"].count("/api/sessions/s1/file/search?q=retry.py&limit=80"), 2)
         self.assertIn({"session_id": "s1", "path": "src/only.py"}, result["inspectBodies"])
+        self.assertIn({"session_id": "s1", "path": "sub/a.txt", "git_path": True}, result["inspectBodies"])
+        self.assertIn({"session_id": "s1", "path": "a.txt"}, result["inspectBodies"])
         self.assertIn({"session_id": "s1", "path": "src/retry.py"}, result["inspectBodies"])
 
     def test_file_picker_identity_hints_only_explain_ambiguous_resolution(self) -> None:

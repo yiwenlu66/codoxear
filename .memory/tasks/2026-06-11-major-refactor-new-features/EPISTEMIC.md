@@ -1858,3 +1858,10 @@ Observation: The file viewer was a custom dialog without the same accessibility 
 Intervention: Added `aria-modal`/live-status attributes, opener capture/restore for the main viewer, immediate picker focus and pre-refresh query initialization for ambiguity opens, unsaved-dialog focus/isolation/restore, and line-request-gated Monaco editor focus. Added source tests for these invariants and iterated against clean-room focus counterexamples.
 
 Scoped claim: Under focused, full, Docker, syntax, and iterative clean-room review evidence, deterministic file-viewer modal focus/accessibility regressions are constrained at the source level. Residual: actual browser/AT focus order and `inert` behavior remain unproven without Playwright/manual assistive-tech testing; `filePasteDialog` still lacks a proven open path and would need equivalent focus handling if re-enabled.
+
+## 2026-06-14 10:57
+Observation: Bare inline file refs could be falsely marked ambiguous when a session cwd is inside a git repo: changed-files candidates are git-root-relative (for example `sub/a.txt`) while project search from the session cwd can return `a.txt` for the same physical file.
+
+Intervention: Inline file-ref candidates now preserve git/session identity; changed-file candidates are inspected with `git_path`, validation cache keys include identity, and multiple git/session suffix-compatible bare matches are collapsed only when `/api/files/inspect` reports the same resolved absolute path for every candidate.
+
+Scoped claim: Under focused, full, Docker, and clean-room review evidence, the same physical file named by git-root and session-cwd paths no longer becomes a false inline ambiguity. Residual: unrelated same-basename files remain ambiguous unless inspection proves identity; successful inspect cache entries can still stale if files are moved/deleted later.
