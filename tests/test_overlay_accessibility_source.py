@@ -49,7 +49,7 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
         open_start = source.index("function openNewSessionDialog(")
         open_end = source.index("editPriorityRange.oninput", open_start)
         open_block = source[open_start:open_end]
-        self.assertIn("newSessionReturnFocusEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;", open_block)
+        self.assertIn("newSessionReturnFocusEl = returnFocusEl instanceof HTMLElement ? returnFocusEl : document.activeElement instanceof HTMLElement ? document.activeElement : null;", open_block)
         self.assertIn("prepareModalOpen();", open_block)
         self.assertIn("focusNewSessionInitialControl();", open_block)
         self.assertIn("function focusNewSessionInitialControl()", source)

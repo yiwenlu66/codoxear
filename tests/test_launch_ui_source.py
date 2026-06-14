@@ -10,14 +10,16 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 def eval_provider_choice_to_settings() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function normalizeAgentBackendName(value) {")
-    end = source.index("function sessionProviderChoice(s) {", start)
+    end = source.index("function fmtIdleAge", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{}};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_providerChoiceToSettings = providerChoiceToSettings;\n")}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_providerChoiceToSettings = providerChoiceToSettings;\nglobalThis.__test_sessionProviderChoice = sessionProviderChoice;\n")}, ctx);
+        const piAbsent = {{ agent_backend: "pi", model_provider: null, provider_choice: "openai-api", model: "claude" }};
+        const piActual = {{ agent_backend: "pi", model_provider: "anthropic", provider_choice: "openai-api", model: "claude" }};
         process.stdout.write(JSON.stringify({{
           codexDefault: ctx.__test_providerChoiceToSettings("", "codex"),
           codexApi: ctx.__test_providerChoiceToSettings("openai-api", "codex"),
@@ -25,6 +27,9 @@ def eval_provider_choice_to_settings() -> dict:
           piEmpty: ctx.__test_providerChoiceToSettings("", "pi"),
           piExplicit: ctx.__test_providerChoiceToSettings("macaron", "pi"),
           ccIgnored: ctx.__test_providerChoiceToSettings("macaron", "cc"),
+          piAbsentSessionProvider: ctx.__test_sessionProviderChoice(piAbsent),
+          piActualSessionProvider: ctx.__test_sessionProviderChoice(piActual),
+          piAbsentProviderSettings: ctx.__test_providerChoiceToSettings(ctx.__test_sessionProviderChoice(piAbsent), "pi"),
         }}));
         """
     )
@@ -69,3 +74,6 @@ def test_provider_choice_mapping_is_backend_specific() -> None:
     assert result["piEmpty"] == {"model_provider": None, "preferred_auth_method": None}
     assert result["piExplicit"] == {"model_provider": "macaron", "preferred_auth_method": None}
     assert result["ccIgnored"] == {"model_provider": None, "preferred_auth_method": None}
+    assert result["piAbsentSessionProvider"] == ""
+    assert result["piActualSessionProvider"] == "anthropic"
+    assert result["piAbsentProviderSettings"] == {"model_provider": None, "preferred_auth_method": None}
