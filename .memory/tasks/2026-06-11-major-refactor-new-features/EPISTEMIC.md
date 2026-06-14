@@ -1823,3 +1823,10 @@ Observation: The `text_max` search contract had helper/source coverage, but no r
 Intervention: Added runtime route tests that drive `/api/sessions/<id>/messages/search?q=needle&limit=1&text_max=18` through `Handler.do_GET` with a synthetic two-match log. The test proves `match_count` remains total (`2`) while one clipped match is returned with `needle`, `text_truncated`, `_before_byte`, and transcript identity. A separate route test proves malformed `text_max` returns `400`.
 
 Scoped claim: Under focused, full, Docker, and clean-room evidence, the response-level `text_max` contract is now constrained at the HTTP route boundary, not only by helper tests. Residual: the test patches Handler dependencies rather than running a socket-level HTTP server, so serialization/header behavior remains covered by broader route/json tests rather than this specific test.
+
+## 2026-06-14 09:36
+Observation: Transcript search logic was still embedded inside the HTTP server module even after route-level contract hardening. That made the server own low-level query matching, bounded JSONL forward iteration, chat-position restoration, assistant dedupe, and snippet clipping.
+
+Intervention: Moved the transcript-search mechanism into `codoxear/transcript_search.py` and left `server.py` as the HTTP/session boundary that validates query params, resolves sessions, attaches notification text, and delegates to imported aliases.
+
+Scoped claim: Under focused, full, Docker, and clean-room architecture evidence, this extraction reduces server responsibility without changing search route behavior or import-time `CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES` semantics. Residual: the new module still depends on private rollout-log helpers; that is deliberate because transcript search is a normalization-layer consumer, not a standalone backend-agnostic parser yet.

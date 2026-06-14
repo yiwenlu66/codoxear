@@ -7,13 +7,13 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear import server
-from codoxear.server import _casefold_match_span
-from codoxear.server import _clip_search_match_text
-from codoxear.server import _clip_search_text_around_query
 from codoxear.server import _read_chat_export_events
-from codoxear.server import _search_chat_events
-from codoxear.server import _search_chat_log
 from codoxear.server import Session
+from codoxear.transcript_search import casefold_match_span
+from codoxear.transcript_search import clip_search_match_text
+from codoxear.transcript_search import clip_search_text_around_query
+from codoxear.transcript_search import search_chat_events
+from codoxear.transcript_search import search_chat_log
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
@@ -66,7 +66,7 @@ class TestTranscriptExport(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "too large to export"):
                 _read_chat_export_events(path, max_bytes=1)
 
-            count, matches = _search_chat_log(path, "a2", limit=3, max_line_bytes=4096)
+            count, matches = search_chat_log(path, "a2", limit=3, max_line_bytes=4096)
 
         self.assertEqual(count, 6)
         self.assertEqual([match.get("text") for match in matches], ["a2", "a20", "a21"])
@@ -87,7 +87,7 @@ class TestTranscriptExport(unittest.TestCase):
             }
             path.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n", encoding="utf-8")
 
-            count, matches = _search_chat_log(path, "needle", limit=10, max_line_bytes=4096)
+            count, matches = search_chat_log(path, "needle", limit=10, max_line_bytes=4096)
 
         self.assertEqual(count, 1)
         self.assertEqual(len(matches), 1)
@@ -108,7 +108,7 @@ class TestTranscriptExport(unittest.TestCase):
             }
             path.write_text("{not-json}\n" + json.dumps(good) + "\n", encoding="utf-8")
 
-            count, matches = _search_chat_log(path, "needle", limit=5, max_line_bytes=4096)
+            count, matches = search_chat_log(path, "needle", limit=5, max_line_bytes=4096)
 
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle later")
@@ -129,7 +129,7 @@ class TestTranscriptExport(unittest.TestCase):
             }
             path.write_text(json.dumps(bad) + "\n" + json.dumps(good) + "\n", encoding="utf-8")
 
-            count, matches = _search_chat_log(path, "needle", limit=5, max_line_bytes=4096)
+            count, matches = search_chat_log(path, "needle", limit=5, max_line_bytes=4096)
 
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle after bad dict")
@@ -149,7 +149,7 @@ class TestTranscriptExport(unittest.TestCase):
             }
             path.write_text(("1" * 5000) + "\n" + json.dumps(good) + "\n", encoding="utf-8")
 
-            count, matches = _search_chat_log(path, "needle", limit=5, max_line_bytes=10000)
+            count, matches = search_chat_log(path, "needle", limit=5, max_line_bytes=10000)
 
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle after huge int")
@@ -170,7 +170,7 @@ class TestTranscriptExport(unittest.TestCase):
             nested = ("[" * 2000) + ("]" * 2000)
             path.write_text(nested + "\n" + json.dumps(good) + "\n", encoding="utf-8")
 
-            count, matches = _search_chat_log(path, "needle", limit=5, max_line_bytes=10000)
+            count, matches = search_chat_log(path, "needle", limit=5, max_line_bytes=10000)
 
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle after nested")
@@ -190,7 +190,7 @@ class TestTranscriptExport(unittest.TestCase):
             }
             path.write_bytes(b"x" * 2048 + b"\n" + (json.dumps(good) + "\n").encode("utf-8"))
 
-            count, matches = _search_chat_log(path, "needle", limit=5, max_line_bytes=1024)
+            count, matches = search_chat_log(path, "needle", limit=5, max_line_bytes=1024)
 
         self.assertEqual(count, 1)
         self.assertEqual(matches[0].get("text"), "needle after oversized")
@@ -201,8 +201,8 @@ class TestTranscriptExport(unittest.TestCase):
             {"role": "user", "text": "xy", "_before_byte": 2},
         ]
 
-        self.assertIs(_clip_search_match_text(matches, 0, query="needle"), matches)
-        clipped = _clip_search_match_text(matches, 18, query="needle")
+        self.assertIs(clip_search_match_text(matches, 0, query="needle"), matches)
+        clipped = clip_search_match_text(matches, 18, query="needle")
 
         self.assertLessEqual(len(clipped[0]["text"]), 18)
         self.assertIn("needle", clipped[0]["text"])
@@ -213,18 +213,18 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(clipped[1]["text"], "xy")
         self.assertNotIn("text_truncated", clipped[1])
         self.assertEqual(matches[0]["text"], "x" * 40 + "needle" + "y" * 40)
-        prefix, truncated = _clip_search_text_around_query("abcdef", "missing", 3)
+        prefix, truncated = clip_search_text_around_query("abcdef", "missing", 3)
         self.assertEqual(prefix, "abc")
         self.assertTrue(truncated)
 
     def test_search_text_clipping_maps_casefold_offsets_to_original_text(self) -> None:
-        self.assertEqual(_casefold_match_span("ß" * 4 + "needle", "needle"), (4, 10))
-        snippet, truncated = _clip_search_text_around_query("ß" * 40 + "needle" + "y" * 40, "needle", 18)
+        self.assertEqual(casefold_match_span("ß" * 4 + "needle", "needle"), (4, 10))
+        snippet, truncated = clip_search_text_around_query("ß" * 40 + "needle" + "y" * 40, "needle", 18)
 
         self.assertTrue(truncated)
         self.assertIn("needle", snippet)
         self.assertNotEqual(snippet, "y" * 18)
-        exact, exact_truncated = _clip_search_text_around_query("xxxneedlezzz", "needle", 6)
+        exact, exact_truncated = clip_search_text_around_query("xxxneedlezzz", "needle", 6)
         self.assertEqual(exact, "needle")
         self.assertTrue(exact_truncated)
 
@@ -236,7 +236,7 @@ class TestTranscriptExport(unittest.TestCase):
             {"role": "system", "text": "needle ignored", "_before_byte": 4},
         ]
 
-        count, matches = _search_chat_events(events, "needle", limit=1)
+        count, matches = search_chat_events(events, "needle", limit=1)
 
         self.assertEqual(count, 2)
         self.assertEqual(len(matches), 1)

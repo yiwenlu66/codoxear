@@ -2177,3 +2177,12 @@
   - Full local: `python3 -m pytest -q` -> `793 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `792 passed, 1 skipped, 88 subtests passed`.
   - Clean-room review found no blockers; strengthened the test to prove total `match_count` can exceed returned `matches` under `limit=1`.
+
+## 2026-06-14 09:36
+- Completed bounded structural extraction of transcript-search helpers from `codoxear/server.py` to `codoxear/transcript_search.py`.
+- Preserved server-local aliases for old private helper names used by route code and ad hoc private imports; updated tests to import behavior from the new module and source-test the boundary.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py codoxear/transcript_search.py && python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_chat_transcript_runtime.py tests/test_route_decomposition_source.py -q` -> `37 passed, 3 subtests passed`.
+  - Architecture clean-room review: no blockers; import graph `server -> transcript_search -> rollout_log`, no cycle; env constant semantics preserved.
+  - Full local: `python3 -m pytest -q` -> `794 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `793 passed, 1 skipped, 88 subtests passed`.
