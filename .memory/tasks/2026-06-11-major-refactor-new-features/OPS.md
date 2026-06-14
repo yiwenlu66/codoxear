@@ -2141,3 +2141,12 @@
   - Full local: `python3 -m pytest -q` -> `788 passed, 88 subtests passed`.
   - Docker sandbox: first attempt failed before tests on Docker Hub TLS metadata timeout; retry `scripts/codoxear-docker-sandbox test` -> `787 passed, 1 skipped, 88 subtests passed`.
   - Clean-room review -> no blockers.
+
+## 2026-06-14 08:38
+- Completed project-backed inline file-reference ambiguity tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_file_picker_search_source.py tests/test_markdown_tables.py tests/test_file_inspect.py -q` -> `95 passed, 52 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `789 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `788 passed, 1 skipped, 88 subtests passed`.
+  - Clean-room review loop found and drove the truncated-zero-match fix; final review -> no blockers.

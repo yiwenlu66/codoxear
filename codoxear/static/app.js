@@ -1769,6 +1769,7 @@
         const fileRefValidationCache = new Map();
         const fileRefValidationPending = new Map();
         const fileRefCandidateCache = new Map();
+        const fileRefSearchCache = new Map();
         let editDependencyMenuOpen = false;
         let newSessionCwdMenuOpen = false;
         let newSessionCwdMenuFocus = -1;
@@ -4284,6 +4285,7 @@
               if (!statusText || statusText.startsWith("Launch defaults degraded for ")) newSessionStatus.textContent = newSessionDefaultsWarningText();
             }
             fileRefCandidateCache.clear();
+            fileRefSearchCache.clear();
           }
           const swipeActions = !useDesktopSessionActions();
           const applyingDeferredSwipeRefresh = swipeRefreshDeferred && !openSwipeSessionId;
@@ -9904,18 +9906,56 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return `${selected || ""}|${String(path ?? "")}`;
         }
 
+        function exactBareFileRefMatches(paths, rawPath) {
+          const target = String(rawPath ?? "");
+          const out = [];
+          const seen = new Set();
+          for (const candidate of Array.isArray(paths) ? paths : []) {
+            const path = typeof candidate === "string" ? candidate : "";
+            if (!path || seen.has(path)) continue;
+            const tail = path.split("/").pop() || "";
+            if (tail !== target) continue;
+            seen.add(path);
+            out.push(path);
+          }
+          return out;
+        }
+
+        async function searchBareFileRefCandidates(rawPath) {
+          const sid = selected || "";
+          const query = String(rawPath ?? "");
+          if (!sid || query === "" || query.includes("/")) return { matches: [], truncated: false };
+          const key = `${sid}|${query}`;
+          if (fileRefSearchCache.has(key)) return fileRefSearchCache.get(key);
+          const task = (async () => {
+            try {
+              const res = await api(`/api/sessions/${sid}/file/search?q=${encodeURIComponent(query)}&limit=80`);
+              const paths = Array.isArray(res && res.matches)
+                ? res.matches.map((item) => item && typeof item.path === "string" ? item.path : "")
+                : [];
+              return { matches: exactBareFileRefMatches(paths, query), truncated: Boolean(res && res.truncated), failed: false };
+            } catch {
+              return { matches: [], truncated: true, failed: true };
+            }
+          })();
+          fileRefSearchCache.set(key, task);
+          const resolved = await task;
+          if (resolved && resolved.failed) fileRefSearchCache.delete(key);
+          else fileRefSearchCache.set(key, resolved);
+          return resolved;
+        }
+
         async function inspectFileRefPath(path) {
           const rawPath = String(path ?? "");
           if (rawPath === "") return { ok: false };
           let inspectPath = rawPath;
           if (!rawPath.includes("/") && selected) {
             const candidates = await getKnownFileRefCandidates();
-            const matches = candidates.filter((candidate) => {
-              const tail = String(candidate || "").split("/").pop() || "";
-              return tail === rawPath;
-            });
-            if (matches.length === 1) inspectPath = matches[0];
-            else if (matches.length > 1) return { ok: false, ambiguous: true, path: rawPath };
+            const matches = exactBareFileRefMatches(candidates, rawPath);
+            const searched = matches.length > 1 ? { matches: [], truncated: false } : await searchBareFileRefCandidates(rawPath);
+            const merged = exactBareFileRefMatches([...matches, ...searched.matches], rawPath);
+            if (merged.length === 1 && !searched.truncated) inspectPath = merged[0];
+            else if (merged.length > 1 || searched.truncated) return { ok: false, ambiguous: true, path: rawPath };
           }
           const key = fileRefValidationKey(inspectPath);
           if (fileRefValidationCache.has(key)) return fileRefValidationCache.get(key);

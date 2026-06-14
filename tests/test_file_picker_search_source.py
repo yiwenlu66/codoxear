@@ -62,6 +62,99 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_inline_file_ref_inspection_cases() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    snippet = "\n".join(
+        js_function(source, name)
+        for name in [
+            "fileRefValidationKey",
+            "exactBareFileRefMatches",
+            "searchBareFileRefCandidates",
+            "inspectFileRefPath",
+        ]
+    )
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          selected: "s1",
+          fileRefValidationCache: new Map(),
+          fileRefValidationPending: new Map(),
+          fileRefSearchCache: new Map(),
+          knownCandidates: [],
+          searchByQuery: {{}},
+          truncatedByQuery: {{}},
+          failQueries: {{}},
+          apiCalls: [],
+          inspectBodies: [],
+          getKnownFileRefCandidates: async () => ctx.knownCandidates,
+          api: async (url, options = {{}}) => {{
+            ctx.apiCalls.push(String(url));
+            if (String(url).includes("/file/search")) {{
+              const parsed = new URL(String(url), "http://localhost");
+              const query = parsed.searchParams.get("q") || "";
+              if (ctx.failQueries[query]) throw new Error("search failed");
+              const matches = (ctx.searchByQuery[query] || []).map((path) => ({{ path }}));
+              return {{ matches, truncated: Boolean(ctx.truncatedByQuery[query]) }};
+            }}
+            if (String(url) === "/api/files/inspect") {{
+              ctx.inspectBodies.push(options.body || {{}});
+              return {{ kind: "text", path: options.body.path }};
+            }}
+            throw new Error("unexpected api call " + url);
+          }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet)}, ctx);
+        (async () => {{
+          ctx.knownCandidates = ["src/foo.py", "tests/foo.py"];
+          const knownDuplicate = await ctx.inspectFileRefPath("foo.py");
+          const callsAfterKnown = ctx.apiCalls.slice();
+
+          ctx.knownCandidates = [];
+          ctx.searchByQuery["bar.py"] = ["src/bar.py", "tests/bar.py"];
+          const searchedDuplicate = await ctx.inspectFileRefPath("bar.py");
+
+          ctx.knownCandidates = [];
+          ctx.searchByQuery["only.py"] = ["src/only.py"];
+          const searchedUnique = await ctx.inspectFileRefPath("only.py");
+
+          ctx.knownCandidates = [];
+          ctx.searchByQuery["wide.py"] = ["src/wide.py"];
+          ctx.truncatedByQuery["wide.py"] = true;
+          const truncatedUnique = await ctx.inspectFileRefPath("wide.py");
+
+          ctx.knownCandidates = [];
+          ctx.searchByQuery["emptywide.py"] = [];
+          ctx.truncatedByQuery["emptywide.py"] = true;
+          const truncatedEmpty = await ctx.inspectFileRefPath("emptywide.py");
+
+          ctx.knownCandidates = [];
+          ctx.failQueries["retry.py"] = true;
+          const failedSearch = await ctx.inspectFileRefPath("retry.py");
+          ctx.failQueries["retry.py"] = false;
+          ctx.searchByQuery["retry.py"] = ["src/retry.py"];
+          const retriedSearch = await ctx.inspectFileRefPath("retry.py");
+
+          process.stdout.write(JSON.stringify({{
+            knownDuplicate,
+            callsAfterKnown,
+            searchedDuplicate,
+            searchedUnique,
+            truncatedUnique,
+            truncatedEmpty,
+            failedSearch,
+            retriedSearch,
+            apiCalls: ctx.apiCalls,
+            inspectBodies: ctx.inspectBodies,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_file_picker_identity_helpers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     snippet = "\n".join(
@@ -525,6 +618,28 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertEqual(result["freshChangedNondiffable"], "file")
         self.assertEqual(result["staleRememberedGitPath"], "file")
         self.assertEqual(result["deletedChanged"], "diff")
+
+    def test_inline_file_refs_use_project_search_when_known_candidates_are_inconclusive(self) -> None:
+        result = eval_inline_file_ref_inspection_cases()
+        self.assertFalse(result["knownDuplicate"]["ok"])
+        self.assertTrue(result["knownDuplicate"]["ambiguous"])
+        self.assertEqual(result["callsAfterKnown"], [])
+        self.assertFalse(result["searchedDuplicate"]["ok"])
+        self.assertTrue(result["searchedDuplicate"]["ambiguous"])
+        self.assertTrue(result["searchedUnique"]["ok"])
+        self.assertEqual(result["searchedUnique"]["inspectPath"], "src/only.py")
+        self.assertFalse(result["truncatedUnique"]["ok"])
+        self.assertTrue(result["truncatedUnique"]["ambiguous"])
+        self.assertFalse(result["truncatedEmpty"]["ok"])
+        self.assertTrue(result["truncatedEmpty"]["ambiguous"])
+        self.assertFalse(result["failedSearch"]["ok"])
+        self.assertTrue(result["failedSearch"]["ambiguous"])
+        self.assertTrue(result["retriedSearch"]["ok"])
+        self.assertEqual(result["retriedSearch"]["inspectPath"], "src/retry.py")
+        self.assertIn("/api/sessions/s1/file/search?q=bar.py&limit=80", result["apiCalls"])
+        self.assertEqual(result["apiCalls"].count("/api/sessions/s1/file/search?q=retry.py&limit=80"), 2)
+        self.assertIn({"session_id": "s1", "path": "src/only.py"}, result["inspectBodies"])
+        self.assertIn({"session_id": "s1", "path": "src/retry.py"}, result["inspectBodies"])
 
     def test_file_picker_identity_hints_only_explain_ambiguous_resolution(self) -> None:
         result = eval_file_picker_identity_helpers()
