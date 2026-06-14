@@ -1973,3 +1973,8 @@ Mechanism: Each rendered message created an enabled native copy button. The DOM-
 Intervention: Converted per-message copy buttons to a roving active control. Only one message copy control is enabled, tabbable, visually visible, and exposed to assistive technology at a time; hover/focus/search/user navigation/all-message keyboard navigation changes the active row. Inactive controls are disabled and pointer-inert, not merely hidden from ARIA.
 
 Scoped claim: Under source tests, full local/Docker suites, clean-room review, and isolated browser evidence, long loaded transcripts no longer flood keyboard/accessibility traversal with repeated copy controls while preserving copy access for active/navigated messages.
+
+## 2026-06-14 18:22
+Commitment: `recon/refactor-entry-checkpoint.md` is now the current branch handoff artifact for entering broad refactor work. It supersedes the historical `develop` acceptance summary for current-state reasoning but does not approve merge to `main`.
+
+Scope: The checkpoint supports starting bounded refactor tranches only if the named invariants are treated as contracts and validation remains evidence-preserving. It does not close parked Codex/Claude live-response, mobile/AT/performance, non-UTF-8 filename, symlink-race, or merge-approval gaps.

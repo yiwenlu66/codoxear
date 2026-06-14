@@ -2375,3 +2375,9 @@
   - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_navigation_source.py && python3 -m pytest tests/test_chat_navigation_source.py tests/test_button_tooltips_source.py tests/test_overlay_accessibility_source.py -q` -> `19 passed`.
   - Full local: `python3 -m pytest -q` -> `833 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `832 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 18:22
+- Created current refactor-entry checkpoint artifact: `recon/refactor-entry-checkpoint.md`.
+- Checkpoint records branch/head, closed product gaps, latest validation evidence, invariants broad refactoring must preserve, and parked limits/decisions. It explicitly states it is not merge approval and that `/home/yiwen/codex-web` on `main` was not modified or merged.
+- Clean-room review: `/tmp/codoxear-refactor-entry-checkpoint-review.md` -> no blockers. Reviewer independently verified branch/head, live checkout state, scoped live-evidence claims, and reran focused + full local tests (`19 passed`; `833 passed, 89 subtests passed`).
+- Applied reviewer precision suggestion: Pi live validation used isolated Codoxear app/session state while provider configuration came from the user's existing real Pi environment without printing secret values.
