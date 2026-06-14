@@ -1717,6 +1717,7 @@
         let chatSearchAllTimer = null;
         let chatSearchLoadingOlder = false;
         let activeMessageCopyRow = null;
+        let pendingRecoveryFocusDescriptor = null;
         let hasOlder = false;
         let renderedAtLiveTail = true;
         let loadingOlder = false;
@@ -3180,7 +3181,7 @@
         }
 
         function renderedMessageRows() {
-          return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row"));
+          return Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row"));
         }
 
         function loadedUserMessageRows() {
@@ -4066,7 +4067,7 @@
 
           for (const n of Array.from(chatInner.querySelectorAll(".day-sep"))) n.remove();
 
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row"));
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((row) => !row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row"));
           let prevRole = null;
           let prevDay = null;
           let lastDay = null;
@@ -4103,7 +4104,7 @@
         }
 
         function trimRenderedRows({ fromTop, maxRows = CHAT_DOM_WINDOW }) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
           const allowedRows = Number.isFinite(Number(maxRows))
             ? Math.max(1, Math.floor(Number(maxRows)))
             : CHAT_DOM_WINDOW;
@@ -4119,7 +4120,7 @@
         }
 
         function firstVisibleMessageRow() {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
           const viewportTop = chat.scrollTop + 1;
           for (const row of rows) {
             if ((row.offsetTop + row.offsetHeight) > viewportTop) return row;
@@ -4128,7 +4129,7 @@
         }
 
         function trimRenderedRowsBeforeViewport({ maxRows = CHAT_DOM_WINDOW } = {}) {
-          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row"));
+          const rows = Array.from(chatInner.querySelectorAll(".msg-row")).filter((x) => !x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row"));
           const allowedRows = Number.isFinite(Number(maxRows))
             ? Math.max(CHAT_DOM_WINDOW, Math.floor(Number(maxRows)))
             : CHAT_DOM_WINDOW;
@@ -4412,6 +4413,7 @@
             setToast("unknown send marker cleared");
             await refreshSessions();
             updateQueueBadge();
+            if (selected === sessionId) syncRecoveryUiForSession(sessionId);
             return true;
           } catch (e) {
             if (e && e.status === 401) {
@@ -4511,7 +4513,10 @@
                 setAttachCount(0);
                 resetChatRenderState();
               }
-              if (selected) applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+              if (selected) {
+                applySessionListTranscriptIdentity(selected, sessionIndex.get(selected));
+                syncRecoveryUiForSession(selected);
+              }
               const sidebarEntries = sidebarSessionEntries(sessions);
 		           if (swipeActions && openSwipeSessionId && sessionsWrap.childElementCount > 0) {
 		             swipeRefreshDeferred = true;
@@ -4874,6 +4879,7 @@
 	          chatInner.insertBefore(row, anchor);
             trimRenderedRows({ fromTop: stick });
           rebuildDecorations({ preserveScroll: false });
+          if (typeof renderRecoveryPanelIfNeeded === "function") renderRecoveryPanelIfNeeded(typeof selected === "undefined" ? null : selected);
             if (!ev.pending) markClickFirstPaint();
           markEventSeen(ev);
 
@@ -5134,6 +5140,7 @@
 
         function renderSessionTail(events) {
           renderTranscript(events, { preserveScroll: false });
+          renderRecoveryPanelIfNeeded(selected);
           markClickFirstPaint();
           requestAnimationFrame(() => {
             scrollToBottom();
@@ -5141,11 +5148,160 @@
           });
         }
 
+        function recoverySessionInfo(sessionId) {
+          const s = sessionIndex.get(sessionId);
+          if (!s || (!s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;
+          return s;
+        }
+
+        function recoveryPromptPreview(text, maxLen = 320) {
+          const raw = String(text || "").replace(/\s+/g, " ").trim();
+          if (!raw) return "";
+          return raw.length > maxLen ? `${raw.slice(0, maxLen)}…` : raw;
+        }
+
+        function recoveryDetailsText(sessionId, s) {
+          const lines = [
+            "Codoxear recovery details",
+            `Session: ${sessionId}`,
+          ];
+          if (s && s.cwd) lines.push(`cwd: ${s.cwd}`);
+          if (s && s.orphan_recovery) lines.push("state: missing session/orphan recovery");
+          if (s && s.queue_recovery) lines.push("state: queued recovery items present");
+          if (s && s.commit_unknown_send) lines.push("state: direct send commit unknown");
+          const qn = s && Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+          if (qn > 0) lines.push(`queued recovery items: ${qn}`);
+          const preview = recoveryPromptPreview(s && s.commit_unknown_send_text ? s.commit_unknown_send_text : "", 2000);
+          if (preview) lines.push("", "Unknown-send prompt:", preview);
+          return lines.join("\n");
+        }
+
+        function focusedRecoveryActionDescriptor(sessionId) {
+          const active = document.activeElement;
+          const button = active && typeof active.closest === "function" ? active.closest(".recovery-panel-row button") : null;
+          if (!button) return pendingRecoveryFocusDescriptor && pendingRecoveryFocusDescriptor.sessionId === sessionId ? pendingRecoveryFocusDescriptor : null;
+          return {
+            sessionId,
+            text: String(button.textContent || "").trim(),
+            title: String(button.getAttribute("title") || ""),
+          };
+        }
+
+        function focusRecoveryAction(row, descriptor) {
+          if (!row || !descriptor) return false;
+          const buttons = Array.from(row.querySelectorAll("button"));
+          const target = buttons.find((btn) => String(btn.textContent || "").trim() === descriptor.text && String(btn.getAttribute("title") || "") === descriptor.title) || null;
+          if (!target || target.disabled) return false;
+          pendingRecoveryFocusDescriptor = descriptor;
+          requestAnimationFrame(() => {
+            try {
+              if (target.isConnected && !target.disabled) {
+                target.focus({ preventScroll: true });
+                pendingRecoveryFocusDescriptor = null;
+              }
+            } catch {}
+          });
+          return true;
+        }
+
+        function focusRecoveryFallback(descriptor) {
+          if (!descriptor) return;
+          const fallback = document.querySelector(".recovery-panel .icon-btn") || queueBtn || null;
+          if (!fallback || typeof fallback.focus !== "function" || fallback.disabled) {
+            pendingRecoveryFocusDescriptor = null;
+            return;
+          }
+          pendingRecoveryFocusDescriptor = descriptor;
+          requestAnimationFrame(() => {
+            try {
+              if (fallback.isConnected && !fallback.disabled) {
+                fallback.focus({ preventScroll: true });
+                pendingRecoveryFocusDescriptor = null;
+              }
+            } catch {}
+          });
+        }
+
+        function renderRecoveryPanelIfNeeded(sessionId) {
+          const focusDescriptor = focusedRecoveryActionDescriptor(sessionId);
+          for (const row of Array.from(chatInner.querySelectorAll(".recovery-panel-row"))) row.remove();
+          const s = recoverySessionInfo(sessionId);
+          if (!s) {
+            focusRecoveryFallback(focusDescriptor);
+            return false;
+          }
+          const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+          const row = el("div", { class: "msg-row assistant recovery-panel-row" });
+          row.dataset.role = "assistant";
+          const bubble = el("div", { class: "msg assistant recovery-panel", role: "group", "aria-label": "Recovery needed" });
+          bubble.appendChild(el("div", { class: "recoveryPanelTitle", text: "Recovery needed" }));
+          const list = el("ul", { class: "recoveryPanelList" });
+          if (s.orphan_recovery) list.appendChild(el("li", { text: "The original session is missing; preserved prompts can be reviewed here before you decide what to discard." }));
+          if (s.commit_unknown_send) list.appendChild(el("li", { text: "A direct send may or may not have reached the terminal. Check the transcript or terminal before clearing the marker." }));
+          if (s.queue_recovery || queueLen > 0) list.appendChild(el("li", { text: `${queueLen || "Some"} queued recovery item${queueLen === 1 ? "" : "s"} preserved for review.` }));
+          bubble.appendChild(list);
+          const preview = recoveryPromptPreview(s.commit_unknown_send_text || "");
+          if (preview) bubble.appendChild(el("pre", { class: "recoveryPanelPreview", text: preview }));
+          const actions = el("div", { class: "recoveryPanelActions" });
+          if (queueLen > 0) {
+            const queueAction = el("button", { class: "icon-btn text-btn", type: "button", text: "Review queue", title: "Review preserved queued recovery items" });
+            queueAction.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              showQueueViewer({ opener: e.currentTarget });
+            };
+            actions.appendChild(queueAction);
+          }
+          if (s.commit_unknown_send) {
+            const clearAction = el("button", { class: "icon-btn text-btn danger", type: "button", text: "Clear unknown marker", title: "Clear only after checking transcript or terminal" });
+            clearAction.onclick = async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");
+            };
+            actions.appendChild(clearAction);
+          }
+          const copyAction = el("button", { class: "icon-btn text-btn", type: "button", text: "Copy details", title: "Copy recovery details" });
+          copyAction.onclick = async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+              await copyToClipboard(recoveryDetailsText(sessionId, s));
+              setToast("Copied recovery details");
+            } catch (err) {
+              setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+            }
+          };
+          actions.appendChild(copyAction);
+          bubble.appendChild(actions);
+          row.appendChild(bubble);
+          const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;
+          chatInner.insertBefore(row, anchor);
+          if (focusDescriptor && !focusRecoveryAction(row, focusDescriptor)) focusRecoveryFallback(focusDescriptor);
+          return true;
+        }
+
+        function syncRecoveryUiForSession(sessionId) {
+          if (selected !== sessionId) return;
+          const s = sessionIndex.get(sessionId) || null;
+          if (s) {
+            const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+            setStatus({ running: currentRunning, queueLen });
+          }
+          renderRecoveryPanelIfNeeded(sessionId);
+          syncAttachButtonState();
+          syncQueueSubmitState();
+          syncSendButtonState();
+          updateUnattendedBtnState();
+          updateQueueBadge();
+        }
+
         function renderPendingTranscriptSlot(sessionId) {
           clearTranscriptDom();
           setOlderState({ hasMore: false, isLoading: false });
           renderedAtLiveTail = true;
           restorePendingUserRowsForSession(sessionId);
+          renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
           syncJumpButton();
         }
@@ -5193,6 +5349,7 @@
           chatInner.insertBefore(row, bottomSentinel);
           turnOpen = false;
           setTyping(false);
+          renderRecoveryPanelIfNeeded(sessionId);
           markClickFirstPaint();
           syncJumpButton();
         }
@@ -11398,6 +11555,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             kickPoll(0);
             await refreshSessions();
             updateQueueBadge();
+            syncRecoveryUiForSession(sessionId);
             if (queueViewer.style.display === "flex" && (queueViewerSid || selected) === sessionId) {
               await refreshQueueViewer();
             }
@@ -11450,6 +11608,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             await api(`/api/sessions/${sid}/queue/delete`, { method: "POST", body: { id: key, allow_commit_unknown: commitUnknown, allow_orphan_recovery: orphanRecovery } });
             await refreshSessions();
             updateQueueBadge();
+            syncRecoveryUiForSession(sid);
             if (queueViewer.style.display === "flex") {
               const refreshedSession = sessionIndex.get(sid);
               if (refreshedSession && Number(refreshedSession.queue_len || 0) > 0) await refreshQueueViewer();
@@ -11480,6 +11639,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             await refreshQueueViewer();
             await refreshSessions();
             updateQueueBadge();
+            syncRecoveryUiForSession(sid);
           } catch (e) {
             if (e && e.status === 401) {
               handleAppAuthLoss();
@@ -11519,6 +11679,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               await refreshSessions();
               if (appDisposed) return;
               updateQueueBadge();
+              syncRecoveryUiForSession(sid);
             } catch (e) {
               if (appDisposed) return;
               if (e && e.status === 401) {
@@ -11680,7 +11841,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           queueViewerSid = null;
           queueViewerItems = [];
           afterModalVisibilityChanged();
-          if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(queueViewer));
+          if (wasOpen) {
+            const fallback = document.querySelector(".recovery-panel .icon-btn") || queueBtn || null;
+            restoreModalFocus(focusTarget && focusTarget.isConnected ? focusTarget : fallback, () => isModalTargetOpen(queueViewer));
+          }
         }
 
         function showHelpViewer({ opener = null } = {}) {
@@ -12487,6 +12651,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 turnOpen = false;
                 currentRunning = false;
               }
+              if (commitUnknown) syncRecoveryUiForSession(sessionId);
             }
             return false;
           } finally {

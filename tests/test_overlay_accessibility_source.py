@@ -140,7 +140,11 @@ class TestOverlayAccessibilitySource(unittest.TestCase):
             self.assertIn(f"const wasOpen = isModalTargetOpen({lower}Viewer);", hide_block)
             self.assertIn(f"const focusTarget = {lower}ReturnFocusEl;", hide_block)
             self.assertIn(f"{lower}ReturnFocusEl = null;", hide_block)
-            self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
+            if name == "Queue":
+                self.assertIn('const fallback = document.querySelector(".recovery-panel .icon-btn") || queueBtn || null;', hide_block)
+                self.assertIn("restoreModalFocus(focusTarget && focusTarget.isConnected ? focusTarget : fallback, () => isModalTargetOpen(queueViewer));", hide_block)
+            else:
+                self.assertIn(f"restoreModalFocus(focusTarget, () => isModalTargetOpen({lower}Viewer));", hide_block)
         self.assertIn("showQueueViewer({ opener: e.currentTarget });", source)
         self.assertIn("showHelpViewer({ opener: e.currentTarget });", source)
         self.assertIn("showDiagViewer({ opener: e.currentTarget });", source)

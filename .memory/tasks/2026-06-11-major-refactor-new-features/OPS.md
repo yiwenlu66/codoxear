@@ -2411,3 +2411,26 @@
 ## 2026-06-14 18:43
 - Refreshed `recon/refactor-entry-checkpoint.md` after post-checkpoint reliability commits `892961a` and `da93073`.
 - Updated current HEAD, latest validation counts, closed gap bullets for root-cwd file creation and oversized transcript-search truncation, review artifact list, and search invariant wording.
+
+## 2026-06-14 19:27
+- Completed in-chat recovery panel UX tranche.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_chat_scrollback_source.py`, `tests/test_overlay_accessibility_source.py`.
+- Mechanism fixed: orphan/queue/unknown recovery rows were discoverable in the sidebar but could leave the chat pane empty or stale. The UI now renders a recovery panel in the chat pane using existing session metadata and existing guarded actions (`Review queue`, `Clear unknown marker`, `Copy details`).
+- Important implementation details:
+  - Recovery panel is not transcript content: `renderedMessageRows`, decoration/windowing/viewport helpers, and trim logic exclude `.recovery-panel-row`.
+  - Live appends and session metadata refresh re-render/reposition the panel; mutation paths call `syncRecoveryUiForSession`.
+  - Focus is preserved across rapid panel rebuilds with a session-scoped pending recovery action descriptor, including cases where the focused action disappears but the panel remains.
+  - Queue modal close falls back to a visible recovery action if its opener was re-rendered/removed.
+  - Transcript load errors clear typing before rendering the recovery panel, so the panel remains after the error row.
+- Browser evidence in isolated Docker `codoxear-sandbox-recovery-ui-18984`:
+  - Orphan recovery with direct unknown + queue rendered panel, no `/messages/tail` fetch, role `group`, Review queue opened disabled preserved prompts.
+  - Clearing unknown marker removed the direct warning/button and left focus on a visible panel action.
+  - Deleting queue items updated the panel queue count; deleting the last item removed the recovery row/panel/selection.
+  - Transcript-backed recovery session with existing messages rendered panel as last row; after appending live user/assistant events, appended messages appeared and panel remained last.
+  - Focused `Copy details` survived rapid live user+assistant appends and remained connected inside the rebuilt panel.
+- Clean-room review iterations: `/tmp/codoxear-recovery-panel-review.md` through `/tmp/codoxear-recovery-panel-review6.md`; blockers around stale state, focus, decoration, and load-error ordering were fixed; final blocker-only review found no blocker.
+- Validation:
+  - Focused final: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_scrollback_source.py && python3 -m pytest tests/test_chat_scrollback_source.py tests/test_queue_button_source.py tests/test_file_upload_module_source.py -q` -> `30 passed`.
+  - Additional failed-harness repair focused: `python3 -m pytest tests/test_chat_transcript_runtime.py::TestChatTranscriptRuntime::test_live_delta_dedupes_adjacent_assistant_text_across_polls tests/test_overlay_accessibility_source.py::TestOverlayAccessibilitySource::test_queue_help_details_dialogs_restore_focus tests/test_chat_scrollback_source.py tests/test_queue_button_source.py tests/test_file_upload_module_source.py -q` -> `32 passed`.
+  - Full local: `python3 -m pytest -q` -> `840 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `839 passed, 1 skipped, 89 subtests passed`.

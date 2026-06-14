@@ -986,6 +986,37 @@
         border-color: rgba(180, 83, 9, 0.28);
         background: rgba(255, 251, 235, 0.96);
       }
+      .msg.recovery-panel {
+        width: min(100%, 640px);
+        color: #713f12;
+        border-color: rgba(180, 83, 9, 0.26);
+        background: rgba(255, 251, 235, 0.96);
+        box-shadow: var(--shadow-sm);
+      }
+      .recoveryPanelTitle {
+        font-weight: 800;
+        margin-bottom: 6px;
+      }
+      .recoveryPanelList {
+        margin: 0;
+        padding-left: 18px;
+      }
+      .recoveryPanelPreview {
+        max-height: 140px;
+        overflow: auto;
+        margin: 10px 0 0;
+        padding: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.72);
+      }
+      .recoveryPanelActions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
       .msg-shell .msg {
         max-width: 100%;
       }
