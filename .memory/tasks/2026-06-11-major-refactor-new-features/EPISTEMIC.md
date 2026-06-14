@@ -1886,3 +1886,10 @@ Observation: `refreshFileCandidates()` cleared the picker, then computed changed
 Intervention: Mentioned and recent/manual file candidates are now computed independently of changed-file metadata. Changed-file entries remain optional; git freshness and candidate cache writes occur only after a successful changed-files response.
 
 Scoped claim: Under focused VM tests, full local/Docker suites, and clean-room review, non-git changed-files failure no longer erases available mentioned/recent file candidates. Residual: a slow/hung changed-files request can still delay showing fallback candidates until it rejects or times out.
+
+## 2026-06-14 12:02
+Observation: Loaded chat search could show an all-transcript match count/hint but could only page older history blindly, capped at 12 pages. A match far outside the loaded DOM could remain unreachable without repeated manual paging.
+
+Intervention: Search results now expose session-bound target/load cursors for newline-terminated records. `/messages/search` supports `before=<history_cursor>&order=latest` so the client can ask for the nearest older match before the current loaded boundary. The client loads a detached bounded history window ending at that match, focuses the exact target row by history cursor, preserves casefold-only server-targeted matches across refreshes, and uses Jump to latest to return to the live tail.
+
+Scoped claim: Under focused route/source tests, full local/Docker suites, and iterative clean-room review, long-transcript search can directly load the nearest older unloaded match without creating a hidden DOM gap before the live tail. Residual: nearest-older search scans forward to the boundary, so repeated navigation in very large logs remains O(prefix size); detached windows navigate older matches and rely on Jump to latest for newer unloaded regions.

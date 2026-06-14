@@ -985,6 +985,26 @@ def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session")
     return _attach_history_cursors_impl(events, session=session, encode_cursor=_encode_message_cursor)
 
 
+def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: "Session") -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for match in matches:
+        if not isinstance(match, dict):
+            continue
+        item = dict(match)
+        before_byte = item.get("_before_byte")
+        if isinstance(before_byte, bool):
+            before_byte = None
+        if isinstance(before_byte, int) and before_byte >= 0:
+            item["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=before_byte)
+        after_byte = item.pop("_after_byte", None)
+        if isinstance(after_byte, bool):
+            after_byte = None
+        if isinstance(after_byte, int) and after_byte > 0:
+            item["load_cursor"] = _encode_message_cursor(kind="history", session=session, pos=after_byte)
+        out.append(item)
+    return out
+
+
 def _parse_cookies(header: str | None) -> dict[str, str]:
     return _parse_cookies_impl(header)
 
@@ -6683,6 +6703,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if text_max_error is not None:
                     _json_response(self, 400, {"error": text_max_error})
                     return
+                order = (qs.get("order") or ["first"])[0]
+                if order not in {"first", "latest"}:
+                    _json_response(self, 400, {"error": "order must be first or latest"})
+                    return
+                before_byte: int | None = None
+                before_q = qs.get("before")
+                if before_q is not None and before_q and before_q[0].strip():
+                    try:
+                        before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)
+                    except MessageCursorError as e:
+                        _json_response(self, 409, {"error": str(e)})
+                        return
                 transcript = _message_transcript_identity(s)
                 if not isinstance(query, str) or not query.strip():
                     _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "matches": []})
@@ -6690,7 +6722,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if s.log_path is None or (not s.log_path.exists()):
                     _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "matches": []})
                     return
-                match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit)
+                match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)
+                matches = _attach_search_load_cursors(matches, session=s)
                 matches = MANAGER._attach_notification_texts(matches)
                 matches = _clip_search_match_text(matches, text_max, query=query)
                 _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "matches": matches})

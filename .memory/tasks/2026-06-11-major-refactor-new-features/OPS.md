@@ -2258,3 +2258,13 @@
   - Clean-room review: no blockers; confirmed mentioned/recent candidates are no longer gated by `/git/changed_files` success and changed-file freshness/cache only commit on successful changed-files response.
   - Full local: `python3 -m pytest -q` -> `815 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `814 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 12:02
+- Completed long-transcript search navigation tranche.
+- Changed artifacts: `codoxear/transcript_search.py`, `codoxear/server.py`, `codoxear/static/app.js`, `tests/test_transcript_export.py`, `tests/test_chat_navigation_source.py`, `tests/test_chat_scrollback_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile codoxear/server.py codoxear/transcript_search.py tests/test_transcript_export.py && python3 -m pytest tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_message_index.py tests/test_message_route_source.py -q` -> `35 passed, 3 subtests passed`.
+  - Additional focused after source-test update: `node --check codoxear/static/app.js && python3 -m pytest tests/test_chat_scrollback_source.py tests/test_transcript_export.py tests/test_chat_navigation_source.py tests/test_message_index.py tests/test_message_route_source.py -q` -> `59 passed, 3 subtests passed`.
+  - Clean-room review: multiple blockers found and fixed (unterminated final-record cursor mismatch, empty-window clearing, global-first cursor stranding, wrong target focus in multi-match windows, Python casefold vs JS matching persistence); final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `817 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `816 passed, 1 skipped, 88 subtests passed`.

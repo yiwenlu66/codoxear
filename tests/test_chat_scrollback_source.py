@@ -286,12 +286,17 @@ class TestChatScrollbackSource(unittest.TestCase):
 
     def test_render_transcript_rebuilds_authoritative_events_after_pending_match(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
-        end = source.index("function prependOlderEvents(", start)
-        block = source[start:end]
-        self.assertIn("takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", block)
-        self.assertIn("msgs.push(ev);", block)
-        self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", block)
+        start = source.index("function normalizedTranscriptEvents(events, { consumePending = false } = {}) {")
+        end = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {", start)
+        helper_block = source[start:end]
+        render_start = source.index("function renderTranscript(events, { preserveScroll = false } = {}) {")
+        render_end = source.index("function prependOlderEvents(", render_start)
+        render_block = source[render_start:render_end]
+        self.assertIn("if (consumePending) takePendingUserMatch(ev, selected, { allowUntimedCommit: false });", helper_block)
+        self.assertIn("msgs.push(ev);", helper_block)
+        self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: true });", render_block)
+        self.assertIn("const msgs = normalizedTranscriptEvents(events, { consumePending: false });", render_block)
+        self.assertNotIn("if (consumePendingUserIfMatches(ev)) continue;", helper_block)
 
     def test_pending_commit_reconciliation_does_not_require_text_equality(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

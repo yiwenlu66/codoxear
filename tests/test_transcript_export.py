@@ -72,6 +72,53 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual([match.get("text") for match in matches], ["a2", "a20", "a21"])
         self.assertTrue(all(isinstance(match.get("_before_byte"), int) for match in matches))
 
+    def test_streaming_search_can_return_latest_match_before_boundary(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            rows = []
+            for idx in range(12):
+                text = f"needle {idx}" if idx in {1, 5, 10} else f"plain {idx}"
+                rows.append(
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text}],
+                            "phase": "final_answer",
+                        },
+                        "ts": float(idx),
+                    }
+                )
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+            _count, first_matches = search_chat_log(path, "needle", limit=3, max_line_bytes=4096)
+            before_newest = first_matches[-1]["_before_byte"]
+
+            count, matches = search_chat_log(path, "needle", limit=1, max_line_bytes=4096, before_byte=before_newest, order="latest")
+
+        self.assertEqual(count, 2)
+        self.assertEqual([match["text"] for match in matches], ["needle 5"])
+
+    def test_streaming_search_ignores_unterminated_final_record(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            row = {
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "needle without newline"}],
+                    "phase": "final_answer",
+                },
+                "ts": 1.0,
+            }
+            path.write_text(json.dumps(row), encoding="utf-8")
+
+            count, matches = search_chat_log(path, "needle", limit=3, max_line_bytes=4096)
+
+        self.assertEqual(count, 0)
+        self.assertEqual(matches, [])
+
     def test_streaming_search_dedupes_assistant_repeats_across_chunks(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "rollout.jsonl"
@@ -248,7 +295,9 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertIn('_match_session_route(path, "messages", "search")', source)
         self.assertIn('"event_count": len(events)', source)
         self.assertIn('"match_count": match_count', source)
-        self.assertIn('match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit)', source)
+        self.assertIn('order = (qs.get("order") or ["first"])[0]', source)
+        self.assertIn('before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)', source)
+        self.assertIn('match_count, matches = _search_chat_log(s.log_path, query, limit=match_limit, before_byte=before_byte, order=order)', source)
         self.assertIn('text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)', source)
         self.assertIn('matches = _clip_search_match_text(matches, text_max, query=query)', source)
         self.assertIn('TRANSCRIPT_SEARCH_MAX_LINE_BYTES', source)
@@ -324,6 +373,15 @@ class TestTranscriptExport(unittest.TestCase):
             self.assertIn("needle", match["text"])
             self.assertTrue(match["text_truncated"])
             self.assertIsInstance(match.get("_before_byte"), int)
+            self.assertNotIn("_after_byte", match)
+            self.assertIsInstance(match.get("history_cursor"), str)
+            self.assertIsInstance(match.get("load_cursor"), str)
+            target_pos = server._decode_message_cursor(match["history_cursor"], kind="history", session=session)
+            self.assertEqual(target_pos, match["_before_byte"])
+            load_pos = server._decode_message_cursor(match["load_cursor"], kind="history", session=session)
+            self.assertGreater(load_pos, match["_before_byte"])
+            window_events, _next_before, _has_older = server._read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+            self.assertEqual(window_events[-1]["text"], text)
 
     def test_messages_search_rejects_malformed_text_max(self) -> None:
         fake_manager = types.SimpleNamespace(

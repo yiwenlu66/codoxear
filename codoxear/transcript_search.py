@@ -116,6 +116,8 @@ def iter_jsonl_records_forward_bounded(
                     if skipped.endswith(b"\n"):
                         break
                 continue
+            if not raw.endswith(b"\n"):
+                break
             line = raw.rstrip(b"\r\n")
             try:
                 obj = _rollout_log._parse_jsonl_line(line)
@@ -141,6 +143,7 @@ def iter_positioned_chat_events_forward(
         if event is None:
             continue
         event = _rollout_log._with_chat_position(event, before_byte=record.start)
+        event["_after_byte"] = int(record.end)
         role = event.get("role")
         if role == "user":
             last_assistant_key = None
@@ -162,17 +165,30 @@ def search_chat_log(
     *,
     limit: int = 20,
     max_line_bytes: int = TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+    before_byte: int | None = None,
+    order: str = "first",
 ) -> tuple[int, list[dict[str, Any]]]:
     needle = query.strip().casefold()
     if not needle:
         return 0, []
     max_matches = max(0, int(limit))
+    stop_before = None if before_byte is None else max(0, int(before_byte))
+    keep_latest = order == "latest"
     count = 0
     matches: list[dict[str, Any]] = []
     for event in iter_positioned_chat_events_forward(log_path, max_line_bytes=max_line_bytes):
+        event_before = event.get("_before_byte")
+        if stop_before is not None and isinstance(event_before, int) and event_before >= stop_before:
+            break
         if not chat_event_matches_query(event, needle):
             continue
         count += 1
-        if len(matches) < max_matches:
+        if max_matches <= 0:
+            continue
+        if keep_latest:
+            matches.append(event)
+            if len(matches) > max_matches:
+                matches.pop(0)
+        elif len(matches) < max_matches:
             matches.append(event)
     return count, matches
