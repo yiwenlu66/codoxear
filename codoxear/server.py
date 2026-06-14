@@ -2247,6 +2247,62 @@ def _metadata_ignored_rollout_paths(meta: dict[str, Any], *, sock: Path) -> set[
     return out
 
 
+def _read_sidecar_metadata(meta_path: Path, *, sock: Path) -> dict[str, Any]:
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise ValueError(f"invalid metadata json for socket {sock}: {type(e).__name__}: {e}") from e
+    if not isinstance(meta, dict):
+        raise ValueError(f"invalid metadata json for socket {sock}")
+    return meta
+
+
+def _metadata_required_int(meta: dict[str, Any], key: str, *, sock: Path) -> int:
+    value = meta.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"invalid {key} in metadata for socket {sock}")
+    return int(value)
+
+
+def _metadata_required_text(meta: dict[str, Any], key: str, *, sock: Path) -> str:
+    value = meta.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"invalid {key} in metadata for socket {sock}")
+    return value
+
+
+def _metadata_log_path(meta: dict[str, Any], *, sock: Path) -> Path | None:
+    if "log_path" not in meta:
+        raise ValueError(f"missing log_path in metadata for socket {sock}")
+    if meta.get("log_path") is None:
+        return None
+    raw = meta.get("log_path")
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError(f"invalid log_path in metadata for socket {sock}")
+    path = Path(raw)
+    if path.exists() and not path.is_file():
+        raise ValueError(f"invalid log_path in metadata for socket {sock}")
+    return path
+
+
+def _metadata_start_ts(meta: dict[str, Any], *, sock: Path) -> float:
+    value = meta.get("start_ts")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"invalid start_ts in metadata for socket {sock}")
+    try:
+        timestamp = float(value)
+    except (OverflowError, ValueError) as e:
+        raise ValueError(f"invalid start_ts in metadata for socket {sock}") from e
+    if not math.isfinite(timestamp):
+        raise ValueError(f"invalid start_ts in metadata for socket {sock}")
+    return timestamp
+
+
+def _log_invalid_sidecar_metadata(context: str, sock: Path, error: Exception) -> None:
+    sys.stderr.write(f"error: {context}: invalid sidecar metadata for {sock}: {error}\n")
+    sys.stderr.flush()
+
+
 def _metadata_sync_send_supported(meta: dict[str, Any]) -> bool:
     caps = meta.get("control_capabilities")
     return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("sync_send") is True
@@ -2910,7 +2966,7 @@ class SessionManager:
         else:
             try:
                 ts_value = float(ts) if ts is not None else time.time()
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 ts_value = time.time()
         if not math.isfinite(ts_value) or ts_value <= 0:
             ts_value = time.time()
@@ -3706,19 +3762,19 @@ class SessionManager:
             if not meta_path.exists():
                 self._prune_stale_socket_without_metadata(session_id, sock)
                 continue
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            if not isinstance(meta, dict):
-                raise ValueError(f"invalid metadata json for socket {sock}")
+            try:
+                meta = _read_sidecar_metadata(meta_path, sock=sock)
+                codex_pid = _metadata_required_int(meta, "codex_pid", sock=sock)
+                broker_pid = _metadata_required_int(meta, "broker_pid", sock=sock)
+                cwd = _metadata_required_text(meta, "cwd", sock=sock)
+                log_path = _metadata_log_path(meta, sock=sock)
+                ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
+                start_ts = _metadata_start_ts(meta, sock=sock)
+            except ValueError as e:
+                _log_invalid_sidecar_metadata("discover", sock, e)
+                continue
 
             thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
-            codex_pid_raw = meta.get("codex_pid")
-            broker_pid_raw = meta.get("broker_pid")
-            if not isinstance(codex_pid_raw, int):
-                raise ValueError(f"invalid codex_pid in metadata for socket {sock}")
-            if not isinstance(broker_pid_raw, int):
-                raise ValueError(f"invalid broker_pid in metadata for socket {sock}")
-            codex_pid = int(codex_pid_raw)
-            broker_pid = int(broker_pid_raw)
             agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
             owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
             transport, tmux_session, tmux_window = self._session_transport(meta=meta)
@@ -3726,24 +3782,8 @@ class SessionManager:
             key_write_errors_supported = _metadata_key_write_errors_supported(meta)
             launch_id = _clean_optional_text(meta.get("launch_id"))
             spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
-            cwd_raw = meta.get("cwd")
-            if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-                raise ValueError(f"invalid cwd in metadata for socket {sock}")
-            cwd = cwd_raw
-
-            log_path: Path | None = None
-            if "log_path" not in meta:
-                raise ValueError(f"missing log_path in metadata for socket {sock}")
-            if meta.get("log_path") is None:
-                log_path = None
-            else:
-                log_path_raw = meta.get("log_path")
-                if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
-                    raise ValueError(f"invalid log_path in metadata for socket {sock}")
-                log_path = Path(log_path_raw)
             if log_path is not None and not log_path.exists():
                 log_path = None
-            ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
             if log_path is None and agent_backend in {"codex", "cc"} and _pid_alive(codex_pid):
                 discovered_log_path = _proc_find_open_rollout_log(
                     proc_root=PROC_ROOT,
@@ -3805,10 +3845,6 @@ class SessionManager:
             if self._remember_recent_cwd(cwd, ts=meta.get("updated_ts", meta.get("start_ts"))):
                 recent_cwd_dirty = True
 
-            start_ts_raw = meta.get("start_ts")
-            if not isinstance(start_ts_raw, (int, float)):
-                raise ValueError(f"invalid start_ts in metadata for socket {sock}")
-            start_ts = float(start_ts_raw)
             resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
             model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
                 meta=meta,
@@ -4477,9 +4513,17 @@ class SessionManager:
         if not meta_path.exists():
             self._prune_stale_socket_without_metadata(session_id, sock)
             return
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if not isinstance(meta, dict):
-            raise ValueError(f"invalid metadata json for socket {sock}")
+        try:
+            meta = _read_sidecar_metadata(meta_path, sock=sock)
+            _metadata_required_int(meta, "codex_pid", sock=sock)
+            _metadata_required_int(meta, "broker_pid", sock=sock)
+            _metadata_start_ts(meta, sock=sock)
+            cwd = _metadata_required_text(meta, "cwd", sock=sock)
+            log_path = _metadata_log_path(meta, sock=sock)
+            ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
+        except ValueError as e:
+            _log_invalid_sidecar_metadata("refresh", sock, e)
+            return
 
         thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
         owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
@@ -4487,23 +4531,8 @@ class SessionManager:
         transport, tmux_session, tmux_window = self._session_transport(meta=meta)
         sync_send_supported = _metadata_sync_send_supported(meta)
         key_write_errors_supported = _metadata_key_write_errors_supported(meta)
-        cwd_raw = meta.get("cwd")
-        if not isinstance(cwd_raw, str) or (not cwd_raw.strip()):
-            raise ValueError(f"invalid cwd in metadata for socket {sock}")
-        cwd = cwd_raw
-        if "log_path" not in meta:
-            raise ValueError(f"missing log_path in metadata for socket {sock}")
-        log_path: Path | None
-        if meta.get("log_path") is None:
-            log_path = None
-        else:
-            log_path_raw = meta.get("log_path")
-            if not isinstance(log_path_raw, str) or (not log_path_raw.strip()):
-                raise ValueError(f"invalid log_path in metadata for socket {sock}")
-            log_path = Path(log_path_raw)
         if log_path is not None and not log_path.exists():
             log_path = None
-        ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
         if _metadata_detaches_current_log(meta, current_log_path):
             try:
                 tail_state = self._sock_call(sock, {"cmd": "tail"}, timeout_s=0.4)

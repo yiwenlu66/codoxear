@@ -1830,3 +1830,10 @@ Observation: Transcript search logic was still embedded inside the HTTP server m
 Intervention: Moved the transcript-search mechanism into `codoxear/transcript_search.py` and left `server.py` as the HTTP/session boundary that validates query params, resolves sessions, attaches notification text, and delegates to imported aliases.
 
 Scoped claim: Under focused, full, Docker, and clean-room architecture evidence, this extraction reduces server responsibility without changing search route behavior or import-time `CODEX_WEB_TRANSCRIPT_SEARCH_MAX_LINE_BYTES` semantics. Residual: the new module still depends on private rollout-log helpers; that is deliberate because transcript search is a normalization-layer consumer, not a standalone backend-agnostic parser yet.
+
+## 2026-06-14 10:08
+Observation: Discovery already skipped malformed broker runtime state, but malformed sidecar metadata could abort discovery or refresh. Clean-room adversarial review showed that the first fix still allowed late/destructive effects from invalid `start_ts`, refresh-time partial trust of bad typed fields, bool/int coercion, `NaN`/`Infinity`, huge JSON integer overflow, optional `updated_ts` overflow, and directory `log_path` crashes.
+
+Intervention: Added sidecar metadata validators used by discovery and refresh before trusting metadata: JSON object shape, non-bool integer pids, required cwd text, log-path text plus existing regular-file shape, ignored-rollout path shape, and finite/non-overflowing `start_ts`. Discovery logs/skips malformed sidecars; refresh logs/returns while preserving the existing session. Optional `updated_ts` overflow in recent-CWD bookkeeping now degrades to current time.
+
+Scoped claim: Under focused, full, Docker, and iterative clean-room review evidence, deterministic malformed sidecar metadata no longer takes down discovery/refresh or mutates an existing session with inconsistent metadata. Residual: malformed sidecars are preserved and may re-log until rewritten/removed; log-path validation remains check-then-use against local races; `_wait_for_spawned_broker_meta` has separate, narrower sidecar parsing semantics.

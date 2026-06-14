@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import math
 import threading
 import time
 import unittest
@@ -34,6 +35,26 @@ def _make_manager() -> SessionManager:
     mgr._save_queues = lambda *args, **kwargs: None  # type: ignore[method-assign]
     mgr._save_recent_cwds = lambda *args, **kwargs: None  # type: ignore[method-assign]
     return mgr
+
+
+def _write_valid_sidecar(sock: Path, *, root: Path, log_path: Path | None = None) -> None:
+    if log_path is None:
+        log_path = root / f"{sock.stem}.jsonl"
+        log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": sock.stem, "source": "cli"}}) + "\n", encoding="utf-8")
+    sock.with_suffix(".json").write_text(
+        json.dumps(
+            {
+                "session_id": sock.stem,
+                "agent_backend": "codex",
+                "codex_pid": 0,
+                "broker_pid": 0,
+                "cwd": str(root),
+                "log_path": str(log_path),
+                "start_ts": 123.0,
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _session(session_id: str, sock: Path) -> Session:
@@ -85,6 +106,425 @@ class TestStaleSidecars(unittest.TestCase):
 
             self.assertFalse(sock.exists())
             self.assertNotIn("gone", mgr._sessions)
+
+    def test_discovery_skips_malformed_json_sidecar_and_keeps_good_sidecar(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            bad_sock.with_suffix(".json").write_text("{not-json}\n", encoding="utf-8")
+            good_sock = sock_dir / "good.sock"
+            good_sock.touch()
+            _write_valid_sidecar(good_sock, root=root)
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("good", mgr._sessions)
+            self.assertIn("invalid sidecar metadata", stderr.getvalue())
+            self.assertIn("bad.sock", stderr.getvalue())
+
+    def test_discovery_skips_bad_typed_sidecar_and_keeps_good_sidecar(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            bad_sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "bad",
+                        "agent_backend": "codex",
+                        "codex_pid": "0",
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": None,
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            good_sock = sock_dir / "good.sock"
+            good_sock.touch()
+            _write_valid_sidecar(good_sock, root=root)
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("good", mgr._sessions)
+            self.assertIn("invalid codex_pid", stderr.getvalue())
+
+    def test_discovery_skips_bad_start_ts_without_pruning_sidecar(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            bad_sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "bad",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": None,
+                        "start_ts": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertTrue(bad_sock.exists())
+            self.assertTrue(bad_sock.with_suffix(".json").exists())
+            self.assertIn("invalid start_ts", stderr.getvalue())
+
+    def test_discovery_rejects_nonfinite_start_ts_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            log_path = root / "bad.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "bad", "source": "cli"}}) + "\n", encoding="utf-8")
+            bad_sock.with_suffix(".json").write_text(
+                "{"
+                '"session_id":"bad",'
+                '"agent_backend":"codex",'
+                '"codex_pid":0,'
+                '"broker_pid":0,'
+                f'"cwd":{json.dumps(str(root))},'
+                f'"log_path":{json.dumps(str(log_path))},'
+                '"start_ts":NaN'
+                "}\n",
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("invalid start_ts", stderr.getvalue())
+
+    def test_discovery_rejects_overflowing_start_ts_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            log_path = root / "bad.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "bad", "source": "cli"}}) + "\n", encoding="utf-8")
+            huge_int = "1" + ("0" * 400)
+            bad_sock.with_suffix(".json").write_text(
+                "{"
+                '"session_id":"bad",'
+                '"agent_backend":"codex",'
+                '"codex_pid":0,'
+                '"broker_pid":0,'
+                f'"cwd":{json.dumps(str(root))},'
+                f'"log_path":{json.dumps(str(log_path))},'
+                f'"start_ts":{huge_int}'
+                "}\n",
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("invalid start_ts", stderr.getvalue())
+
+    def test_discovery_skips_directory_log_path_and_keeps_good_sidecar(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            bad_sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "bad",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(root),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            good_sock = sock_dir / "good.sock"
+            good_sock.touch()
+            _write_valid_sidecar(good_sock, root=root)
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("good", mgr._sessions)
+            self.assertIn("invalid log_path", stderr.getvalue())
+
+    def test_discovery_tolerates_overflowing_optional_updated_ts(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock = sock_dir / "fixture.sock"
+            sock.touch()
+            log_path = root / "fixture.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "fixture", "source": "cli"}}) + "\n", encoding="utf-8")
+            huge_int = "1" + ("0" * 400)
+            sock.with_suffix(".json").write_text(
+                "{"
+                '"session_id":"fixture",'
+                '"agent_backend":"codex",'
+                '"codex_pid":0,'
+                '"broker_pid":0,'
+                f'"cwd":{json.dumps(str(root))},'
+                f'"log_path":{json.dumps(str(log_path))},'
+                '"start_ts":123.0,'
+                f'"updated_ts":{huge_int}'
+                "}\n",
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+
+            with patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertIn("fixture", mgr._sessions)
+            self.assertIn(str(root), mgr._recent_cwds)
+            self.assertTrue(math.isfinite(mgr._recent_cwds[str(root)]))
+
+    def test_discovery_rejects_boolean_pid_metadata(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            bad_sock = sock_dir / "bad.sock"
+            bad_sock.touch()
+            log_path = root / "bad.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "bad", "source": "cli"}}) + "\n", encoding="utf-8")
+            bad_sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "bad",
+                        "agent_backend": "codex",
+                        "codex_pid": True,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(log_path),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": False, "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("bad", mgr._sessions)
+            self.assertIn("invalid codex_pid", stderr.getvalue())
+
+    def test_refresh_skips_malformed_sidecar_and_keeps_existing_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            sock.with_suffix(".json").write_text("[]\n", encoding="utf-8")
+            mgr = _make_manager()
+            existing = _session("fixture", sock)
+            existing.thread_id = "old-thread"
+            existing.cwd = "/old"
+            mgr._sessions["fixture"] = existing
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertIs(mgr._sessions["fixture"], existing)
+            self.assertEqual(existing.thread_id, "old-thread")
+            self.assertEqual(existing.cwd, "/old")
+            self.assertIn("invalid sidecar metadata", stderr.getvalue())
+
+    def test_refresh_rejects_bad_typed_required_metadata_and_keeps_existing_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            log_path = root / "fixture.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "new-thread", "source": "cli"}}) + "\n", encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "new-thread",
+                        "agent_backend": "codex",
+                        "codex_pid": "bad",
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(log_path),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            existing = _session("fixture", sock)
+            existing.thread_id = "old-thread"
+            existing.cwd = "/old"
+            existing.log_path = None
+            mgr._sessions["fixture"] = existing
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertIs(mgr._sessions["fixture"], existing)
+            self.assertEqual(existing.thread_id, "old-thread")
+            self.assertEqual(existing.cwd, "/old")
+            self.assertIsNone(existing.log_path)
+            self.assertIn("invalid codex_pid", stderr.getvalue())
+
+    def test_refresh_rejects_directory_log_path_and_keeps_existing_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "new-thread",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(root),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            existing = _session("fixture", sock)
+            existing.thread_id = "old-thread"
+            existing.cwd = "/old"
+            existing.log_path = None
+            mgr._sessions["fixture"] = existing
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertEqual(existing.thread_id, "old-thread")
+            self.assertEqual(existing.cwd, "/old")
+            self.assertIsNone(existing.log_path)
+            self.assertIn("invalid log_path", stderr.getvalue())
+
+    def test_refresh_rejects_nonfinite_start_ts_and_keeps_existing_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            log_path = root / "fixture.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "new-thread", "source": "cli"}}) + "\n", encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                "{"
+                '"session_id":"new-thread",'
+                '"agent_backend":"codex",'
+                '"codex_pid":0,'
+                '"broker_pid":0,'
+                f'"cwd":{json.dumps(str(root))},'
+                f'"log_path":{json.dumps(str(log_path))},'
+                '"start_ts":Infinity'
+                "}\n",
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            existing = _session("fixture", sock)
+            existing.thread_id = "old-thread"
+            existing.cwd = "/old"
+            existing.log_path = None
+            mgr._sessions["fixture"] = existing
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertEqual(existing.thread_id, "old-thread")
+            self.assertEqual(existing.cwd, "/old")
+            self.assertIsNone(existing.log_path)
+            self.assertIn("invalid start_ts", stderr.getvalue())
+
+    def test_refresh_rejects_overflowing_start_ts_and_keeps_existing_session(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock = root / "fixture.sock"
+            sock.touch()
+            log_path = root / "fixture.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "new-thread", "source": "cli"}}) + "\n", encoding="utf-8")
+            huge_int = "1" + ("0" * 400)
+            sock.with_suffix(".json").write_text(
+                "{"
+                '"session_id":"new-thread",'
+                '"agent_backend":"codex",'
+                '"codex_pid":0,'
+                '"broker_pid":0,'
+                f'"cwd":{json.dumps(str(root))},'
+                f'"log_path":{json.dumps(str(log_path))},'
+                f'"start_ts":{huge_int}'
+                "}\n",
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            existing = _session("fixture", sock)
+            existing.thread_id = "old-thread"
+            existing.cwd = "/old"
+            existing.log_path = None
+            mgr._sessions["fixture"] = existing
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                SessionManager.refresh_session_meta(mgr, "fixture")
+
+            self.assertEqual(existing.thread_id, "old-thread")
+            self.assertEqual(existing.cwd, "/old")
+            self.assertIsNone(existing.log_path)
+            self.assertIn("invalid start_ts", stderr.getvalue())
 
     def test_discovery_keeps_sidecar_log_without_codex_session_metadata(self) -> None:
         with TemporaryDirectory() as td:

@@ -2186,3 +2186,12 @@
   - Architecture clean-room review: no blockers; import graph `server -> transcript_search -> rollout_log`, no cycle; env constant semantics preserved.
   - Full local: `python3 -m pytest -q` -> `794 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `793 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 10:08
+- Completed malformed sidecar metadata hardening tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_stale_sidecars.py`.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py tests/test_stale_sidecars.py && python3 -m pytest tests/test_stale_sidecars.py tests/test_broker_fail_closed.py tests/test_broker_busy_state.py -q` -> `86 passed`.
+  - Clean-room review loop found and drove fixes for late `start_ts` validation, refresh trusting bad typed metadata, bool/int coercion, non-finite and overflowing timestamps, overflowing optional `updated_ts`, and directory `log_path`; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `807 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `806 passed, 1 skipped, 88 subtests passed`.
