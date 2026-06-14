@@ -3412,7 +3412,7 @@
           return chatSearchMatches.indexOf(target);
         }
 
-        function refreshLoadedChatSearch({ jump = false, preserveCurrent = true } = {}) {
+        function refreshLoadedChatSearch({ jump = false, preserveCurrent = true, refreshAllCount = true } = {}) {
           const query = String(chatSearchInput.value || "").trim().toLowerCase();
           chatSearchQuery = query;
           clearChatSearchMarks();
@@ -3423,7 +3423,7 @@
             syncChatSearchStatus();
             return;
           }
-          scheduleAllChatSearchCount(query);
+          if (refreshAllCount) scheduleAllChatSearchCount(query);
           const previous = preserveCurrent && chatSearchIndex >= 0 ? chatSearchMatches[chatSearchIndex] : null;
           chatSearchMatches = renderedMessageRows().filter((row) => row.dataset.searchForcedQuery === query || rowSearchText(row).toLowerCase().includes(query));
           if (!chatSearchMatches.length) {
@@ -3489,7 +3489,7 @@
 
         async function stepChatSearch(delta) {
           if (!chatSearchOpen) openChatSearch();
-          refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
+          refreshLoadedChatSearch({ jump: false, preserveCurrent: true, refreshAllCount: false });
           if (!chatSearchMatches.length) {
             if (chatSearchQuery && Number.isFinite(chatSearchAllCount) && chatSearchAllCount > 0 && hasOlder) {
               const jumped = await loadNearestOlderChatSearchWindow();

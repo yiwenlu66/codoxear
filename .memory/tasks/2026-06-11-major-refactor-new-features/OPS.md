@@ -2351,3 +2351,16 @@
   - Clean-room review: initial review noted adjacent source guards were lost; restored them; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `832 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `831 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 17:59
+- Browser UX pass in isolated Docker `codoxear-sandbox-ux-18983` with synthetic 180-turn Codex transcript found a frontend search-navigation bug.
+- Observation: Query `EARLY-SEARCH-NEEDLE` showed `0/0 loaded · 1 all`; the Next button was enabled, but the first replay path did not load the offscreen match. API evidence showed `/messages/search?...order=latest&before=...` could find the match and `/messages/history?cursor=...` returned the expected window.
+- Mechanism: `stepChatSearch()` called `refreshLoadedChatSearch()`, which always scheduled an all-transcript recount and reset `chatSearchAllCount` before the branch that decides whether to load offscreen matches.
+- Patch: `refreshLoadedChatSearch` now accepts `refreshAllCount`; normal query/open/live paths keep the default refresh, while `stepChatSearch()` preserves existing all-count evidence during navigation.
+- Browser validation after hard reload/instrumentation: clicking Next emitted `/messages/search?...order=latest&before=...` and `/messages/history?cursor=...`; UI status became `1/1 loaded · 1 all`; toast `Loaded transcript match`; no captured JS errors.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_navigation_source.py && python3 -m pytest tests/test_chat_navigation_source.py tests/test_message_index.py tests/test_chat_transcript_runtime.py -q` -> `22 passed`.
+  - Clean-room review: `/tmp/codoxear-search-navigation-count-review.md` -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `832 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `831 passed, 1 skipped, 89 subtests passed`.
+- Residual browser observation not yet fixed: long transcripts expose one tabbable `Copy raw markdown` button per rendered assistant message, producing a long keyboard/accessibility traversal.

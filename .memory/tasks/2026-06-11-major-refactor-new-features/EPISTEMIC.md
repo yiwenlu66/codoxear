@@ -1953,3 +1953,14 @@ Observation: The Pi provider fix was partly protected by source-string assertion
 Intervention: Added executable JS/VM coverage for the real new-session provider/model parser and reasoning-choice code under the stale-cache condition that caused the live bug class. The test now constrains the browser-visible behavior for custom Pi `provider/model` inputs, not only the presence of code branches.
 
 Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, Pi custom-provider launch UI behavior has stronger regression coverage. This does not add new runtime behavior beyond the prior committed fix.
+
+## 2026-06-14 17:59
+Observation: In an isolated browser with a valid long synthetic transcript, all-transcript search count evidence (`1 all`) existed, but activating Next from `0 loaded` initially failed to load the offscreen match even though the server search/history endpoints could return it.
+
+Mechanism: Frontend navigation refreshed loaded matches by resetting the all-transcript count before consulting it. The UI had enough evidence to enable Next, but the click handler invalidated that evidence before acting.
+
+Intervention: Navigation-time search refresh now recomputes loaded DOM matches without resetting all-count evidence; query/open/live refresh paths still recount.
+
+Scoped claim: Under focused tests, full local/Docker suites, clean-room review, and isolated browser replay, the loaded-chat search Next action can load a known offscreen older match when the count hint shows unloaded transcript matches.
+
+Residual: Long transcript accessibility still has a large per-message copy-button tab order; not addressed by this intervention.
