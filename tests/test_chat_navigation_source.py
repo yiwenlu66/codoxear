@@ -145,6 +145,33 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('if (loadingOlder && olderLoadCancelOnScroll && cur > OLDER_CANCEL_PX) invalidateOlderLoad();', source)
         self.assertIn('void stepChatSearch(1);', source)
 
+    def test_message_copy_buttons_use_roving_tab_stop(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn('let activeMessageCopyRow = null;', source)
+        self.assertIn('function syncMessageCopyTabStops()', source)
+        self.assertIn('function loadedCopyMessageRows()', source)
+        self.assertIn('btn.tabIndex = active ? 0 : -1;', source)
+        self.assertIn('btn.disabled = !active;', source)
+        self.assertIn('if (active) btn.removeAttribute("aria-hidden");', source)
+        self.assertIn('else btn.setAttribute("aria-hidden", "true");', source)
+        self.assertIn('tabindex: "-1",', source)
+        self.assertIn('disabled: "true",', source)
+        self.assertIn('"aria-hidden": "true",', source)
+        self.assertIn('.msg-copy-btn[aria-hidden="true"],', css)
+        self.assertIn('visibility: hidden;', css)
+        self.assertIn('pointer-events: none;', css)
+        self.assertIn('function activeElementIsMessageCopyButton()', source)
+        self.assertIn('addAppEvent(chatInner, "pointerover"', source)
+        self.assertIn('if (activeElementIsMessageCopyButton()) return;', source)
+        self.assertIn('addAppEvent(chatInner, "focusin"', source)
+        self.assertIn('setActiveMessageCopyRow(row, { focusCopy: activeElementIsMessageCopyButton() });', source)
+        self.assertIn('function jumpToLoadedMessage(direction)', source)
+        self.assertIn('const rows = loadedCopyMessageRows();', source)
+        self.assertIn('jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);', source)
+        self.assertIn('Alt+Shift+↑', source)
+        self.assertIn('syncMessageCopyTabStops();\n          if (chatSearchOpen) refreshLoadedChatSearch', source)
+
     def test_chat_search_has_safe_keyboard_shortcut(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('function chatNavigationShortcutBlocked(target) {', source)
@@ -162,10 +189,10 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_loaded_user_turn_navigation_has_keyboard_shortcut(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {', source)
+        self.assertIn('if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {', source)
         self.assertIn('if (chatNavigationShortcutBlocked(e.target)) return;', source)
         self.assertIn('jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);', source)
-        self.assertIn('Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages without opening another panel.', source)
+        self.assertIn('Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages.', source)
 
     def test_loaded_chat_search_has_compact_in_flow_styles(self) -> None:
         css = APP_CSS.read_text(encoding="utf-8")

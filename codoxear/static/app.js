@@ -1716,6 +1716,7 @@
         let chatSearchAllAbort = null;
         let chatSearchAllTimer = null;
         let chatSearchLoadingOlder = false;
+        let activeMessageCopyRow = null;
         let hasOlder = false;
         let renderedAtLiveTail = true;
         let loadingOlder = false;
@@ -2518,7 +2519,7 @@
   <li>The queue is stored per session and drains automatically when that session becomes idle. Use <b>Queued messages</b> to review or edit queued prompts.</li>
   <li><b>Load older messages</b> fetches more scrollback. <b>Jump to latest</b> returns to the newest turn when you are reading history.</li>
   <li>Use <b>/</b> to search the loaded chat; Previous/Next can load an older matching window when the transcript count shows more matches.</li>
-  <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages without opening another panel.</li>
+  <li>Use <b>Alt+↑</b>/<b>Alt+↓</b> to jump between loaded user messages. Use <b>Alt+Shift+↑</b>/<b>Alt+Shift+↓</b> to move the active per-message copy control across all loaded messages.</li>
 </ul>
 <div class="muted">Unattended mode</div>
 <ul class="md">
@@ -3186,6 +3187,62 @@
           return renderedMessageRows().filter((row) => row.dataset.role === "user");
         }
 
+        function loadedCopyMessageRows() {
+          return renderedMessageRows().filter((row) => messageCopyButtonForRow(row));
+        }
+
+        function messageCopyButtonForRow(row) {
+          return row && typeof row.querySelector === "function" ? row.querySelector(".msg-copy-btn") : null;
+        }
+
+        function activeElementIsMessageCopyButton() {
+          return Boolean(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("msg-copy-btn"));
+        }
+
+        function syncMessageCopyTabStops() {
+          const buttons = Array.from(chatInner.querySelectorAll(".msg-copy-btn"));
+          let activeBtn = messageCopyButtonForRow(activeMessageCopyRow);
+          if (!activeBtn || !activeBtn.isConnected) {
+            activeBtn = null;
+            const rows = renderedMessageRows();
+            for (let i = rows.length - 1; i >= 0; i -= 1) {
+              const candidate = messageCopyButtonForRow(rows[i]);
+              if (candidate) {
+                activeBtn = candidate;
+                break;
+              }
+            }
+          }
+          activeMessageCopyRow = activeBtn ? activeBtn.closest(".msg-row") : null;
+          for (const btn of buttons) {
+            const active = btn === activeBtn;
+            btn.tabIndex = active ? 0 : -1;
+            btn.disabled = !active;
+            if (active) btn.removeAttribute("aria-hidden");
+            else btn.setAttribute("aria-hidden", "true");
+          }
+        }
+
+        function setActiveMessageCopyRow(row, { focusCopy = false } = {}) {
+          activeMessageCopyRow = row && row.isConnected && messageCopyButtonForRow(row) ? row : null;
+          syncMessageCopyTabStops();
+          if (focusCopy && activeMessageCopyRow) {
+            const btn = messageCopyButtonForRow(activeMessageCopyRow);
+            if (btn && btn.tabIndex >= 0) btn.focus({ preventScroll: true });
+          }
+        }
+
+        addAppEvent(chatInner, "pointerover", (e) => {
+          if (activeElementIsMessageCopyButton()) return;
+          const row = e.target && typeof e.target.closest === "function" ? e.target.closest(".msg-row") : null;
+          if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
+        });
+
+        addAppEvent(chatInner, "focusin", (e) => {
+          const row = e.target && typeof e.target.closest === "function" ? e.target.closest(".msg-row") : null;
+          if (row && chatInner.contains(row)) setActiveMessageCopyRow(row);
+        });
+
         function updateChatNavButtons() {
           const enabled = Boolean(selected && loadedUserMessageRows().length);
           prevUserBtn.disabled = !enabled;
@@ -3198,6 +3255,7 @@
 
         function pulseNavigatedRow(row) {
           if (!row) return;
+          setActiveMessageCopyRow(row, { focusCopy: activeElementIsMessageCopyButton() });
           row.classList.remove("nav-pulse");
           void row.offsetWidth;
           row.classList.add("nav-pulse");
@@ -3236,6 +3294,46 @@
               return;
             }
           }
+          target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+          pulseNavigatedRow(target);
+        }
+
+        function jumpToLoadedMessage(direction) {
+          const rows = loadedCopyMessageRows();
+          if (!rows.length) {
+            setToast("No loaded messages");
+            return;
+          }
+          let idx = activeMessageCopyRow && activeMessageCopyRow.isConnected ? rows.indexOf(activeMessageCopyRow) : -1;
+          if (idx < 0) {
+            const threshold = chat.scrollTop + 24;
+            if (direction < 0) {
+              for (let i = rows.length - 1; i >= 0; i -= 1) {
+                if (rows[i].offsetTop < threshold) {
+                  idx = i + 1;
+                  break;
+                }
+              }
+            } else {
+              for (let i = 0; i < rows.length; i += 1) {
+                if (rows[i].offsetTop > threshold) {
+                  idx = i - 1;
+                  break;
+                }
+              }
+            }
+            if (idx < 0) idx = direction < 0 ? rows.length : -1;
+          }
+          const nextIndex = idx + (direction < 0 ? -1 : 1);
+          if (nextIndex < 0) {
+            setToast("At first loaded message");
+            return;
+          }
+          if (nextIndex >= rows.length) {
+            setToast("At last loaded message");
+            return;
+          }
+          const target = rows[nextIndex];
           target.scrollIntoView({ block: "start", behavior: prefersReducedMotion() ? "auto" : "smooth" });
           pulseNavigatedRow(target);
         }
@@ -3572,7 +3670,13 @@
             openChatSearch();
             return;
           }
-          if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+          if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+            if (chatNavigationShortcutBlocked(e.target)) return;
+            e.preventDefault();
+            jumpToLoadedMessage(e.key === "ArrowUp" ? -1 : 1);
+            return;
+          }
+          if (e.altKey && !e.shiftKey && !e.ctrlKey && !e.metaKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
             if (chatNavigationShortcutBlocked(e.target)) return;
             e.preventDefault();
             jumpToLoadedUserMessage(e.key === "ArrowUp" ? -1 : 1);
@@ -3994,6 +4098,7 @@
           }
           syncJumpButton();
           updateChatNavButtons();
+          syncMessageCopyTabStops();
           if (chatSearchOpen) refreshLoadedChatSearch({ jump: false, preserveCurrent: true });
         }
 
@@ -4074,6 +4179,9 @@
               type: "button",
               title: "Copy raw markdown",
               "aria-label": "Copy raw markdown",
+              tabindex: "-1",
+              disabled: "true",
+              "aria-hidden": "true",
               html: iconSvg("copy"),
             });
             copyBtn.onclick = async (e) => {

@@ -1964,3 +1964,12 @@ Intervention: Navigation-time search refresh now recomputes loaded DOM matches w
 Scoped claim: Under focused tests, full local/Docker suites, clean-room review, and isolated browser replay, the loaded-chat search Next action can load a known offscreen older match when the count hint shows unloaded transcript matches.
 
 Residual: Long transcript accessibility still has a large per-message copy-button tab order; not addressed by this intervention.
+
+## 2026-06-14 18:17
+Observation: A long transcript exposed every per-message `Copy raw markdown` button in tab/accessibility traversal, even though the user's likely task is to keep reading/navigating rather than tab through dozens of identical controls.
+
+Mechanism: Each rendered message created an enabled native copy button. The DOM-windowing bound limited the count, but the normal tab/accessibility order still scaled with visible transcript length.
+
+Intervention: Converted per-message copy buttons to a roving active control. Only one message copy control is enabled, tabbable, visually visible, and exposed to assistive technology at a time; hover/focus/search/user navigation/all-message keyboard navigation changes the active row. Inactive controls are disabled and pointer-inert, not merely hidden from ARIA.
+
+Scoped claim: Under source tests, full local/Docker suites, clean-room review, and isolated browser evidence, long loaded transcripts no longer flood keyboard/accessibility traversal with repeated copy controls while preserving copy access for active/navigated messages.

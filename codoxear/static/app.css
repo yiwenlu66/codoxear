@@ -1005,6 +1005,13 @@
         left: -40px;
         right: auto;
       }
+      .msg-copy-btn[aria-hidden="true"],
+      .msg-copy-btn:disabled {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        box-shadow: none;
+      }
       .msg-copy-btn:hover {
         border-color: rgba(37, 99, 235, 0.4);
         color: var(--accent);

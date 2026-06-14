@@ -2364,3 +2364,14 @@
   - Full local: `python3 -m pytest -q` -> `832 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `831 passed, 1 skipped, 89 subtests passed`.
 - Residual browser observation not yet fixed: long transcripts expose one tabbable `Copy raw markdown` button per rendered assistant message, producing a long keyboard/accessibility traversal.
+
+## 2026-06-14 18:17
+- Completed roving per-message copy-control accessibility tranche.
+- Observation from isolated browser long transcript: 60 rendered message copy buttons were all tabbable/accessibility-visible, causing `Copy raw markdown` to repeat through the long transcript tab/accessibility traversal.
+- Patch: per-message copy controls now use a roving active copy button. Inactive message copy buttons are disabled, `tabIndex=-1`, `aria-hidden=true`, visually hidden, and pointer-inert. The latest/active/navigated/hovered row exposes one enabled/tabbable copy button. `Alt+Shift+↑/↓` moves the active copy control across all loaded copyable messages; existing `Alt+↑/↓` user-message navigation moves focus safely when invoked from a copy button.
+- Clean-room review sequence: initial review found focused buttons could become `aria-hidden`; fixed by focus transfer and pointerover guard. Second review found inactive buttons were still painted/pointer-activatable; fixed by disabled + CSS hiding/pointer-events none and copyable-row-only navigation. Final review -> no blockers.
+- Browser validation after hard reload in synthetic 180-turn transcript: 60 copy button nodes, exactly 1 active/tabbable/accessibility-visible; inactive samples had disabled true, tabIndex -1, aria-hidden true, opacity 0, visibility hidden, pointerEvents none; accessibility snapshot `Copy raw markdown` count 1. Row pointerover promoted a row-local assistant copy button. Hidden-focus counterexample (`focus active copy` + `Alt+↑`) left focus on the new visible user-row copy with hiddenFocused false. `Alt+Shift+↑` moved focus to a visible assistant-row copy with hiddenFocused false.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_navigation_source.py && python3 -m pytest tests/test_chat_navigation_source.py tests/test_button_tooltips_source.py tests/test_overlay_accessibility_source.py -q` -> `19 passed`.
+  - Full local: `python3 -m pytest -q` -> `833 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `832 passed, 1 skipped, 89 subtests passed`.
