@@ -2517,3 +2517,12 @@
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 871 passed, 1 skipped, 92 subtests passed.
 - Clean-room critic first found a clipping counterexample for `overflow-x:hidden`/fixed layout; after switching to `overflow-x:auto` and `table-layout:auto`, re-review found no blockers for clipping, page/bubble overflow, copy semantics, or chat/file-preview markdown paths.
 - Commit: `9c49a3d fix: contain markdown tables`.
+
+## 2026-06-14T19:48:48Z — Failed-launch recovery panel redaction validation
+- Implemented failed-launch recovery UI WIP hardening in codoxear/static/app.js and server redaction in codoxear/server.py.
+- Focused validation: node syntax check plus targeted failed-launch/server-broker persistence/file-viewer/provenance/sidebar/new-session/send/queue/attach/transcript pytest set => 101 passed, 12 subtests passed.
+- Browser Docker fixture with failed launch record containing API_TOKEN colon syntax, JSON-style api_key, password colon syntax, Bearer token, and OPENAI_API_KEY tail: recovery panel, regular error transcript, and sidebar titles had hasSecret:false and hasDoubleBracket:false; send/queue/attach disabled; sidebar action list only Dismiss.
+- Full local validation: python3 -m pytest -q => 879 passed, 104 subtests passed.
+- Docker validation: scripts/codoxear-docker-sandbox test => 878 passed, 1 skipped, 104 subtests passed.
+- Async critic pass sequence found and drove fixes for immediate POST response leakage, unclosed quoted env redaction, nested launch_attempt diagnostic leakage, colon/JSON secret syntax, idempotence, failed-launch attach POST affordance, raw failed-launch persistence/stderr in both server and broker recorders, and Authorization/Auth Bearer/Basic key-value leakage. Final critic run 764751f0 found no remaining failed-launch secret leakage/persistence path or mutation/autostart regression in inspected scope.
+- Functional commit: f921e7e fix: recover failed launches safely.

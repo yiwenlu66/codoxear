@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `9c49a3d fix: contain markdown tables`
+Current HEAD: `f921e7e fix: recover failed launches safely`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -26,7 +26,8 @@ Recent committed recovery checkpoints include:
   - fresh tmux launch metadata requires a live broker pid;
   - launch sidecar metadata validation hardened;
   - Pi provider/model launch path now passes explicit custom providers through instead of treating UI defaults as an API whitelist;
-  - sidecar metadata schema/capability parsing now lives in `codoxear/sidecar_metadata.py`, while server discovery/refresh call sites keep fail-closed aliases.
+  - sidecar metadata schema/capability parsing now lives in `codoxear/sidecar_metadata.py`, while server discovery/refresh call sites keep fail-closed aliases;
+  - failed web-owned launches now appear as recoverable non-session rows with a redacted in-chat recovery card, review-only New like this action, Dismiss/Copy details actions, and disabled send/enqueue/attach paths.
 - Pi live-backed launch path:
   - `model_provider=anthropic`, `model=claude-haiku-4-5`, `reasoning_effort=low` launched through the web path, accepted a send, bound a log, produced an assistant final response, reached idle, and cleaned up in isolated Codoxear app state.
 - File/inline reference UX:
@@ -52,12 +53,13 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the markdown rendering fix:
+Latest code-validation evidence after the failed-launch recovery fix:
 
-- Focused markdown rendering validation: `python3 -m pytest tests/test_markdown_tables.py tests/test_static_assets.py -q` -> `22 passed`.
-- Browser evidence at 390px: code blocks computed light background/dark text; normal long-token tables stayed within the bubble without scroll; a 20-column table kept the bubble contained and used internal wrapper scroll instead of clipping.
-- Full local suite: `python3 -m pytest -q` -> `872 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `871 passed, 1 skipped, 92 subtests passed`.
+- Focused failed-launch/server-broker persistence/file-viewer/provenance/sidebar/new-session/send/queue/attach/transcript validation: node syntax check plus targeted pytest set -> `101 passed, 12 subtests passed`.
+- Browser Docker fixture: failed launch record containing `API_TOKEN`, JSON-style `api_key`, `password`, `Authorization: Bearer`, `AUTH: Basic`, and tail secrets rendered with `hasSecret:false`, `hasDoubleBracket:false`; recovery card, regular error transcript, and sidebar titles were redacted; send/queue/attach were disabled; sidebar actions contained only Dismiss.
+- Direct server and broker recorder counterexample: mixed error/tail/nested/metadata secrets produced no raw secret substrings in returned rows, raw `session_launches.jsonl`, or stderr.
+- Full local suite: `python3 -m pytest -q` -> `879 passed, 104 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `878 passed, 1 skipped, 104 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -73,6 +75,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - Clean-room architecture review of git helper extraction found detached-HEAD semantic drift; `git_ops.current_git_branch()` was corrected to preserve `HEAD`. Targeted re-review and critic review found no blockers.
 - Clean-room critic review of Details → New like this found Pi provider corruption risks in direct presets, diagnostics provider display, duplicate/recent options, remembered providerless choices, and sparse metadata. Each counterexample was fixed with regressions; final re-review found no blockers for Pi provider corruption, auto-start, focus, or sparse UI behavior.
 - Clean-room critic review of markdown rendering first found a hidden-overflow/fixed-layout clipping counterexample for many-column tables. The final implementation uses auto overflow plus auto table layout; re-review found no blockers for clipping, page/bubble overflow, copy semantics, or chat/file-preview markdown paths.
+- Iterated clean-room critic review of failed-launch recovery found and drove fixes for immediate POST response leakage, quoted/unclosed env syntax, nested launch-attempt diagnostics, colon/JSON secret syntax, redaction idempotence, failed-launch attach POST affordance, raw server/broker launch persistence and stderr, and Authorization/Auth Bearer/Basic values. Final review found no remaining failed-launch secret leakage/persistence path or mutation/autostart regression in inspected scope.
 
 Recent isolated browser evidence:
 
@@ -80,6 +83,7 @@ Recent isolated browser evidence:
 - The same long transcript had 60 message-copy button nodes but exactly one enabled/tabbable/accessibility-visible copy button after the roving-copy fix. Inactive samples were disabled, `tabIndex=-1`, `aria-hidden=true`, `opacity:0`, `visibility:hidden`, and `pointer-events:none`. Hidden-focus counterexamples with `Alt+↑` and `Alt+Shift+↑` remained false.
 - Synthetic recovery fixtures under isolated Docker app state verified the in-chat recovery panel: orphan recovery did not fetch `/messages/tail`, Review queue opened preserved prompts, clearing an unknown marker and deleting queue items kept panel/buttons/focus synchronized, transcript-backed live appends kept the panel as the latest recovery surface, and focused panel actions survived rapid panel rebuilds.
 - Pi live backend evidence exists for one current configured provider/model path as described above. Codoxear app/session state was isolated; the backend provider configuration came from the user's existing real Pi environment and was handled without printing secret values.
+- Failed-launch fixture under isolated Docker app state verified redacted card/transcript/sidebar rendering for env, JSON, Authorization/Bearer, Auth/Basic, and tail secrets; send, queue, and attach were disabled; sidebar duplicate/rename were absent; New like this remained review-only.
 
 ## Invariants broad refactoring must preserve
 
@@ -100,6 +104,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 13. **Minimal UI philosophy:** keep the topbar sparse; utility controls belong in contextual rails/surfaces, not a generic dumping-ground menu.
 14. **No silent fallbacks:** absence, malformed contracts, or unsupported combinations should fail loudly with recoverable UI when possible.
 15. **Markdown containment:** code blocks should remain readable in the light UI; tables should wrap normal wide content and use internal scroll only when the column count cannot physically fit without clipping.
+16. **Failed launches are recoverable non-sessions:** failed web-owned launches may be reviewed, dismissed, copied, or used to prefill a reviewed New Session dialog, but must not accept send/enqueue/attach or duplicate/rename autostart mutations. Failed-launch diagnostics shown through UI/API, persisted in `session_launches.jsonl`, or written to launch-failure stderr must be redacted through the shared launch-failure sanitizer.
 
 ## Parked limits and decisions
 
