@@ -2452,3 +2452,13 @@
 ## 2026-06-15 01:16
 - Refreshed `recon/refactor-entry-checkpoint.md` after sidecar extraction commit `a4d24ac`.
 - Updated current HEAD/date, latest validation counts, closed-gap architecture bullet, review evidence, and sidecar-discovery invariant wording.
+
+## 2026-06-15 01:27
+- Completed bounded UX feature: Details dialog now has a `Copy details` action.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_diagnostics_source.py`.
+- Mechanism: the copy text is built only from `diagRows`, the same label/value rows rendered in the dialog, so it does not copy the raw diagnostics object or hidden fields. The diagnostics fetch remains bound to the captured `sid`; stale selected-session responses are ignored. Copy is disabled until rows are rendered and disabled again on load error.
+- Clean-room review: `critic` inspected the uncommitted diff for stale-session, secret-copy, accessibility/focus, source-test brittleness, and sparse-UI risks; no blocker findings.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_diagnostics_source.py && python3 -m pytest tests/test_diagnostics_source.py tests/test_overlay_accessibility_source.py -q` -> `10 passed`.
+  - Full local: `python3 -m pytest -q` -> `852 passed, 92 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `851 passed, 1 skipped, 92 subtests passed`.

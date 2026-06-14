@@ -2547,6 +2547,14 @@
         root.appendChild(helpViewer);
 
         const diagBackdrop = el("div", { class: "modalBackdrop", id: "diagBackdrop" });
+        const diagCopyBtn = el("button", {
+          id: "diagCopyBtn",
+          class: "icon-btn text-btn",
+          title: "Copy details",
+          "aria-label": "Copy details",
+          type: "button",
+          text: "Copy details",
+        });
         const diagCloseBtn = el("button", {
           id: "diagCloseBtn",
           class: "icon-btn",
@@ -2556,12 +2564,14 @@
           html: iconSvg("x"),
         });
         let diagReturnFocusEl = null;
+        let diagCopyText = "";
+        diagCopyBtn.disabled = true;
         const diagStatus = el("div", { class: "muted", id: "diagStatus", text: "" });
         const diagContent = el("div", { class: "detailsGrid", id: "diagContent" });
         const diagViewer = el("div", { class: "diagViewer", id: "diagViewer", role: "dialog", "aria-modal": "true", "aria-label": "Details" }, [
           el("div", { class: "queueHeader" }, [
             el("div", { class: "title", text: "Details" }),
-            el("div", { class: "actions" }, [diagCloseBtn]),
+            el("div", { class: "actions" }, [diagCopyBtn, diagCloseBtn]),
           ]),
           diagStatus,
           diagContent,
@@ -11865,12 +11875,45 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
         }
 
+        function diagnosticsCopyText(sessionId, rows) {
+          const rowLines = [];
+          let hasSessionRow = false;
+          for (const row of rows || []) {
+            if (!row || !row.length) continue;
+            const label = String(row[0] || "").trim();
+            const value = String(row[1] || "-").trim() || "-";
+            if (!label) continue;
+            if (label.toLowerCase() === "session") hasSessionRow = true;
+            rowLines.push(`${label}: ${value}`);
+          }
+          const lines = ["Codoxear session details"];
+          if (sessionId && !hasSessionRow) lines.push(`Session: ${sessionId}`);
+          return lines.concat(rowLines).join("\n");
+        }
+
+        diagCopyBtn.onclick = async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!diagCopyText) {
+            setToast("details not loaded");
+            return;
+          }
+          try {
+            await copyToClipboard(diagCopyText);
+            setToast("Copied details");
+          } catch (err) {
+            setToast(`copy failed: ${err && err.message ? err.message : "unknown error"}`);
+          }
+        };
+
         async function showDiagViewer({ opener = null } = {}) {
           const sid = selected;
           if (!sid) return;
           diagReturnFocusEl = opener instanceof HTMLElement ? opener : document.activeElement instanceof HTMLElement ? document.activeElement : null;
           prepareModalOpen();
           diagContent.innerHTML = "";
+          diagCopyText = "";
+          diagCopyBtn.disabled = true;
           diagStatus.textContent = "Loading...";
           diagBackdrop.style.display = "block";
           diagViewer.style.display = "flex";
@@ -11881,10 +11924,13 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             if (selected !== sid) return;
             diagStatus.textContent = "";
             const now = Date.now() / 1000;
+            const diagRows = [];
             const addRow = (label, value, { mono = false } = {}) => {
+              const cleanLabel = String(label || "");
               const v = value == null || value === "" ? "-" : String(value);
+              diagRows.push([cleanLabel, v]);
               const row = el("div", { class: "detailsRow" });
-              row.appendChild(el("div", { class: "detailsLabel", text: String(label || "") }));
+              row.appendChild(el("div", { class: "detailsLabel", text: cleanLabel }));
               row.appendChild(el("div", { class: mono ? "detailsValue mono" : "detailsValue", text: v }));
               diagContent.appendChild(row);
             };
@@ -11935,8 +11981,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 addRow("Context", txt);
               }
             }
+            diagCopyText = diagnosticsCopyText(sid, diagRows);
+            diagCopyBtn.disabled = !diagCopyText;
           } catch (e) {
             if (selected !== sid) return;
+            diagCopyText = "";
+            diagCopyBtn.disabled = true;
             diagStatus.textContent = `error: ${e && e.message ? e.message : "unknown error"}`;
           }
         }

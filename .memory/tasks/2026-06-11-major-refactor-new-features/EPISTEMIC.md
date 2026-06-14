@@ -2015,3 +2015,10 @@ Scoped claim: The sidecar metadata boundary is now modular enough for future ser
 
 ## 2026-06-15 01:16
 Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `a4d24ac` and the sidecar metadata extraction. It remains a refactor-entry/handoff artifact, not merge approval.
+
+## 2026-06-15 01:27
+Observation: The Details dialog exposed exact session diagnostics in rendered label/value rows but had no copy/export action, forcing error-prone manual selection on mobile or remote debugging.
+
+Intervention: Added a `Copy details` action that formats only the rows rendered by `showDiagViewer`; it does not serialize the raw diagnostics object. The copied surface is therefore scoped to information already visible in the dialog.
+
+Scoped claim: Under focused source/VM tests, clean-room review, full local validation, and Docker validation, session details can be copied safely from the Details dialog without exposing hidden diagnostics fields or weakening selected-session binding.
