@@ -2286,3 +2286,12 @@
   - Clean-room review: no blockers; confirmed shared interrupt semantics, no form-submit regression, default desktop hidden state, and topbar sparsity preserved.
   - Full local: `python3 -m pytest -q` -> `822 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `821 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 12:25
+- Completed immediate file-picker fallback rendering tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` -> `45 passed`.
+  - Clean-room review: no blockers; confirmed fallback renders before changed-files awaits, cache/freshness still only commit on successful changed-files, and stale request guards remain effective.
+  - Full local: `python3 -m pytest -q` -> `823 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `822 passed, 1 skipped, 88 subtests passed`.

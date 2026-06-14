@@ -287,6 +287,87 @@ def eval_resolve_file_open_mode_cases() -> dict:
     return json.loads(proc.stdout)
 
 
+def eval_file_candidates_while_changed_files_pending() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    names = [
+        "listFromFilesField",
+        "parseFileLocation",
+        "stripPathLocationSuffix",
+        "fileCandidateKey",
+        "fileCandidateKeyForEntry",
+        "normalizeFileCandidateSource",
+        "cloneFileCandidateEntry",
+        "applyFileCandidateEntries",
+        "currentFileCandidateEntries",
+        "collectMessageFileRefs",
+        "fileCandidateCacheKey",
+        "rememberFileCandidateCache",
+        "sessionRelativePath",
+        "refreshFileCandidates",
+    ]
+    snippet = "\n".join(js_function(source, name) for name in names)
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          fileCandidateList: [],
+          fileEntryMap: new Map(),
+          fileCandidateGitStateFresh: false,
+          fileCandidateCache: new Map(),
+          fileCandidateRequestSeq: 0,
+          FILE_CANDIDATE_CACHE_TTL_MS: 15000,
+          fileViewerSessionId: "s1",
+          selected: "s1",
+          sessionIndex: new Map([["s1", {{ cwd: "/repo", files: ["/repo/recent.txt"] }}]]),
+          chatInner: {{ querySelectorAll() {{ return []; }} }},
+          renderCount: 0,
+          applyModeCount: 0,
+          apiCalls: [],
+          resolveChangedFiles: null,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext(`
+          class Element {{
+            constructor(attrs) {{ this.attrs = attrs || {{}}; }}
+            getAttribute(name) {{ return this.attrs[name] || ""; }}
+          }}
+          const messageNodes = [new Element({{ "data-file-path": "/repo/src/app.py", "data-file-kind": "text" }})];
+          chatInner.querySelectorAll = () => messageNodes;
+          async function api(path) {{
+            apiCalls.push(String(path));
+            return await new Promise((resolve) => {{ resolveChangedFiles = resolve; }});
+          }}
+          function applyFileMode() {{ applyModeCount += 1; }}
+          function renderFilePickerMenu() {{ renderCount += 1; }}
+          function isFileViewerSessionCurrent() {{ return true; }}
+          function blockUnavailableFileAction() {{ return false; }}
+        ` + {json.dumps(snippet)}, ctx);
+        (async () => {{
+          const task = ctx.refreshFileCandidates();
+          const interim = {{
+            entries: ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }})),
+            fresh: ctx.fileCandidateGitStateFresh,
+            renderCount: ctx.renderCount,
+            applyModeCount: ctx.applyModeCount,
+          }};
+          ctx.resolveChangedFiles({{ entries: [{{ path: "changed.py", additions: 1, deletions: 0 }}] }});
+          await task;
+          process.stdout.write(JSON.stringify({{
+            interim,
+            finalEntries: ctx.currentFileCandidateEntries().map((entry) => ({{ path: entry.path, gitPath: entry.gitPath, source: entry.source }})),
+            finalFresh: ctx.fileCandidateGitStateFresh,
+            cacheSize: ctx.fileCandidateCache.size,
+            apiCalls: ctx.apiCalls,
+            renderCount: ctx.renderCount,
+            applyModeCount: ctx.applyModeCount,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack || err); process.exit(1); }});
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_file_candidates_after_changed_files_failure() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     names = [
@@ -688,6 +769,31 @@ class TestFilePickerSearchSource(unittest.TestCase):
         self.assertIn('text: "Searching full project..."', source)
         self.assertNotIn("if (fileSearchPendingQuery === query) return null;", source)
 
+    def test_file_candidates_show_fallback_while_changed_files_pending(self) -> None:
+        result = eval_file_candidates_while_changed_files_pending()
+        self.assertEqual(
+            result["interim"]["entries"],
+            [
+                {"path": "src/app.py", "gitPath": False, "source": "mentioned"},
+                {"path": "recent.txt", "gitPath": False, "source": "recent"},
+            ],
+        )
+        self.assertFalse(result["interim"]["fresh"])
+        self.assertEqual(result["interim"]["renderCount"], 1)
+        self.assertEqual(result["interim"]["applyModeCount"], 2)
+        self.assertEqual(
+            result["finalEntries"],
+            [
+                {"path": "changed.py", "gitPath": True, "source": "changed"},
+                {"path": "src/app.py", "gitPath": False, "source": "mentioned"},
+                {"path": "recent.txt", "gitPath": False, "source": "recent"},
+            ],
+        )
+        self.assertTrue(result["finalFresh"])
+        self.assertEqual(result["cacheSize"], 1)
+        self.assertEqual(result["renderCount"], 2)
+        self.assertEqual(result["applyModeCount"], 3)
+
     def test_file_candidates_survive_changed_files_failure(self) -> None:
         result = eval_file_candidates_after_changed_files_failure()
         self.assertEqual(
@@ -706,8 +812,8 @@ class TestFilePickerSearchSource(unittest.TestCase):
     def test_file_candidate_cache_reuses_same_session_key(self) -> None:
         result = eval_file_candidate_cache_helpers()
         self.assertEqual(result["apiCalls"], 2)
-        self.assertEqual(result["renderCount"], 3)
-        self.assertEqual(result["applyModeCount"], 5)
+        self.assertEqual(result["renderCount"], 5)
+        self.assertEqual(result["applyModeCount"], 7)
         self.assertEqual(
             result["first"],
             [

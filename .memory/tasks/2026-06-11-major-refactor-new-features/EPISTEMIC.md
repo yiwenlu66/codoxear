@@ -1907,3 +1907,10 @@ Observation: On mobile/coarse-pointer layouts the interrupt control lived only i
 Intervention: Added a composer-scoped stop button that is hidden by default and shown only for mobile/coarse-pointer CSS when `running && selected`. It reuses the same interrupt function as the topbar button and does not alter broker/API semantics.
 
 Scoped claim: Under focused source tests, full local/Docker suites, and clean-room review, running sessions now expose a thumb-reachable stop affordance without adding desktop topbar clutter. Residual: real narrow-device/large-text layout crowding remains browser/manual evidence rather than unit-proven.
+
+## 2026-06-14 12:25
+Observation: After non-git changed-files failure was made safe, file-picker mentioned/recent candidates still waited for `/git/changed_files` to resolve or reject. A slow or wedged git-state request could therefore leave the picker visually empty despite local candidates already being available.
+
+Intervention: `refreshFileCandidates()` now renders mentioned/recent fallback entries immediately with git freshness false, then replaces them with fresh changed+mentioned+recent entries and writes cache only if changed-files succeeds.
+
+Scoped claim: Under VM timing tests, full local/Docker suites, and clean-room review, file picker fallback candidates are no longer blocked by changed-files latency. Residual: uncached refreshes with fallback now render twice on successful changed-files, and empty-fallback sessions still have nothing useful to show before git state settles.

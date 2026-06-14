@@ -10376,6 +10376,28 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             .map((abs) => sessionRelativePath(abs, sid))
             .filter((rel) => typeof rel === "string" && rel && rel !== ".")
             .map((path) => ({ path, gitPath: false, additions: null, deletions: null, changed: false, source: "recent" }));
+          const mergeCandidateEntries = (changedEntriesIn = []) => {
+            const merged = [];
+            const seen = new Set();
+            for (const entry of [...changedEntriesIn, ...messageEntries, ...manualEntries]) {
+              if (!entry || entry.path === "") continue;
+              const key = fileCandidateKeyForEntry(entry);
+              if (seen.has(key)) continue;
+              seen.add(key);
+              merged.push(entry);
+            }
+            return merged;
+          };
+          const fallbackEntries = mergeCandidateEntries([]);
+          let renderedFallback = false;
+          if (fallbackEntries.length) {
+            if (!current()) return;
+            applyFileCandidateEntries(fallbackEntries);
+            fileCandidateGitStateFresh = false;
+            applyFileMode();
+            renderFilePickerMenu();
+            renderedFallback = true;
+          }
           let changedEntries = [];
           let changedEntriesFresh = false;
           try {
@@ -10395,15 +10417,8 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
               }));
             changedEntriesFresh = true;
           } catch (e) {}
-          const merged = [];
-          const seen = new Set();
-          for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
-            if (!entry || entry.path === "") continue;
-            const key = fileCandidateKeyForEntry(entry);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            merged.push(entry);
-          }
+          if (!changedEntriesFresh && renderedFallback) return;
+          const merged = mergeCandidateEntries(changedEntries);
           if (!current()) return;
           applyFileCandidateEntries(merged);
           fileCandidateGitStateFresh = changedEntriesFresh;
