@@ -2480,3 +2480,13 @@
 ## 2026-06-15 01:38
 - Refreshed `recon/refactor-entry-checkpoint.md` after file-picker highlight commit `495e752`.
 - Updated current HEAD, latest validation counts, closed UX bullet, clean-room review evidence, and file identity invariant wording.
+
+## 2026-06-15 01:50
+- Completed bounded architectural extraction: moved pure git helper logic from `codoxear/server.py` into `codoxear/git_ops.py` while preserving server private wrapper names and the `server._run_git` monkeypatch seam.
+- Changed artifacts: `codoxear/server.py`, `codoxear/git_ops.py`, `tests/test_git_ops.py`.
+- Mechanism preserved: route/session code continues calling `_resolve_git_path`, `_run_git`, `_git_repo_root`, `_current_git_branch`, `_create_git_worktree`, `_parse_git_numstat`, etc. in `server.py`; those wrappers delegate to `git_ops` and inject `_run_git` where tests and routes need patch compatibility.
+- Clean-room review: architecture review initially found a semantic drift where detached HEAD (`git rev-parse --abbrev-ref HEAD` -> `HEAD`) was hidden as `None`. Fixed `git_ops.current_git_branch()` to return `branch or None` and updated tests to assert `HEAD` is preserved. Targeted re-review found the blocker cleared and no replacement blocker. Critic review found no additional blockers.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py codoxear/git_ops.py tests/test_git_ops.py && python3 -m pytest tests/test_git_ops.py tests/test_path_resolution.py tests/test_file_inspect.py tests/test_file_search_module_source.py tests/test_session_resume.py::TestSpawnWebSessionResume::test_create_git_worktree_creates_new_checkout tests/test_session_resume.py::TestSpawnWebSessionResume::test_spawn_web_session_uses_created_worktree_as_cwd tests/test_session_sidebar_priority.py::TestSessionSidebarPriority::test_list_sessions_reads_git_branch_outside_manager_lock -q` -> `86 passed, 52 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `860 passed, 92 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `859 passed, 1 skipped, 92 subtests passed`.

@@ -62,6 +62,7 @@ from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import safe_filename as _safe_filename
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
+from . import git_ops as _git_ops
 from .launch_config import LaunchConfigPaths
 from .launch_config import LaunchRequestValidationError
 from .launch_config import NewSessionLaunchRequest
@@ -1131,60 +1132,13 @@ def _resolve_existing_absolute_file(raw_path: str) -> Path:
 
 
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
-    repo_root = Path(_run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()).resolve()
-    if not isinstance(raw_path, str) or raw_path == "":
-        raise ValueError("path required")
-    if "\x00" in raw_path:
-        raise ValueError("invalid path")
-    raw = Path(raw_path)
-    if raw.is_absolute():
-        target = Path(os.path.normpath(str(raw)))
-        try:
-            rel = target.relative_to(repo_root).as_posix()
-        except ValueError as e:
-            raise ValueError("path is outside git repo") from e
-        if rel in {"", "."}:
-            raise ValueError("path required")
-    else:
-        rel = posixpath.normpath(raw_path)
-        if rel in {"", "."}:
-            raise ValueError("path required")
-        if rel == ".." or rel.startswith("../"):
-            raise ValueError("path is outside git repo")
-        target = repo_root / Path(rel)
-    return target, repo_root, rel
-
+    return _git_ops.resolve_git_path(cwd, raw_path, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _git_error_is_missing_head(message: str) -> bool:
-    return "Not a valid object name HEAD" in message or "ambiguous argument 'HEAD'" in message or "bad revision 'HEAD'" in message
-
+    return _git_ops.git_error_is_missing_head(message)
 
 def _git_head_blob_oid(cwd: Path, rel: str) -> str | None:
-    try:
-        tree_match = _run_git(
-            cwd,
-            ["ls-tree", "-z", "HEAD", "--", rel],
-            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-            max_bytes=64 * 1024,
-            literal_pathspecs=True,
-        )
-    except RuntimeError as e:
-        if _git_error_is_missing_head(str(e)):
-            return None
-        raise
-    for entry in tree_match.split("\0"):
-        if not entry:
-            continue
-        meta, sep, path = entry.partition("\t")
-        if not sep or path != rel:
-            continue
-        parts = meta.split()
-        if len(parts) >= 3:
-            if parts[1] == "blob":
-                return parts[2]
-            raise RuntimeError(f"HEAD path is not a file: {rel}")
-    return None
-
+    return _git_ops.git_head_blob_oid(cwd, rel, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
     name = str(raw_path).strip()
@@ -1252,32 +1206,7 @@ def _list_session_relative_files(base: Path) -> list[str]:
 
 
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
-    cmd = ["git", *args]
-    env = None
-    if literal_pathspecs:
-        env = os.environ.copy()
-        for key in ("GIT_GLOB_PATHSPECS", "GIT_NOGLOB_PATHSPECS", "GIT_ICASE_PATHSPECS"):
-            env.pop(key, None)
-        env["GIT_LITERAL_PATHSPECS"] = "1"
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(cwd),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout_s,
-            check=False,
-            env=env,
-        )
-    except (OSError, ValueError) as e:
-        raise RuntimeError(str(e)) from e
-    if proc.returncode != 0:
-        err = proc.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(err or f"git failed with code {proc.returncode}")
-    if len(proc.stdout) > max_bytes:
-        raise ValueError(f"git output too large (max {max_bytes} bytes)")
-    return proc.stdout.decode("utf-8", errors="replace")
-
+    return _git_ops.run_git(cwd, args, timeout_s=timeout_s, max_bytes=max_bytes, literal_pathspecs=literal_pathspecs)
 
 def _expand_user_path(raw: str) -> Path:
     home = str(Path.home())
@@ -1318,27 +1247,13 @@ def _resolve_new_path(raw: str, *, field_name: str) -> Path:
 
 
 def _clean_worktree_branch(raw: str) -> str:
-    if not isinstance(raw, str):
-        raise ValueError("worktree_branch must be a string")
-    branch = raw.strip()
-    if not branch:
-        raise ValueError("worktree_branch required")
-    return branch
-
+    return _git_ops.clean_worktree_branch(raw)
 
 def _require_git_repo(cwd: Path) -> None:
-    _run_git(cwd, ["rev-parse", "--is-inside-work-tree"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=4096)
-
+    _git_ops.require_git_repo(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _git_repo_root(cwd: Path) -> Path | None:
-    try:
-        root = _run_git(cwd, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
-    except (RuntimeError, FileNotFoundError):
-        return None
-    if not root:
-        return None
-    return Path(root).resolve()
-
+    return _git_ops.git_repo_root(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_SEARCH_LIMIT) -> dict[str, Any]:
     return _search_session_relative_files_impl(base, query=query, limit=limit, git_root_func=_git_repo_root)
@@ -1361,96 +1276,19 @@ def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
 
 
 def _worktree_path_slug(branch: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", branch).strip(".-")
-    return slug or "worktree"
-
+    return _git_ops.worktree_path_slug(branch)
 
 def _default_worktree_path(source_cwd: Path, branch: str) -> Path:
-    slug = _worktree_path_slug(branch)
-    return (source_cwd.parent / f"{source_cwd.name}-{slug}").resolve()
-
+    return _git_ops.default_worktree_path(source_cwd, branch)
 
 def _create_git_worktree(source_cwd: Path, worktree_branch: str) -> Path:
-    repo_root = _git_repo_root(source_cwd)
-    if repo_root is None:
-        raise ValueError("cwd is not inside a git worktree")
-    branch = _clean_worktree_branch(worktree_branch)
-    target = _default_worktree_path(source_cwd, branch)
-    if target.exists():
-        raise ValueError(f"derived worktree path already exists: {target}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        proc = subprocess.run(
-            ["git", "worktree", "add", "-b", branch, str(target)],
-            cwd=str(repo_root),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=GIT_WORKTREE_TIMEOUT_SECONDS,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise ValueError("git worktree add timed out") from e
-    if proc.returncode != 0:
-        err = proc.stderr.decode("utf-8", errors="replace").strip()
-        out = proc.stdout.decode("utf-8", errors="replace").strip()
-        raise ValueError(err or out or f"git worktree add failed with code {proc.returncode}")
-    return target.resolve()
-
+    return _git_ops.create_git_worktree(source_cwd, worktree_branch, git_repo_root_func=_git_repo_root, timeout_s=GIT_WORKTREE_TIMEOUT_SECONDS)
 
 def _split_git_nul_paths(text: str) -> list[str]:
-    return [part for part in text.split("\0") if part]
-
+    return _git_ops.split_git_nul_paths(text)
 
 def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
-    out: dict[str, dict[str, int | None]] = {}
-
-    def add_entry(add_raw: str, del_raw: str, path_s: str) -> None:
-        if path_s == "":
-            return
-        add_v = None if add_raw == "-" else int(add_raw)
-        del_v = None if del_raw == "-" else int(del_raw)
-        prev = out.get(path_s)
-        if prev is None:
-            out[path_s] = {"additions": add_v, "deletions": del_v}
-            return
-        if add_v is None or prev["additions"] is None:
-            prev["additions"] = None
-        else:
-            prev["additions"] = int(prev["additions"]) + add_v
-        if del_v is None or prev["deletions"] is None:
-            prev["deletions"] = None
-        else:
-            prev["deletions"] = int(prev["deletions"]) + del_v
-
-    if "\0" in text:
-        records = text.split("\0")
-        idx = 0
-        while idx < len(records):
-            raw = records[idx]
-            idx += 1
-            if raw == "":
-                continue
-            parts = raw.split("\t", 2)
-            if len(parts) != 3:
-                continue
-            add_raw, del_raw, path = parts
-            if path == "":
-                # With --numstat -z, rename/copy records are encoded as:
-                # add<TAB>del<TAB><NUL>old-path<NUL>new-path<NUL>.
-                if idx + 1 >= len(records):
-                    continue
-                idx += 1
-                path = records[idx]
-                idx += 1
-            add_entry(add_raw, del_raw, path)
-    else:
-        for raw in [raw for raw in text.splitlines() if raw != ""]:
-            parts = raw.split("\t", 2)
-            if len(parts) != 3:
-                continue
-            add_entry(parts[0], parts[1], parts[2])
-    return out
-
+    return _git_ops.parse_git_numstat(text)
 
 def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_bytes: int = ATTACH_UPLOAD_MAX_BYTES) -> Path:
     return _stage_uploaded_file_impl(
@@ -1647,14 +1485,7 @@ def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
 
 
 def _current_git_branch(cwd: Path) -> str | None:
-    try:
-        branch = _run_git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
-    except (RuntimeError, FileNotFoundError):
-        return None
-    if not branch:
-        return None
-    return branch
-
+    return _git_ops.current_git_branch(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _query_flag(values: Mapping[str, list[str]], name: str) -> bool:
     raw = values.get(name, [""])[0]
