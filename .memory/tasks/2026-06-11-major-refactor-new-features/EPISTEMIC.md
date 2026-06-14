@@ -2045,3 +2045,10 @@ Scoped claim: Under focused git/path/file/worktree tests, clean-room architectur
 
 ## 2026-06-15 01:51
 Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `856300f` and the git helper extraction. It remains a refactor-entry/handoff artifact, not merge approval.
+
+## 2026-06-15 01:59
+Observation: User reported two markdown rendering problems: code blocks have undesirable dark rendering, and markdown tables can exceed chat width instead of wrapping/staying contained.
+
+Interpretation: These are live UX/product issue reports, not yet locally verified mechanisms. Likely mechanisms include markdown CSS/theme choices for `pre`/`code` and table layout/overflow/wrapping rules in chat message rendering.
+
+Next discriminating evidence: inspect markdown renderer/CSS, create representative fenced-code and wide-table fixtures in isolated browser state, and verify whether fixes preserve readability, containment, copy behavior, and mobile layout.

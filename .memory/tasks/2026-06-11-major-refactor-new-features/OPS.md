@@ -2494,3 +2494,9 @@
 ## 2026-06-15 01:51
 - Refreshed `recon/refactor-entry-checkpoint.md` after git helper extraction commit `856300f`.
 - Updated current HEAD, latest validation counts, closed architecture bullet, clean-room review evidence, and git/file identity invariant wording.
+
+## 2026-06-15 01:59
+- User reported two markdown rendering issues and asked to add them to the task spec:
+  - code blocks in markdown use ugly dark rendering;
+  - markdown tables should not run over width and should wrap/stay contained.
+- Updated `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` under `User-reported issue updates, 2026-06-15` with both issues, scoped as unverified UI/readability/layout bugs requiring isolated browser validation.

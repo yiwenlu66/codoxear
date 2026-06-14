@@ -71,6 +71,10 @@ User-reported issue updates, 2026-06-13:
 - Video pipeline/product gap: ffmpeg video transcoding does not work and, per user report, has never worked. Treat this as a real product bug, not a regression assumption. Investigate the video preview/transcoding control flow, validate with isolated Docker/app state and representative video fixtures, and preserve the exact failure mechanism before repair.
 - Pi busy-state/product gap: Pi sessions can show/stay busy after interruption. Treat this as an agent-backend state/busy/idle synchronization bug around interrupt handling. Investigate Pi log normalization, broker/sessiond state, interrupt route semantics, and UI busy-state clearing with isolated fixtures before claiming fixed.
 
+User-reported issue updates, 2026-06-15:
+- Markdown code-block rendering issue: code blocks in chat markdown use an ugly dark rendering. Treat this as a UI/readability bug in markdown/message rendering, not as generic theme preference. Inspect current markdown CSS/renderer, preserve code readability and contrast, and validate against representative messages with fenced code blocks in isolated browser state.
+- Markdown table width issue: markdown tables should not run over the chat width; they should wrap or otherwise stay contained. Treat this as a chat rendering/layout bug. Inspect markdown table rendering and CSS overflow/wrapping behavior, preserve mobile readability, and validate with wide-table fixtures in isolated browser state.
+
 ## Context
 Required project context:
 - `AGENTS.md` for architecture, design philosophy, development reminders, and safe restart constraints.
