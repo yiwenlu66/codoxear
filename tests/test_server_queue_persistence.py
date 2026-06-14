@@ -406,7 +406,17 @@ class TestServerQueuePersistence(unittest.TestCase):
             SessionManager.send(mgr, sid, "normal prompt")
 
     def test_malformed_parseable_send_responses_are_commit_unknown(self) -> None:
-        for response in [{}, None, {"queued": False, "queue_len": "notint"}, {"queued": False, "queue_len": -1}, {"queued": False, "queue_len": True}, {"queued": False, "queue_len": 1.9}, {"queued": False, "queue_len": "0"}]:
+        for response in [
+            {},
+            None,
+            {"queued": False, "queue_len": "notint"},
+            {"queued": False, "queue_len": -1},
+            {"queued": False, "queue_len": True},
+            {"queued": False, "queue_len": 1.9},
+            {"queued": False, "queue_len": "0"},
+            {"queued": False, "queue_len": 0, "busy": "false"},
+            {"queued": False, "queue_len": 0, "busy": 0},
+        ]:
             with self.subTest(response=response):
                 sid = "s1"
                 mgr = self._mgr()

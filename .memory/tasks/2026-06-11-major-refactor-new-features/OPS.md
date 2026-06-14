@@ -2132,3 +2132,12 @@
   - Full local: `python3 -m pytest -q` -> `785 passed, 82 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `784 passed, 1 skipped, 82 subtests passed`.
   - Clean-room review loop found and drove fixes for programmatic-focus query reset and ambiguity-launched create-new defaults; final review -> no blockers.
+
+## 2026-06-14 08:27
+- Completed broker-state strictness/refactor tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_sessions_pending_log_idle.py`, `tests/test_stale_sidecars.py`, `tests/test_server_queue_persistence.py`.
+- Validation:
+  - Focused: `python3 -m pytest tests/test_sessions_pending_log_idle.py tests/test_stale_sidecars.py tests/test_server_queue_persistence.py tests/test_unattended_sweep.py -q` -> `104 passed, 26 subtests passed`.
+  - Full local: `python3 -m pytest -q` -> `788 passed, 88 subtests passed`.
+  - Docker sandbox: first attempt failed before tests on Docker Hub TLS metadata timeout; retry `scripts/codoxear-docker-sandbox test` -> `787 passed, 1 skipped, 88 subtests passed`.
+  - Clean-room review -> no blockers.

@@ -122,6 +122,39 @@ class TestStaleSidecars(unittest.TestCase):
             self.assertEqual(mgr._sessions["fixture"].thread_id, "sidecar-thread")
             self.assertEqual(mgr._sessions["fixture"].log_path, log_path)
 
+    def test_discovery_skips_malformed_broker_state_without_coercion(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            sock_dir = root / "socks"
+            sock_dir.mkdir()
+            sock = sock_dir / "fixture.sock"
+            sock.touch()
+            log_path = root / "rollout.jsonl"
+            log_path.write_text(json.dumps({"type": "session_meta", "payload": {"id": "sidecar-thread", "source": "cli"}}) + "\n", encoding="utf-8")
+            sock.with_suffix(".json").write_text(
+                json.dumps(
+                    {
+                        "session_id": "sidecar-thread",
+                        "agent_backend": "codex",
+                        "codex_pid": 0,
+                        "broker_pid": 0,
+                        "cwd": str(root),
+                        "log_path": str(log_path),
+                        "start_ts": 123.0,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mgr = _make_manager()
+            mgr._sock_call = lambda *_args, **_kwargs: {"busy": "false", "queue_len": 0, "token": None}  # type: ignore[method-assign]
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr), patch.object(server, "SOCK_DIR", sock_dir):
+                SessionManager._discover_existing(mgr, force=True)
+
+            self.assertNotIn("fixture", mgr._sessions)
+            self.assertIn("invalid broker state", stderr.getvalue())
+
     def test_invalid_session_meta_warning_is_once_per_context_path(self) -> None:
         with TemporaryDirectory() as td:
             log_path = Path(td) / "rollout-no-session-meta.jsonl"

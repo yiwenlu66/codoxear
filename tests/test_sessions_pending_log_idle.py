@@ -131,6 +131,30 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
         self.assertIs(busy, False)
         self.assertEqual(queue_len, 0)
 
+    def test_message_snapshot_rejects_malformed_mocked_broker_state(self) -> None:
+        class _Manager:
+            def get_state(self, _session_id):
+                return {"busy": "false", "queue_len": 0}
+
+            def _queue_len(self, _session_id):
+                return 0
+
+        s = Session(
+            session_id="broker-1",
+            thread_id="broker-1",
+            broker_pid=1,
+            codex_pid=2,
+            agent_backend="codex",
+            owned=False,
+            start_ts=123.0,
+            cwd="/tmp",
+            log_path=None,
+            sock_path=Path("/tmp/broker-1.sock"),
+        )
+        with patch("codoxear.server.MANAGER", _Manager()):
+            with self.assertRaisesRegex(ValueError, "invalid broker state response"):
+                _message_runtime_snapshot("broker-1", s)
+
     def test_message_snapshot_prefers_log_token_over_stale_broker_token(self) -> None:
         class _Manager:
             def get_state(self, _session_id):
@@ -231,6 +255,38 @@ class TestSessionsPendingLogIdle(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIsNone(err)
         self.assertEqual(s.token, {"tokens_in_context": 185136})
+
+    def test_refresh_session_state_rejects_malformed_broker_state_without_coercion(self) -> None:
+        mgr = _make_manager()
+        s = Session(
+            session_id="broker-1",
+            thread_id="broker-1",
+            broker_pid=1,
+            codex_pid=2,
+            agent_backend="codex",
+            owned=False,
+            start_ts=123.0,
+            cwd="/tmp",
+            log_path=None,
+            sock_path=Path("/tmp/broker-1.sock"),
+            busy=False,
+            queue_len=0,
+        )
+        mgr._sessions[s.session_id] = s
+        malformed = [
+            {"busy": "false", "queue_len": 0},
+            {"busy": False, "queue_len": "0"},
+            {"busy": False, "queue_len": -1},
+            {"busy": False, "queue_len": True},
+        ]
+        for state in malformed:
+            with self.subTest(state=state):
+                mgr._sock_call = lambda *_args, state=state, **_kwargs: state  # type: ignore[method-assign]
+                ok, err = mgr._refresh_session_state(s.session_id, s.sock_path)
+                self.assertFalse(ok)
+                self.assertIsInstance(err, ValueError)
+                self.assertFalse(s.busy)
+                self.assertEqual(s.queue_len, 0)
 
     def test_get_state_does_not_overwrite_log_token_with_stale_broker_token(self) -> None:
         mgr = _make_manager()

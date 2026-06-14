@@ -2295,6 +2295,18 @@ class Session:
     last_send_log_size: int | None = None
 
 
+def _broker_busy_queue_from_state(state: dict[str, Any]) -> tuple[bool, int]:
+    if not isinstance(state, dict) or "busy" not in state or "queue_len" not in state:
+        raise ValueError("invalid broker state response")
+    busy_raw = state.get("busy")
+    queue_len_raw = state.get("queue_len")
+    if not isinstance(busy_raw, bool):
+        raise ValueError("invalid broker state response")
+    if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
+        raise ValueError("invalid broker state response")
+    return busy_raw, int(queue_len_raw)
+
+
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
     log_path = session.log_path
     if log_path is None or (not log_path.exists()):
@@ -3179,15 +3191,7 @@ class SessionManager:
             return s, s.log_path
 
     def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
-        if not isinstance(state, dict) or "busy" not in state or "queue_len" not in state:
-            raise ValueError("invalid broker state response")
-        busy_raw = state.get("busy")
-        queue_len_raw = state.get("queue_len")
-        if not isinstance(busy_raw, bool):
-            raise ValueError("invalid broker state response")
-        if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
-            raise ValueError("invalid broker state response")
-        return busy_raw, int(queue_len_raw)
+        return _broker_busy_queue_from_state(state)
 
     def _log_size_or_none(self, log_path: Path | None) -> int | None:
         if not isinstance(log_path, Path):
@@ -3666,10 +3670,7 @@ class SessionManager:
                 st = self.get_state(sid)
                 if not isinstance(st, dict):
                     raise ValueError("invalid broker state response")
-                if "busy" not in st or "queue_len" not in st:
-                    raise ValueError("invalid broker state response")
-                busy = bool(st.get("busy"))
-                ql = int(st.get("queue_len"))
+                busy, ql = self._broker_busy_queue_from_state(st)
                 if busy or ql > 0 or self._queue_len(sid) > 0:
                     continue
                 last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES)
@@ -3925,6 +3926,12 @@ class SessionManager:
             else:
                 meta_log_off = 0
                 token = None
+            try:
+                broker_busy, broker_queue_len = self._broker_busy_queue_from_state(resp)
+            except ValueError as e:
+                sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
+                sys.stderr.flush()
+                continue
             if token is None and log_path is None:
                 token = resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None
 
@@ -3940,8 +3947,8 @@ class SessionManager:
                 cwd=str(cwd),
                 log_path=log_path,
                 sock_path=sock,
-                busy=bool(resp.get("busy")),
-                queue_len=int(resp.get("queue_len")),
+                busy=broker_busy,
+                queue_len=broker_queue_len,
                 token=token,
                 meta_thinking=0,
                 meta_tools=0,
@@ -4012,13 +4019,15 @@ class SessionManager:
             resp = self._sock_call(sock_path, {"cmd": "state"}, timeout_s=timeout_s)
         except Exception as e:
             return False, e
+        try:
+            busy_val, queue_len = self._broker_busy_queue_from_state(resp)
+        except ValueError as e:
+            return False, e
         with self._lock:
             s2 = self._sessions.get(session_id)
             if s2:
-                if "busy" not in resp or "queue_len" not in resp:
-                    raise ValueError("invalid broker state response")
-                s2.busy = bool(resp.get("busy"))
-                s2.queue_len = int(resp.get("queue_len"))
+                s2.busy = busy_val
+                s2.queue_len = queue_len
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -5228,6 +5237,12 @@ class SessionManager:
                 raise SessionInjectionError(err)
             if "queue_len" not in resp:
                 raise_commit_unknown("send commit status unknown; broker response was incomplete")
+            busy_resp: bool | None = None
+            if "busy" in resp:
+                busy_raw = resp.get("busy")
+                if not isinstance(busy_raw, bool):
+                    raise_commit_unknown("send commit status unknown; broker response was invalid")
+                busy_resp = busy_raw
             queue_len_raw = resp.get("queue_len")
             if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
                 raise_commit_unknown("send commit status unknown; broker response was invalid")
@@ -5236,8 +5251,8 @@ class SessionManager:
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:
-                    if "busy" in resp:
-                        s2.busy = bool(resp.get("busy"))
+                    if busy_resp is not None:
+                        s2.busy = busy_resp
                     s2.queue_len = queue_len
                     s2.last_send_log_path = pre_send_log_path
                     s2.last_send_log_size = pre_send_log_size
@@ -5478,12 +5493,7 @@ def _message_runtime_snapshot(
     token_update: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     state = MANAGER.get_state(session_id)
-    if not isinstance(state, dict):
-        raise ValueError("invalid broker state response")
-    if "busy" not in state:
-        raise ValueError("missing busy from broker state response")
-    if "queue_len" not in state:
-        raise ValueError("missing queue_len from broker state response")
+    _broker_busy_queue_from_state(state)
     if s.log_path is not None and s.log_path.exists():
         idle_val = MANAGER.idle_from_log(session_id)
         busy_val = not bool(idle_val)
@@ -5890,12 +5900,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     _json_response(self, 404, {"error": "unknown session"})
                     return
                 state = MANAGER.get_state(session_id)
-                if not isinstance(state, dict):
-                    raise ValueError("invalid broker state response")
-                if "busy" not in state:
-                    raise ValueError("missing busy from broker state response")
-                if "queue_len" not in state:
-                    raise ValueError("missing queue_len from broker state response")
+                broker_busy, _broker_queue_len = MANAGER._broker_busy_queue_from_state(state)
                 token_val: dict[str, Any] | None = None
                 st_token = state.get("token")
                 if isinstance(st_token, dict) or st_token is None:
@@ -5926,7 +5931,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 blocked = sidebar_meta["dependency_session_id"] is not None
                 snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
-                broker_busy = bool(state.get("busy"))
                 busy_val = broker_busy
                 if s.log_path is not None and s.log_path.exists():
                     idle_val = MANAGER.idle_from_log(session_id)
