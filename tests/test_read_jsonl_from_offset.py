@@ -1,5 +1,6 @@
 import json
 
+from codoxear.rollout_log import _read_jsonl_records_from_offset
 from codoxear.util import read_jsonl_from_offset
 
 
@@ -41,6 +42,63 @@ def test_read_jsonl_from_offset_ignores_partial_appended_json_line(tmp_path):
     objs2, off2 = read_jsonl_from_offset(p, off, max_bytes=4096)
     assert objs2 == [{"partial": 2}]
     assert off2 == len(line0) + len(line1)
+
+
+def test_read_jsonl_from_offset_skips_oversized_unterminated_fragment(tmp_path):
+    fragment = b'{"partial":"' + (b"x" * 70000)
+    next_line = json.dumps({"after": 1}).encode("utf-8") + b"\n"
+    p = tmp_path / "rollout.jsonl"
+    p.write_bytes(fragment)
+
+    objs, off = read_jsonl_from_offset(p, 0, max_bytes=1024)
+
+    assert objs == []
+    assert off == 1024 + 64 * 1024
+
+    p.write_bytes(fragment + b"\n" + next_line)
+    objs2, off2 = read_jsonl_from_offset(p, off, max_bytes=4096)
+    assert objs2 == [{"after": 1}]
+    assert off2 == len(fragment) + 1 + len(next_line)
+
+
+def test_read_jsonl_from_offset_recovers_when_skip_lands_inside_utf8(tmp_path):
+    target = 1024
+    overflow = 64 * 1024
+    cap = target + overflow
+    prefix = b'{"partial":"'
+    char = "汉".encode("utf-8")
+    pad_len = (cap - len(prefix) - 1) % len(char)
+    fragment = prefix + (b"a" * pad_len) + (char * 30000)
+    next_line = json.dumps({"after": 1}).encode("utf-8") + b"\n"
+    p = tmp_path / "rollout.jsonl"
+    p.write_bytes(fragment)
+
+    objs, off = read_jsonl_from_offset(p, 0, max_bytes=target)
+
+    assert objs == []
+    assert off == cap
+
+    p.write_bytes(fragment + b"\n" + next_line)
+    objs2, off2 = read_jsonl_from_offset(p, off, max_bytes=4096)
+    assert objs2 == [{"after": 1}]
+    assert off2 == len(fragment) + 1 + len(next_line)
+
+
+def test_rollout_record_reader_skips_oversized_unterminated_fragment(tmp_path):
+    fragment = b'{"partial":"' + (b"x" * 70000)
+    next_line = json.dumps({"type": "event", "payload": {"after": 1}}).encode("utf-8") + b"\n"
+    p = tmp_path / "rollout.jsonl"
+    p.write_bytes(fragment)
+
+    records, off = _read_jsonl_records_from_offset(p, 0, max_bytes=1024)
+
+    assert records == []
+    assert off == 1024 + 64 * 1024
+
+    p.write_bytes(fragment + b"\n" + next_line)
+    records2, off2 = _read_jsonl_records_from_offset(p, off, max_bytes=4096)
+    assert [record.obj for record in records2] == [{"type": "event", "payload": {"after": 1}}]
+    assert off2 == len(fragment) + 1 + len(next_line)
 
 
 def test_read_jsonl_from_offset_advances_over_oversized_record(tmp_path):

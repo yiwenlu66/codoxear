@@ -706,16 +706,11 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
             chunk_size = max(64 * 1024, min(target, 1024 * 1024))
             data = f.read(target)
             if b"\n" not in data:
-                extra: list[bytes] = []
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    extra.append(chunk)
-                    if b"\n" in chunk:
-                        break
-                if extra:
-                    data += b"".join(extra)
+                # Read at most one overflow chunk so a live, unterminated JSONL
+                # record cannot make every poll read the rest of a huge file.
+                # Complete oversized records with a nearby newline still advance;
+                # fragments with no newline in this bounded window are skipped.
+                data += f.read(chunk_size)
     except Exception as e:
         _log_exception(f"read jsonl {path} from offset {offset}", e)
         raise
@@ -729,6 +724,9 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
     # the last newline we observed.
     last_nl = data.rfind(b"\n")
     if last_nl < 0:
+        read_cap = max(1, int(max_bytes)) + max(64 * 1024, min(max(1, int(max_bytes)), 1024 * 1024))
+        if len(data) >= read_cap:
+            return [], int(offset) + len(data)
         return [], int(offset)
     data = data[: last_nl + 1]
     new_off = int(offset) + int(last_nl) + 1
@@ -738,7 +736,7 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
     for line in lines:
         try:
             out.append(json.loads(line))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             continue
         except Exception as e:
             _log_exception(f"decode jsonl line from {path}", e)

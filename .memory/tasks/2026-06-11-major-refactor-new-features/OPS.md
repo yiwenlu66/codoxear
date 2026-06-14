@@ -2240,3 +2240,12 @@
   - Clean-room review: no blockers; confirmed `_wait_for_spawned_broker_meta` skips malformed JSON and `broker_pid: true` before returning metadata.
   - Full local: `python3 -m pytest -q` -> `811 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `810 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 11:12
+- Completed bounded live JSONL reader hardening tranche.
+- Changed artifacts: `codoxear/util.py`, `codoxear/rollout_log.py`, `tests/test_read_jsonl_from_offset.py`.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/util.py codoxear/rollout_log.py tests/test_read_jsonl_from_offset.py && python3 -m pytest tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py tests/test_sessiond_fail_closed.py tests/test_chat_transcript_runtime.py -q` -> `46 passed`.
+  - Clean-room review found a mid-UTF8 skip bug; fixed by treating `UnicodeDecodeError` as a malformed line in util reader; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `814 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `813 passed, 1 skipped, 88 subtests passed`.

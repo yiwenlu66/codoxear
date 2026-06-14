@@ -415,22 +415,19 @@ def _read_jsonl_records_from_offset(path: Path, offset: int, *, max_bytes: int) 
         chunk_size = max(64 * 1024, min(target, 1024 * 1024))
         data = f.read(target)
         if b"\n" not in data:
-            extra: list[bytes] = []
-            while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
-                    break
-                extra.append(chunk)
-                if b"\n" in chunk:
-                    break
-            if extra:
-                data += b"".join(extra)
+            # Bound overflow work for live, unterminated JSONL records while
+            # still allowing complete oversized records with a nearby newline.
+            # Fragments with no newline in this bounded window are skipped.
+            data += f.read(chunk_size)
 
     if not data:
         return [], start
 
     last_nl = data.rfind(b"\n")
     if last_nl < 0:
+        read_cap = max(1, int(max_bytes)) + max(64 * 1024, min(max(1, int(max_bytes)), 1024 * 1024))
+        if len(data) >= read_cap:
+            return [], start + len(data)
         return [], start
     data = data[: last_nl + 1]
     new_off = start + last_nl + 1

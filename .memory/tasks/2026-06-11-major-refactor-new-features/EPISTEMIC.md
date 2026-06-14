@@ -1872,3 +1872,10 @@ Observation: After discovery/refresh sidecar metadata hardening, the tmux launch
 Intervention: `_wait_for_spawned_broker_meta` now uses the shared sidecar JSON reader and non-bool integer metadata validator before accepting matching `spawn_nonce` metadata. Added tests for skipping bool broker pids and malformed JSON in favor of valid matching sidecars.
 
 Scoped claim: Under focused, full, Docker, and clean-room review evidence, the tmux launch metadata wait no longer accepts boolean broker pids or malformed sidecar JSON. Residual: this path remains type-only for integer pid values; impossible integer pids are not range/live checked here.
+
+## 2026-06-14 11:12
+Observation: Live JSONL readers read `max_bytes` and then kept reading chunks until newline or EOF. A single huge unterminated record could make every broker/session/live poll read the rest of a large file while returning the same offset.
+
+Intervention: Both util and rollout live readers now read at most one overflow chunk beyond `max_bytes`. If no newline appears in that bounded window, they advance past the oversized fragment to avoid repeated whole-file scans. Subsequent reads skip corrupted suffix lines (including mid-UTF8 starts) and resume at following valid JSONL records.
+
+Scoped claim: Under focused, full, Docker, and clean-room review evidence, deterministic unbounded reads from oversized live partial JSONL records are constrained. Residual: records whose newline lies beyond `max_bytes + overflow_chunk` are intentionally skipped/lost; this is the bounded-work tradeoff.
