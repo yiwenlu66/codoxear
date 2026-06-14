@@ -2448,3 +2448,7 @@
   - Focused: `python3 -m py_compile codoxear/server.py codoxear/sidecar_metadata.py tests/test_sidecar_metadata.py && python3 -m pytest tests/test_sidecar_metadata.py tests/test_stale_sidecars.py tests/test_session_resume.py tests/test_launch_provenance.py tests/test_process_liveness_source.py tests/test_file_upload_module_source.py tests/test_server_queue_persistence.py -q` -> `150 passed, 25 subtests passed`.
   - Full local: `python3 -m pytest -q` -> `850 passed, 92 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `849 passed, 1 skipped, 92 subtests passed`.
+
+## 2026-06-15 01:16
+- Refreshed `recon/refactor-entry-checkpoint.md` after sidecar extraction commit `a4d24ac`.
+- Updated current HEAD/date, latest validation counts, closed-gap architecture bullet, review evidence, and sidecar-discovery invariant wording.

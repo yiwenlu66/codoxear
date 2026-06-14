@@ -1,8 +1,8 @@
 # Refactor-entry checkpoint for `recovery/product-gaps`
 
-Date: 2026-06-14
+Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `31a5c2d feat: show recovery state in chat`
+Current HEAD: `a4d24ac refactor: extract sidecar metadata validation`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -25,7 +25,8 @@ Recent committed recovery checkpoints include:
 - Launch/session metadata:
   - fresh tmux launch metadata requires a live broker pid;
   - launch sidecar metadata validation hardened;
-  - Pi provider/model launch path now passes explicit custom providers through instead of treating UI defaults as an API whitelist.
+  - Pi provider/model launch path now passes explicit custom providers through instead of treating UI defaults as an API whitelist;
+  - sidecar metadata schema/capability parsing now lives in `codoxear/sidecar_metadata.py`, while server discovery/refresh call sites keep fail-closed aliases.
 - Pi live-backed launch path:
   - `model_provider=anthropic`, `model=claude-haiku-4-5`, `reasoning_effort=low` launched through the web path, accepted a send, bound a log, produced an assistant final response, reached idle, and cleaned up in isolated Codoxear app state.
 - File/inline reference UX:
@@ -46,11 +47,11 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last runtime/UI change:
+Latest code-validation evidence after the last architectural/runtime change:
 
-- Focused recovery-panel validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_scrollback_source.py && python3 -m pytest tests/test_chat_scrollback_source.py tests/test_queue_button_source.py tests/test_file_upload_module_source.py -q` -> `30 passed`.
-- Full local suite: `python3 -m pytest -q` -> `840 passed, 89 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `839 passed, 1 skipped, 89 subtests passed`.
+- Focused sidecar extraction validation: `python3 -m py_compile codoxear/server.py codoxear/sidecar_metadata.py tests/test_sidecar_metadata.py && python3 -m pytest tests/test_sidecar_metadata.py tests/test_stale_sidecars.py tests/test_session_resume.py tests/test_launch_provenance.py tests/test_process_liveness_source.py tests/test_file_upload_module_source.py tests/test_server_queue_persistence.py -q` -> `150 passed, 25 subtests passed`.
+- Full local suite: `python3 -m pytest -q` -> `850 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `849 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -60,6 +61,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - `/tmp/codoxear-root-cwd-resolve-review.md`
 - `/tmp/codoxear-oversized-search-review.md`
 - `/tmp/codoxear-recovery-panel-review6.md`
+- Clean-room critic subagent review of sidecar extraction diff and call sites -> no blocker findings; non-blocking source-test brittleness was reduced before commit.
 
 Recent isolated browser evidence:
 
@@ -78,7 +80,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 4. **Inline refs:** ambiguous inline refs route through the identity-aware picker; failed/truncated project search is ambiguity, not uniqueness proof.
 5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced.
 6. **Stale busy override:** stale broker busy can be overridden only with idle log evidence, empty queue, same-log last-send barrier cleared, and a bound log.
-7. **Sidecar discovery:** malformed sidecar metadata is skipped/logged; fresh launch metadata requires a live broker pid; stale discovery still tolerates pid placeholders where explicitly allowed.
+7. **Sidecar discovery:** malformed sidecar metadata is skipped/logged; fresh launch metadata requires a live broker pid; stale discovery still tolerates pid placeholders where explicitly allowed. Schema/type/capability parsing belongs in `codoxear.sidecar_metadata`; consumers may prune/skip only through explicit validation failure, not coercion.
 8. **Transcript scale:** live JSONL readers stay bounded; impossible-sized partial records may be skipped rather than repeatedly re-read unboundedly.
 9. **Search semantics:** count is exact by default only when all records in scope were parseable under the bounded line cap; skipped oversized records make `match_count_truncated` true. Bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
 10. **Search navigation:** navigation refresh may recompute loaded DOM matches without discarding already-known all-transcript count evidence.

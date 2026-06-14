@@ -2012,3 +2012,6 @@ Observation: Sidecar metadata validation was pure schema/capability logic embedd
 Intervention: Extracted those pure validation helpers into `codoxear/sidecar_metadata.py`; server imports preserve the old private alias names at call sites. Focused sidecar/discovery/queue tests, clean-room critic review, full local validation, and Docker validation found no behavioral regressions.
 
 Scoped claim: The sidecar metadata boundary is now modular enough for future server decomposition while preserving current fail-closed sidecar semantics under the tested discovery, refresh, tmux metadata, and queue-readiness paths.
+
+## 2026-06-15 01:16
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `a4d24ac` and the sidecar metadata extraction. It remains a refactor-entry/handoff artifact, not merge approval.
