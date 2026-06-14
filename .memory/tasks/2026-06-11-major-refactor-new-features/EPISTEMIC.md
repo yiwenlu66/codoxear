@@ -2005,3 +2005,10 @@ Scoped claim: Under source tests, browser evidence in isolated recovery fixtures
 
 ## 2026-06-14 19:28
 Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `31a5c2d` and includes the in-chat recovery panel UX fix. It remains a refactor-entry/handoff artifact, not merge approval.
+
+## 2026-06-15 01:14
+Observation: Sidecar metadata validation was pure schema/capability logic embedded inside `server.py`, while discovery/refresh/tmux call sites were the stateful consumers. This made the server module harder to reason about without adding semantic value.
+
+Intervention: Extracted those pure validation helpers into `codoxear/sidecar_metadata.py`; server imports preserve the old private alias names at call sites. Focused sidecar/discovery/queue tests, clean-room critic review, full local validation, and Docker validation found no behavioral regressions.
+
+Scoped claim: The sidecar metadata boundary is now modular enough for future server decomposition while preserving current fail-closed sidecar semantics under the tested discovery, refresh, tmux metadata, and queue-readiness paths.

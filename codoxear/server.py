@@ -138,6 +138,17 @@ from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
+from .sidecar_metadata import detaches_current_log as _metadata_detaches_current_log
+from .sidecar_metadata import ignored_rollout_paths as _metadata_ignored_rollout_paths
+from .sidecar_metadata import key_write_errors_supported as _metadata_key_write_errors_supported
+from .sidecar_metadata import log_invalid as _log_invalid_sidecar_metadata
+from .sidecar_metadata import log_path as _metadata_log_path
+from .sidecar_metadata import read_metadata as _read_sidecar_metadata
+from .sidecar_metadata import required_int as _metadata_required_int
+from .sidecar_metadata import required_live_pid as _metadata_required_live_pid
+from .sidecar_metadata import required_text as _metadata_required_text
+from .sidecar_metadata import start_ts as _metadata_start_ts
+from .sidecar_metadata import sync_send_supported as _metadata_sync_send_supported
 from .util import pid_alive as _pid_alive
 from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
@@ -2255,98 +2266,6 @@ def _message_transcript_identity(session: Session) -> dict[str, Any]:
         "log_path": str(log_path),
     }
 
-
-def _metadata_ignored_rollout_paths(meta: dict[str, Any], *, sock: Path) -> set[Path]:
-    raw = meta.get("ignored_rollout_paths")
-    if raw is None:
-        return set()
-    if not isinstance(raw, list):
-        raise ValueError(f"invalid ignored_rollout_paths in metadata for socket {sock}")
-    out: set[Path] = set()
-    for item in raw:
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"invalid ignored_rollout_paths entry in metadata for socket {sock}")
-        out.add(Path(item))
-    return out
-
-
-def _read_sidecar_metadata(meta_path: Path, *, sock: Path) -> dict[str, Any]:
-    try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        raise ValueError(f"invalid metadata json for socket {sock}: {type(e).__name__}: {e}") from e
-    if not isinstance(meta, dict):
-        raise ValueError(f"invalid metadata json for socket {sock}")
-    return meta
-
-
-def _metadata_required_int(meta: dict[str, Any], key: str, *, sock: Path) -> int:
-    value = meta.get(key)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"invalid {key} in metadata for socket {sock}")
-    return int(value)
-
-
-def _metadata_required_live_pid(meta: dict[str, Any], key: str, *, sock: Path) -> int:
-    pid = _metadata_required_int(meta, key, sock=sock)
-    if pid <= 0 or not _pid_alive(pid):
-        raise ValueError(f"invalid {key} in metadata for socket {sock}")
-    return pid
-
-
-def _metadata_required_text(meta: dict[str, Any], key: str, *, sock: Path) -> str:
-    value = meta.get(key)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"invalid {key} in metadata for socket {sock}")
-    return value
-
-
-def _metadata_log_path(meta: dict[str, Any], *, sock: Path) -> Path | None:
-    if "log_path" not in meta:
-        raise ValueError(f"missing log_path in metadata for socket {sock}")
-    if meta.get("log_path") is None:
-        return None
-    raw = meta.get("log_path")
-    if not isinstance(raw, str) or not raw.strip():
-        raise ValueError(f"invalid log_path in metadata for socket {sock}")
-    path = Path(raw)
-    if path.exists() and not path.is_file():
-        raise ValueError(f"invalid log_path in metadata for socket {sock}")
-    return path
-
-
-def _metadata_start_ts(meta: dict[str, Any], *, sock: Path) -> float:
-    value = meta.get("start_ts")
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"invalid start_ts in metadata for socket {sock}")
-    try:
-        timestamp = float(value)
-    except (OverflowError, ValueError) as e:
-        raise ValueError(f"invalid start_ts in metadata for socket {sock}") from e
-    if not math.isfinite(timestamp):
-        raise ValueError(f"invalid start_ts in metadata for socket {sock}")
-    return timestamp
-
-
-def _log_invalid_sidecar_metadata(context: str, sock: Path, error: Exception) -> None:
-    sys.stderr.write(f"error: {context}: invalid sidecar metadata for {sock}: {error}\n")
-    sys.stderr.flush()
-
-
-def _metadata_sync_send_supported(meta: dict[str, Any]) -> bool:
-    caps = meta.get("control_capabilities")
-    return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("sync_send") is True
-
-
-def _metadata_key_write_errors_supported(meta: dict[str, Any]) -> bool:
-    caps = meta.get("control_capabilities")
-    return meta.get("control_protocol_version") == 2 and isinstance(caps, dict) and caps.get("key_write_errors") is True
-
-
-def _metadata_detaches_current_log(meta: dict[str, Any], current_log_path: Path | None) -> bool:
-    if current_log_path is None:
-        return False
-    return _clean_optional_text(meta.get("session_id")) is None and meta.get("log_path") is None
 
 
 def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
