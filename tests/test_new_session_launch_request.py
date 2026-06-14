@@ -47,6 +47,34 @@ class TestNewSessionLaunchRequest(unittest.TestCase):
         self.assertIsNone(req.model)
         self.assertEqual(req.reasoning_effort, "high")
 
+    def test_pi_provider_is_passed_to_cli_when_defaults_are_incomplete(self) -> None:
+        with patch(
+            "codoxear.server._read_pi_launch_defaults",
+            return_value={"provider_choices": ["occ", "occ-claude"], "reasoning_efforts_by_model": {}},
+        ):
+            req = _parse_new_session_launch_request({"agent_backend": "pi", "cwd": "/repo", "model_provider": "anthropic", "model": "claude-haiku-4-5"})
+
+        self.assertEqual(req.model_provider, "anthropic")
+        self.assertEqual(req.model, "claude-haiku-4-5")
+
+    def test_pi_provider_specific_request_ignores_stale_bare_model_reasoning(self) -> None:
+        with patch(
+            "codoxear.server._read_pi_launch_defaults",
+            return_value={"provider_choices": ["occ"], "reasoning_efforts_by_model": {"claude-haiku-4-5": ["off"], "occ/claude-haiku-4-5": ["off"]}},
+        ):
+            req = _parse_new_session_launch_request(
+                {
+                    "agent_backend": "pi",
+                    "cwd": "/repo",
+                    "model_provider": "anthropic",
+                    "model": "claude-haiku-4-5",
+                    "reasoning_effort": "low",
+                }
+            )
+
+        self.assertEqual(req.model_provider, "anthropic")
+        self.assertEqual(req.reasoning_effort, "low")
+
     def test_rejects_unsupported_backend_specific_fields(self) -> None:
         with self.assertRaisesRegex(LaunchRequestValidationError, "model_provider is not supported for cc"):
             _parse_new_session_launch_request({"agent_backend": "cc", "cwd": "/repo", "model_provider": "openai"})

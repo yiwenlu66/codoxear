@@ -1937,3 +1937,12 @@ Intervention: Added a launch-wait-only live-pid requirement for `broker_pid` whi
 Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, freshly spawned tmux launch metadata now rejects non-live broker pid values without changing stale-sidecar discovery semantics. Residual: liveness is not full broker identity; PID reuse and pane-death-during-wait remain broader lifecycle risks.
 
 Correction: User clarified that provider URLs/keys are available through `~/.pi/agents` and `~/.zshrc`, and `occ-claude`/`claude-haiku-4-5` is sufficient for Claude-specific validation. The blocker should be recorded as secret-safe isolated execution, not missing authorization.
+
+## 2026-06-14 17:32
+Observation: User clarified that provider/key context was already available from the Pi/zsh config. A secret-redaction command then failed and printed secret-looking values in tool output; no such values were written into project files, but the session transcript should be treated as sensitive if shared.
+
+Observation: Live validation falsified the assumption that Codoxear's Pi `provider_choices` cache can be used as an API whitelist. In the same zsh environment, Pi CLI accepted `anthropic / claude-haiku-4-5`, while Codoxear rejected `anthropic` because its local defaults only listed stale/custom providers.
+
+Intervention: Pi provider names are now passed through to the Pi CLI instead of being pre-rejected by Codoxear's local defaults. The new-session UI allows typed custom Pi `provider/model` values even when provider defaults are stale or empty. Pi reasoning capability lookup no longer lets a bare-model cache entry constrain an explicit provider/model pair.
+
+Scoped claim: Under focused tests, full local/Docker suites, clean-room review, and one real Pi web-owned launch/send/log/final/idle pass, the Pi launch path now works for the current configured `anthropic / claude-haiku-4-5` case. Residual: unknown future Pi effort names are still locally constrained; Codex and Claude live-response evidence remains incomplete for separate startup/onboarding reasons.

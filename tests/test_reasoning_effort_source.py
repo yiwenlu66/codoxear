@@ -14,7 +14,7 @@ class TestReasoningEffortSource(unittest.TestCase):
         self.assertIn("function reasoningChoicesForBackend(backend, { provider = null, model = null } = {})", source)
         self.assertIn("const providerKey = providerName ? `${providerName}/${modelName}` : \"\";", source)
         self.assertIn("if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];", source)
-        self.assertIn("else if (Array.isArray(map[modelName])) rawChoices = map[modelName];", source)
+        self.assertIn("else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];", source)
         self.assertIn("function currentNewSessionModelForCapabilities()", source)
         self.assertIn("function currentReasoningChoices()", source)
 

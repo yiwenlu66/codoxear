@@ -84,6 +84,19 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         refresh_open_block = source[refresh_open_start:refresh_open_end]
         self.assertIn("renderNewSessionModelMenu();", refresh_open_block)
 
+    def test_pi_provider_model_input_allows_custom_provider(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        self.assertIn('function newSessionAllowsCustomProvider() {\n          return newSessionBackend === "pi";\n        }', source)
+        self.assertIn('const allowCustomProvider = newSessionAllowsCustomProvider();', source)
+        self.assertIn('const hasProviders = choices.length > 0 || allowCustomProvider;', source)
+        self.assertIn('(newSessionHasProviderChoices() || newSessionAllowsCustomProvider()) && cleanProvider', source)
+        self.assertIn('choices.includes(typedProvider) || allowCustomProvider', source)
+        self.assertIn('!choices.includes(parsed.providerChoice) && !newSessionAllowsCustomProvider()', source)
+        self.assertIn('options.includes(next) || (next && newSessionAllowsCustomProvider())', source)
+        self.assertIn('else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];', source)
+        self.assertIn('const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();', source)
+        self.assertIn('providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider()', source)
+
     def test_provider_model_error_clears_when_backend_or_input_changes(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("function clearNewSessionProviderModelError()", source)

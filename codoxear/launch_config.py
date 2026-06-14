@@ -171,9 +171,12 @@ def pi_allowed_reasoning_efforts_for_model(
         mapping = read_pi_reasoning_efforts_by_model(paths)
     else:
         mapping = {}
+    provider_clean = clean_optional_text(model_provider)
     key = pi_reasoning_effort_key(model_provider, model)
     if key and key in mapping:
         return list(mapping[key])
+    if provider_clean:
+        return None
     model_clean = clean_optional_text(model)
     if model_clean and model_clean in mapping:
         return list(mapping[model_clean])
@@ -552,8 +555,10 @@ def parse_new_session_launch_request(
         service_tier = normalize_requested_service_tier(obj.get("service_tier"))
     elif agent_backend == "pi":
         pi_launch_defaults = pi_launch_defaults_provider()
-        pi_provider_choices = {str(value) for value in (pi_launch_defaults.get("provider_choices") or []) if isinstance(value, str) and value.strip()}
-        model_provider = normalize_requested_model_provider(obj.get("model_provider"), allowed=pi_provider_choices or None)
+        # Pi's CLI is the authority for provider names. The local defaults cache
+        # can be a partial/stale UI hint (for example custom providers only), so
+        # do not reject explicit provider names here before Pi can validate them.
+        model_provider = normalize_requested_model_provider(obj.get("model_provider"), allowed=None)
         if obj.get("preferred_auth_method") not in (None, ""):
             raise LaunchRequestValidationError(f"preferred_auth_method is not supported for {agent_backend}")
         preferred_auth_method = None

@@ -531,7 +531,7 @@
         if (map && modelName) {
           const providerKey = providerName ? `${providerName}/${modelName}` : "";
           if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];
-          else if (Array.isArray(map[modelName])) rawChoices = map[modelName];
+          else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];
         }
         const out = [];
         for (const value of rawChoices) {
@@ -6956,14 +6956,19 @@
         function newSessionProviderModelDisplay(model, providerChoice = "") {
           const cleanModel = String(model || "").trim() || "default";
           const cleanProvider = String(providerChoice || "").trim();
-          if (newSessionHasProviderChoices() && cleanProvider) return `${cleanProvider}/${cleanModel}`;
+          if ((newSessionHasProviderChoices() || newSessionAllowsCustomProvider()) && cleanProvider) return `${cleanProvider}/${cleanModel}`;
           return cleanModel;
+        }
+
+        function newSessionAllowsCustomProvider() {
+          return newSessionBackend === "pi";
         }
 
         function parseNewSessionProviderModelInput(value = newSessionModelInput.value) {
           const raw = String(value || "").trim();
           const choices = newSessionProviderChoices();
-          const hasProviders = choices.length > 0;
+          const allowCustomProvider = newSessionAllowsCustomProvider();
+          const hasProviders = choices.length > 0 || allowCustomProvider;
           const defaults = defaultsForAgentBackend(newSessionBackend);
           const fallbackModel = typeof defaults.model === "string" && defaults.model.trim() ? defaults.model.trim() : "default";
           let providerChoice = hasProviders ? defaultNewSessionProviderChoice() : "";
@@ -6973,7 +6978,7 @@
             const slash = raw.indexOf("/");
             const typedProvider = raw.slice(0, slash).trim();
             const typedModel = raw.slice(slash + 1).trim();
-            if (typedProvider && choices.includes(typedProvider)) {
+            if (typedProvider && (choices.includes(typedProvider) || allowCustomProvider)) {
               providerChoice = typedProvider;
             } else if (typedProvider) {
               providerError = `Provider must be one of ${choices.join(", ")}.`;
@@ -6989,7 +6994,7 @@
           const parsed = parseNewSessionProviderModelInput(remembered);
           if (parsed.providerError) return null;
           const choices = newSessionProviderChoices();
-          if (choices.length && parsed.providerChoice && !choices.includes(parsed.providerChoice)) return null;
+          if (choices.length && parsed.providerChoice && !choices.includes(parsed.providerChoice) && !newSessionAllowsCustomProvider()) return null;
           return parsed;
         }
 
@@ -7055,7 +7060,7 @@
         function syncNewSessionRunConfigUi() {
           const defaults = defaultsForAgentBackend(newSessionBackend);
           const supportsFast = !!defaults.supports_fast;
-          const hasProviders = newSessionHasProviderChoices();
+          const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();
           newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model";
           newSessionModelInput.placeholder = hasProviders ? "provider/model or model" : "Model";
           newSessionFastField.style.display = supportsFast ? "" : "none";
@@ -7080,7 +7085,7 @@
           if (resetSelections || previous !== next) {
             const rememberedPair = rememberedNewSessionProviderModelChoice();
             const selectedPair = rememberedPair || parseNewSessionProviderModelInput(newSessionProviderModelDisplay(modelDefault || "default", newSessionProvider));
-            if (selectedPair.providerChoice && providerChoices.includes(selectedPair.providerChoice)) {
+            if (selectedPair.providerChoice && (providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider())) {
               setNewSessionProvider(selectedPair.providerChoice);
             }
             newSessionModelInput.value = newSessionProviderModelDisplay(selectedPair.model || modelDefault || "default", selectedPair.providerChoice || newSessionProvider);
@@ -7107,7 +7112,7 @@
           const options = providerChoicesForBackend(newSessionBackend);
           const fallback = String(defaultsForAgentBackend(newSessionBackend).provider_choice || "").trim();
           const next = String(value || "").trim();
-          newSessionProvider = options.includes(next) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
+          newSessionProvider = options.includes(next) || (next && newSessionAllowsCustomProvider()) ? next : (fallback && options.includes(fallback) ? fallback : options[0] || "");
           rememberProviderChoice(newSessionBackend, newSessionProvider);
           setNewSessionReasoningEffort(newSessionReasoningEffort);
           renderNewSessionReasoningMenu();
@@ -7150,7 +7155,7 @@
             const model = typeof item.model === "string" ? item.model.trim() : "";
             if (!model) continue;
             const provider = sessionProviderChoice(item);
-            const providerChoice = providerChoices.includes(provider) ? provider : "";
+            const providerChoice = providerChoices.includes(provider) || (provider && newSessionAllowsCustomProvider()) ? provider : "";
             addNewSessionModelOption(out, seen, model, { providerChoice, recent: true });
           }
           const configuredModels = Array.isArray(defaults.models) ? defaults.models : [];

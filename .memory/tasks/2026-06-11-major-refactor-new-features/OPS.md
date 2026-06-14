@@ -2323,3 +2323,20 @@
   - Clean-room review: no blockers; residuals are PID-reuse/identity limits and tmux pending classification if pane dies during wait.
   - Full local: `python3 -m pytest -q` -> `828 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `827 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 17:32
+- Completed live-backed Pi provider launch repair tranche.
+- Changed artifacts: `codoxear/launch_config.py`, `codoxear/static/app.js`, `tests/test_new_session_launch_request.py`, `tests/test_new_session_model_options_source.py`, `tests/test_reasoning_effort_source.py`.
+- Important operational note: an early redaction command accidentally printed secret-looking values from `~/.zshrc` into the tool transcript. Values are not repeated here and were not written to project files. Treat the session transcript as sensitive if exported/shared.
+- Live validation evidence:
+  - Created isolated Codoxear app state under a temp HOME and a temp venv; backend homes/env came from the user's real configured homes and zsh environment.
+  - Negative copied-home attempt: copied config homes caused all CLIs to exit or fail before log binding, so it was not accepted as live proof; copied credential temp tree was deleted.
+  - Negative stale-provider attempt: Codoxear rejected Pi API launch with `model_provider=anthropic` because stale defaults only allowed custom providers; manual Pi broker showed the CLI itself accepts `anthropic / claude-haiku-4-5`.
+  - After the fix, `/api/sessions` Pi launch with `model_provider=anthropic`, `model=claude-haiku-4-5`, `reasoning_effort=low` returned 200; send returned 200; session was discovered; log bound; assistant final response was observed; idle was observed; cleanup delete returned 200.
+  - Claude Code under isolated HOME remained blocked at first-run theme/onboarding before log binding; copying `.claude.json` did not clear it in that setup. This is negative evidence for isolated-HOME validation, not proof of production failure with the real HOME.
+  - Codex manual broker with the exact project trust override reached the interactive TUI; earlier API send did not produce a bound log/final response within timeout. This remains incomplete live-response evidence.
+- Validation:
+  - Focused final: `node --check codoxear/static/app.js && python3 -m py_compile codoxear/launch_config.py tests/test_new_session_launch_request.py tests/test_new_session_model_options_source.py && python3 -m pytest tests/test_new_session_launch_request.py tests/test_launch_defaults.py tests/test_backend_launch_adapter.py tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py -q` -> `42 passed`.
+  - Clean-room reviews: initial residuals around UI stale provider and reasoning fallback fixed; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `831 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `830 passed, 1 skipped, 89 subtests passed`.
