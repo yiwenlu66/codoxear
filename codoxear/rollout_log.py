@@ -1334,12 +1334,24 @@ def _last_chat_role_ts_from_tail(
     path: Path,
     *,
     max_scan_bytes: int,
+    final_assistant_only: bool = False,
 ) -> tuple[str, float] | None:
     scan = 256 * 1024
     while scan <= max_scan_bytes:
         objs = _read_jsonl_tail(path, scan)
         last_user: tuple[int, float | None] | None = None
         last_assistant: tuple[int, float | None] | None = None
+        last_nonfinal_assistant: tuple[int, float | None] | None = None
+
+        def remember_assistant(idx: int, ts: float | None, *, final: bool) -> None:
+            nonlocal last_assistant, last_nonfinal_assistant
+            if final:
+                last_assistant = (idx, ts)
+            elif final_assistant_only:
+                last_nonfinal_assistant = (idx, ts)
+            else:
+                last_assistant = (idx, ts)
+
         for i, obj in enumerate(objs):
             typ = obj.get("type")
             if typ == "message":
@@ -1349,18 +1361,18 @@ def _last_chat_role_ts_from_tail(
                 if pi_assistant_is_aborted_turn(obj):
                     continue
                 if pi_assistant_text(obj) or pi_assistant_error_text(obj) or _pi_message_keeps_turn_busy(obj):
-                    last_assistant = (i, _event_ts(obj))
+                    remember_assistant(i, _event_ts(obj), final=pi_assistant_is_final_turn_end(obj))
                     continue
             if typ == "user":
                 if cc_user_text(obj):
                     last_user = (i, _event_ts(obj))
                     continue
                 if _cc_message_keeps_turn_busy(obj):
-                    last_assistant = (i, _event_ts(obj))
+                    remember_assistant(i, _event_ts(obj), final=False)
                     continue
             if typ == "assistant":
                 if cc_assistant_text(obj) or _cc_message_keeps_turn_busy(obj):
-                    last_assistant = (i, _event_ts(obj))
+                    remember_assistant(i, _event_ts(obj), final=cc_assistant_is_final_turn_end(obj))
                     continue
             if typ == "event_msg":
                 p = obj.get("payload")
@@ -1370,13 +1382,20 @@ def _last_chat_role_ts_from_tail(
                 if pt == "user_message" and isinstance(p.get("message"), str):
                     last_user = (i, _event_ts(obj))
                     continue
+                if pt in ("task_complete", "turn_complete"):
+                    last_msg = p.get("last_agent_message")
+                    if isinstance(last_msg, str) and last_msg.strip():
+                        remember_assistant(i, _event_ts(obj), final=True)
+                    continue
                 if pt == "agent_message":
                     msg = p.get("message")
                     if isinstance(msg, str) and msg.strip():
-                        last_assistant = (i, _event_ts(obj))
+                        remember_assistant(i, _event_ts(obj), final=p.get("phase") == "final_answer")
                         continue
             if typ == "response_item" and _has_assistant_output_text(obj):
-                last_assistant = (i, _event_ts(obj))
+                payload = obj.get("payload")
+                final = isinstance(payload, dict) and (payload.get("phase") == "final_answer" or payload.get("end_turn") is True)
+                remember_assistant(i, _event_ts(obj), final=final)
 
         best: tuple[str, tuple[int, float | None]] | None = None
         if last_user is not None:
@@ -1384,9 +1403,12 @@ def _last_chat_role_ts_from_tail(
         if last_assistant is not None:
             if best is None or last_assistant[0] > best[1][0]:
                 best = ("assistant", last_assistant)
+        if last_nonfinal_assistant is not None:
+            if best is None or last_nonfinal_assistant[0] > best[1][0]:
+                best = ("assistant_nonfinal", last_nonfinal_assistant)
         if best is not None:
             role, (_i, ts) = best
-            if ts is None:
+            if role == "assistant_nonfinal" or ts is None:
                 return None
             return (role, float(ts))
         scan *= 2

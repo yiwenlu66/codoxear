@@ -244,6 +244,57 @@ class TestServerChatFlags(unittest.TestCase):
             )
         )
 
+    def test_final_assistant_only_rejects_newer_narration(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"final_answer","message":"done"}}',
+                        '{"type":"event_msg","ts":700,"payload":{"type":"agent_message","phase":"analysis","message":"still working"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024), ("assistant", 700.0))
+            self.assertIsNone(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True))
+
+    def test_final_assistant_only_accepts_codex_turn_complete_last_message(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"analysis","message":"working"}}',
+                        '{"type":"event_msg","ts":700,"payload":{"type":"turn_complete","last_agent_message":"done"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True), ("assistant", 700.0))
+
+    def test_final_assistant_only_accepts_latest_final_response(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "rollout.jsonl"
+            path.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"final_answer","message":"done"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(_last_chat_role_ts_from_tail(path, max_scan_bytes=512 * 1024, final_assistant_only=True), ("assistant", 600.0))
+
     def test_pi_aborted_text_does_not_count_as_last_assistant_chat(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "pi.jsonl"

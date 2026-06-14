@@ -2176,8 +2176,9 @@ def _last_chat_role_ts_from_tail(
     path: Path,
     *,
     max_scan_bytes: int,
+    final_assistant_only: bool = False,
 ) -> tuple[str, float] | None:
-    return _rollout_log._last_chat_role_ts_from_tail(path, max_scan_bytes=max_scan_bytes)
+    return _rollout_log._last_chat_role_ts_from_tail(path, max_scan_bytes=max_scan_bytes, final_assistant_only=final_assistant_only)
 
 
 @dataclass
@@ -3660,7 +3661,7 @@ class SessionManager:
                 busy, ql = self._broker_busy_queue_from_state(st)
                 if busy or ql > 0 or self._queue_len(sid) > 0:
                     continue
-                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES)
+                last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
                 if not last:
                     continue
                 role, ts = last
@@ -3705,7 +3706,7 @@ class SessionManager:
                         self._save_unattended()
                     if not prompt:
                         continue
-                    live_last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES)
+                    live_last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
                     if not live_last:
                         continue
                     live_role, live_ts = live_last

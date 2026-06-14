@@ -1893,3 +1893,10 @@ Observation: Loaded chat search could show an all-transcript match count/hint bu
 Intervention: Search results now expose session-bound target/load cursors for newline-terminated records. `/messages/search` supports `before=<history_cursor>&order=latest` so the client can ask for the nearest older match before the current loaded boundary. The client loads a detached bounded history window ending at that match, focuses the exact target row by history cursor, preserves casefold-only server-targeted matches across refreshes, and uses Jump to latest to return to the live tail.
 
 Scoped claim: Under focused route/source tests, full local/Docker suites, and iterative clean-room review, long-transcript search can directly load the nearest older unloaded match without creating a hidden DOM gap before the live tail. Residual: nearest-older search scans forward to the boundary, so repeated navigation in very large logs remains O(prefix size); detached windows navigate older matches and rely on Jump to latest for newer unloaded regions.
+
+## 2026-06-14 12:13
+Observation: Unattended sweep considered a session eligible when broker state was idle and the last chat role was any assistant. Non-final assistant narration could therefore trigger a new unattended prompt if broker busy state quiet-cleared before a final turn marker.
+
+Intervention: Added final-assistant-only tail classification for unattended eligibility and the live pre-send recheck. The classifier blocks newer non-final assistant narration, accepts final assistant responses, and treats Codex `task_complete`/`turn_complete` events with `last_agent_message` as final assistant evidence.
+
+Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, unattended mode no longer injects after non-final assistant narration merely because the broker appears idle. Residual: Pi terminal error turns remain fail-closed for unattended; logs omitting both final assistant content and terminal `last_agent_message` can stall rather than risk injecting early.

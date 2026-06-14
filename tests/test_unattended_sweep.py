@@ -84,6 +84,33 @@ class TestUnattendedSweep(unittest.TestCase):
             self.assertFalse(cfg["enabled"])
             self.assertEqual(cfg["remaining_injections"], 0)
 
+    def test_does_not_inject_after_non_final_assistant_narration(self) -> None:
+        with TemporaryDirectory() as td:
+            p = Path(td) / "rollout.jsonl"
+            p.write_text(
+                "\n".join(
+                    [
+                        '{"type":"event_msg","ts":1,"payload":{"type":"user_message","message":"start"}}',
+                        '{"type":"event_msg","ts":600,"payload":{"type":"agent_message","phase":"analysis","message":"still working"}}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            mgr = _make_manager()
+            mgr._sessions["sid-a"] = _make_session(sid="sid-a", thread_id="thread-1", log_path=p)
+            mgr._unattended["sid-a"] = {"enabled": True, "request": "A", "cooldown_minutes": 5, "remaining_injections": 10}
+            sent: list[tuple[str, str]] = []
+            mgr.get_state = lambda sid: {"busy": False, "queue_len": 0}  # type: ignore[method-assign]
+            mgr.send = lambda sid, text: (sent.append((sid, text)) or {"ok": True})  # type: ignore[method-assign]
+
+            with patch("codoxear.server.time.time", return_value=1000.0):
+                mgr._unattended_sweep()
+
+            self.assertEqual(sent, [])
+            self.assertEqual(mgr._unattended["sid-a"]["remaining_injections"], 10)
+
     def test_rechecks_latest_assistant_timestamp_before_send(self) -> None:
         with TemporaryDirectory() as td:
             p = Path(td) / "rollout.jsonl"

@@ -2268,3 +2268,12 @@
   - Clean-room review: multiple blockers found and fixed (unterminated final-record cursor mismatch, empty-window clearing, global-first cursor stranding, wrong target focus in multi-match windows, Python casefold vs JS matching persistence); final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `817 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `816 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 12:13
+- Completed unattended final-turn eligibility guard tranche.
+- Changed artifacts: `codoxear/rollout_log.py`, `codoxear/server.py`, `tests/test_server_chat_flags.py`, `tests/test_unattended_sweep.py`.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/rollout_log.py codoxear/server.py tests/test_unattended_sweep.py tests/test_server_chat_flags.py && python3 -m pytest tests/test_unattended_sweep.py tests/test_server_chat_flags.py tests/test_unattended_mode_source.py -q` -> `43 passed`.
+  - Clean-room review: initial blocker for Codex `turn_complete`/`task_complete` with `last_agent_message` fixed; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `821 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `820 passed, 1 skipped, 88 subtests passed`.
