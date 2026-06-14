@@ -126,6 +126,28 @@ class TestCcChatAndIdle(unittest.TestCase):
         self.assertEqual(events[-1]["message_class"], "final_response")
         self.assertTrue(flags["turn_end"])
 
+    def test_cc_top_level_tool_use_result_without_id_clears_single_idless_pending_tool(self) -> None:
+        rows = [
+            user("hello"),
+            assistant([{"type": "tool_use", "name": "Bash", "input": {}}], stop_reason="tool_use"),
+            {
+                "type": "user",
+                "toolUseResult": {"stdout": "ok"},
+                "message": {"role": "user", "content": "ok"},
+            },
+            assistant([{"type": "text", "text": "done"}], stop_reason="end_turn"),
+        ]
+        events, _meta, flags, _diag = _extract_chat_events(rows)
+        self.assertEqual(events[-1]["message_class"], "final_response")
+        self.assertTrue(flags["turn_end"])
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            write_log(path, rows)
+            live_events, _next, _meta, live_flags, _diag, _token = _read_chat_live_delta(path, after_byte=0)
+            self.assertEqual(live_events[-1]["message_class"], "final_response")
+            self.assertTrue(live_flags["turn_end"])
+            self.assertTrue(_compute_idle_from_log(path))
+
     def test_cc_split_row_idless_tool_uses_need_multiple_idless_results(self) -> None:
         rows = [
             user("hello"),

@@ -15,8 +15,8 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         extract_block = source[extract_start:extract_end]
         self.assertNotIn("def event_ts(", extract_block)
         self.assertNotIn("def text_message_id(", extract_block)
-        self.assertIn("ets = _event_ts(obj)", extract_block)
-        self.assertIn('"message_id": _text_message_id(', extract_block)
+        self.assertIn("event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)", extract_block)
+        self.assertIn("events.append(event)", extract_block)
 
 
 if __name__ == "__main__":

@@ -2304,3 +2304,12 @@
   - Clean-room review: initial blockers fixed (truncated count treated as lower bound in client; `count_max` rejected with `order=latest`); final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `826 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `825 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 12:49
+- Completed rollout log chat-extraction refactor tranche.
+- Changed artifacts: `codoxear/rollout_log.py`, `tests/test_cc_chat_and_idle.py`, `tests/test_rollout_log_helpers_source.py`.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/rollout_log.py tests/test_cc_chat_and_idle.py tests/test_rollout_log_helpers_source.py && python3 -m pytest tests/test_rollout_log_helpers_source.py tests/test_cc_chat_and_idle.py tests/test_chat_transcript_runtime.py tests/test_chat_scrollback_source.py tests/test_message_index.py tests/test_cc_log.py tests/test_idle_heuristics.py tests/test_unattended_sweep.py -q` -> `91 passed`.
+  - Clean-room review: initial blocker found duplicate CC id-less pending-tool placeholders; fixed by making `_single_chat_event` the sole pending-id updater in `_extract_chat_events`; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `827 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `826 passed, 1 skipped, 89 subtests passed`.

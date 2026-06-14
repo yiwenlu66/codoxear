@@ -704,30 +704,29 @@ def _extract_chat_events(
     cc_pending_tool_ids: set[str] = set(initial_cc_pending_tool_ids or set())
     for obj in objs:
         typ = obj.get("type")
+        event = _single_chat_event(obj, cc_pending_tool_ids=cc_pending_tool_ids)
+        if event is not None:
+            events.append(event)
+
         if typ == "user":
             user_text = cc_user_text(obj)
             if isinstance(user_text, str) and user_text:
-                cc_pending_tool_ids.clear()
                 turn_start = True
-                ets = _event_ts(obj)
-                evcc: dict[str, Any] = {"role": "user", "text": user_text}
-                if ets is not None:
-                    evcc["ts"] = ets
-                events.append(evcc)
                 continue
             if cc_message_role(obj) == "toolResult":
-                cc_apply_tool_result_to_pending(obj, cc_pending_tool_ids)
                 total_tools += 1
                 continue
 
         if typ == "assistant":
-            assistant_text = cc_assistant_text(obj)
             tool_count = cc_assistant_tool_use_count(obj)
             thinking_count = cc_assistant_thinking_count(obj)
             if thinking_count > 0:
                 total_thinking += thinking_count
             if tool_count > 0:
-                cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
+                # `_single_chat_event` already updates `cc_pending_tool_ids`; do
+                # not call `cc_assistant_pending_tool_use_ids()` again here
+                # because id-less Claude Code tool uses receive generated
+                # placeholders and a second call would create phantom pending ids.
                 total_tools += tool_count
                 message = obj.get("message")
                 content = message.get("content") if isinstance(message, dict) else None
@@ -737,20 +736,8 @@ def _extract_chat_events(
                         if isinstance(name, str) and name:
                             tool_names.add(name)
                             last_tool = name
-            if isinstance(assistant_text, str) and assistant_text:
-                ets = _event_ts(obj)
-                message_class = "final_response" if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids else "narration"
-                if message_class == "final_response":
-                    turn_end = True
-                evcca: dict[str, Any] = {
-                    "role": "assistant",
-                    "text": assistant_text,
-                    "message_class": message_class,
-                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
-                }
-                if ets is not None:
-                    evcca["ts"] = ets
-                events.append(evcca)
+            if event is not None and event.get("message_class") == "final_response":
+                turn_end = True
             continue
 
         if typ == "system" and cc_is_turn_end(obj):
@@ -762,14 +749,8 @@ def _extract_chat_events(
             user_text = pi_user_text(obj)
             if isinstance(user_text, str) and user_text:
                 turn_start = True
-                ets = _event_ts(obj)
-                evp: dict[str, Any] = {"role": "user", "text": user_text}
-                if ets is not None:
-                    evp["ts"] = ets
-                events.append(evp)
                 continue
 
-            assistant_text = pi_assistant_text(obj)
             tool_count = pi_assistant_tool_use_count(obj)
             thinking_count = pi_assistant_thinking_count(obj)
             if thinking_count > 0:
@@ -780,34 +761,8 @@ def _extract_chat_events(
                 last_tool = "pi_tool"
             if pi_assistant_is_aborted_turn(obj):
                 turn_aborted = True
-            elif isinstance(assistant_text, str) and assistant_text:
-                ets = _event_ts(obj)
-                message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
-                if message_class == "final_response":
-                    turn_end = True
-                eva: dict[str, Any] = {
-                    "role": "assistant",
-                    "text": assistant_text,
-                    "message_class": message_class,
-                    "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
-                }
-                if ets is not None:
-                    eva["ts"] = ets
-                events.append(eva)
-            else:
-                error_text = pi_assistant_error_text(obj)
-                if isinstance(error_text, str) and error_text:
-                    ets = _event_ts(obj)
-                    events.append(
-                        {
-                            "role": "assistant",
-                            "text": error_text,
-                            "message_class": "error",
-                            "message_id": _text_message_id(message_class="error", text=error_text, ts=ets),
-                            **({"ts": ets} if ets is not None else {}),
-                        }
-                    )
-                    turn_end = True
+            elif event is not None and event.get("message_class") in {"final_response", "error"}:
+                turn_end = True
             continue
 
         if typ == "event_msg":
@@ -819,11 +774,6 @@ def _extract_chat_events(
                 msg = p.get("message")
                 if isinstance(msg, str):
                     turn_start = True
-                    ets = _event_ts(obj)
-                    ev: dict[str, Any] = {"role": "user", "text": msg}
-                    if ets is not None:
-                        ev["ts"] = ets
-                    events.append(ev)
                 continue
             if pt == "agent_reasoning":
                 total_thinking += 1
@@ -832,19 +782,6 @@ def _extract_chat_events(
                 turn_aborted = True
                 continue
             if pt in ("error", "stream_error", "warning"):
-                text = _codex_event_text(p)
-                if text is not None:
-                    ets = _event_ts(obj)
-                    message_class = "warning" if pt == "warning" else "error"
-                    ev_err: dict[str, Any] = {
-                        "role": "assistant",
-                        "text": text,
-                        "message_class": message_class,
-                        "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
-                    }
-                    if ets is not None:
-                        ev_err["ts"] = ets
-                    events.append(ev_err)
                 if pt == "error" and _codex_error_affects_turn_status(p):
                     turn_end = True
                 continue
@@ -863,31 +800,7 @@ def _extract_chat_events(
                 role = p.get("role")
                 if role in ("developer", "system"):
                     total_system += 1
-                    continue
-                if role == "assistant":
-                    content = p.get("content")
-                    if not isinstance(content, list):
-                        raise ValueError("invalid assistant message content")
-                    out_text_parts: list[str] = []
-                    for part in content:
-                        if not isinstance(part, dict):
-                            continue
-                        if part.get("type") == "output_text" and isinstance(part.get("text"), str):
-                            out_text_parts.append(part["text"])
-                    if out_text_parts:
-                        text = "".join(out_text_parts)
-                        ets = _event_ts(obj)
-                        message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
-                        ev2: dict[str, Any] = {
-                            "role": "assistant",
-                            "text": text,
-                            "message_class": message_class,
-                            "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
-                        }
-                        if ets is not None:
-                            ev2["ts"] = ets
-                        events.append(ev2)
-                    continue
+                continue
 
             if pt == "reasoning":
                 total_thinking += 1

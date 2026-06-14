@@ -1921,3 +1921,10 @@ Observation: The UI all-transcript search hint requested only one match but stil
 Intervention: Added exact-by-default bounded count support via `count_max`. The UI hint now asks for at most 1000 counted matches, displays `N+ all` when truncated, and treats truncation as evidence that older unloaded matches may still exist. Nearest-older `order=latest` searches remain exact; `count_max` is rejected with latest-order semantics.
 
 Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, common-match all-transcript search hints can stop after the count cap while preserving exact default API behavior. Residual: rare/zero-match queries still scan the full log to prove the low count; truncated lower-bound displays can be visually imperfect when more matches are already loaded than the cap.
+
+## 2026-06-14 12:49
+Observation: `rollout_log.py` had two intended-equivalent chat-event construction paths: `_single_chat_event` for single/reverse extraction and `_extract_chat_events` for batch/live/tail extraction. This duplication created a recurring divergence risk for message class, timestamp, message id, and backend-specific text extraction.
+
+Intervention: `_extract_chat_events` now delegates event construction to `_single_chat_event` and retains metadata accounting locally. Clean-room review identified a non-obvious side-effect trap: Claude Code id-less tool-use placeholder ids must be generated exactly once per assistant row. The fix removed the duplicate pending-id update and added id-less tool-result regression coverage.
+
+Scoped claim: Under focused CC/chat/idle tests, full local/Docker suites, and clean-room review, batch event construction now shares the single-record path while preserving turn/count metadata. Residual: metadata extraction still repeats some helper work, and CC pending-id logic still exists in several subsystems outside this refactor.
