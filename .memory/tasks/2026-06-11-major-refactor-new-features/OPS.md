@@ -2277,3 +2277,12 @@
   - Clean-room review: initial blocker for Codex `turn_complete`/`task_complete` with `last_agent_message` fixed; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `821 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `820 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 12:19
+- Completed mobile/coarse-pointer composer stop control tranche.
+- Changed artifacts: `codoxear/static/app.js`, `codoxear/static/app.css`, `tests/test_send_button_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m pytest tests/test_send_button_source.py tests/test_chat_navigation_source.py tests/test_static_assets.py -q` -> `22 passed`.
+  - Clean-room review: no blockers; confirmed shared interrupt semantics, no form-submit regression, default desktop hidden state, and topbar sparsity preserved.
+  - Full local: `python3 -m pytest -q` -> `822 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `821 passed, 1 skipped, 88 subtests passed`.

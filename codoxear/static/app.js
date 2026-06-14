@@ -2229,6 +2229,7 @@
           ]),
           el("input", { id: "imgInput", type: "file", style: "display:none" }),
           el("button", { class: "icon-btn", id: "queueBtn", type: "button", title: "Queued messages", "aria-label": "Queued messages", html: iconSvg("queue") }),
+          el("button", { class: "icon-btn composerStopBtn", id: "composerStopBtn", type: "button", title: "Stop current response", "aria-label": "Stop current response", html: iconSvg("stop") }),
           el("button", { class: "icon-btn primary", id: "sendBtn", type: "submit", title: "Send", "aria-label": "Send", html: iconSvg("send") }),
         ]);
         composer.appendChild(form);
@@ -3065,8 +3066,14 @@
                if (q) statusChip.textContent = mobile ? `Q ${q}` : `Queue ${q}`;
                else statusChip.textContent = "Idle";
           }
-          interruptBtn.style.display = running && selected ? "inline-flex" : "none";
-          interruptBtn.disabled = !(running && selected);
+          const canInterrupt = Boolean(running && selected);
+          interruptBtn.style.display = canInterrupt ? "inline-flex" : "none";
+          interruptBtn.disabled = !canInterrupt;
+          const composerStopControl = $("#composerStopBtn");
+          if (composerStopControl) {
+            composerStopControl.classList.toggle("is-visible", canInterrupt);
+            composerStopControl.disabled = !canInterrupt;
+          }
           if (wasRunning && !currentRunning) {
             // no-op placeholder; keep transition boundary for future UI behavior
           }
@@ -11771,7 +11778,7 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         $("#newBtn").onclick = async () => {
           openNewSessionDialog();
         };
-	        interruptBtn.onclick = async () => {
+	        async function interruptSelectedSession() {
 	          if (!selected) return;
 	          try {
 	            setToast("interrupting...");
@@ -11781,7 +11788,20 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           } catch (e) {
             setToast(`interrupt error: ${e.message}`);
           }
+        }
+        interruptBtn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          void interruptSelectedSession();
         };
+        const composerStopBtn = $("#composerStopBtn");
+        if (composerStopBtn) {
+          composerStopBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void interruptSelectedSession();
+          };
+        }
 
         $("#logoutBtnSide").onclick = async () => {
           try {

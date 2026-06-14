@@ -1346,6 +1346,15 @@ select {
       .composer .icon-btn.primary .icon {
         filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.06));
       }
+      .composerStopBtn {
+        display: none;
+        color: rgba(185, 28, 28, 0.95);
+      }
+      @media (max-width: 700px), (pointer: coarse) {
+        .composerStopBtn.is-visible {
+          display: inline-flex;
+        }
+      }
 
       .login {
         width: min(92vw, 360px);

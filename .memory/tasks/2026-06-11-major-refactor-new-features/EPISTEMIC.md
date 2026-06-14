@@ -1900,3 +1900,10 @@ Observation: Unattended sweep considered a session eligible when broker state wa
 Intervention: Added final-assistant-only tail classification for unattended eligibility and the live pre-send recheck. The classifier blocks newer non-final assistant narration, accepts final assistant responses, and treats Codex `task_complete`/`turn_complete` events with `last_agent_message` as final assistant evidence.
 
 Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, unattended mode no longer injects after non-final assistant narration merely because the broker appears idle. Residual: Pi terminal error turns remain fail-closed for unattended; logs omitting both final assistant content and terminal `last_agent_message` can stall rather than risk injecting early.
+
+## 2026-06-14 12:19
+Observation: On mobile/coarse-pointer layouts the interrupt control lived only in the topbar, while the composer/send area is the reachable action zone during a running response.
+
+Intervention: Added a composer-scoped stop button that is hidden by default and shown only for mobile/coarse-pointer CSS when `running && selected`. It reuses the same interrupt function as the topbar button and does not alter broker/API semantics.
+
+Scoped claim: Under focused source tests, full local/Docker suites, and clean-room review, running sessions now expose a thumb-reachable stop affordance without adding desktop topbar clutter. Residual: real narrow-device/large-text layout crowding remains browser/manual evidence rather than unit-proven.

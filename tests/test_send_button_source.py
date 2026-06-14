@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
 
 class TestSendButtonSource(unittest.TestCase):
@@ -23,6 +24,26 @@ class TestSendButtonSource(unittest.TestCase):
         self.assertIn('sending = true;\n          syncSendButtonState();', source)
         self.assertIn('sending = false;\n            syncSendButtonState();', source)
         self.assertIn('setToast("select a session first");', source)
+
+    def test_mobile_composer_stop_reuses_interrupt_semantics(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        css = APP_CSS.read_text(encoding="utf-8")
+        self.assertIn('id: "composerStopBtn"', source)
+        self.assertIn('title: "Stop current response"', source)
+        self.assertIn('"aria-label": "Stop current response"', source)
+        self.assertIn('html: iconSvg("stop")', source)
+        self.assertIn('const canInterrupt = Boolean(running && selected);', source)
+        self.assertIn('composerStopControl.classList.toggle("is-visible", canInterrupt);', source)
+        self.assertIn('composerStopControl.disabled = !canInterrupt;', source)
+        self.assertIn('async function interruptSelectedSession()', source)
+        self.assertIn('interruptBtn.onclick = (e) => {', source)
+        self.assertIn('composerStopBtn.onclick = (e) => {', source)
+        self.assertIn('void interruptSelectedSession();', source)
+        stop_start = css.index('.composerStopBtn {')
+        media_start = css.index('@media (max-width: 700px), (pointer: coarse)', stop_start)
+        self.assertIn('display: none;', css[stop_start:media_start])
+        self.assertIn('.composerStopBtn.is-visible', css)
+        self.assertIn('@media (max-width: 700px), (pointer: coarse)', css)
 
     def test_busy_send_choice_is_keyboard_focus_owned(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
