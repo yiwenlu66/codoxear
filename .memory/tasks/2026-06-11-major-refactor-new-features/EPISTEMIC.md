@@ -2032,3 +2032,6 @@ Observation: File picker fuzzy search returned ranked paths without showing whic
 Intervention: Added exact/fuzzy match highlighting inside displayed path spans using DOM text nodes and mark elements. A clean-room review exposed a Unicode index-mapping anomaly; the implementation now maps folded search indexes back to original path slice bounds before rendering marks.
 
 Scoped claim: Under focused VM/source tests, Unicode counterexample regressions, clean-room review, full local validation, and Docker validation, file picker result highlighting improves visual search feedback without changing file identity or introducing raw-path HTML rendering.
+
+## 2026-06-15 01:38
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `495e752` and the Unicode-safe file-picker highlight UX fix. It remains a refactor-entry/handoff artifact, not merge approval.

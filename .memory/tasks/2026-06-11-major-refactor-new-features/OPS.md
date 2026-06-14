@@ -2476,3 +2476,7 @@
   - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_file_picker_search_source.py && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `45 passed`.
   - Full local: `python3 -m pytest -q` -> `854 passed, 92 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `853 passed, 1 skipped, 92 subtests passed`.
+
+## 2026-06-15 01:38
+- Refreshed `recon/refactor-entry-checkpoint.md` after file-picker highlight commit `495e752`.
+- Updated current HEAD, latest validation counts, closed UX bullet, clean-room review evidence, and file identity invariant wording.

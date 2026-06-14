@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `0802e3f feat: copy session details`
+Current HEAD: `495e752 feat: highlight file picker matches`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -44,15 +44,16 @@ Recent committed recovery checkpoints include:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
   - long-transcript per-message copy controls now use a roving active button so the accessibility/tab order has one enabled copy control instead of one repeated control per rendered message;
-  - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object.
+  - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object;
+  - file picker search results highlight exact/fuzzy query matches using DOM text nodes and Unicode-safe folded-index mapping, without changing path identity.
 
 ## Latest validation evidence
 
 Latest code-validation evidence after the last UX/runtime change:
 
-- Focused Details-copy validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_diagnostics_source.py && python3 -m pytest tests/test_diagnostics_source.py tests/test_overlay_accessibility_source.py -q` -> `10 passed`.
-- Full local suite: `python3 -m pytest -q` -> `852 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `851 passed, 1 skipped, 92 subtests passed`.
+- Focused file-picker highlight validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_file_picker_search_source.py && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_viewer_source.py -q` -> `45 passed`.
+- Full local suite: `python3 -m pytest -q` -> `854 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `853 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -64,6 +65,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - `/tmp/codoxear-recovery-panel-review6.md`
 - Clean-room critic subagent review of sidecar extraction diff and call sites -> no blocker findings; non-blocking source-test brittleness was reduced before commit.
 - Clean-room critic subagent review of Details-copy diff -> no blocker findings for stale-session binding, secret-copy risk, accessibility/focus, or sparse-UI risk.
+- Clean-room critic review of file-picker highlight diff found a Unicode slicing bug; folded-index mapping plus `İfoo.py`/emoji regressions fixed it. Re-review found no blockers.
 
 Recent isolated browser evidence:
 
@@ -78,7 +80,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 
 1. **Send commit boundary:** HTTP `/send` success means the broker/sessiond path accepted the prompt or returned explicit unknown-commit recovery state; reads must not promote queued prompts.
 2. **Unknown commit state blocks unsafe actions:** unresolved direct/queued uncertainty blocks send, enqueue, attach, sweep, reorder, and silent destructive cleanup bypasses; recovery UI may explain/review/clear explicit markers but must not silently resume mutation paths.
-3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively.
+3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively. Visual highlighting may wrap displayed substrings but must preserve original path strings for titles, copy/open actions, and identity keys.
 4. **Inline refs:** ambiguous inline refs route through the identity-aware picker; failed/truncated project search is ambiguity, not uniqueness proof.
 5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced.
 6. **Stale busy override:** stale broker busy can be overridden only with idle log evidence, empty queue, same-log last-send barrier cleared, and a bound log.
