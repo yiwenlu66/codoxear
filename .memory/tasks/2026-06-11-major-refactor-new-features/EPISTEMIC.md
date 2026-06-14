@@ -1946,3 +1946,10 @@ Observation: Live validation falsified the assumption that Codoxear's Pi `provid
 Intervention: Pi provider names are now passed through to the Pi CLI instead of being pre-rejected by Codoxear's local defaults. The new-session UI allows typed custom Pi `provider/model` values even when provider defaults are stale or empty. Pi reasoning capability lookup no longer lets a bare-model cache entry constrain an explicit provider/model pair.
 
 Scoped claim: Under focused tests, full local/Docker suites, clean-room review, and one real Pi web-owned launch/send/log/final/idle pass, the Pi launch path now works for the current configured `anthropic / claude-haiku-4-5` case. Residual: unknown future Pi effort names are still locally constrained; Codex and Claude live-response evidence remains incomplete for separate startup/onboarding reasons.
+
+## 2026-06-14 17:44
+Observation: The Pi provider fix was partly protected by source-string assertions, but the live bug was a behavioral mismatch between what the browser allowed and what the API/backend could launch.
+
+Intervention: Added executable JS/VM coverage for the real new-session provider/model parser and reasoning-choice code under the stale-cache condition that caused the live bug class. The test now constrains the browser-visible behavior for custom Pi `provider/model` inputs, not only the presence of code branches.
+
+Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, Pi custom-provider launch UI behavior has stronger regression coverage. This does not add new runtime behavior beyond the prior committed fix.

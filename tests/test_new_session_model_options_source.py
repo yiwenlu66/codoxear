@@ -8,6 +8,51 @@ from pathlib import Path
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 
 
+def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], reasoning_map: dict[str, list[str]]) -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    choices_start = source.index("function providerChoicesForBackend(backend)")
+    choices_end = source.index("function backendSupportsFast(backend)", choices_start)
+    dialog_start = source.index("function newSessionProviderChoices()")
+    dialog_end = source.index("function newSessionModelOption(model", dialog_start)
+    snippet = source[choices_start:choices_end] + "\n" + source[dialog_start:dialog_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const defaults = {{
+          provider_choice: null,
+          provider_choices: {json.dumps(provider_choices)},
+          model: "claude-haiku-4-5",
+          reasoning_efforts: ["off", "minimal", "low", "medium", "high", "xhigh"],
+          reasoning_efforts_by_model: {json.dumps(reasoning_map)},
+        }};
+        const ctx = {{
+          newSessionBackend: "pi",
+          newSessionProvider: "",
+          newSessionModelInput: {{ value: {json.dumps(query)} }},
+          newSessionModelField: {{ classList: {{ toggle() {{}}, remove() {{}} }} }},
+          newSessionStatus: {{ textContent: "" }},
+          defaultsForAgentBackend: () => defaults,
+          loadRememberedProviderChoice: () => "",
+          loadRememberedProviderModelChoice: () => "",
+          rememberProviderChoice: (_backend, value) => {{ ctx.rememberedProvider = value; }},
+          setNewSessionReasoningEffort: (value) => {{ ctx.reasoningSet = value; }},
+          renderNewSessionReasoningMenu: () => {{ ctx.reasoningMenuRendered = true; }},
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_dialog = { parseNewSessionProviderModelInput, currentReasoningChoices, setNewSessionProvider, newSessionProviderModelDisplay };\n")}, ctx);
+        const parsed = ctx.__test_dialog.parseNewSessionProviderModelInput();
+        const choices = ctx.__test_dialog.currentReasoningChoices();
+        process.stdout.write(JSON.stringify({{
+          parsed,
+          choices,
+          display: ctx.__test_dialog.newSessionProviderModelDisplay(parsed.model, parsed.providerChoice),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
 def eval_new_session_model_options(query: str = "") -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function newSessionModelOption(model")
@@ -85,17 +130,25 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
         self.assertIn("renderNewSessionModelMenu();", refresh_open_block)
 
     def test_pi_provider_model_input_allows_custom_provider(self) -> None:
+        result = eval_pi_provider_model_runtime(
+            "anthropic/claude-haiku-4-5",
+            provider_choices=[],
+            reasoning_map={"claude-haiku-4-5": ["off"], "occ/claude-haiku-4-5": ["off"]},
+        )
+        self.assertEqual(result["parsed"]["providerChoice"], "anthropic")
+        self.assertEqual(result["parsed"]["model"], "claude-haiku-4-5")
+        self.assertEqual(result["parsed"]["providerError"], "")
+        self.assertEqual(result["display"], "anthropic/claude-haiku-4-5")
+        self.assertIn("low", result["choices"])
+        self.assertNotEqual(result["choices"], ["off"])
+
+    def test_pi_custom_provider_source_paths_remain_connected(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         self.assertIn('function newSessionAllowsCustomProvider() {\n          return newSessionBackend === "pi";\n        }', source)
-        self.assertIn('const allowCustomProvider = newSessionAllowsCustomProvider();', source)
-        self.assertIn('const hasProviders = choices.length > 0 || allowCustomProvider;', source)
-        self.assertIn('(newSessionHasProviderChoices() || newSessionAllowsCustomProvider()) && cleanProvider', source)
-        self.assertIn('choices.includes(typedProvider) || allowCustomProvider', source)
-        self.assertIn('!choices.includes(parsed.providerChoice) && !newSessionAllowsCustomProvider()', source)
         self.assertIn('options.includes(next) || (next && newSessionAllowsCustomProvider())', source)
-        self.assertIn('else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];', source)
         self.assertIn('const hasProviders = newSessionHasProviderChoices() || newSessionAllowsCustomProvider();', source)
         self.assertIn('providerChoices.includes(selectedPair.providerChoice) || newSessionAllowsCustomProvider()', source)
+        self.assertIn('providerChoices.includes(provider) || (provider && newSessionAllowsCustomProvider())', source)
 
     def test_provider_model_error_clears_when_backend_or_input_changes(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

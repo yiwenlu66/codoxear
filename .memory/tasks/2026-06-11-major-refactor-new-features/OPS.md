@@ -2340,3 +2340,14 @@
   - Clean-room reviews: initial residuals around UI stale provider and reasoning fallback fixed; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `831 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `830 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 17:44
+- Completed Pi custom-provider UI behavioral coverage tranche.
+- Changed artifact: `tests/test_new_session_model_options_source.py`.
+- Added executable Node VM coverage for Pi typed `provider/model` behavior when `provider_choices` is empty and the bare-model reasoning cache is stale. The test extracts the real provider/model parser, display, and reasoning-choice functions from `app.js` and verifies `anthropic/claude-haiku-4-5` remains a provider-specific Pi launch candidate with `low` still available.
+- Restored source guards for adjacent custom-provider paths: provider setter, provider/model label, remembered pair restore, and recent-session provider options.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_new_session_model_options_source.py && python3 -m pytest tests/test_new_session_model_options_source.py tests/test_new_session_launch_request.py tests/test_reasoning_effort_source.py tests/test_launch_ui_source.py -q` -> `26 passed`.
+  - Clean-room review: initial review noted adjacent source guards were lost; restored them; final review -> no blockers.
+  - Full local: `python3 -m pytest -q` -> `832 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `831 passed, 1 skipped, 89 subtests passed`.
