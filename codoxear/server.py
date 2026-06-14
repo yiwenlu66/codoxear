@@ -511,7 +511,7 @@ def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_M
             if _clean_optional_text(meta.get("spawn_nonce")) != spawn_nonce:
                 continue
             try:
-                _metadata_required_int(meta, "broker_pid", sock=sock)
+                _metadata_required_live_pid(meta, "broker_pid", sock=sock)
             except ValueError:
                 continue
             return meta
@@ -2284,6 +2284,13 @@ def _metadata_required_int(meta: dict[str, Any], key: str, *, sock: Path) -> int
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"invalid {key} in metadata for socket {sock}")
     return int(value)
+
+
+def _metadata_required_live_pid(meta: dict[str, Any], key: str, *, sock: Path) -> int:
+    pid = _metadata_required_int(meta, key, sock=sock)
+    if pid <= 0 or not _pid_alive(pid):
+        raise ValueError(f"invalid {key} in metadata for socket {sock}")
+    return pid
 
 
 def _metadata_required_text(meta: dict[str, Any], key: str, *, sock: Path) -> str:

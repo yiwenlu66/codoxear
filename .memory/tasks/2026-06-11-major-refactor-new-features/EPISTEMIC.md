@@ -1928,3 +1928,12 @@ Observation: `rollout_log.py` had two intended-equivalent chat-event constructio
 Intervention: `_extract_chat_events` now delegates event construction to `_single_chat_event` and retains metadata accounting locally. Clean-room review identified a non-obvious side-effect trap: Claude Code id-less tool-use placeholder ids must be generated exactly once per assistant row. The fix removed the duplicate pending-id update and added id-less tool-result regression coverage.
 
 Scoped claim: Under focused CC/chat/idle tests, full local/Docker suites, and clean-room review, batch event construction now shares the single-record path while preserving turn/count metadata. Residual: metadata extraction still repeats some helper work, and CC pending-id logic still exists in several subsystems outside this refactor.
+
+## 2026-06-14 16:34
+Observation: `_wait_for_spawned_broker_meta()` previously accepted any non-bool integer `broker_pid` in a nonce-matching tmux launch sidecar. General discovery must still tolerate pid `0` stale placeholders, but fresh launch binding should not bind to a nonpositive or dead broker pid.
+
+Intervention: Added a launch-wait-only live-pid requirement for `broker_pid` while leaving general sidecar discovery's integer validation unchanged. Tests cover bool, malformed JSON, nonpositive, and dead pid skips before accepting a live pid.
+
+Scoped claim: Under focused tests, full local/Docker suites, and clean-room review, freshly spawned tmux launch metadata now rejects non-live broker pid values without changing stale-sidecar discovery semantics. Residual: liveness is not full broker identity; PID reuse and pane-death-during-wait remain broader lifecycle risks.
+
+Correction: User clarified that provider URLs/keys are available through `~/.pi/agents` and `~/.zshrc`, and `occ-claude`/`claude-haiku-4-5` is sufficient for Claude-specific validation. The blocker should be recorded as secret-safe isolated execution, not missing authorization.

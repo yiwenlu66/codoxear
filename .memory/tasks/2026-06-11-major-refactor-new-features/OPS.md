@@ -2313,3 +2313,13 @@
   - Clean-room review: initial blocker found duplicate CC id-less pending-tool placeholders; fixed by making `_single_chat_event` the sole pending-id updater in `_extract_chat_events`; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `827 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `826 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 16:34
+- Completed tmux launch sidecar live-pid validation tranche.
+- Changed artifacts: `codoxear/server.py`, `tests/test_session_resume.py`.
+- User corrected authorization context: provider/key locations are available from `~/.pi/agents` and `~/.zshrc`; future live backend validation should proceed with redaction/isolated state rather than treating authorization as absent.
+- Validation:
+  - Focused: `python3 -m py_compile codoxear/server.py tests/test_session_resume.py && python3 -m pytest tests/test_session_resume.py tests/test_stale_sidecars.py tests/test_launch_provenance.py -q` -> `60 passed`.
+  - Clean-room review: no blockers; residuals are PID-reuse/identity limits and tmux pending classification if pane dies during wait.
+  - Full local: `python3 -m pytest -q` -> `828 passed, 89 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `827 passed, 1 skipped, 89 subtests passed`.
