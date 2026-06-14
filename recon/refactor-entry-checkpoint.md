@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `f921e7e fix: recover failed launches safely`
+Current HEAD: `5a10aae feat: add compatible video preview control`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -49,17 +49,19 @@ Recent committed recovery checkpoints include:
   - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object;
   - Details can open a review-only New Session dialog with copied launch settings from an allowlisted diagnostics subset; Pi provider semantics use actual `model_provider`, not synthetic `provider_choice`, including providerless and sparse-metadata cases;
   - file picker search results highlight exact/fuzzy query matches using DOM text nodes and Unicode-safe folded-index mapping, without changing path identity;
-  - markdown fenced code blocks use a light Codoxear-themed surface, and markdown tables wrap/contain normal wide content with internal horizontal scroll only for impossible many-column cases.
+  - markdown fenced code blocks use a light Codoxear-themed surface, and markdown tables wrap/contain normal wide content with internal horizontal scroll only for impossible many-column cases;
+  - video files expose an explicit compatible-MP4 preview action that preflights the server transcode route, surfaces route/ffmpeg errors in status text, and avoids relying only on opaque media-element errors.
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the failed-launch recovery fix:
+Latest code-validation evidence after the video preview fix:
 
-- Focused failed-launch/server-broker persistence/file-viewer/provenance/sidebar/new-session/send/queue/attach/transcript validation: node syntax check plus targeted pytest set -> `101 passed, 12 subtests passed`.
-- Browser Docker fixture: failed launch record containing `API_TOKEN`, JSON-style `api_key`, `password`, `Authorization: Bearer`, `AUTH: Basic`, and tail secrets rendered with `hasSecret:false`, `hasDoubleBracket:false`; recovery card, regular error transcript, and sidebar titles were redacted; send/queue/attach were disabled; sidebar actions contained only Dismiss.
-- Direct server and broker recorder counterexample: mixed error/tail/nested/metadata secrets produced no raw secret substrings in returned rows, raw `session_launches.jsonl`, or stderr.
-- Full local suite: `python3 -m pytest -q` -> `879 passed, 104 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `878 passed, 1 skipped, 104 subtests passed`.
+- Focused video/file-viewer validation: node syntax check plus `tests/test_file_viewer_source.py`, ffmpeg transcode fixtures in `tests/test_file_inspect.py`, and `tests/test_video_preview_cache.py` -> `33 passed`.
+- API fixture under isolated Docker: generated odd-dimension MPEG4/PCM MKV; `/api/files/read` returned `kind=video` and `video_preview_url`; `/api/files/video_preview` returned `video/mp4`; ffprobe showed H.264/yuv420p and even encoded dimensions.
+- Browser fixture under isolated Docker: preview preflight `Range: bytes=0-0` returned `206` with `Content-Range`; Chromium loaded metadata from the preview URL.
+- VM regression: 500 JSON preview route error surfaced into fileStatus and did not set the video source.
+- Full local suite: `python3 -m pytest -q` -> `880 passed, 104 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `879 passed, 1 skipped, 104 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -76,6 +78,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - Clean-room critic review of Details → New like this found Pi provider corruption risks in direct presets, diagnostics provider display, duplicate/recent options, remembered providerless choices, and sparse metadata. Each counterexample was fixed with regressions; final re-review found no blockers for Pi provider corruption, auto-start, focus, or sparse UI behavior.
 - Clean-room critic review of markdown rendering first found a hidden-overflow/fixed-layout clipping counterexample for many-column tables. The final implementation uses auto overflow plus auto table layout; re-review found no blockers for clipping, page/bubble overflow, copy semantics, or chat/file-preview markdown paths.
 - Iterated clean-room critic review of failed-launch recovery found and drove fixes for immediate POST response leakage, quoted/unclosed env syntax, nested launch-attempt diagnostics, colon/JSON secret syntax, redaction idempotence, failed-launch attach POST affordance, raw server/broker launch persistence and stderr, and Authorization/Auth Bearer/Basic values. Final review found no remaining failed-launch secret leakage/persistence path or mutation/autostart regression in inspected scope.
+- Clean-room critic review of video preview/transcoding found no blockers for transcode correctness, route error surfacing, stale request guards, sparse/contextual UI, or file/session identity. Its non-blocking failure-path coverage note was addressed with a VM regression before commit.
 
 Recent isolated browser evidence:
 
@@ -84,6 +87,7 @@ Recent isolated browser evidence:
 - Synthetic recovery fixtures under isolated Docker app state verified the in-chat recovery panel: orphan recovery did not fetch `/messages/tail`, Review queue opened preserved prompts, clearing an unknown marker and deleting queue items kept panel/buttons/focus synchronized, transcript-backed live appends kept the panel as the latest recovery surface, and focused panel actions survived rapid panel rebuilds.
 - Pi live backend evidence exists for one current configured provider/model path as described above. Codoxear app/session state was isolated; the backend provider configuration came from the user's existing real Pi environment and was handled without printing secret values.
 - Failed-launch fixture under isolated Docker app state verified redacted card/transcript/sidebar rendering for env, JSON, Authorization/Bearer, Auth/Basic, and tail secrets; send, queue, and attach were disabled; sidebar duplicate/rename were absent; New like this remained review-only.
+- Video preview fixture under isolated Docker app state verified that a generated non-browser-safe MKV transcodes through the server preview route to browser-loadable MP4 metadata after a range preflight.
 
 ## Invariants broad refactoring must preserve
 
@@ -105,6 +109,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 14. **No silent fallbacks:** absence, malformed contracts, or unsupported combinations should fail loudly with recoverable UI when possible.
 15. **Markdown containment:** code blocks should remain readable in the light UI; tables should wrap normal wide content and use internal scroll only when the column count cannot physically fit without clipping.
 16. **Failed launches are recoverable non-sessions:** failed web-owned launches may be reviewed, dismissed, copied, or used to prefill a reviewed New Session dialog, but must not accept send/enqueue/attach or duplicate/rename autostart mutations. Failed-launch diagnostics shown through UI/API, persisted in `session_launches.jsonl`, or written to launch-failure stderr must be redacted through the shared launch-failure sanitizer.
+17. **Video preview is explicit and diagnosable:** compatible MP4 preview generation may be requested automatically for known unsafe containers or manually through the contextual file-viewer video action. The client preflights the preview route and surfaces JSON/text route errors instead of hiding ffmpeg failures behind media-element fallback.
 
 ## Parked limits and decisions
 

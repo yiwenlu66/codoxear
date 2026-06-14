@@ -6,11 +6,10 @@ Completion requires user-facing workflows to work end-to-end under scoped eviden
 Prioritize reliability, UX/accessibility, bounded refactors that preserve invariants, feature polish, and safe live/backend validation where the evidence justifies it. Broad structural/frontend refactoring may proceed only after product gaps are fixed or explicitly scoped.
 
 ## Workbench
-1. Implement failed-launch in-chat recovery panel. See: Send/queue recovery promise; Backend/capability promise; Sparse UI promise.
-2. Validate failed-launch recovery panel. See: Validation criteria; Evidence criteria.
-3. Investigate and repair video preview/transcoding. See: File/context promise; Video preview/transcoding bug.
-4. Investigate and repair Pi busy-after-interrupt state. See: Backend/capability promise; Responsiveness promise; Pi interrupt/busy bug.
-5. Pick the next responsiveness or UX/refactor tranche from `recon/refactor-entry-checkpoint.md`. See: Responsiveness promise; Refactor promise.
+1. Investigate and repair Pi busy-after-interrupt state.
+2. Exercise Codex live web-send/final-response path in isolated state.
+3. Exercise Claude Code live response path after first-run setup in isolated state.
+4. Pick the next responsiveness or UX/refactor tranche from `recon/refactor-entry-checkpoint.md`.
 
 ## Context
 Active checkout: `/home/yiwen/codex-web-product-recovery`.

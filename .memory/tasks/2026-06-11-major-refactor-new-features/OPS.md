@@ -2526,3 +2526,12 @@
 - Docker validation: scripts/codoxear-docker-sandbox test => 878 passed, 1 skipped, 104 subtests passed.
 - Async critic pass sequence found and drove fixes for immediate POST response leakage, unclosed quoted env redaction, nested launch_attempt diagnostic leakage, colon/JSON secret syntax, idempotence, failed-launch attach POST affordance, raw failed-launch persistence/stderr in both server and broker recorders, and Authorization/Auth Bearer/Basic key-value leakage. Final critic run 764751f0 found no remaining failed-launch secret leakage/persistence path or mutation/autostart regression in inspected scope.
 - Functional commit: f921e7e fix: recover failed launches safely.
+
+## 2026-06-14T20:34:00Z — Video preview/transcoding validation
+- Implemented a contextual file-viewer compatible-MP4 preview action in codoxear/static/app.js; source assertions updated in tests/test_file_viewer_source.py.
+- Focused validation: node syntax check plus tests/test_file_viewer_source.py, ffmpeg transcode fixtures in tests/test_file_inspect.py, and tests/test_video_preview_cache.py => 33 passed.
+- Isolated Docker API fixture: generated an odd-dimension MPEG4/PCM MKV under sandbox HOME; /api/files/read returned kind=video with video_preview_url; /api/files/video_preview returned video/mp4; ffprobe showed H.264/yuv420p and even encoded dimensions.
+- Isolated browser fixture: same unsupported MKV; preview preflight Range bytes=0-0 returned HTTP 206 with Content-Range; Chromium video element loaded metadata from the preview URL.
+- Full local validation: python3 -m pytest -q => 880 passed, 104 subtests passed.
+- Docker validation: scripts/codoxear-docker-sandbox test => 879 passed, 1 skipped, 104 subtests passed.
+- Clean-room critic run 55510aad-c656-4ab1-a0a9-499922da34db found no blockers in inspected scope; after the review's non-blocking note, added a VM regression proving a 500 JSON preview error renders into fileStatus without setting video src.
