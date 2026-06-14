@@ -2,7 +2,7 @@
 
 Date: 2026-06-14
 Branch: `recovery/product-gaps`
-Current HEAD: `da93073 fix: mark skipped transcript search records`
+Current HEAD: `31a5c2d feat: show recovery state in chat`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -37,7 +37,8 @@ Recent committed recovery checkpoints include:
 - Queue/send/unattended UX:
   - unattended prompts gate on final assistant turns;
   - mobile composer stop control added;
-  - read endpoints remain observation-only and do not promote queued prompts.
+  - read endpoints remain observation-only and do not promote queued prompts;
+  - orphan, queued-recovery, and unknown-send sessions now render an in-chat recovery panel with safe review actions instead of opening to an empty disabled pane.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -45,12 +46,11 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last runtime/search change:
+Latest code-validation evidence after the last runtime/UI change:
 
-- Focused oversized-search validation: `python3 -m py_compile codoxear/transcript_search.py codoxear/server.py tests/test_transcript_export.py && python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py -q` -> `38 passed, 4 subtests passed`.
-- Post-source-guard focused validation: `python3 -m pytest tests/test_transcript_export.py tests/test_message_route_source.py tests/test_chat_navigation_source.py tests/test_route_decomposition_source.py -q` -> `40 passed, 4 subtests passed`.
-- Full local suite: `python3 -m pytest -q` -> `839 passed, 89 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `838 passed, 1 skipped, 89 subtests passed`.
+- Focused recovery-panel validation: `node --check codoxear/static/app.js && python3 -m py_compile tests/test_chat_scrollback_source.py && python3 -m pytest tests/test_chat_scrollback_source.py tests/test_queue_button_source.py tests/test_file_upload_module_source.py -q` -> `30 passed`.
+- Full local suite: `python3 -m pytest -q` -> `840 passed, 89 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `839 passed, 1 skipped, 89 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -59,11 +59,13 @@ Recent clean-room reviews returned no blockers after fixes:
 - `/tmp/codoxear-roving-copy-buttons-review3.md`
 - `/tmp/codoxear-root-cwd-resolve-review.md`
 - `/tmp/codoxear-oversized-search-review.md`
+- `/tmp/codoxear-recovery-panel-review6.md`
 
 Recent isolated browser evidence:
 
 - Synthetic 180-turn Codex transcript under Docker app state reproduced and then fixed the all-transcript-search Next no-op. After the fix, clicking Next from `0/0 loaded · 1 all` emitted `/messages/search?...order=latest&before=...` and `/messages/history?cursor=...`, then showed `1/1 loaded · 1 all` and `Loaded transcript match` with no captured JS errors.
 - The same long transcript had 60 message-copy button nodes but exactly one enabled/tabbable/accessibility-visible copy button after the roving-copy fix. Inactive samples were disabled, `tabIndex=-1`, `aria-hidden=true`, `opacity:0`, `visibility:hidden`, and `pointer-events:none`. Hidden-focus counterexamples with `Alt+↑` and `Alt+Shift+↑` remained false.
+- Synthetic recovery fixtures under isolated Docker app state verified the in-chat recovery panel: orphan recovery did not fetch `/messages/tail`, Review queue opened preserved prompts, clearing an unknown marker and deleting queue items kept panel/buttons/focus synchronized, transcript-backed live appends kept the panel as the latest recovery surface, and focused panel actions survived rapid panel rebuilds.
 - Pi live backend evidence exists for one current configured provider/model path as described above. Codoxear app/session state was isolated; the backend provider configuration came from the user's existing real Pi environment and was handled without printing secret values.
 
 ## Invariants broad refactoring must preserve
@@ -71,7 +73,7 @@ Recent isolated browser evidence:
 Any broad frontend/server refactor must keep these product semantics explicit and mechanically preserved:
 
 1. **Send commit boundary:** HTTP `/send` success means the broker/sessiond path accepted the prompt or returned explicit unknown-commit recovery state; reads must not promote queued prompts.
-2. **Unknown commit state blocks unsafe actions:** unresolved direct/queued uncertainty blocks send, enqueue, attach, sweep, reorder, and silent destructive cleanup bypasses.
+2. **Unknown commit state blocks unsafe actions:** unresolved direct/queued uncertainty blocks send, enqueue, attach, sweep, reorder, and silent destructive cleanup bypasses; recovery UI may explain/review/clear explicit markers but must not silently resume mutation paths.
 3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively.
 4. **Inline refs:** ambiguous inline refs route through the identity-aware picker; failed/truncated project search is ambiguity, not uniqueness proof.
 5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced.

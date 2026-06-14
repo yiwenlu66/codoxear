@@ -2002,3 +2002,6 @@ Observation: Recovery state was preserved by the backend but weakly surfaced in 
 Intervention: Added an in-chat recovery panel that summarizes orphan, queue-recovery, and unknown-send state and routes to existing guarded recovery actions. Repeated adversarial review exposed and drove fixes for stale state, focus loss, transcript-row leakage, live append ordering, queue mutation synchronization, and load-error ordering.
 
 Scoped claim: Under source tests, browser evidence in isolated recovery fixtures, clean-room review, full local suite, and Docker suite, selected recovery sessions now explain their state and expose safe review actions in the chat pane without weakening send/queue recovery barriers.
+
+## 2026-06-14 19:28
+Commitment revision: `recon/refactor-entry-checkpoint.md` now reflects current HEAD `31a5c2d` and includes the in-chat recovery panel UX fix. It remains a refactor-entry/handoff artifact, not merge approval.

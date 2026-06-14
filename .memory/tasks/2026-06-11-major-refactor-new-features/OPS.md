@@ -2434,3 +2434,7 @@
   - Additional failed-harness repair focused: `python3 -m pytest tests/test_chat_transcript_runtime.py::TestChatTranscriptRuntime::test_live_delta_dedupes_adjacent_assistant_text_across_polls tests/test_overlay_accessibility_source.py::TestOverlayAccessibilitySource::test_queue_help_details_dialogs_restore_focus tests/test_chat_scrollback_source.py tests/test_queue_button_source.py tests/test_file_upload_module_source.py -q` -> `32 passed`.
   - Full local: `python3 -m pytest -q` -> `840 passed, 89 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `839 passed, 1 skipped, 89 subtests passed`.
+
+## 2026-06-14 19:28
+- Refreshed `recon/refactor-entry-checkpoint.md` after recovery-panel commit `31a5c2d`.
+- Updated current HEAD, latest validation counts, closed gap bullets, browser evidence, review artifact list, and unknown-commit invariant wording.
