@@ -1,211 +1,88 @@
 ## Objective
-Create and execute a major refactoring/new-features program for Codoxear with one acceptance target: a single `develop` branch containing the integrated candidate work. Workstreams are interacting and need not be forced into independent final branches. The agent should determine the branch topology that best preserves evidence and reviewability, but the user should only need to evaluate one `develop` branch for acceptance. Nothing may merge to `main` until the user explicitly approves.
+Recover Codoxear product gaps on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, until the branch is a validated, reviewable candidate for explicit user approval.
 
-Correction, 2026-06-12: the prior `develop` acceptance claim was overbroad. The branch contains useful work, but the original feature task is not product-complete. Do not proceed to structural refactor as the main task until the real product gaps from this task are fixed, browser-validated, and honestly scoped. The current priority is feature recovery and UX/product completion, not more architectural motion.
+Completion requires user-facing workflows to work end-to-end under scoped evidence, not merely tests or implementation scaffolding. The acceptance branch is `recovery/product-gaps`; `main` remains live-safe and must not be merged or modified without explicit user approval.
 
-Ontology correction: acceptance is organized by product promises and user workflows, not by implementation workstreams, patches, or test-count progress. A request is not done because a mechanism exists; it is done only when the relevant workflow works end-to-end, preserves Codoxear's invariants, and has evidence scoped to the promise. Product invariants such as sparse UI and shared broker semantics are first-class acceptance criteria, not optional polish.
-
-Done means:
-- A single `develop` branch exists as the acceptance candidate and contains the integrated, reviewable result.
-- Temporary topic branches/worktrees may be used for exploration, PR cherry-picks, or risky changes, but they are implementation scaffolding, not the final deliverable.
-- Commits on `develop` are atomic enough to review and ordered by dependency/mechanism where possible.
-- Each accepted change preserves Codoxear's design philosophy: CLI and web share the same broker; UI remains minimal; sidebar remains GTD-style without nesting; chat view deliberately omits low-value details.
-- The integrated result may include creative product improvements beyond the enumerated workstreams when evidence or product judgment shows they make Codoxear better without violating the hard constraints or product philosophy.
-- All server/browser validation runs against a standalone Docker test instance with isolated app/session state, not live sessions or the live server.
-- The user receives evidence for what changed, what was tested, what remains uncertain, which PRs were accepted/rejected/deferred, and why.
+Prioritize reliability, UX/accessibility, bounded refactors that preserve invariants, feature polish, and safe live/backend validation where the evidence justifies it. Broad structural/frontend refactoring may proceed only after product gaps are fixed or explicitly scoped.
 
 ## Workbench
-Current status correction: `develop` was previously labeled as the integrated acceptance candidate, but user review invalidated that claim. `main` must remain the live-safe branch unless explicitly approved. The current recovery work must happen in an isolated worktree/branch and must fix product gaps before any structural refactor is resumed.
-
-Product promises that now define recovery acceptance:
-1. New-session creation promise: the user can choose a backend and a coherent provider/model pair through one discoverable selector; defaults, recent pairs, search, keyboard use, mobile use, and reasoning-effort availability all update from the selected pair.
-2. Sparse-control promise: the main chat top bar exposes only identity/state and immediate chat actions. Session utilities, files, details, Unattended controls, search, and navigation live where their workflow context makes sense; no generic overflow dumping ground.
-3. Long-session orientation promise: in a large loaded session, the user can search, jump between relevant turns, and recover position without visual clutter or losing scroll state.
-4. File/context promise: file picker/viewer/search workflows feel local, understandable, and recoverable in empty/loading/error/mobile states.
-5. Responsiveness promise: under realistic isolated browser/session conditions, the UI remains usable and polling/network behavior does not create avoidable busywork or stale confusion.
-6. Backend/capability promise: Claude, Codex, Pi, provider, model, and reasoning controls say only what the evidence supports; unsupported or unknown combinations fail loudly or are explicitly scoped.
-
-Known overclaimed or under-completed product gaps that must be addressed before refactor:
-1. New-session provider/model ergonomics: only recent provider/model reuse was implemented; a real combined provider/model selector and keyboard/mobile flow are still required.
-2. Overall UI cleanliness: the top bar became a collection of unrelated feature buttons, contradicting the minimal/sparse UI invariant. Action placement must be redesigned, not hidden behind an indiscriminate “More” menu.
-3. Long-conversation navigation: loaded search/jump mechanics exist, but their placement and mobile ergonomics are not a finished design.
-4. Responsiveness/network evidence: hidden-tab polling was implemented, but the broader responsiveness workstream lacks real browser/network evidence under realistic conditions.
-5. File viewer/search: local-first search improved perceived latency, but combobox/editor/file-picker UX still needs product-level review and polish.
-6. Git-history pressure testing: some deterministic regressions were added, but multiple mined historical bug classes remain unexercised or only documented.
-7. Claude Code support: minimal shared-broker plumbing exists, but it remains scoped and not live-like validated.
-8. Thinking/reasoning capability semantics: Pi is improved; Codex per-model reasoning authority and the provider/model capability interaction remain unresolved.
-
-Historical evidence base that remains useful but is not acceptance proof:
-1. Full isolated Docker suite is green after the latest code changes: `429 passed, 2 skipped`.
-2. JS parse checks passed for `codoxear/static/app.js` in local and Docker contexts.
-3. Browser validation ran only against isolated Docker servers and synthetic state: Claude/new-session controls on port 18791, long-chat loaded search/navigation/history on port 18792, and renamed Unattended menu/API/sweep behavior on port 18793.
-4. Recon and plan artifacts are preserved in `recon/`; task observations and validation are in `OPS.md` / `EPISTEMIC.md`.
-5. Implementation/source files no longer contain Harness terminology; remaining Harness strings in tests are negative assertions guarding against old public compatibility.
-6. Isolated packaging/runtime smoke evidence now covers `python3 -m pip install -e .` from a writable source copy, console-script installation, and Docker server login/session API startup on non-live port 18794 with app state under `/home/tester/.local/share/codoxear` inside the container.
-
-Recovery next tasks, in order:
-1. Design and implement a real combined provider/model selector for new-session creation, including configured pairs, recent pairs, keyboard search, mobile usability, and reasoning-effort capability updates.
-2. Redesign action placement so the top bar remains sparse and semantically coherent. Session utilities belong in session context/details surfaces; chat navigation belongs near the chat/scroll context. Do not use a generic “More” menu as a dumping ground.
-3. Rework long-chat navigation/search placement and mobile ergonomics against realistic synthetic long chats.
-4. Revisit file viewer/search/editor UX with browser evidence, including empty/loading/error states and mobile touch behavior.
-5. Gather real browser/network responsiveness evidence in the isolated Docker deployment and fix the dominant mechanisms found.
-6. Reassess git-history regression mining and either reproduce/fix the important classes or explicitly preserve why they remain out of scope.
-7. Keep Claude Code and Codex reasoning claims scoped unless user authorizes live-like sandbox validation or an authoritative capability source is established.
-8. Only after these product gaps are fixed and validated should the structural refactor prompt become active again.
-
-Observed failures / negative evidence:
-- An initial Python 3.11 sandbox image could not collect tests using newer f-string syntax; switching the sandbox to Python 3.13 fixed the measurement artifact.
-- Two pre-existing baseline failures were fixed before feature work: stale cwd file-history deletion and voice summary prompt wording.
-- A first synthetic long-chat fixture omitted Codex `session_meta`; discovery failed loudly as designed, and the fixture was corrected.
-- Synthetic long-chat rows omitted `end_turn:true`, so that browser run is not idle-status evidence; existing idle tests cover the valid `end_turn:true` shape.
-- In the Unattended browser smoke, remaining injections dropped from 3 to 2 because the isolated sweep immediately injected once into the idle synthetic session; this was expected for that fixture and validates the renamed sweep path.
-
-Open blockers / unknowns:
-- No user authorization yet to use real backend credentials/binaries for live-like Codex/Pi/Claude sandbox session creation.
-- Claude Code support is minimal and test/browser-plumbing validated, not proven against a long real Claude session.
-- Codex model-specific reasoning capability remains less constrained than Pi because no current authoritative per-model Codex capability source was established.
-- Real mobile-device performance, Monaco/file-viewer browser races, zsh/oh-my-zsh startup behavior, and full real long-transcript performance remain untested.
-
-
-User-reported issue updates, 2026-06-13:
-- Video pipeline/product gap: ffmpeg video transcoding does not work and, per user report, has never worked. Treat this as a real product bug, not a regression assumption. Investigate the video preview/transcoding control flow, validate with isolated Docker/app state and representative video fixtures, and preserve the exact failure mechanism before repair.
-- Pi busy-state/product gap: Pi sessions can show/stay busy after interruption. Treat this as an agent-backend state/busy/idle synchronization bug around interrupt handling. Investigate Pi log normalization, broker/sessiond state, interrupt route semantics, and UI busy-state clearing with isolated fixtures before claiming fixed.
-
-User-reported issue updates, 2026-06-15:
-- Markdown code-block rendering issue: code blocks in chat markdown use an ugly dark rendering. Treat this as a UI/readability bug in markdown/message rendering, not as generic theme preference. Inspect current markdown CSS/renderer, preserve code readability and contrast, and validate against representative messages with fenced code blocks in isolated browser state.
-- Markdown table width issue: markdown tables should not run over the chat width; they should wrap or otherwise stay contained. Treat this as a chat rendering/layout bug. Inspect markdown table rendering and CSS overflow/wrapping behavior, preserve mobile readability, and validate with wide-table fixtures in isolated browser state.
+1. Finish the markdown rendering tranche: verify light/readable fenced code blocks, contained/wrapping markdown tables, browser evidence, full local validation, Docker validation, memory evidence, atomic commit, and checkpoint refresh.
+2. Continue product-gap recovery from `recon/refactor-entry-checkpoint.md`, choosing the next highest-value UX/reliability/backend gap with discriminating evidence.
+3. For each tranche, state the user-facing invariant first, implement the smallest causal change, validate with focused tests plus browser/runtime evidence where feasible, run full local and Docker validation before claiming complete, and commit atomically.
+4. Re-run clean-room critic or architecture review when a change touches provider semantics, recovery state, queue/send boundaries, file/path identity, accessibility/focus, or broad UI structure.
+5. Keep task evidence current in `OPS.md` and `EPISTEMIC.md`; promote durable conclusions to `recon/refactor-entry-checkpoint.md` or project documentation when they affect future work.
 
 ## Context
-Required project context:
-- `AGENTS.md` for architecture, design philosophy, development reminders, and safe restart constraints.
-- `codoxear.server`, `codoxear.broker`, `codoxear.sessiond`, `codoxear.rollout_log`, `codoxear.pi_log`, and `codoxear/static/*`.
-- Runtime app directory convention: `~/.local/share/codoxear` for real sessions; do not use it for this task's server/browser testing.
-- Existing git history and open GitHub PRs for regression signals and candidate changes.
-- Provider configs in `~/.pi/agent` may inform test workloads.
-- Unattended-mode code paths in `codoxear/server.py` and `codoxear/static/app.js`; these schedule/send prompts after an idle assistant turn with cooldown and remaining-injection limits.
-- Current chat view rendering, message normalization, scroll behavior, session message APIs, and any browser performance costs that affect long-conversation navigation.
+Active checkout: `/home/yiwen/codex-web-product-recovery`.
 
-Testing preferences from user:
-- Prefer `deepseek-v4-flash` for cost-efficient workloads.
-- Prefer `occ-claude`'s `claude-haiku-4-5` for Claude-specific workloads.
-- Use a headless agent browser when useful for UI testing.
+Protected live checkout: `/home/yiwen/codex-web` on `main`.
 
-Design philosophy that must constrain PR acceptance and new implementation:
-- CLI and web share the same broker model.
-- Minimal UI.
-- GTD-style sidebar without nesting.
-- Deliberate omission of details in chat view.
-- Navigation affordances for long conversations should help users regain orientation without making the chat view visually dense or exposing low-value implementation detail.
-- Prefer replacing semantically wrong subsystems over layering patches onto confused structures.
-- Define semantic invariants before implementing queueing/streaming, chat navigation, or UI state machinery.
+Active branch: `recovery/product-gaps`.
 
-## Working style
-- Be creative and product-minded. The numbered workstreams are not a ceiling.
-- Do whatever makes Codoxear materially better when the intervention respects the hard operational constraints, product philosophy, and validation requirements.
-- Prefer coherent product improvements over narrow checklist execution, but preserve evidence: state the mechanism, expected user benefit, validation path, and any tradeoff.
-- Do not use open-ended latitude as permission for unchecked scope creep, silent fallbacks, live-runtime risk, or UI complexity that contradicts the project philosophy.
+Task memory: `.memory/tasks/2026-06-11-major-refactor-new-features/`.
 
-## Branch topology
-- Final acceptance target: `develop`.
-- `main` is not an acceptance target and must not receive merges without explicit user approval.
-- Workstreams are not fully orthogonal. The agent should choose the branch topology after inspecting dependencies, conflicts, and PR shapes.
-- Allowed scaffolding: temporary topic branches, throwaway worktrees, or local experiment branches when they reduce risk or preserve evidence.
-- Required integration behavior: accepted work is integrated into `develop`; rejected/deferred experiments are documented and not left as required deliverables.
-- Keep reviewability by using atomic commits, explicit commit messages, and evidence notes rather than by pretending every workstream can be a separate final branch.
+Current checkpoint artifact: `recon/refactor-entry-checkpoint.md`.
+
+Project architecture and development guide: `AGENTS.md`.
+
+Codoxear is a Linux-first companion UI for local CLI agent sessions. Supported backends are Codex, Pi, and scoped Claude Code (`cc`) work.
+
+Server state for real sessions lives under `~/.local/share/codoxear`; tests and browser validation should use isolated app/session state instead.
+
+Recent recovery work established or hardened send/queue recovery, transcript search/loading, Pi provider pass-through, sidecar metadata validation, file picker match highlighting, git helper extraction, Details copy, and Details → New like this launch-copy semantics.
+
+User-reported active markdown issues from 2026-06-15: chat markdown code blocks render with an undesirable dark style; markdown tables should not overflow chat width and should wrap or stay contained.
+
+Parked limits include incomplete Codex/Claude live-response evidence, real mobile-device and assistive-tech evidence, slow-network and huge-transcript evidence, smooth Jump to latest, non-UTF-8 Git filename byte-literal behavior, and atomic symlink containment against concurrent local mutation.
 
 ## Task specifications
-The workstreams below are interacting areas of investigation and implementation, not an exhaustive checklist or branch map. They should inform each other, and branch topology should follow the evidence rather than the numbered list. Additional product improvements are allowed when they are causally motivated, validated, and compatible with the design philosophy.
+Product acceptance is organized by user promises and invariants, not by implementation workstreams or test-count progress.
 
-1. Architecture review and refactoring
-   - Defer structural refactor as a primary workstream until the product gaps above are fixed.
-   - Review current server/broker/log/UI architecture when it is necessary to implement or validate a product gap, but do not let refactor activity substitute for missing user-facing behavior.
-   - Refactor only where a clearer invariant is identified and validation can show preservation of behavior.
-   - Avoid broad rewrites without evidence that they reduce complexity or fix a real mechanism.
+Sparse UI promise: the main chat top bar exposes only identity/state and immediate chat actions; utilities belong in contextual surfaces, not a generic `More` dumping ground.
 
-2. Review and cherry-pick GitHub PRs
-   - Inventory open PRs, summarize the behavior each PR changes, and decide accept/reject/defer.
-   - Accept only PRs compatible with the design philosophy above.
-   - If accepted, merge or cherry-pick into `develop` or a temporary integration branch that will be folded into `develop`; do not merge to `main`.
-   - Preserve rationale for rejected PRs, especially when rejection is due to UI complexity, broker divergence, sidebar nesting, or chat detail creep.
+New-session promise: users can choose coherent backend/provider/model/reasoning settings; Pi provider names come from Pi CLI/config authority; synthetic diagnostics `provider_choice` must not become actual Pi provider state; providerless Pi sessions remain providerless through copied presets, recent selections, memory, parsing, and start requests.
 
-3. Optimizations: UI responsiveness and network traffic
-   - Measure current polling/network behavior and responsiveness, especially under slow mobile-network conditions.
-   - Optimize only after identifying the dominant mechanism, such as redundant polling, oversized payloads, inefficient DOM updates, or unnecessary re-rendering.
-   - Validate with browser/network evidence from the standalone Docker instance.
+Send/queue recovery promise: HTTP `/send` success is a commit boundary; unknown commit state blocks unsafe mutation paths; recovery UI may explain, review, and clear explicit markers but must not silently resume unsafe work.
 
-4. Claude Code support
-   - Add Claude Code (`cc`) support analogous to existing `codex` and `pi` backends.
-   - Preserve the shared broker architecture rather than adding a separate path.
-   - Define log discovery, metadata, launch defaults, message normalization, idle/busy detection, and session creation semantics before implementation.
-   - Use `occ-claude`'s `claude-haiku-4-5` for Claude-specific test workload if an actual backend test is needed and safe.
+Long-session orientation promise: users can search, navigate, and regain position in large sessions without dense log-style chat clutter; loaded/all-transcript count evidence must not be discarded during navigation refresh.
 
-5. New-session view ergonomics
-   - Consider combining provider and model into a single `provider/model` selector.
-   - Improve recent-list ergonomics so the user does not need to type the full `provider/model` name.
-   - Keep the UI minimal; avoid a complex nested picker unless evidence shows it is necessary.
-   - Validate keyboard and mobile ergonomics in headless/browser tests where possible.
+File/context promise: file picker, viewer, refs, Git paths, and fuzzy search preserve literal identity while giving clear empty/loading/error/mobile states.
 
-6. File viewer combobox and fuzzy search
-   - Re-check combobox logic.
-   - Ensure recently viewed files are easy to select.
-   - Ensure project files can be fuzzy-searched.
-   - Preserve simple file-viewer/editor ergonomics and test edge cases around selection, typing, recent entries, and missing files.
+Markdown rendering promise: fenced code blocks should be readable and visually consistent with Codoxear's minimal light UI; markdown tables should stay within chat width by wrapping/containing cell content, including on mobile-sized layouts.
 
-7. Pressure-test frequent git-history bugs
-   - Mine git history for frequently mentioned bugs around file viewer/editor ergonomics, rollout log binding, and startup error handling.
-   - Reproduce or falsify each bug in the standalone Docker instance.
-   - Add regression checks or harden behavior where the mechanism is understood.
-   - Record bugs that cannot be reproduced with the evidence and conditions tested.
+Responsiveness promise: polling, transcript loading, rendering, and network behavior avoid stale confusion or avoidable busywork under realistic isolated browser/session conditions.
 
-8. Overall UI cleanliness and responsiveness
-   - Improve visual cleanliness and interaction responsiveness without adding conceptual complexity.
-   - Keep chat view intentionally sparse and sidebar GTD-style without nesting.
-   - Validate desktop and mobile-ish layouts in the Docker/headless-browser environment.
+Backend/capability promise: Codex, Pi, Claude Code, provider, model, service tier, and reasoning controls say only what evidence supports; unsupported or unknown combinations fail loudly or remain explicitly scoped.
 
-9. Rename/recast `harness mode`
-   - Treat "harness mode" as inaccurate terminology unless investigation proves otherwise.
-   - Determine the actual mechanism and choose a more accurate name. Current observations indicate the feature is server-side idle-triggered prompt injection for unattended continuation.
-   - Prefer a user-facing name that describes the behavior, e.g. "Unattended mode" or another mechanism-accurate term. Do not keep vague "Harness mode" copy.
-   - Rename the public API/state surface cleanly; do not preserve `/harness` or `harness_*` compatibility aliases. Internal implementation names may be cleaned separately only if the diff remains reviewable.
-   - Validate the renamed feature in the standalone Docker instance.
+Refactor promise: extract or restructure only where the controlling invariant is understood and validation can show behavior preservation; do not substitute architecture motion for missing product behavior.
 
-10. Long-conversation chat navigation ergonomics
-   - Improve navigation when conversations become long.
-   - Consider lightweight search within visible/loaded chat messages, jump to previous/next user message, jump to latest/oldest relevant turn, and time-based navigation or markers.
-   - Preserve deliberate chat-detail omission: navigation can use timestamps/roles as affordances, but should not turn the main chat view into a dense log/debug transcript.
-   - Optimize for mobile and keyboard ergonomics; controls should be discoverable without occupying excessive space.
-   - Validate against synthetic or fixture long conversations in the standalone Docker/browser environment, including slow-device or slow-network conditions where feasible.
+Validation criteria for each implemented tranche: focused tests for changed logic, browser-level evidence for changed UI when feasible, full local `python3 -m pytest -q`, Docker `scripts/codoxear-docker-sandbox test`, clean git diff review, and atomic commits with scoped messages.
 
-11. Thinking-level / reasoning-effort capability semantics
-   - Treat Codex thinking-level support as incomplete until the actual launch/session semantics are inspected and validated.
-   - Pi may not support every thinking effort for every provider/model combination; capability constraints must be backend- and model-aware.
-   - Do not present thinking levels as universally valid if the backend/model cannot honor them. Prefer explicit capability-aware options, disabled/annotated choices, or backend-scoped defaults.
-   - Do not add silent downgrades from unsupported thinking efforts to some other value. Unsupported combinations should fail loudly, be blocked before launch, or be explained in UI/API response semantics.
-   - Validate representative supported and unsupported Codex/Pi thinking-effort combinations in the isolated Docker environment where feasible, using current provider/model config and upstream docs when needed.
-
-Cross-workstream verification criteria:
-- `python3 -m pip install -e .` succeeds in the isolated test environment where applicable.
-- Server starts in Docker with test-only app/session state and required password configuration.
-- API and UI checks exercise relevant changed behavior without touching live sessions or the live server.
-- Changed Python paths have targeted tests or equivalent scripted validation.
-- Changed UI behavior has browser-level evidence when feasible.
-- Long-conversation navigation changes are validated against large enough conversations to expose scroll/search/performance and orientation problems.
-- Thinking-level/provider/model changes are validated for both supported and unsupported combinations, and evidence shows whether the selected backend actually honors the requested effort.
-- Git status is reviewed before and after each workstream/integration step; only intended files are changed.
-- `develop` is the branch presented for user acceptance, with any temporary branches clearly identified as non-final scaffolding.
+Evidence criteria for claims: distinguish observation from interpretation, preserve negative evidence and reviewer counterexamples, state what the validation does not prove, and keep unsupported backend/mobile/accessibility claims parked.
 
 ## Constraints
-Hard rules:
-- Do not touch live sessions.
-- Do not touch, stop, restart, or kill the live server.
-- Do not kill `codoxear-broker` or underlying backend CLI processes.
-- Test everything in a standalone Docker instance with isolated app/session state.
-- Present only one final acceptance branch: `develop`.
-- Determine branch topology from actual dependencies and evidence; do not force the numbered workstreams into separate final branches.
-- Do not merge anything to `main` without explicit user approval.
-- Do not commit secrets, provider credentials, live logs, runtime sockets, app state, or bulky scratch artifacts.
-- Do not use `git add -A`, `git add .`, or broad staging when unrelated files may exist.
-- Preserve existing design philosophy: shared broker for CLI/web, minimal UI, GTD-style sidebar without nesting, deliberate chat-detail omission.
-- Creative/product latitude does not override the hard ops constraints, `develop` acceptance target, validation requirements, or product philosophy.
-- Do not add silent fallbacks that hide broken contracts; prefer explicit errors or explicit degraded-mode semantics.
-- If a PR or implementation conflicts with the design philosophy, reject or redesign it rather than accepting the conflict.
+Do not edit `/home/yiwen/codex-web`.
+
+Do not merge or promote to `main` without explicit user approval.
+
+Do not touch live sessions.
+
+Do not touch, stop, restart, or kill the live server.
+
+Do not kill `codoxear-broker` or underlying backend CLI processes.
+
+Use isolated Docker/browser/runtime state for validation whenever possible.
+
+Do not print secrets, credentials, tokens, private logs, or provider configuration values.
+
+Do not commit runtime artifacts, sockets, live app state, bulky scratch data, or secrets.
+
+Do not use `git add -A`, `git add .`, or broad staging.
+
+Do not use a generic `More` menu as a dumping ground for unrelated UI actions.
+
+Do not add smooth `Jump to latest` behavior until scheduler/runtime harness evidence exists.
+
+Do not add silent fallbacks that hide broken contracts or unsupported combinations.
+
+Do not claim live backend, mobile-device, assistive-technology, slow-network, or huge-transcript coverage without direct evidence.
