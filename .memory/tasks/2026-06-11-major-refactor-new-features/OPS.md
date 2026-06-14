@@ -2508,3 +2508,12 @@
 - Clean-room critic re-review after final sparse Pi provider fixes: no blockers found for Pi provider corruption, auto-start, focus, or sparse UI behavior.
 - Full validation: `python3 -m pytest -q` -> 871 passed, 92 subtests passed.
 - Docker validation: `scripts/codoxear-docker-sandbox test` -> 870 passed, 1 skipped, 92 subtests passed.
+
+## 2026-06-15 03:01 — Markdown rendering fix validation
+- Implemented light markdown fenced-code styling and contained table layout in `codoxear/static/app.css`; added source assertions in `tests/test_markdown_tables.py`.
+- Focused validation: `python3 -m pytest tests/test_markdown_tables.py tests/test_static_assets.py -q` -> 22 passed.
+- Browser evidence at 390px: fenced code computed background `rgba(248, 250, 252, 0.96)`, text `rgb(17, 24, 39)`, border `rgba(15, 23, 42, 0.1)`; normal long-token table had bubble contained, wrapper `scrollWidth == clientWidth`, table width 316px, and no text over wrapper; 20-column table kept the bubble contained and used internal wrapper scroll (`scrollWidth 620`, `clientWidth 316`) rather than clipping.
+- Full validation: `python3 -m pytest -q` -> 872 passed, 92 subtests passed.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> 871 passed, 1 skipped, 92 subtests passed.
+- Clean-room critic first found a clipping counterexample for `overflow-x:hidden`/fixed layout; after switching to `overflow-x:auto` and `table-layout:auto`, re-review found no blockers for clipping, page/bubble overflow, copy semantics, or chat/file-preview markdown paths.
+- Commit: `9c49a3d fix: contain markdown tables`.

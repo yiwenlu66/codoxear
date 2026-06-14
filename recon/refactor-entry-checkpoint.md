@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `dd75bb1 feat: copy launch settings from details`
+Current HEAD: `9c49a3d fix: contain markdown tables`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -47,15 +47,17 @@ Recent committed recovery checkpoints include:
   - long-transcript per-message copy controls now use a roving active button so the accessibility/tab order has one enabled copy control instead of one repeated control per rendered message;
   - Details diagnostics can be copied from the dialog using only rendered label/value rows, not the raw diagnostics object;
   - Details can open a review-only New Session dialog with copied launch settings from an allowlisted diagnostics subset; Pi provider semantics use actual `model_provider`, not synthetic `provider_choice`, including providerless and sparse-metadata cases;
-  - file picker search results highlight exact/fuzzy query matches using DOM text nodes and Unicode-safe folded-index mapping, without changing path identity.
+  - file picker search results highlight exact/fuzzy query matches using DOM text nodes and Unicode-safe folded-index mapping, without changing path identity;
+  - markdown fenced code blocks use a light Codoxear-themed surface, and markdown tables wrap/contain normal wide content with internal horizontal scroll only for impossible many-column cases.
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the last UX launch-copy change:
+Latest code-validation evidence after the markdown rendering fix:
 
-- Focused Details/New-like validation: `node --check codoxear/static/app.js` passed; `python3 -m pytest tests/test_new_session_model_options_source.py tests/test_launch_ui_source.py tests/test_new_session_launch_request.py tests/test_overlay_accessibility_source.py tests/test_diagnostics_source.py -q` -> `44 passed`.
-- Full local suite: `python3 -m pytest -q` -> `871 passed, 92 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `870 passed, 1 skipped, 92 subtests passed`.
+- Focused markdown rendering validation: `python3 -m pytest tests/test_markdown_tables.py tests/test_static_assets.py -q` -> `22 passed`.
+- Browser evidence at 390px: code blocks computed light background/dark text; normal long-token tables stayed within the bubble without scroll; a 20-column table kept the bubble contained and used internal wrapper scroll instead of clipping.
+- Full local suite: `python3 -m pytest -q` -> `872 passed, 92 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `871 passed, 1 skipped, 92 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -70,6 +72,7 @@ Recent clean-room reviews returned no blockers after fixes:
 - Clean-room critic review of file-picker highlight diff found a Unicode slicing bug; folded-index mapping plus `İfoo.py`/emoji regressions fixed it. Re-review found no blockers.
 - Clean-room architecture review of git helper extraction found detached-HEAD semantic drift; `git_ops.current_git_branch()` was corrected to preserve `HEAD`. Targeted re-review and critic review found no blockers.
 - Clean-room critic review of Details → New like this found Pi provider corruption risks in direct presets, diagnostics provider display, duplicate/recent options, remembered providerless choices, and sparse metadata. Each counterexample was fixed with regressions; final re-review found no blockers for Pi provider corruption, auto-start, focus, or sparse UI behavior.
+- Clean-room critic review of markdown rendering first found a hidden-overflow/fixed-layout clipping counterexample for many-column tables. The final implementation uses auto overflow plus auto table layout; re-review found no blockers for clipping, page/bubble overflow, copy semantics, or chat/file-preview markdown paths.
 
 Recent isolated browser evidence:
 
@@ -96,6 +99,7 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 12. **Pi launch providers:** Pi CLI/config is authority for provider names. UI defaults are hints, not an API whitelist; explicit provider/model pairs must not inherit stale bare-model reasoning constraints. Synthetic diagnostics `provider_choice` must not be treated as actual Pi provider state; providerless Pi sessions must remain providerless through copied launch presets, recent model selection, memory, parsing, and start request construction.
 13. **Minimal UI philosophy:** keep the topbar sparse; utility controls belong in contextual rails/surfaces, not a generic dumping-ground menu.
 14. **No silent fallbacks:** absence, malformed contracts, or unsupported combinations should fail loudly with recoverable UI when possible.
+15. **Markdown containment:** code blocks should remain readable in the light UI; tables should wrap normal wide content and use internal scroll only when the column count cannot physically fit without clipping.
 
 ## Parked limits and decisions
 
@@ -104,6 +108,7 @@ The branch is stronger than the historical `develop` summary, but these limits r
 - Merge/promote to `main` still requires explicit user approval.
 - Broad structural/frontend refactor is not complete; this checkpoint only defines its entry state.
 - Real-browser/manual backend exercise of the Details → New like this button remains incomplete; source/VM tests, full pytest, Docker, and critic review cover the implemented semantics.
+- Markdown rendering evidence covers CSS/source tests and headless Chromium fixtures, not real mobile-device or assistive-technology review.
 - Codex live response evidence remains incomplete: current work proved the real interactive TUI can be reached with the trust override, but not a full web-send/final-response path.
 - Claude Code live response evidence remains incomplete under isolated HOME because first-run theme/onboarding blocked log binding.
 - Real mobile-device, assistive-tech, slow-network, huge-transcript, and full live backend lifecycle evidence remain incomplete.
