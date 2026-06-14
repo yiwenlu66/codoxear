@@ -10211,10 +10211,25 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           fileCandidateGitStateFresh = false;
           applyFileCandidateEntries([]);
           applyFileMode();
+          const messageEntries = collectMessageFileRefs().map((path) => ({
+            path,
+            additions: null,
+            deletions: null,
+            changed: false,
+            gitPath: false,
+            source: "mentioned",
+          }));
+          const s = sid ? sessionIndex.get(sid) : null;
+          const manualEntries = listFromFilesField(s && s.files)
+            .map((abs) => sessionRelativePath(abs, sid))
+            .filter((rel) => typeof rel === "string" && rel && rel !== ".")
+            .map((path) => ({ path, gitPath: false, additions: null, deletions: null, changed: false, source: "recent" }));
+          let changedEntries = [];
+          let changedEntriesFresh = false;
           try {
             const res = await api(`/api/sessions/${sid}/git/changed_files`);
             const entriesIn = Array.isArray(res.entries) ? res.entries : [];
-            const changedEntries = entriesIn
+            changedEntries = entriesIn
               .filter((entry) => entry && typeof entry.path === "string" && entry.path !== "")
               .map((entry) => ({
                 path: entry.path,
@@ -10226,34 +10241,22 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 gitPath: true,
                 source: "changed",
               }));
-            const messageEntries = collectMessageFileRefs().map((path) => ({
-              path,
-              additions: null,
-              deletions: null,
-              changed: false,
-              gitPath: false,
-              source: "mentioned",
-            }));
-            const s = sid ? sessionIndex.get(sid) : null;
-            const manualEntries = listFromFilesField(s && s.files)
-              .map((abs) => sessionRelativePath(abs, sid))
-              .filter((rel) => typeof rel === "string" && rel && rel !== ".")
-              .map((path) => ({ path, gitPath: false, additions: null, deletions: null, changed: false, source: "recent" }));
-            const merged = [];
-            const seen = new Set();
-            for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
-              if (!entry || entry.path === "") continue;
-              const key = fileCandidateKeyForEntry(entry);
-              if (seen.has(key)) continue;
-              seen.add(key);
-              merged.push(entry);
-            }
-            if (!current()) return;
-            applyFileCandidateEntries(merged);
-            fileCandidateGitStateFresh = true;
-            applyFileMode();
-            rememberFileCandidateCache(sid, cacheKey);
+            changedEntriesFresh = true;
           } catch (e) {}
+          const merged = [];
+          const seen = new Set();
+          for (const entry of [...changedEntries, ...messageEntries, ...manualEntries]) {
+            if (!entry || entry.path === "") continue;
+            const key = fileCandidateKeyForEntry(entry);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(entry);
+          }
+          if (!current()) return;
+          applyFileCandidateEntries(merged);
+          fileCandidateGitStateFresh = changedEntriesFresh;
+          applyFileMode();
+          if (changedEntriesFresh) rememberFileCandidateCache(sid, cacheKey);
           if (!current()) return;
           renderFilePickerMenu();
         }

@@ -2249,3 +2249,12 @@
   - Clean-room review found a mid-UTF8 skip bug; fixed by treating `UnicodeDecodeError` as a malformed line in util reader; final review -> no blockers.
   - Full local: `python3 -m pytest -q` -> `814 passed, 88 subtests passed`.
   - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `813 passed, 1 skipped, 88 subtests passed`.
+
+## 2026-06-14 11:26
+- Completed non-git file-picker candidate fallback tranche.
+- Changed artifacts: `codoxear/static/app.js`, `tests/test_file_picker_search_source.py`.
+- Validation:
+  - Focused: `node --check codoxear/static/app.js && python3 -m pytest tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_file_viewer_source.py -q` -> `44 passed`.
+  - Clean-room review: no blockers; confirmed mentioned/recent candidates are no longer gated by `/git/changed_files` success and changed-file freshness/cache only commit on successful changed-files response.
+  - Full local: `python3 -m pytest -q` -> `815 passed, 88 subtests passed`.
+  - Docker sandbox: `scripts/codoxear-docker-sandbox test` -> `814 passed, 1 skipped, 88 subtests passed`.

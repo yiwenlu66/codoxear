@@ -1879,3 +1879,10 @@ Observation: Live JSONL readers read `max_bytes` and then kept reading chunks un
 Intervention: Both util and rollout live readers now read at most one overflow chunk beyond `max_bytes`. If no newline appears in that bounded window, they advance past the oversized fragment to avoid repeated whole-file scans. Subsequent reads skip corrupted suffix lines (including mid-UTF8 starts) and resume at following valid JSONL records.
 
 Scoped claim: Under focused, full, Docker, and clean-room review evidence, deterministic unbounded reads from oversized live partial JSONL records are constrained. Residual: records whose newline lies beyond `max_bytes + overflow_chunk` are intentionally skipped/lost; this is the bounded-work tradeoff.
+
+## 2026-06-14 11:26
+Observation: `refreshFileCandidates()` cleared the picker, then computed changed, mentioned, and recent entries inside one `try` whose first operation was `/api/sessions/<sid>/git/changed_files`. In non-git sessions, a changed-files 400/409 could therefore leave the picker empty even when transcript mentions or recent files existed.
+
+Intervention: Mentioned and recent/manual file candidates are now computed independently of changed-file metadata. Changed-file entries remain optional; git freshness and candidate cache writes occur only after a successful changed-files response.
+
+Scoped claim: Under focused VM tests, full local/Docker suites, and clean-room review, non-git changed-files failure no longer erases available mentioned/recent file candidates. Residual: a slow/hung changed-files request can still delay showing fallback candidates until it rejects or times out.
