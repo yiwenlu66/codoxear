@@ -1170,8 +1170,9 @@
         box-sizing: border-box;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
-        background: #0b1220;
-        color: #e5e7eb;
+        background: rgba(248, 250, 252, 0.96);
+        color: var(--text);
+        border: 1px solid rgba(15, 23, 42, 0.1);
       }
       .md pre code {
         padding: 0;
@@ -1221,12 +1222,14 @@
       }
       .md-table-wrap {
         margin: 10px 0 12px 0;
+        max-width: 100%;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
       }
       .md table {
-        width: max-content;
-        min-width: 100%;
+        width: 100%;
+        max-width: 100%;
+        table-layout: auto;
         border-collapse: separate;
         border-spacing: 0;
         font-size: 13px;
@@ -1242,6 +1245,8 @@
         vertical-align: top;
         border-right: 1px solid rgba(15, 23, 42, 0.08);
         border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        overflow-wrap: anywhere;
+        word-break: break-word;
       }
       .md th:last-child,
       .md td:last-child {

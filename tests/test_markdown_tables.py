@@ -9,6 +9,12 @@ APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
 
 
+def css_block(source: str, selector: str) -> str:
+    start = source.index(selector)
+    end = source.index("}\n", start) + 1
+    return source[start:end]
+
+
 def render_markdown(markdown: str) -> str:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function escapeHtml")
@@ -128,6 +134,27 @@ class TestMarkdownTables(unittest.TestCase):
     def test_non_table_pipe_text_stays_paragraph(self) -> None:
         html = render_markdown("Top 10 | pending | tasks")
         self.assertEqual(html, "<p>Top 10 | pending | tasks</p>")
+
+    def test_markdown_css_keeps_code_light_and_tables_contained(self) -> None:
+        css = APP_CSS.read_text(encoding="utf-8")
+        pre = css_block(css, ".md pre {")
+        table_wrap = css_block(css, ".md-table-wrap {")
+        table = css_block(css, ".md table {")
+        cells = css_block(css, ".md th,\n      .md td {")
+
+        self.assertIn("background: rgba(248, 250, 252, 0.96);", pre)
+        self.assertIn("color: var(--text);", pre)
+        self.assertIn("border: 1px solid rgba(15, 23, 42, 0.1);", pre)
+        self.assertNotIn("background: #0b1220;", pre)
+        self.assertIn("max-width: 100%;", table_wrap)
+        self.assertIn("overflow-x: auto;", table_wrap)
+        self.assertIn("width: 100%;", table)
+        self.assertIn("max-width: 100%;", table)
+        self.assertIn("table-layout: auto;", table)
+        self.assertNotIn("table-layout: fixed;", table)
+        self.assertNotIn("width: max-content;", table)
+        self.assertIn("overflow-wrap: anywhere;", cells)
+        self.assertIn("word-break: break-word;", cells)
 
     def test_markdown_preview_resolves_relative_image_against_file_path(self) -> None:
         html = render_markdown_preview("![diagram](../images/flow.png)", "docs/guides/intro.md", "sess-123")
