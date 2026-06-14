@@ -155,6 +155,9 @@ from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
 from .util import load_json_file as _load_json_file
+from .util import redact_launch_failure_text as _redact_launch_failure_text
+from .util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
+from .util import redacted_launch_attempt_response_record as _redacted_launch_attempt_record
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import session_id_from_rollout_path as _session_id_from_rollout_path
@@ -565,7 +568,7 @@ def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: st
 
 
 def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
-    rec = _append_launch_attempt(record, path=LAUNCH_ATTEMPTS_PATH)
+    rec = _append_launch_attempt(_redacted_launch_attempt_persist_record(record), path=LAUNCH_ATTEMPTS_PATH)
     if rec.get("state") == "failed":
         sys.stderr.write(
             "error: session launch failed: "
@@ -634,7 +637,7 @@ def _launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]
         events.append({"role": "user", "text": msg["text"], "ts": msg["ts"]})
     if record.get("state") == "failed":
         stage = _clean_optional_text(record.get("stage"))
-        err = _clean_optional_text(record.get("error")) or "session launch failed"
+        err = _redact_launch_failure_text(record.get("error")) or "session launch failed"
         lines = ["Session launch failed before a transcript log was created."]
         if stage:
             lines.append(f"Stage: {stage}")
@@ -645,7 +648,7 @@ def _launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]
             lines.append(f"Agent exit status: {agent_status}")
         if isinstance(broker_status, int):
             lines.append(f"Broker exit status: {broker_status}")
-        tail = _launch_failure_tail(record)
+        tail = _redact_launch_failure_text(_launch_failure_tail(record))
         if tail:
             lines.extend(["", "Pre-log terminal tail:", tail])
         events.append({"role": "assistant", "text": "\n".join(lines), "ts": ts_f, "message_class": "error"})
@@ -737,7 +740,7 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         "spawn_nonce": _clean_optional_text(record.get("spawn_nonce")),
         "launch_id": launch_id,
         "launch_state": state,
-        "launch_error": _clean_optional_text(record.get("error")) or ("session launch failed" if failed else ""),
+        "launch_error": _redact_launch_failure_text(record.get("error")) or ("session launch failed" if failed else ""),
         "launch_stage": _clean_optional_text(record.get("stage")),
         "submitted_user_message_count": len(_submitted_user_messages(record)),
     }
@@ -954,9 +957,10 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
 
 class SessionLaunchError(RuntimeError):
     def __init__(self, record: dict[str, Any]):
-        msg = str(record.get("error") or record.get("message") or "session launch failed")
+        safe = _redacted_launch_attempt_record(record)
+        msg = str(safe.get("error") or safe.get("message") or "session launch failed")
         super().__init__(msg)
-        self.record = record
+        self.record = safe
 
 
 class SessionNotReadyError(RuntimeError):

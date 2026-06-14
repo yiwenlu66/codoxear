@@ -402,6 +402,7 @@ class TestChatTranscriptRuntime(unittest.TestCase):
               invalidateOlderLoad: () => {{ ctx.invalidated = true; }},
               renderPendingTranscriptSlot: () => {{ ctx.renderedPending += 1; }},
               sessionAgentBackend: (s) => s.agent_backend || "codex",
+              sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),
               isTranscriptRenewalCommand: () => true,
               setToast: (text) => {{ ctx.toast = text; }},
               $: () => ({{ disabled: false }}),

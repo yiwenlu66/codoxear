@@ -1,3 +1,4 @@
+import io
 import threading
 import time
 import unittest
@@ -136,6 +137,125 @@ class TestLaunchProvenance(unittest.TestCase):
         self.assertEqual(payload["events"][1]["message_class"], "error")
         self.assertIn("Agent exit status: 1", payload["events"][1]["text"])
         self.assertIn("fatal: provider unavailable", payload["events"][1]["text"])
+
+    def test_failed_launch_transcript_redacts_error_and_tail_secrets(self) -> None:
+        now = time.time()
+        rec = {
+            "launch_id": "launch-secret",
+            "state": "failed",
+            "stage": "shell_startup",
+            "error": "failed API_TOKEN: secret-token password: hunter2 \"api_key\":\"json-secret\" Bearer abcdefghijklmnop",
+            "agent_backend": "codex",
+            "cwd": "/tmp/work",
+            "created_ts": now,
+            "updated_ts": now,
+            "pty_tail": "tail OPENAI_API_KEY: tail-secret sk-abcdefghijklmnop\n",
+        }
+
+        payload = server._launch_attempt_transcript_payload(rec)
+        text = payload["events"][0]["text"]
+
+        self.assertIn("API_TOKEN: [redacted]", text)
+        self.assertIn("password: [redacted]", text)
+        self.assertIn('"api_key":[redacted]', text)
+        self.assertIn("OPENAI_API_KEY: [redacted]", text)
+        self.assertNotIn("secret-token", text)
+        self.assertNotIn("hunter2", text)
+        self.assertNotIn("json-secret", text)
+        self.assertNotIn("tail-secret", text)
+        self.assertNotIn("abcdefghijklmnop", text)
+
+    def test_session_launch_error_exposes_only_redacted_record(self) -> None:
+        err = server.SessionLaunchError(
+            {
+                "launch_id": "launch-secret-response",
+                "state": "failed",
+                "error": "failed API_TOKEN: top-secret password: hunter2",
+                "tmux_stderr": "stderr API_TOKEN=stderr-secret",
+                "tmux_attempts": [{"stderr": "nested PASSWORD=\"nested-secret"}],
+                "metadata": {"error": "OPENAI_API_KEY=meta-secret"},
+            }
+        )
+
+        self.assertEqual(str(err), "failed API_TOKEN: [redacted] password: [redacted]")
+        self.assertEqual(err.record["error"], "failed API_TOKEN: [redacted] password: [redacted]")
+        self.assertEqual(err.record["launch_id"], "launch-secret-response")
+        self.assertEqual(err.record["state"], "failed")
+        self.assertNotIn("tmux_stderr", err.record)
+        self.assertNotIn("tmux_attempts", err.record)
+        self.assertNotIn("metadata", err.record)
+        self.assertNotIn("top-secret", str(err.record))
+        self.assertNotIn("hunter2", str(err.record))
+        self.assertNotIn("stderr-secret", str(err.record))
+        self.assertNotIn("nested-secret", str(err.record))
+        self.assertNotIn("meta-secret", str(err.record))
+
+    def test_record_launch_attempt_redacts_persisted_record_and_stderr(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "launches.jsonl"
+            stderr = io.StringIO()
+            with patch.object(server, "LAUNCH_ATTEMPTS_PATH", path), patch.object(server.sys, "stderr", stderr):
+                rec = server._record_launch_attempt(
+                    {
+                        "launch_id": "launch-persist-secret",
+                        "state": "failed",
+                        "stage": "tmux_start",
+                        "error": "top API_TOKEN: top-secret \"api_key\":\"json-secret\" Authorization: Bearer auth-secret-token",
+                        "tmux_stderr": "stderr API_TOKEN: stderr-secret AUTH: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==",
+                        "tmux_attempts": [{"stderr": "nested password: nested-secret"}],
+                        "metadata": {"api_key": "meta-secret", "auth_header": "custom-secret"},
+                    }
+                )
+
+            rows = read_launch_attempts(path=path, max_records=10, max_age_s=3600)
+            persisted_text = path.read_text(encoding="utf-8")
+            combined = f"{rec}\n{rows}\n{persisted_text}\n{stderr.getvalue()}"
+
+            self.assertEqual(rec["error"], 'top API_TOKEN: [redacted] "api_key":[redacted] Authorization: [redacted]')
+            self.assertEqual(rows[0]["tmux_stderr"], "stderr API_TOKEN: [redacted] AUTH: [redacted]")
+            self.assertEqual(rows[0]["tmux_attempts"][0]["stderr"], "nested password: [redacted]")
+            self.assertEqual(rows[0]["metadata"]["api_key"], "[redacted]")
+            self.assertEqual(rows[0]["metadata"]["auth_header"], "[redacted]")
+            self.assertIn('top API_TOKEN: [redacted] "api_key":[redacted] Authorization: [redacted]', stderr.getvalue())
+            for secret in ("top-secret", "json-secret", "auth-secret-token", "stderr-secret", "QWxhZGRpbjpvcGVuIHNlc2FtZQ", "nested-secret", "meta-secret", "custom-secret"):
+                self.assertNotIn(secret, combined)
+
+    def test_failed_launch_redactor_handles_unclosed_quotes_and_colons(self) -> None:
+        examples = [
+            ('API_TOKEN="secret-token', 'API_TOKEN=[redacted]'),
+            ("PASSWORD='hunter2", 'PASSWORD=[redacted]'),
+            ('API_TOKEN: secret-token', 'API_TOKEN: [redacted]'),
+            ('password: hunter2', 'password: [redacted]'),
+            ('"api_key":"json-secret"', '"api_key":[redacted]'),
+            ('"password":"hunter2', '"password":[redacted]'),
+            ('Authorization: Bearer abcdefghijklmnop', 'Authorization: [redacted]'),
+            ('AUTH: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==', 'AUTH: [redacted]'),
+            ('Authorization=Bearer abcdefghijklmnop', 'Authorization=[redacted]'),
+            ('Authorization: [redacted] abcdefghijklmnop', 'Authorization: [redacted]'),
+            ('API_TOKEN: [redacted]', 'API_TOKEN: [redacted]'),
+            ('API_TOKEN=[redacted]', 'API_TOKEN=[redacted]'),
+        ]
+
+        for raw, expected in examples:
+            with self.subTest(raw=raw):
+                self.assertEqual(server._redact_launch_failure_text(raw), expected)
+
+    def test_failed_launch_row_redacts_error_secrets(self) -> None:
+        row = server._launch_attempt_row(
+            {
+                "launch_id": "launch-secret-row",
+                "state": "failed",
+                "stage": "shell_startup",
+                "error": "failed API_TOKEN: secret-token \"password\":\"hunter2\"",
+                "agent_backend": "codex",
+                "cwd": "/tmp/work",
+                "created_ts": time.time(),
+            }
+        )
+
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertEqual(row["launch_error"], "failed API_TOKEN: [redacted] \"password\":[redacted]")
 
     def test_list_sessions_exposes_pending_launch_as_session_row(self) -> None:
         mgr = _make_manager()

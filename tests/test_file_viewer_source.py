@@ -355,7 +355,8 @@ class TestFileViewerSource(unittest.TestCase):
         sessions_block = source[sessions_start:sessions_end]
         self.assertIn("const removedSelected = selected;", sessions_block)
         self.assertIn("handleFileViewerSessionUnavailable(removedSelected);", sessions_block)
-        self.assertIn("handleFileViewerSessionUnavailable(s.session_id);", source)
+        self.assertIn("clearSelectedSessionAfterRemoval(s.session_id);", source)
+        self.assertIn("function clearSelectedSessionAfterRemoval(sessionId)", source)
         self.assertIn("handleFileViewerSessionUnavailable(sid);", source)
         open_start = source.index("async function openSession(sessionId")
         open_end = source.index("async function pollMessages", open_start)

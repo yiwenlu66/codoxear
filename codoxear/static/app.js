@@ -554,9 +554,22 @@
         return !!defaultsForAgentBackend(backend).supports_fast;
       }
 
+      function redactedLaunchErrorText(value) {
+        let text = String(value || "").trim();
+        if (!text) return "";
+        const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";
+        const secretValue = "(?:(?:Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]+|\\\"[^\\\"]*(?:\\\"|$)|'[^']*(?:'|$)|[^\\s\\\"',;}\\[\\]]+)";
+        text = text.replace(new RegExp(`\\b(${sensitiveKey})\\s*=\\s*${secretValue}`, "gi"), "$1=[redacted]");
+        text = text.replace(new RegExp(`(^|[^A-Z0-9_.-])([\\\"']?${sensitiveKey}[\\\"']?\\s*:\\s*)${secretValue}`, "gi"), "$1$2[redacted]");
+        text = text.replace(new RegExp(`(^|[^A-Z0-9_.-])([\\\"']?${sensitiveKey}[\\\"']?\\s*[:=]\\s*)\\[redacted\\]\\s+[A-Za-z0-9._~+/=-]{12,}(?=$|[\\s,;}\\]])`, "gi"), "$1$2[redacted]");
+        text = text.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi, "$1 [redacted]");
+        text = text.replace(/\b(sk-[A-Za-z0-9_-]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b/g, "[redacted-token]");
+        return text;
+      }
+
       function sessionLaunchLabel(s) {
         const kind = sessionLaunchKind(s);
-        if (kind === "failed") return s && s.launch_error ? String(s.launch_error) : "session launch failed";
+        if (kind === "failed") return redactedLaunchErrorText(s && s.launch_error) || "session launch failed";
         if (kind === "web_tmux") return "web-owned tmux session";
         return kind === "web" ? "web-owned session" : "terminal-owned session";
       }
@@ -4574,7 +4587,7 @@
              const launchFailed = sessionLaunchFailed(s);
              const launchPending = sessionLaunchPending(s);
              const launchRow = launchFailed || launchPending;
-             if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: s.launch_error || "Session launch failed" }));
+             if (launchFailed) badges.push(el("span", { class: "badge launchFailed", text: "failed", title: redactedLaunchErrorText(s.launch_error) || "Session launch failed" }));
              if (launchPending) badges.push(el("span", { class: "badge launchPending", text: "starting", title: "Session is still starting" }));
              if (s.unattended_enabled) badges.push(el("span", { class: "badge unattended", text: "unattended", title: "Unattended mode enabled" }));
              if (s.queue_len) badges.push(el("span", { class: "badge queue", text: `queue ${s.queue_len}` }));
@@ -4625,35 +4638,15 @@
               if (!confirm(launchRow ? "Dismiss this launch record?" : "Delete this session?")) return;
               try {
                 await api(`/api/sessions/${s.session_id}/delete`, { method: "POST", body: {} });
-                if (selected === s.session_id) {
-                  selected = null;
-                  handleFileViewerSessionUnavailable(s.session_id);
-                   activeTranscriptState = "pending_bind";
-                   activeLogPath = null;
-                   activeThreadId = null;
-                   liveCursor = null;
-                   clearRenderedTranscriptRange();
-                   turnOpen = false;
-                   storageRemoveItem("codexweb.selected");
-                   setSessionHash("");
-                   titleLabel.textContent = "No session selected";
-                   setStatus({ running: false, queueLen: 0 });
-                   setContext(null);
-                   setTyping(false);
-                   setAttachCount(0);
-                   resetChatRenderState();
-                   updateQueueBadge();
-                   if (unattendedMenuOpen) hideUnattendedMenu();
-                   updateUnattendedBtnState();
-                 }
-                 sessionTranscriptSlots.delete(s.session_id);
-                 sessionTailCache.delete(s.session_id);
-                 dropPendingUserRows(s.session_id, () => true);
-                 if (launchRow && card && card.parentNode) card.remove();
-                 await refreshSessions();
-               } catch (err) {
-                 setToast(`delete error: ${err.message}`);
-               }
+                clearSelectedSessionAfterRemoval(s.session_id);
+                sessionTranscriptSlots.delete(s.session_id);
+                sessionTailCache.delete(s.session_id);
+                dropPendingUserRows(s.session_id, () => true);
+                if (launchRow && card && card.parentNode) card.remove();
+                await refreshSessions();
+              } catch (err) {
+                setToast(`delete error: ${err.message}`);
+              }
              }
 
              const renameBtn = el("button", {
@@ -4680,6 +4673,11 @@
                e.preventDefault();
                e.stopPropagation();
                closeOpenSwipe();
+               if (launchRow) {
+                 if (launchFailed) void selectSession(s.session_id);
+                 setToast(launchFailed ? "review failed launch before retrying" : "session still starting");
+                 return;
+               }
                const cwd = s && s.cwd && s.cwd !== "?" ? s.cwd : "";
                if (!cwd) {
                  setToast("cwd unavailable");
@@ -4748,12 +4746,13 @@
 	             }
 	             metaItems.push(el("span", { class: "metaText", text: `${stateTxt}${cwdBase ? ` | ${cwdBase}` : ""}${branchTxt ? ` | ${branchTxt}` : ""}` }));
 	             const meta = el("div", { class: "muted subLine sessionMetaLine" }, metaItems);
-             if (launchFailed) meta.title = s.launch_error || "Session launch failed";
+             if (launchFailed) meta.title = redactedLaunchErrorText(s.launch_error) || "Session launch failed";
              if (launchPending) meta.title = "Session is still starting";
 
+             const sessionEditActions = launchRow ? [] : [renameBtn, dupBtn];
              if (swipeActions) {
                const leftActions = el("div", { class: "sessionActions left" }, [delBtn]);
-               const rightActions = el("div", { class: "sessionActions right" }, [renameBtn, dupBtn]);
+               const rightActions = el("div", { class: "sessionActions right" }, sessionEditActions);
                const top = el("div", { class: "row" }, [titleRow, badgesWrap]);
                const inner = el("div", { class: "sessionInner" }, [top, meta]);
 	               const content = el("div", { class: "sessionContent" }, [inner]);
@@ -4767,7 +4766,7 @@
 	               }
 
 		               const leftMax = 72;
-	               const rightMax = 104;
+	               const rightMax = sessionEditActions.length ? 104 : 0;
 	               let startX = null;
 	               let startY = 0;
 	               let startSwipe = 0;
@@ -4855,7 +4854,7 @@
                };
 	             } else {
 	               card.classList.add("desktop");
-	               const actions = el("div", { class: "sessionActionsInline" }, [renameBtn, dupBtn, delBtn]);
+	               const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);
 	               const titleWithBadges = el("div", { class: "sessionTitleWithBadges" }, [titleRow, badgesWrap]);
 	               const main = el("div", { class: "sessionMain" }, [titleWithBadges, meta]);
 	               const inner = el("div", { class: "sessionInner sessionDesktopLayout" }, [main, actions]);
@@ -5182,7 +5181,7 @@
 
         function recoverySessionInfo(sessionId) {
           const s = sessionIndex.get(sessionId);
-          if (!s || (!s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;
+          if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;
           return s;
         }
 
@@ -5192,12 +5191,43 @@
           return raw.length > maxLen ? `${raw.slice(0, maxLen)}…` : raw;
         }
 
+        function launchPresetFromSessionInfo(s) {
+          return s && typeof s === "object" ? {
+            session_id: s.session_id,
+            cwd: s.cwd,
+            agent_backend: s.agent_backend,
+            provider_choice: s.provider_choice,
+            model_provider: s.model_provider,
+            preferred_auth_method: s.preferred_auth_method,
+            model: s.model,
+            reasoning_effort: s.reasoning_effort,
+            service_tier: s.service_tier,
+            transport: s.transport,
+            tmux_session: s.tmux_session,
+            tmux_window: s.tmux_window,
+          } : null;
+        }
+
         function recoveryDetailsText(sessionId, s) {
           const lines = [
             "Codoxear recovery details",
             `Session: ${sessionId}`,
           ];
           if (s && s.cwd) lines.push(`cwd: ${s.cwd}`);
+          if (s && s.agent_backend) lines.push(`backend: ${s.agent_backend}`);
+          if (s && sessionLaunchFailed(s)) {
+            lines.push("state: launch failed");
+            if (s.launch_stage) lines.push(`launch stage: ${s.launch_stage}`);
+            const safeLaunchError = redactedLaunchErrorText(s.launch_error);
+            if (safeLaunchError) lines.push(`launch error: ${safeLaunchError}`);
+            if (s.model_provider) lines.push(`model provider: ${s.model_provider}`);
+            if (s.model) lines.push(`model: ${s.model}`);
+            if (s.reasoning_effort) lines.push(`reasoning: ${s.reasoning_effort}`);
+            if (s.service_tier) lines.push(`service tier: ${s.service_tier}`);
+            if (s.tmux_session || s.tmux_window) lines.push(`tmux: ${s.tmux_session || "-"}${s.tmux_window ? ":" + s.tmux_window : ""}`);
+            const submitted = Number.isFinite(Number(s.submitted_user_message_count)) ? Number(s.submitted_user_message_count) : 0;
+            if (submitted > 0) lines.push(`submitted prompts: ${submitted}`);
+          }
           if (s && s.orphan_recovery) lines.push("state: missing session/orphan recovery");
           if (s && s.queue_recovery) lines.push("state: queued recovery items present");
           if (s && s.commit_unknown_send) lines.push("state: direct send commit unknown");
@@ -5206,6 +5236,49 @@
           const preview = recoveryPromptPreview(s && s.commit_unknown_send_text ? s.commit_unknown_send_text : "", 2000);
           if (preview) lines.push("", "Unknown-send prompt:", preview);
           return lines.join("\n");
+        }
+
+        function clearSelectedSessionAfterRemoval(sessionId) {
+          if (selected !== sessionId) return;
+          selected = null;
+          handleFileViewerSessionUnavailable(sessionId);
+          activeTranscriptState = "pending_bind";
+          activeLogPath = null;
+          activeThreadId = null;
+          liveCursor = null;
+          clearRenderedTranscriptRange();
+          turnOpen = false;
+          storageRemoveItem("codexweb.selected");
+          setSessionHash("");
+          titleLabel.textContent = "No session selected";
+          setStatus({ running: false, queueLen: 0 });
+          setContext(null);
+          setTyping(false);
+          setAttachCount(0);
+          resetChatRenderState();
+          updateQueueBadge();
+          if (unattendedMenuOpen) hideUnattendedMenu();
+          updateUnattendedBtnState();
+        }
+
+        async function dismissFailedLaunchRecord(sessionId) {
+          const s = sessionIndex.get(sessionId);
+          if (!sessionLaunchFailed(s)) {
+            setToast("launch record is not failed");
+            return;
+          }
+          if (!confirm("Dismiss this launch record?")) return;
+          try {
+            await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });
+            clearSelectedSessionAfterRemoval(sessionId);
+            sessionTranscriptSlots.delete(sessionId);
+            sessionTailCache.delete(sessionId);
+            dropPendingUserRows(sessionId, () => true);
+            await refreshSessions();
+            setToast("Dismissed launch record");
+          } catch (err) {
+            setToast(`dismiss error: ${err && err.message ? err.message : "unknown error"}`);
+          }
         }
 
         function focusedRecoveryActionDescriptor(sessionId) {
@@ -5263,15 +5336,26 @@
             return false;
           }
           const queueLen = Number.isFinite(Number(s.queue_len)) ? Number(s.queue_len) : 0;
+          const launchFailed = sessionLaunchFailed(s);
           const row = el("div", { class: "msg-row assistant recovery-panel-row" });
           row.dataset.role = "assistant";
-          const bubble = el("div", { class: "msg assistant recovery-panel", role: "group", "aria-label": "Recovery needed" });
-          bubble.appendChild(el("div", { class: "recoveryPanelTitle", text: "Recovery needed" }));
+          const panelLabel = launchFailed ? "Launch failed" : "Recovery needed";
+          const bubble = el("div", { class: "msg assistant recovery-panel", role: "group", "aria-label": panelLabel });
+          bubble.appendChild(el("div", { class: "recoveryPanelTitle", text: panelLabel }));
           const list = el("ul", { class: "recoveryPanelList" });
+          if (launchFailed) {
+            list.appendChild(el("li", { text: "This web-owned session failed before a usable session log was bound." }));
+            const launchStage = String(s.launch_stage || "").trim();
+            if (launchStage) list.appendChild(el("li", { text: `Stage: ${launchStage}` }));
+            const launchModel = [s.model_provider, s.model].map((v) => String(v || "").trim()).filter(Boolean).join("/");
+            if (launchModel) list.appendChild(el("li", { text: `Launch settings: ${launchModel}${s.reasoning_effort ? " · " + s.reasoning_effort : ""}` }));
+          }
           if (s.orphan_recovery) list.appendChild(el("li", { text: "The original session is missing; preserved prompts can be reviewed here before you decide what to discard." }));
           if (s.commit_unknown_send) list.appendChild(el("li", { text: "A direct send may or may not have reached the terminal. Check the transcript or terminal before clearing the marker." }));
           if (s.queue_recovery || queueLen > 0) list.appendChild(el("li", { text: `${queueLen || "Some"} queued recovery item${queueLen === 1 ? "" : "s"} preserved for review.` }));
           bubble.appendChild(list);
+          const launchError = launchFailed ? recoveryPromptPreview(redactedLaunchErrorText(s.launch_error), 1200) : "";
+          if (launchError) bubble.appendChild(el("pre", { class: "recoveryPanelPreview", text: launchError }));
           const preview = recoveryPromptPreview(s.commit_unknown_send_text || "");
           if (preview) bubble.appendChild(el("pre", { class: "recoveryPanelPreview", text: preview }));
           const actions = el("div", { class: "recoveryPanelActions" });
@@ -5292,6 +5376,27 @@
               await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");
             };
             actions.appendChild(clearAction);
+          }
+          if (launchFailed) {
+            const newLikeAction = el("button", { class: "icon-btn text-btn", type: "button", text: "New like this", title: "Review copied launch settings before starting" });
+            newLikeAction.onclick = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const preset = launchPresetFromSessionInfo(s);
+              if (!preset) {
+                setToast("launch details not available");
+                return;
+              }
+              openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl: e.currentTarget });
+            };
+            actions.appendChild(newLikeAction);
+            const dismissAction = el("button", { class: "icon-btn text-btn danger", type: "button", text: "Dismiss launch", title: "Dismiss failed launch record" });
+            dismissAction.onclick = async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              await dismissFailedLaunchRecord(sessionId);
+            };
+            actions.appendChild(dismissAction);
           }
           const copyAction = el("button", { class: "icon-btn text-btn", type: "button", text: "Copy details", title: "Copy recovery details" });
           copyAction.onclick = async (e) => {
@@ -11687,19 +11792,26 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return Boolean(s && (s.queue_recovery || s.orphan_recovery) && Number(s.queue_len || 0) > 0);
         }
 
+        function selectedSessionLaunchFailed() {
+          return sessionLaunchFailed(selected ? sessionIndex.get(selected) : null);
+        }
+
         function syncQueueSubmitState() {
           const queueControl = $("#queueBtn");
           if (!queueControl) return;
           const unknownSend = selectedSessionHasUnknownSend();
           const orphanQueueRecovery = selectedSessionHasOrphanQueueRecovery();
-          queueControl.disabled = !!queueSubmitBusy || !selected || (unknownSend && !orphanQueueRecovery);
+          const launchFailed = selectedSessionLaunchFailed();
+          queueControl.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);
           const queueLabel = !selected
             ? "Select a session to view queued messages"
-            : orphanQueueRecovery
-              ? "Review preserved queued recovery items"
-              : unknownSend
-                ? "Resolve the unknown send before queueing"
-                : "Queued messages";
+            : launchFailed
+              ? "Failed launch cannot receive queued messages"
+              : orphanQueueRecovery
+                ? "Review preserved queued recovery items"
+                : unknownSend
+                  ? "Resolve the unknown send before queueing"
+                  : "Queued messages";
           queueControl.title = queueLabel;
           queueControl.setAttribute("aria-label", queueLabel);
         }
@@ -11710,8 +11822,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const unknownSend = selectedSessionHasUnknownSend();
           const orphanRecovery = selectedSessionIsOrphanRecovery();
           const recoveryQueue = selectedSessionHasOrphanQueueRecovery();
-          sendControl.disabled = !!sending || !selected || unknownSend || orphanRecovery || recoveryQueue;
-          const sendLabel = !selected ? "Select a session to send" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : recoveryQueue ? "Review preserved queued recovery items before sending" : "Send";
+          const launchFailed = selectedSessionLaunchFailed();
+          sendControl.disabled = !!sending || !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;
+          const sendLabel = !selected ? "Select a session to send" : launchFailed ? "Failed launch cannot receive messages" : unknownSend ? "Resolve the unknown send before sending" : orphanRecovery ? "Missing session can only be reviewed" : recoveryQueue ? "Review preserved queued recovery items before sending" : "Send";
           sendControl.title = sendLabel;
           sendControl.setAttribute("aria-label", sendLabel);
         }
@@ -11721,6 +11834,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const text = String(raw || "");
           if (!sessionId || !text.trim()) return false;
           const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
+            setToast("failed launch cannot receive queued messages");
+            return false;
+          }
           if (sessionInfo && sessionInfo.orphan_recovery) {
             setToast("missing session can only be reviewed");
             return false;
@@ -12549,6 +12666,9 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           if (!selected) {
             attachLabel = "Select a session to attach a file";
             disabled = true;
+          } else if (selectedSessionLaunchFailed()) {
+            attachLabel = "Failed launch cannot receive file attachments";
+            disabled = true;
           } else if (selectedSessionHasUnknownSend()) {
             attachLabel = "Resolve the unknown send before attaching a file";
             disabled = true;
@@ -12648,6 +12768,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 
 	        attachBtn.onclick = () => {
 	          if (!selected) return;
+	          if (selectedSessionLaunchFailed()) {
+	            setToast("failed launch cannot receive file attachments");
+	            return;
+	          }
 	          if (currentRunning) {
 	            setToast("wait for the current response before attaching a file");
 	            return;
@@ -12659,6 +12783,12 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
 		        imgInput.addEventListener("change", async () => {
 		          const sid = selected;
 		          if (!sid) return;
+		          const sessionInfo = sessionIndex.get(sid) || null;
+		          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
+		            imgInput.value = "";
+		            if (selected === sid) setToast("failed launch cannot receive file attachments");
+		            return;
+		          }
 		          const attachmentIndex = attachedFiles + 1;
 		          const f = imgInput.files && imgInput.files[0];
 		          if (!f) return;
@@ -12805,6 +12935,10 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const renderHere = sessionId === selected;
           const renewsTranscript = isTranscriptRenewalCommand(raw, sessionId);
           const sessionInfo = sessionIndex.get(sessionId) || null;
+          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {
+            setToast("failed launch cannot receive messages");
+            return false;
+          }
           if (sessionInfo && sessionInfo.orphan_recovery) {
             setToast("missing session can only be reviewed");
             return false;

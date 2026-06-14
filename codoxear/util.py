@@ -118,6 +118,96 @@ def _jsonable(value: Any) -> Any:
     return str(value)
 
 
+_SENSITIVE_LAUNCH_FIELD_RE = re.compile(r"(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)", re.IGNORECASE)
+_LAUNCH_ERROR_RESPONSE_FIELDS = {
+    "type",
+    "launch_id",
+    "spawn_nonce",
+    "state",
+    "stage",
+    "error",
+    "message",
+    "agent_backend",
+    "cwd",
+    "transport",
+    "tmux_session",
+    "tmux_window",
+    "model_provider",
+    "provider_choice",
+    "preferred_auth_method",
+    "model",
+    "reasoning_effort",
+    "service_tier",
+    "created_ts",
+    "updated_ts",
+    "agent_exit_status",
+    "broker_exit_status",
+}
+
+
+def redact_launch_failure_text(value: Any, *, strip: bool = True) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = value.strip() if strip else value
+    if not text:
+        return ""
+    sensitive_key = r"[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*"
+    secret_value = r"(?:(?:Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+|\"[^\"]*(?:\"|$)|'[^']*(?:'|$)|[^\s\"',;}\[\]]+)"
+    text = re.sub(
+        rf"\b({sensitive_key})\s*=\s*{secret_value}",
+        r"\1=[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        rf"(^|[^A-Z0-9_.-])([\"']?{sensitive_key}[\"']?\s*:\s*){secret_value}",
+        r"\1\2[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        rf"(^|[^A-Z0-9_.-])([\"']?{sensitive_key}[\"']?\s*[:=]\s*)\[redacted\]\s+[A-Za-z0-9._~+/=-]{{12,}}(?=$|[\s,;}}\]])",
+        r"\1\2[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", r"\1 [redacted]", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(sk-[A-Za-z0-9_-]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b", "[redacted-token]", text)
+    return text
+
+
+def redact_launch_failure_value(value: Any, *, key: str = "", strip: bool = True) -> Any:
+    if isinstance(value, str):
+        redacted = redact_launch_failure_text(value, strip=strip)
+        if _SENSITIVE_LAUNCH_FIELD_RE.search(key) and redacted == value and value:
+            return "[redacted]"
+        return redacted
+    if isinstance(value, dict):
+        return {str(k): redact_launch_failure_value(v, key=str(k), strip=strip) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact_launch_failure_value(v, key=key, strip=strip) for v in value]
+    if isinstance(value, tuple):
+        return [redact_launch_failure_value(v, key=key, strip=strip) for v in value]
+    return value
+
+
+def redacted_launch_attempt_persist_record(record: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        return {}
+    safe = redact_launch_failure_value(record, strip=False)
+    return safe if isinstance(safe, dict) else {}
+
+
+def redacted_launch_attempt_response_record(record: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(record, dict):
+        return {}
+    return {
+        key: redact_launch_failure_value(record[key], key=key)
+        for key in _LAUNCH_ERROR_RESPONSE_FIELDS
+        if key in record
+    }
+
+
 def load_json_file(path: Path, default: Any = None) -> Any:
     try:
         raw = path.read_text(encoding="utf-8")

@@ -59,6 +59,7 @@ from codoxear.util import proc_find_open_rollout_log as _proc_find_open_rollout_
 from codoxear.util import _paths_match as _paths_match
 from codoxear.util import read_launch_attempts as _read_launch_attempts
 from codoxear.util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
+from codoxear.util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
 from codoxear.util import read_session_meta_payload as _read_session_meta_payload
 from codoxear.util import session_id_from_rollout_path as _session_id_from_rollout_path
 from codoxear.util import _send_socket_json_line as _send_socket_json_line
@@ -130,7 +131,7 @@ def _record_launch_attempt(record: dict[str, Any]) -> None:
                     record = dict(record)
                     record["submitted_user_messages"] = submitted
                 break
-        rec = _append_launch_attempt(record, path=LAUNCH_ATTEMPTS_PATH)
+        rec = _append_launch_attempt(_redacted_launch_attempt_persist_record(record), path=LAUNCH_ATTEMPTS_PATH)
         if rec.get("state") == "failed":
             sys.stderr.write(
                 "error: session launch failed: "

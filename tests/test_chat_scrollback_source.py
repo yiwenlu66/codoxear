@@ -1,9 +1,61 @@
+import json
+import subprocess
+import textwrap
 import unittest
 from pathlib import Path
 
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+
+
+def eval_launch_recovery_helpers() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    redactor_start = source.index("function redactedLaunchErrorText(value) {")
+    redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
+    start = source.index("function recoverySessionInfo(sessionId) {")
+    end = source.index("function focusedRecoveryActionDescriptor(sessionId)", start)
+    snippet = source[redactor_start:redactor_end] + "\n" + source[start:end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const launchRow = {{
+          session_id: "launch-dead",
+          agent_backend: "pi",
+          cwd: "/tmp/work",
+          launch_state: "failed",
+          launch_stage: "pty_fork",
+          launch_error: "pty fork failed before agent start API_TOKEN: secret-token password: hunter2 \\\"api_key\\\":\\\"json-secret\\\" Authorization: Bearer abcdefghijklmnop",
+          model_provider: "macaron",
+          provider_choice: "macaron",
+          preferred_auth_method: null,
+          model: "gpt-5.4",
+          reasoning_effort: "medium",
+          service_tier: "fast",
+          transport: "tmux",
+          tmux_session: "codoxear",
+          tmux_window: "work-abc123",
+          submitted_user_message_count: 2,
+        }};
+        const ctx = {{
+          sessionIndex: new Map([["launch-dead", launchRow]]),
+          selected: "launch-dead",
+          sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),
+          setToast: (value) => {{ ctx.toast = value; }},
+          confirm: () => false,
+        }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { recoverySessionInfo, launchPresetFromSessionInfo, recoveryDetailsText };\n")}, ctx);
+        const info = ctx.__test.recoverySessionInfo("launch-dead");
+        process.stdout.write(JSON.stringify({{
+          hasInfo: info === launchRow,
+          details: ctx.__test.recoveryDetailsText("launch-dead", launchRow),
+          preset: ctx.__test.launchPresetFromSessionInfo(launchRow),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
 
 
 class TestChatScrollbackSource(unittest.TestCase):
@@ -323,14 +375,41 @@ class TestChatScrollbackSource(unittest.TestCase):
         css = APP_CSS.read_text(encoding="utf-8")
         self.assertIn("function renderRecoveryPanelIfNeeded(sessionId)", source)
         self.assertIn(".recovery-panel-row", source)
-        self.assertIn('text: "Recovery needed"', source)
+        self.assertIn('const panelLabel = launchFailed ? "Launch failed" : "Recovery needed";', source)
+        self.assertIn('text: panelLabel', source)
+        self.assertIn('role: "group", "aria-label": panelLabel', source)
         self.assertIn('text: "Review queue"', source)
         self.assertIn('showQueueViewer({ opener: e.currentTarget });', source)
         self.assertIn('text: "Clear unknown marker"', source)
         self.assertIn('await clearCommitUnknownSend(sessionId, s.commit_unknown_send_text || "");', source)
         self.assertIn('text: "Copy details"', source)
         self.assertIn('await copyToClipboard(recoveryDetailsText(sessionId, s));', source)
-        self.assertIn('role: "group", "aria-label": "Recovery needed"', source)
+        self.assertIn('text: "New like this"', source)
+        self.assertIn('openNewSessionDialog({ likeSession: preset, statusText: "Review copied launch settings before starting.", returnFocusEl: e.currentTarget });', source)
+        self.assertIn('text: "Dismiss launch"', source)
+        self.assertIn('await dismissFailedLaunchRecord(sessionId);', source)
+        self.assertIn('function launchPresetFromSessionInfo(s)', source)
+        self.assertIn('function dismissFailedLaunchRecord(sessionId)', source)
+        self.assertIn('await api(`/api/sessions/${sessionId}/delete`, { method: "POST", body: {} });', source)
+        self.assertIn('function clearSelectedSessionAfterRemoval(sessionId)', source)
+        self.assertIn('clearSelectedSessionAfterRemoval(s.session_id);', source)
+        self.assertIn('clearSelectedSessionAfterRemoval(sessionId);', source)
+        self.assertIn('if (!s || (!sessionLaunchFailed(s) && !s.orphan_recovery && !s.queue_recovery && !s.commit_unknown_send)) return null;', source)
+        self.assertIn('if (launchFailed) {', source)
+        self.assertIn('text: "This web-owned session failed before a usable session log was bound."', source)
+        self.assertIn('function redactedLaunchErrorText(value)', source)
+        self.assertIn('const sensitiveKey = "[A-Z0-9_.-]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIAL|AUTH)[A-Z0-9_.-]*";', source)
+        self.assertIn('const secretValue = "(?:(?:Bearer|Basic)\\\\s+[A-Za-z0-9._~+/=-]+|\\\\\\\"[^\\\\\\\"]*(?:\\\\\\\"|$)|\'[^\']*(?:\'|$)|[^\\\\s\\\\\\\"\',;}\\\\[\\\\]]+)";', source)
+        self.assertIn('new RegExp(`(^|[^A-Z0-9_.-])([\\\\\\\"\']?${sensitiveKey}[\\\\\\\"\']?\\\\s*:\\\\s*)${secretValue}`, "gi")', source)
+        self.assertIn('new RegExp(`(^|[^A-Z0-9_.-])([\\\\\\\"\']?${sensitiveKey}[\\\\\\\"\']?\\\\s*[:=]\\\\s*)\\\\[redacted\\\\]\\\\s+[A-Za-z0-9._~+/=-]{12,}(?=$|[\\\\s,;}\\\\]])`, "gi")', source)
+        self.assertIn('return redactedLaunchErrorText(s && s.launch_error) || "session launch failed";', source)
+        self.assertIn('title: redactedLaunchErrorText(s.launch_error) || "Session launch failed"', source)
+        self.assertIn('const safeLaunchError = redactedLaunchErrorText(s.launch_error);', source)
+        self.assertIn('const launchError = launchFailed ? recoveryPromptPreview(redactedLaunchErrorText(s.launch_error), 1200) : "";', source)
+        self.assertIn('const sessionEditActions = launchRow ? [] : [renameBtn, dupBtn];', source)
+        self.assertIn('const rightActions = el("div", { class: "sessionActions right" }, sessionEditActions);', source)
+        self.assertIn('const actions = el("div", { class: "sessionActionsInline" }, [...sessionEditActions, delBtn]);', source)
+        self.assertIn('if (launchRow) {\n                 if (launchFailed) void selectSession(s.session_id);', source)
         self.assertNotIn('class: "msg assistant recovery-panel", role: "status"', source)
         self.assertIn('const anchor = typingRow && typingRow.isConnected ? typingRow : bottomSentinel;', source)
         self.assertIn('let pendingRecoveryFocusDescriptor = null;', source)
@@ -354,6 +433,11 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertGreaterEqual(source.count('!row.classList.contains("typing-row") && !row.classList.contains("recovery-panel-row")'), 2)
         self.assertGreaterEqual(source.count('!x.classList.contains("typing-row") && !x.classList.contains("recovery-panel-row")'), 3)
         self.assertIn('document.querySelector(".recovery-panel .icon-btn") || queueBtn || null', source)
+        self.assertIn('function selectedSessionLaunchFailed()', source)
+        self.assertIn('queueControl.disabled = !!queueSubmitBusy || !selected || launchFailed || (unknownSend && !orphanQueueRecovery);', source)
+        self.assertIn('sendControl.disabled = !!sending || !selected || launchFailed || unknownSend || orphanRecovery || recoveryQueue;', source)
+        self.assertIn('setToast("failed launch cannot receive queued messages");', source)
+        self.assertIn('setToast("failed launch cannot receive messages");', source)
         load_error_start = source.index('function renderTranscriptLoadError(sessionId, err')
         load_error_end = source.index('function applyCachedTail', load_error_start)
         load_error_block = source[load_error_start:load_error_end]
@@ -363,6 +447,42 @@ class TestChatScrollbackSource(unittest.TestCase):
         self.assertIn('renderRecoveryPanelIfNeeded(selected);\n          markClickFirstPaint();', source)
         self.assertIn(".msg.recovery-panel", css)
         self.assertIn(".recoveryPanelActions", css)
+
+    def test_launch_recovery_helpers_are_allowlisted(self) -> None:
+        result = eval_launch_recovery_helpers()
+        self.assertTrue(result["hasInfo"])
+        details = result["details"]
+        self.assertIn("state: launch failed", details)
+        self.assertIn("launch stage: pty_fork", details)
+        self.assertIn('launch error: pty fork failed before agent start API_TOKEN: [redacted] password: [redacted] "api_key":[redacted] Authorization: [redacted]', details)
+        self.assertNotIn("secret-token", details)
+        self.assertNotIn("hunter2", details)
+        self.assertNotIn("json-secret", details)
+        self.assertNotIn("abcdefghijklmnop", details)
+        self.assertIn("model provider: macaron", details)
+        self.assertIn("model: gpt-5.4", details)
+        self.assertIn("reasoning: medium", details)
+        self.assertIn("tmux: codoxear:work-abc123", details)
+        self.assertIn("submitted prompts: 2", details)
+        self.assertEqual(
+            result["preset"],
+            {
+                "session_id": "launch-dead",
+                "cwd": "/tmp/work",
+                "agent_backend": "pi",
+                "provider_choice": "macaron",
+                "model_provider": "macaron",
+                "preferred_auth_method": None,
+                "model": "gpt-5.4",
+                "reasoning_effort": "medium",
+                "service_tier": "fast",
+                "transport": "tmux",
+                "tmux_session": "codoxear",
+                "tmux_window": "work-abc123",
+            },
+        )
+        self.assertNotIn("launch_state", result["preset"])
+        self.assertNotIn("launch_error", result["preset"])
 
     def test_orphan_recovery_session_does_not_fetch_transcript_tail(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

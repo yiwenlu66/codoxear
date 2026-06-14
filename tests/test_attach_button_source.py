@@ -12,6 +12,8 @@ class TestAttachButtonSource(unittest.TestCase):
         self.assertIn('attachBtn.disabled = true;', source)
         self.assertIn('function syncAttachButtonState() {', source)
         self.assertIn('"Select a session to attach a file"', source)
+        self.assertIn('"Failed launch cannot receive file attachments"', source)
+        self.assertIn('} else if (selectedSessionLaunchFailed()) {\n            attachLabel = "Failed launch cannot receive file attachments";\n            disabled = true;\n          } else if (selectedSessionHasUnknownSend()) {', source)
         self.assertIn('"Resolve the unknown send before attaching a file"', source)
         self.assertIn('"Missing session can only be reviewed"', source)
         self.assertIn('"Wait for the current response to finish before attaching a file"', source)
@@ -24,6 +26,9 @@ class TestAttachButtonSource(unittest.TestCase):
         source = APP_JS.read_text(encoding="utf-8")
 
         self.assertIn('const sid = selected;\n\t\t          if (!sid) return;', source)
+        self.assertIn('if (selectedSessionLaunchFailed()) {\n\t            setToast("failed launch cannot receive file attachments");\n\t            return;\n\t          }', source)
+        self.assertIn('const sessionInfo = sessionIndex.get(sid) || null;\n\t\t          if (sessionInfo && sessionLaunchFailed(sessionInfo)) {', source)
+        self.assertIn('imgInput.value = "";\n\t\t            if (selected === sid) setToast("failed launch cannot receive file attachments");\n\t\t            return;', source)
         self.assertIn('const attachmentIndex = attachedFiles + 1;', source)
         self.assertIn('if (currentRunning) {\n\t\t            if (selected === sid) setToast("wait for the current response before attaching a file");\n\t\t            return;\n\t\t          }', source)
         self.assertIn('api(`/api/sessions/${sid}/inject_file`', source)

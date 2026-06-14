@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import shutil
@@ -257,6 +258,35 @@ read -r -k 1 option
 
         self.assertEqual(rows[0]["state"], "failed")
         self.assertEqual(rows[0]["submitted_user_messages"][0]["text"], "copy this")
+
+    def test_broker_failure_record_redacts_persisted_record_and_stderr(self) -> None:
+        now = 1_778_400_000.0
+        with tempfile.TemporaryDirectory() as td, patch("codoxear.broker.OWNER_TAG", "web"), patch.object(
+            broker_mod, "LAUNCH_ATTEMPTS_PATH", Path(td) / "launches.jsonl"
+        ), patch("codoxear.util.now", return_value=now), patch.object(broker_mod.sys, "stderr", io.StringIO()) as stderr:
+            broker_mod._record_launch_attempt(
+                {
+                    "launch_id": "launch-broker-redact",
+                    "state": "failed",
+                    "stage": "agent_exit_before_log_bind",
+                    "error": "failed API_TOKEN: broker-secret password=hunter2 Authorization: Bearer broker-auth-secret",
+                    "pty_tail": "tail OPENAI_API_KEY=tail-secret AUTH: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==\n",
+                    "tmux_attempts": [{"stderr": "nested password: nested-secret"}],
+                    "metadata": {"api_key": "meta-secret"},
+                }
+            )
+            rows = read_launch_attempts(path=broker_mod.LAUNCH_ATTEMPTS_PATH, max_records=10, max_age_s=3600, now_ts=now + 2.0)
+            persisted_text = broker_mod.LAUNCH_ATTEMPTS_PATH.read_text(encoding="utf-8")
+            stderr_text = stderr.getvalue()
+
+        combined = f"{rows}\n{persisted_text}\n{stderr_text}"
+        self.assertEqual(rows[0]["error"], "failed API_TOKEN: [redacted] password=[redacted] Authorization: [redacted]")
+        self.assertEqual(rows[0]["pty_tail"], "tail OPENAI_API_KEY=[redacted] AUTH: [redacted]\n")
+        self.assertEqual(rows[0]["tmux_attempts"][0]["stderr"], "nested password: [redacted]")
+        self.assertEqual(rows[0]["metadata"]["api_key"], "[redacted]")
+        self.assertIn("failed API_TOKEN: [redacted] password=[redacted] Authorization: [redacted]", stderr_text)
+        for secret in ("broker-secret", "hunter2", "broker-auth-secret", "tail-secret", "QWxhZGRpbjpvcGVuIHNlc2FtZQ", "nested-secret", "meta-secret"):
+            self.assertNotIn(secret, combined)
 
     def test_shell_startup_watchdog_ignores_seen_marker(self) -> None:
         broker = Broker(cwd="/tmp", codex_args=[])
