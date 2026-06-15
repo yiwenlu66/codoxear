@@ -2,19 +2,24 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
-LAUNCH_CONFIG_PY = Path(__file__).resolve().parents[1] / "codoxear" / "launch_config.py"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+SERVER_PY = ROOT / "codoxear" / "server.py"
+LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
 
 
 class TestReasoningEffortSource(unittest.TestCase):
     def test_frontend_uses_model_specific_reasoning_effort_map(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("reasoning_efforts_by_model", source)
-        self.assertIn("function reasoningChoicesForBackend(backend, { provider = null, model = null } = {})", source)
-        self.assertIn("const providerKey = providerName ? `${providerName}/${modelName}` : \"\";", source)
-        self.assertIn("if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];", source)
-        self.assertIn("else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];", source)
+        launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        self.assertIn("reasoning_efforts_by_model", launch_source)
+        self.assertIn("function reasoningChoicesForBackend(backend, defaultsSource = null, { provider = null, model = null } = {})", launch_source)
+        self.assertIn("const providerKey = providerName ? `${providerName}/${modelName}` : \"\";", launch_source)
+        self.assertIn("if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];", launch_source)
+        self.assertIn("else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];", launch_source)
+        self.assertIn("function reasoningChoicesForBackend(backend, options = {})", source)
+        self.assertIn("return codoxearLaunch.reasoningChoicesForBackend(backend, newSessionDefaults, options);", source)
         self.assertIn("function currentNewSessionModelForCapabilities()", source)
         self.assertIn("function currentReasoningChoices()", source)
 

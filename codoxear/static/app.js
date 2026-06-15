@@ -97,44 +97,59 @@
         },
       };
       let latestSessions = [];
-      const LAST_BACKEND_KEY = "codoxear.newSessionBackend";
-      const NO_PROVIDER_MODEL_PREFIX = "__codoxear_no_provider__:";
+      const codoxearLaunch = window.CodoxearLaunch;
+      if (
+        !codoxearLaunch ||
+        typeof codoxearLaunch.lastProviderKey !== "function" ||
+        typeof codoxearLaunch.lastProviderModelKey !== "function" ||
+        typeof codoxearLaunch.loadRememberedBackendChoice !== "function" ||
+        typeof codoxearLaunch.rememberBackendChoice !== "function" ||
+        typeof codoxearLaunch.loadRememberedProviderChoice !== "function" ||
+        typeof codoxearLaunch.rememberProviderChoice !== "function" ||
+        typeof codoxearLaunch.loadRememberedProviderModelChoice !== "function" ||
+        typeof codoxearLaunch.rememberedProviderModelAbsentChoice !== "function" ||
+        typeof codoxearLaunch.rememberProviderModelChoice !== "function" ||
+        typeof codoxearLaunch.normalizeAgentBackendName !== "function" ||
+        typeof codoxearLaunch.agentBackendDisplayName !== "function" ||
+        typeof codoxearLaunch.agentBackendLogoPath !== "function" ||
+        typeof codoxearLaunch.sessionAgentBackend !== "function" ||
+        typeof codoxearLaunch.legacyCodexLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.emptyPiLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.emptyCcLaunchDefaults !== "function" ||
+        typeof codoxearLaunch.defaultsForAgentBackend !== "function" ||
+        typeof codoxearLaunch.providerChoicesForBackend !== "function" ||
+        typeof codoxearLaunch.reasoningChoicesForBackend !== "function" ||
+        typeof codoxearLaunch.backendSupportsFast !== "function" ||
+        typeof codoxearLaunch.providerChoiceToSettings !== "function" ||
+        typeof codoxearLaunch.sessionProviderChoice !== "function"
+      )
+        throw new Error("Codoxear launch helpers failed to load");
       function lastProviderKey(backend) {
-        return `codoxear.newSessionProvider.${normalizeAgentBackendName(backend)}`;
+        return codoxearLaunch.lastProviderKey(backend);
       }
       function lastProviderModelKey(backend) {
-        return `codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}`;
+        return codoxearLaunch.lastProviderModelKey(backend);
       }
       function loadRememberedBackendChoice() {
-        const value = String(storageGetItem(LAST_BACKEND_KEY) || "").trim();
-        return value ? normalizeAgentBackendName(value) : "";
+        return codoxearLaunch.loadRememberedBackendChoice();
       }
       function rememberBackendChoice(backend) {
-        storageSetItem(LAST_BACKEND_KEY, normalizeAgentBackendName(backend));
+        return codoxearLaunch.rememberBackendChoice(backend);
       }
       function loadRememberedProviderChoice(backend) {
-        return String(storageGetItem(lastProviderKey(backend)) || "").trim();
+        return codoxearLaunch.loadRememberedProviderChoice(backend);
       }
       function rememberProviderChoice(backend, provider) {
-        const value = String(provider || "").trim();
-        if (value) storageSetItem(lastProviderKey(backend), value);
-        else storageRemoveItem(lastProviderKey(backend));
+        return codoxearLaunch.rememberProviderChoice(backend, provider);
       }
       function loadRememberedProviderModelChoice(backend) {
-        return String(storageGetItem(lastProviderModelKey(backend)) || "").trim();
+        return codoxearLaunch.loadRememberedProviderModelChoice(backend);
       }
       function rememberedProviderModelAbsentChoice(value) {
-        const raw = String(value || "").trim();
-        if (!raw.startsWith(NO_PROVIDER_MODEL_PREFIX)) return null;
-        const model = raw.slice(NO_PROVIDER_MODEL_PREFIX.length).trim() || "default";
-        return { providerChoice: "", model, providerError: "", providerAbsent: true };
+        return codoxearLaunch.rememberedProviderModelAbsentChoice(value);
       }
-      function rememberProviderModelChoice(backend, provider, model, { providerAbsent = false } = {}) {
-        const providerValue = String(provider || "").trim();
-        const modelValue = String(model || "").trim() || "default";
-        const value = providerAbsent ? `${NO_PROVIDER_MODEL_PREFIX}${modelValue}` : providerValue ? `${providerValue}/${modelValue}` : modelValue;
-        if (value) storageSetItem(lastProviderModelKey(backend), value);
-        else storageRemoveItem(lastProviderModelKey(backend));
+      function rememberProviderModelChoice(backend, provider, model, options = {}) {
+        return codoxearLaunch.rememberProviderModelChoice(backend, provider, model, options);
       }
 
       const apiEtags = new Map();
@@ -357,139 +372,37 @@
       }
 
       function normalizeAgentBackendName(value) {
-        const raw = String(value || "").trim().toLowerCase();
-        if (raw === "pi") return "pi";
-        if (raw === "cc" || raw === "claude" || raw === "claude-code") return "cc";
-        return "codex";
+        return codoxearLaunch.normalizeAgentBackendName(value);
       }
-
       function agentBackendDisplayName(value) {
-        const backend = normalizeAgentBackendName(value);
-        if (backend === "pi") return "Pi";
-        if (backend === "cc") return "Claude";
-        return "Codex";
+        return codoxearLaunch.agentBackendDisplayName(value);
       }
-
       function agentBackendLogoPath(value) {
-        const backend = normalizeAgentBackendName(value);
-        return resolveAppUrl(`/static/logos/${backend}.svg`);
+        return codoxearLaunch.agentBackendLogoPath(value);
       }
-
-      function sessionAgentBackend(s) {
-        if (!s || typeof s !== "object") return "codex";
-        return normalizeAgentBackendName(s.agent_backend);
+      function sessionAgentBackend(session) {
+        return codoxearLaunch.sessionAgentBackend(session);
       }
-
       function legacyCodexLaunchDefaults(seed = {}) {
-        const raw = seed && typeof seed === "object" ? seed : {};
-        const modelProviders = Array.isArray(raw.model_providers) ? raw.model_providers.slice() : ["chatgpt", "openai-api"];
-        if (!modelProviders.includes("chatgpt")) modelProviders.unshift("chatgpt");
-        if (!modelProviders.includes("openai-api")) modelProviders.splice(Math.min(1, modelProviders.length), 0, "openai-api");
-        return {
-          agent_backend: "codex",
-          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : "openai",
-          preferred_auth_method: typeof raw.preferred_auth_method === "string" ? raw.preferred_auth_method : "chatgpt",
-          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : "chatgpt",
-          provider_choices: modelProviders,
-          model: typeof raw.model === "string" ? raw.model : null,
-          models: Array.isArray(raw.models) ? raw.models.slice() : [],
-          model_providers: modelProviders,
-          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
-          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["xhigh", "high", "medium", "low"],
-          service_tier: typeof raw.service_tier === "string" ? raw.service_tier : "flex",
-          supports_fast: raw.supports_fast !== false,
-        };
+        return codoxearLaunch.legacyCodexLaunchDefaults(seed);
       }
-
       function emptyPiLaunchDefaults(seed = {}) {
-        const raw = seed && typeof seed === "object" ? seed : {};
-        const providerChoices = Array.isArray(raw.provider_choices) ? raw.provider_choices.slice() : [];
-        const modelChoices = Array.isArray(raw.models) ? raw.models.slice() : [];
-        return {
-          agent_backend: "pi",
-          model_provider: typeof raw.model_provider === "string" ? raw.model_provider : null,
-          preferred_auth_method: null,
-          provider_choice: typeof raw.provider_choice === "string" ? raw.provider_choice : null,
-          provider_choices: providerChoices,
-          model: typeof raw.model === "string" ? raw.model : null,
-          models: modelChoices,
-          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "high",
-          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["off", "minimal", "low", "medium", "high", "xhigh"],
-          reasoning_efforts_by_model: raw.reasoning_efforts_by_model && typeof raw.reasoning_efforts_by_model === "object" ? raw.reasoning_efforts_by_model : {},
-          service_tier: null,
-          supports_fast: false,
-        };
+        return codoxearLaunch.emptyPiLaunchDefaults(seed);
       }
-
       function emptyCcLaunchDefaults(seed = {}) {
-        const raw = seed && typeof seed === "object" ? seed : {};
-        const modelChoices = Array.isArray(raw.models) ? raw.models.slice() : [];
-        return {
-          agent_backend: "cc",
-          model_provider: null,
-          preferred_auth_method: null,
-          provider_choice: null,
-          provider_choices: [],
-          model: typeof raw.model === "string" ? raw.model : null,
-          models: modelChoices,
-          reasoning_effort: typeof raw.reasoning_effort === "string" ? raw.reasoning_effort : "medium",
-          reasoning_efforts: Array.isArray(raw.reasoning_efforts) ? raw.reasoning_efforts.slice() : ["low", "medium", "high", "xhigh", "max"],
-          service_tier: null,
-          supports_fast: false,
-        };
+        return codoxearLaunch.emptyCcLaunchDefaults(seed);
       }
-
       function defaultsForAgentBackend(backend) {
-        const normalized = normalizeAgentBackendName(backend);
-        const raw = newSessionDefaults && typeof newSessionDefaults === "object" ? newSessionDefaults : {};
-        if (raw.backends && typeof raw.backends === "object") {
-          const item = raw.backends[normalized];
-          if (item && typeof item === "object") {
-            if (normalized === "pi") return emptyPiLaunchDefaults(item);
-            if (normalized === "cc") return emptyCcLaunchDefaults(item);
-            return legacyCodexLaunchDefaults(item);
-          }
-        }
-        if (normalized === "pi") return emptyPiLaunchDefaults();
-        if (normalized === "cc") return emptyCcLaunchDefaults();
-        return legacyCodexLaunchDefaults(raw);
+        return codoxearLaunch.defaultsForAgentBackend(backend, newSessionDefaults);
       }
-
       function providerChoicesForBackend(backend) {
-        const defaults = defaultsForAgentBackend(backend);
-        const out = [];
-        for (const value of Array.isArray(defaults.provider_choices) ? defaults.provider_choices : []) {
-          if (typeof value !== "string") continue;
-          const trimmed = value.trim();
-          if (!trimmed || out.includes(trimmed)) continue;
-          out.push(trimmed);
-        }
-        return out;
+        return codoxearLaunch.providerChoicesForBackend(backend, newSessionDefaults);
       }
-
-      function reasoningChoicesForBackend(backend, { provider = null, model = null } = {}) {
-        const defaults = defaultsForAgentBackend(backend);
-        let rawChoices = Array.isArray(defaults.reasoning_efforts) ? defaults.reasoning_efforts : [];
-        const map = defaults.reasoning_efforts_by_model && typeof defaults.reasoning_efforts_by_model === "object" ? defaults.reasoning_efforts_by_model : null;
-        const modelName = typeof model === "string" ? model.trim() : "";
-        const providerName = typeof provider === "string" ? provider.trim() : "";
-        if (map && modelName) {
-          const providerKey = providerName ? `${providerName}/${modelName}` : "";
-          if (providerKey && Array.isArray(map[providerKey])) rawChoices = map[providerKey];
-          else if (!providerName && Array.isArray(map[modelName])) rawChoices = map[modelName];
-        }
-        const out = [];
-        for (const value of rawChoices) {
-          if (typeof value !== "string") continue;
-          const trimmed = value.trim().toLowerCase();
-          if (!trimmed || out.includes(trimmed)) continue;
-          out.push(trimmed);
-        }
-        return out;
+      function reasoningChoicesForBackend(backend, options = {}) {
+        return codoxearLaunch.reasoningChoicesForBackend(backend, newSessionDefaults, options);
       }
-
       function backendSupportsFast(backend) {
-        return !!defaultsForAgentBackend(backend).supports_fast;
+        return codoxearLaunch.backendSupportsFast(backend, newSessionDefaults);
       }
 
       function redactedLaunchErrorText(value) {
@@ -517,27 +430,10 @@
       }
 
       function providerChoiceToSettings(choice, agentBackend = "codex") {
-        const backend = normalizeAgentBackendName(agentBackend);
-        const rawChoice = String(choice || "").trim();
-        if (backend === "pi") return { model_provider: rawChoice || null, preferred_auth_method: null };
-        if (backend === "cc") return { model_provider: null, preferred_auth_method: null };
-        const codexChoice = rawChoice || "chatgpt";
-        if (codexChoice === "chatgpt") return { model_provider: "openai", preferred_auth_method: "chatgpt" };
-        if (codexChoice === "openai-api") return { model_provider: "openai", preferred_auth_method: "apikey" };
-        return { model_provider: codexChoice, preferred_auth_method: "apikey" };
+        return codoxearLaunch.providerChoiceToSettings(choice, agentBackend);
       }
-
-      function sessionProviderChoice(s) {
-        if (!s || typeof s !== "object") return "chatgpt";
-        const backend = sessionAgentBackend(s);
-        const provider = typeof s.model_provider === "string" ? s.model_provider.trim() : "";
-        if (backend === "pi") return provider;
-        if (backend === "cc") return "";
-        const explicit = typeof s.provider_choice === "string" ? s.provider_choice.trim() : "";
-        if (explicit) return explicit;
-        const auth = typeof s.preferred_auth_method === "string" ? s.preferred_auth_method.trim() : "";
-        if (provider === "openai") return auth === "chatgpt" ? "chatgpt" : "openai-api";
-        return provider || "chatgpt";
+      function sessionProviderChoice(session) {
+        return codoxearLaunch.sessionProviderChoice(session);
       }
 
 	      function fmtIdleAge(seconds) {

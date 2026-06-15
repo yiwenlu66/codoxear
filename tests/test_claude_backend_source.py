@@ -2,22 +2,27 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
-BROKER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "broker.py"
-BACKEND_LAUNCH_PY = Path(__file__).resolve().parents[1] / "codoxear" / "backend_launch.py"
-LAUNCH_CONFIG_PY = Path(__file__).resolve().parents[1] / "codoxear" / "launch_config.py"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+SERVER_PY = ROOT / "codoxear" / "server.py"
+BROKER_PY = ROOT / "codoxear" / "broker.py"
+BACKEND_LAUNCH_PY = ROOT / "codoxear" / "backend_launch.py"
+LAUNCH_CONFIG_PY = ROOT / "codoxear" / "launch_config.py"
 
 
 class TestClaudeBackendSource(unittest.TestCase):
     def test_frontend_exposes_cc_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('if (raw === "cc" || raw === "claude" || raw === "claude-code") return "cc";', source)
-        self.assertIn('if (backend === "cc") return "Claude";', source)
-        self.assertIn('function emptyCcLaunchDefaults(seed = {})', source)
-        self.assertIn('["low", "medium", "high", "xhigh", "max"]', source)
+        launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        self.assertIn('if (raw === "cc" || raw === "claude" || raw === "claude-code") return "cc";', launch_source)
+        self.assertIn('if (backend === "cc") return "Claude";', launch_source)
+        self.assertIn('function emptyCcLaunchDefaults(seed = {})', launch_source)
+        self.assertIn('["low", "medium", "high", "xhigh", "max"]', launch_source)
+        self.assertIn('if (backend === "cc") return { model_provider: null, preferred_auth_method: null };', launch_source)
+        self.assertIn('function normalizeAgentBackendName(value)', source)
+        self.assertIn('return codoxearLaunch.normalizeAgentBackendName(value);', source)
         self.assertIn('for (const backend of ["codex", "pi", "cc"])', source)
-        self.assertIn('if (backend === "cc") return { model_provider: null, preferred_auth_method: null };', source)
         self.assertIn('newSessionModelLabel.textContent = hasProviders ? "Provider / model" : "Model";', source)
         self.assertNotIn('id: "newSessionProviderBtn"', source)
 

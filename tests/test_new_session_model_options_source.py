@@ -5,11 +5,14 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 
 
 def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], reasoning_map: dict[str, list[str]], literal_model: str = "", provider_absent: bool = False) -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     choices_start = source.index("function providerChoicesForBackend(backend)")
     choices_end = source.index("function backendSupportsFast(backend)", choices_start)
     dialog_start = source.index("function newSessionProviderChoices()")
@@ -26,8 +29,20 @@ def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], r
           reasoning_efforts_by_model: {json.dumps(reasoning_map)},
         }};
         const ctx = {{
+          URL,
+          console,
+          location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^[/]/, ""), "http://localhost/").toString() }},
+            CodoxearStorage: {{
+              getItem: () => null,
+              setItem: () => true,
+              removeItem: () => true,
+            }},
+          }},
           newSessionBackend: "pi",
           newSessionProvider: "",
+          newSessionDefaults: defaults,
           newSessionModelInput: {{ value: {json.dumps(query)} }},
           newSessionLiteralModelInputValue: {json.dumps(literal_model)},
           newSessionLaunchPresetProviderAbsent: {json.dumps(provider_absent)},
@@ -41,6 +56,8 @@ def eval_pi_provider_model_runtime(query: str, *, provider_choices: list[str], r
           renderNewSessionReasoningMenu: () => {{ ctx.reasoningMenuRendered = true; }},
         }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(launch_source)}, ctx);
+        ctx.codoxearLaunch = ctx.window.CodoxearLaunch;
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_dialog = { parseNewSessionProviderModelInput, currentReasoningChoices, setNewSessionProvider, newSessionProviderModelDisplay };\n")}, ctx);
         const parsed = ctx.__test_dialog.parseNewSessionProviderModelInput();
         const choices = ctx.__test_dialog.currentReasoningChoices();
@@ -292,8 +309,11 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
 
     def test_new_session_initial_backend_prefers_selected_session_when_no_user_choice(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn('const value = String(storageGetItem(LAST_BACKEND_KEY) || "").trim();', source)
-        self.assertIn('return value ? normalizeAgentBackendName(value) : "";', source)
+        launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        self.assertIn("function loadRememberedBackendChoice()", source)
+        self.assertIn("return codoxearLaunch.loadRememberedBackendChoice();", source)
+        self.assertIn('const value = String(storageGetItem(LAST_BACKEND_KEY) || "").trim();', launch_source)
+        self.assertIn('return value ? normalizeAgentBackendName(value) : "";', launch_source)
         start = source.index("function openNewSessionDialog")
         end = source.index("editPriorityRange.oninput", start)
         block = source[start:end]
@@ -491,12 +511,20 @@ class TestNewSessionModelOptionsSource(unittest.TestCase):
 
     def test_provider_model_pair_is_remembered_per_backend(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        self.assertIn("const codoxearLaunch = window.CodoxearLaunch;", source)
+        self.assertIn('throw new Error("Codoxear launch helpers failed to load")', source)
         self.assertIn("function lastProviderModelKey(backend)", source)
-        self.assertIn("codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}", source)
+        self.assertIn("return codoxearLaunch.lastProviderModelKey(backend);", source)
         self.assertIn("function loadRememberedProviderModelChoice(backend)", source)
+        self.assertIn("return codoxearLaunch.loadRememberedProviderModelChoice(backend);", source)
         self.assertIn("function rememberedProviderModelAbsentChoice(value)", source)
-        self.assertIn("NO_PROVIDER_MODEL_PREFIX", source)
-        self.assertIn("function rememberProviderModelChoice(backend, provider, model, { providerAbsent = false } = {})", source)
+        self.assertIn("return codoxearLaunch.rememberedProviderModelAbsentChoice(value);", source)
+        self.assertIn("function rememberProviderModelChoice(backend, provider, model, options = {})", source)
+        self.assertIn("return codoxearLaunch.rememberProviderModelChoice(backend, provider, model, options);", source)
+        self.assertIn("codoxear.newSessionProviderModel.${normalizeAgentBackendName(backend)}", launch_source)
+        self.assertIn("NO_PROVIDER_MODEL_PREFIX", launch_source)
+        self.assertIn("function rememberProviderModelChoice(backend, provider, model, { providerAbsent = false } = {})", launch_source)
         self.assertIn("rememberProviderModelChoice(newSessionBackend, selectedProvider, item.model || \"default\", { providerAbsent: Boolean(item.providerAbsent) });", source)
         self.assertIn("rememberProviderModelChoice(agentBackend, providerChoice, model, { providerAbsent: Boolean(parsedProviderModel.providerAbsent) });", source)
         self.assertIn("function rememberedNewSessionProviderModelChoice()", source)
