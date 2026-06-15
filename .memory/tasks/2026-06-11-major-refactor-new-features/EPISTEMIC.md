@@ -2352,3 +2352,10 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Intervention: storage access now lives in `app_storage.js`; `app.js` keeps the same helper names as wrappers and fails loudly if the module is missing, avoiding a silent fallback.
 - Observation: Docker-only focused/full validation and read-only critic review found no blocker for denied-storage behavior, static serving/versioning, package inclusion, script order, CSP/path behavior, or broad UI semantic drift.
 - Scoped claim: storage helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim host-browser, real mobile, assistive-tech, or slow-network evidence.
+
+## 2026-06-15 10:21
+- Observation: performance diagnostics were still embedded in `app.js`, but the mechanism is self-contained: a bounded Map of sample arrays, a nonnegative-value filter, linear percentile interpolation, two-decimal rounding, and the public `window.codoxearPerf` summary function.
+- Intervention: the sampler now lives in `app_perf.js`; `app.js` keeps wrapper names and fails loudly if `window.CodoxearPerf` is absent or malformed.
+- Observation: Docker-only focused/full validation and read-only critic review found no blocker for summary semantics, script order, static serving/versioning, package inclusion, CSP/path behavior, or public diagnostic compatibility.
+- Interpretation: a stale cached old shell with a new `app.js` would abort because it does not load `app_perf.js`; this is the existing static-shell/version freshness limitation and is mitigated by default no-store, not by adding a silent fallback.
+- Scoped claim: performance helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim host-browser, real mobile, assistive-tech, slow-network, or huge-transcript evidence.

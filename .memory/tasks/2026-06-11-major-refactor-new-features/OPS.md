@@ -2888,3 +2888,14 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 955 tests, 1 skipped, and 107 subtests.
 - Read-only critic subagent `5679462c-49f1-4e14-aecb-ada1b99a3f80` returned `NO BLOCKERS`; it did not run tests and inspected storage-denial behavior, script ordering, fail-loud dependency, static routing/versioning/package inclusion, CSP/path behavior, and helper-name compatibility.
 - Functional commit created: `8f43ef8 extract frontend storage helper`.
+
+## 2026-06-15 10:21
+- Implemented the third bounded frontend refactor tranche by extracting performance-sampling diagnostics from `codoxear/static/app.js` into `codoxear/static/app_perf.js`.
+- `index.html` now loads `app_url.js`, `app_storage.js`, `app_perf.js`, then `app.js`; deferred script order means `app.js` sees `window.CodoxearPerf` before its fail-loud dependency check.
+- `app.js` keeps the existing `pushPerfSample` wrapper and `window.codoxearPerf` diagnostic entry point, delegating sample insertion and summaries to `window.CodoxearPerf.pushSample/summarize`.
+- Added `app_perf.js` to static asset versioning and top-level static routing; tests assert route source, version inclusion, CSP/no-third-party constraints, and wheel package inclusion.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_frontend_perf_module_source.py tests/test_static_assets.py tests/test_frontend_url_module_source.py tests/test_storage_robustness_source.py tests/test_session_polling_source.py` passed: 31 tests and 3 subtests.
+- Docker runtime route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: in-container requests returned `/codoxear/api/me -> 401`, `/codoxear/app_url.js?v=test -> 200`, `/codoxear/app_storage.js?v=test -> 200`, `/codoxear/app_perf.js?v=test -> 200` with `window.CodoxearPerf`, and `/codoxear/app.js?v=test -> 200`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 958 tests, 1 skipped, and 107 subtests.
+- Read-only critic subagent `690d8a0d-02e9-4a46-974c-f0d925df8523` returned `NO BLOCKERS`; it inspected sample-window/filter/percentile/rounding semantics, script order, `window.codoxearPerf` compatibility, static routing/versioning/package inclusion, CSP/path behavior, and Docker-only evidence. Non-blocking note: stale cached old `index.html` plus new `app.js` would fail loudly because the old shell lacks `app_perf.js`; default no-store and asset versioning keep this within the existing stale-static limitation.
+- Functional commit created: `82e674d extract frontend performance helper`.
