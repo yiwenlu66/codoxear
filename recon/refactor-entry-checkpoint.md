@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `b7216e2 extract frontend markdown helper`
+Latest functional code checkpoint: `320e646 extract frontend launch helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -59,13 +59,15 @@ Recent committed recovery checkpoints include:
   - local-storage access moved from `app.js` into `codoxear/static/app_storage.js`;
   - performance-sampling diagnostics moved from `app.js` into `codoxear/static/app_perf.js`;
   - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
-  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_markdown.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
+  - launch/backend/default/provider/model-memory helpers moved from `app.js` into `codoxear/static/app_launch.js`;
+  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_markdown.js`, `app_launch.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
   - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
   - storage-denial behavior remains the same guarded contract: unavailable/throwing storage yields `null` for reads and `false` for writes/removes;
   - performance diagnostics preserve the 200-sample window, nonnegative-value filter, percentile/rounding policy, and public `window.codoxearPerf` entry point;
-  - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary.
+  - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
+  - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -115,6 +117,12 @@ Latest Docker-only evidence after frontend helper extractions:
 - Markdown helper full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `962 passed, 1 skipped, 107 subtests passed`.
 - Clean-room critic subagent `85d8069d-4e2f-40ef-bf96-eee6545b280d` found a real missing-global blocker after extraction: the non-literal `openFileReference()` path still called `parseLocalFileRef()` after it became private to `app_markdown.js`. The fix exported `parseLocalFileRef`, added the app wrapper/fail-loud check, and added an executable VM regression for the non-literal branch.
 - Clean-room critic subagent `4773fc5a-bbbf-4d0e-b29d-e65061972fcf` returned `NO BLOCKERS` after the parser export fix; focused reviewer `de87e7a2-ae7e-4120-9b54-0f6ad5232a9d` also returned `NO BLOCKERS` for the five extraction acceptance blockers. Residual risks: non-literal direct calls with an inline suffix such as `src/app.py:7` still do not consume the parsed line when `ref.line` is absent, which appears pre-existing and outside the extraction regression; duplicate `stripPathLocationSuffix()` copies can drift if suffix semantics change.
+- Launch helper focused local validation after extraction and storage-contract repair: `node --check codoxear/static/app.js`, `node --check codoxear/static/app_launch.js`, real-order VM load of `app_url.js` + `app_storage.js` + `app_launch.js`, and `python3 -m pytest -q tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py tests/test_claude_backend_source.py tests/test_reasoning_effort_source.py` -> `44 passed`.
+- Launch helper focused Docker validation: `scripts/codoxear-docker-sandbox test tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py tests/test_claude_backend_source.py tests/test_reasoning_effort_source.py tests/test_frontend_url_module_source.py tests/test_storage_robustness_source.py` -> `50 passed, 3 subtests passed`.
+- Launch helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_launch.js?v=test -> 200`; `/codoxear/app.js?v=test -> 200`.
+- Launch helper full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `964 passed, 1 skipped, 107 subtests passed`.
+- Clean-room critic subagent `cf0565f1-c700-4f51-8dc3-d09808ca58b1` found a real storage-contract blocker: `app_launch.js` initially required non-existent `CodoxearStorage.storageGetItem/storageSetItem/storageRemoveItem` names while `app_storage.js` exports `getItem/setItem/removeItem`. The fix switched to the real storage API and added a real-order module-load VM regression.
+- Focused reviewer `f3542620-2f37-4c18-9f1b-7de723caabf9` returned `NO BLOCKERS` after the storage-contract repair for wrapper coverage, module isolation, provider/default/reasoning behavior, app-owned failed-launch redaction, and static loading/versioning/routing/packaging. Residual risk: focused review scope only; broader browser UX was not re-reviewed in this tranche.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 

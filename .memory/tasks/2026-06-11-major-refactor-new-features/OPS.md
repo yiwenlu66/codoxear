@@ -2947,3 +2947,16 @@
 - First clean-room critic `85d8069d-4e2f-40ef-bf96-eee6545b280d` returned `BLOCKERS` for a missing `parseLocalFileRef` global on the non-literal `openFileReference()` path; the blocker was fixed by exporting the parser through `window.CodoxearMarkdown`, adding an app wrapper/fail-loud check, and adding the executable VM regression.
 - Clean-room critic rerun `4773fc5a-bbbf-4d0e-b29d-e65061972fcf` returned `NO BLOCKERS`; focused reviewer `de87e7a2-ae7e-4120-9b54-0f6ad5232a9d` also returned `NO BLOCKERS` for wrapper coverage, dependency boundary, load order, static/package coverage, and non-literal parser execution.
 - Functional commit created: `b7216e2 extract frontend markdown helper`.
+
+## 2026-06-15 11:56
+- Implemented the next bounded frontend refactor tranche by extracting launch/backend/default/provider/model-memory helpers from `codoxear/static/app.js` into `codoxear/static/app_launch.js`.
+- `index.html` now loads `app_launch.js` after URL/storage/perf/markdown helpers and before `app.js`; `app.js` keeps wrapper names and passes mutable `newSessionDefaults` explicitly into module functions that need defaults state.
+- Added `app_launch.js` to `FRONTEND_ASSET_FILES`, top-level static routes, asset versioning, and wheel/static source tests.
+- Updated provider/default/reasoning/Claude backend/source tests to inspect `app_launch.js` for moved semantics and `app.js` for wrappers/call sites; added a real-order VM test that executes `app_url.js`, `app_storage.js`, and `app_launch.js` together.
+- First clean-room critic `cf0565f1-c700-4f51-8dc3-d09808ca58b1` returned `BLOCKERS`: `app_launch.js` initially required fake `CodoxearStorage.storageGetItem/storageSetItem/storageRemoveItem` names while the real storage module exports `getItem/setItem/removeItem`. The blocker was fixed by using the real storage API and adding the real-order module-load regression.
+- Local focused validation after the fix: `node --check codoxear/static/app.js`, `node --check codoxear/static/app_launch.js`, real-order VM load of URL/storage/launch modules, and `python3 -m pytest -q tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py tests/test_claude_backend_source.py tests/test_reasoning_effort_source.py` passed: 44 tests.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py tests/test_claude_backend_source.py tests/test_reasoning_effort_source.py tests/test_frontend_url_module_source.py tests/test_storage_robustness_source.py` passed: 50 tests and 3 subtests.
+- Docker prefixed-route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_launch.js?v=test -> 200`; `/codoxear/app.js?v=test -> 200`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 964 tests, 1 skipped, 107 subtests.
+- Focused reviewer `f3542620-2f37-4c18-9f1b-7de723caabf9` returned `NO BLOCKERS` after the storage-contract repair for the launch-helper extraction scope.
+- Functional commit created: `320e646 extract frontend launch helper`.
