@@ -2987,3 +2987,16 @@
 - Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18839: `/codoxear/api/me -> 401`, `/codoxear/app_api.js?v=test -> 200`, `/codoxear/app.js?v=test -> 200`, `/codoxear/ -> 200`, and `app_api.js` contained `window.CodoxearApi`.
 - Full Docker acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18845 scripts/codoxear-docker-sandbox test` -> 973 passed, 1 skipped, 107 subtests passed.
 - Clean-room critic `8080791f-65d9-482f-8a84-4abb2388d6b5` returned `NO BLOCKERS`; its suggestions for `api_messages_init_ms` and error-contract VM coverage were applied before the functional commit.
+
+
+## 2026-06-15T12:46:18 File helper extraction checkpoint
+- Functional commit created: `81d356b extract frontend file helpers`.
+- Extracted file/viewer helper logic from `codoxear/static/app.js` into `codoxear/static/app_file_helpers.js`: `listFromFilesField`, `stripPathLocationSuffix`, `isTextFileKind`, `isDiffableFileKind`, `blockedFileMessage`, and `formatPriorityOffset`.
+- `app.js` now requires `window.CodoxearFileHelpers` fail-loudly with `Codoxear file helpers failed to load` and keeps wrapper names for existing file-picker/file-viewer call sites.
+- Static wiring: `index.html` loads `app_file_helpers.js` after `app_display.js` and before `app.js`; `codoxear/server.py` includes it in `FRONTEND_ASSET_FILES` for asset versioning and top-level static routing.
+- Guard tests added: real-order VM load of display + file helpers, literal trailing-space/newline path preservation, no-suffix path preservation, inherited greedy `:line:column` suffix behavior, text/diff kind decisions, blocked-file messages including zero viewer limit, priority formatting, static route/version/package inclusion, and updated file-picker VM harnesses that load the real helper modules.
+- Local diagnostic validation: `node --check codoxear/static/app_file_helpers.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_static_assets.py` -> 65 passed.
+- Docker focused acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18849 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_file_picker_session_state.py tests/test_static_assets.py -q` -> 65 passed.
+- Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18847: `/codoxear/api/me -> 401`, `/codoxear/app_file_helpers.js?v=test -> 200`, `/codoxear/app.js?v=test -> 200`, `/codoxear/ -> 200`, and `app_file_helpers.js` contained `window.CodoxearFileHelpers`.
+- Full Docker acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18850 scripts/codoxear-docker-sandbox test` -> 976 passed, 1 skipped, 107 subtests passed.
+- Clean-room critic `d3fbcd89-e7ce-4f46-87c4-39164d6a27f3` returned `NO BLOCKERS`; its non-blocking guard suggestions for newline no-suffix preservation and zero viewer-limit message behavior were applied before the functional commit.

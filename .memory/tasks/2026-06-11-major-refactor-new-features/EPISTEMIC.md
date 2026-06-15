@@ -2426,3 +2426,12 @@ Observation: Docker focused validation passed with 40 tests and 3 subtests, Dock
 Observation: Clean-room critic returned `NO BLOCKERS`. Its only actionable gaps were missing executable coverage for `api_messages_init_ms` and API error contracts; both were covered before commit.
 Interpretation: The tranche changed helper ownership and static load ordering, not request semantics. 304 marker identity remains private to the module because returned cached objects and `apiResponseNotModified()` close over the same symbol; cleanup now uses an explicit public cache-clear boundary.
 Scoped claim: API-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new backend live-session behavior, real mobile-device, assistive-tech, slow-network, huge-transcript, or multi-version deployment evidence. Stale-shell/mixed-asset risk remains intentionally fail-loud rather than hidden by fallback.
+
+
+## 2026-06-15T12:46:18 File helper extraction evidence
+Observation: `app_file_helpers.js` now owns literal file-list normalization, path-location suffix stripping, text/diff kind checks, blocked-file message construction, and priority offset formatting; `app.js` delegates through fail-loud wrappers.
+Observation: Docker focused validation passed with 65 tests, Docker prefix smoke served `app_file_helpers.js` under `/codoxear/`, and the full Docker suite passed with 976 passed, 1 skipped, 107 subtests passed on the final test tree.
+Observation: Clean-room critic returned `NO BLOCKERS`. Its suggested guard cases for newline no-suffix preservation and zero viewer-limit blocked-file messages were added before commit.
+Interpretation: The tranche changed helper ownership and static load ordering, not file/viewer semantics. Literal path preservation is executable evidence now; blocked-file byte formatting depends explicitly on `window.CodoxearDisplay.fmtBytes` rather than duplicating byte formatting.
+Residual risk: `stripPathLocationSuffix("/repo/file.py:12:3")` still strips only the final numeric suffix and returns `/repo/file.py:12`; this is pre-existing behavior and not a regression. `app_markdown.js` still has an independent suffix stripper, so future suffix semantic changes must update both or centralize later.
+Scoped claim: file-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new backend live-session behavior, real mobile-device, assistive-tech, slow-network, huge-transcript, or browser UX evidence beyond source/VM/static route validation.
