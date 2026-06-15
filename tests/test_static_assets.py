@@ -6,7 +6,10 @@ import zipfile
 from pathlib import Path
 
 from codoxear.server import CONTENT_SECURITY_POLICY
+from codoxear.server import FRONTEND_ASSET_FILES
+from codoxear.server import STATIC_ASSET_VERSION_FILES
 from codoxear.server import STATIC_ASSET_VERSION_PLACEHOLDER
+from codoxear.server import TOP_LEVEL_STATIC_ASSETS
 from codoxear.server import _read_static_bytes
 from codoxear.server import _static_asset_version
 from codoxear.server import _static_cache_control_headers
@@ -58,27 +61,26 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn('const base = resolveAppUrl("monaco/vs");', app)
         self.assertIn('import(resolveAppUrl("pdf.mjs"))', app)
 
-    def test_static_asset_version_changes_when_app_js_changes(self) -> None:
+    def test_frontend_asset_manifest_drives_version_files(self) -> None:
+        self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES)
+
+    def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
+        initial_content = {
+            "app_url.js": "window.CodoxearUrls = {};\n",
+            "app_storage.js": "window.CodoxearStorage = {};\n",
+            "app_perf.js": "window.CodoxearPerf = {};\n",
+            "app.js": "console.log('one');\n",
+            "app.css": "body { color: black; }\n",
+        }
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "app_url.js").write_text("window.CodoxearUrls = {};\n", encoding="utf-8")
-            (root / "app_storage.js").write_text("window.CodoxearStorage = {};\n", encoding="utf-8")
-            (root / "app_perf.js").write_text("window.CodoxearPerf = {};\n", encoding="utf-8")
-            (root / "app.js").write_text("console.log('one');\n", encoding="utf-8")
-            (root / "app.css").write_text("body { color: black; }\n", encoding="utf-8")
-            before = _static_asset_version(root)
-            (root / "app_perf.js").write_text("window.CodoxearPerf = { changed: true };\n", encoding="utf-8")
-            after_perf = _static_asset_version(root)
-            (root / "app_storage.js").write_text("window.CodoxearStorage = { changed: true };\n", encoding="utf-8")
-            after_storage = _static_asset_version(root)
-            (root / "app_url.js").write_text("window.CodoxearUrls = { changed: true };\n", encoding="utf-8")
-            after_url = _static_asset_version(root)
-            (root / "app.js").write_text("console.log('two');\n", encoding="utf-8")
-            after_app = _static_asset_version(root)
-            self.assertNotEqual(before, after_perf)
-            self.assertNotEqual(after_perf, after_storage)
-            self.assertNotEqual(after_storage, after_url)
-            self.assertNotEqual(after_url, after_app)
+            for name, content in initial_content.items():
+                (root / name).write_text(content, encoding="utf-8")
+            versions = [_static_asset_version(root)]
+            for name in FRONTEND_ASSET_FILES:
+                (root / name).write_text(initial_content[name] + "/* changed */\n", encoding="utf-8")
+                versions.append(_static_asset_version(root))
+            self.assertEqual(len(versions), len(set(versions)))
 
     def test_read_static_bytes_replaces_html_placeholder(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -119,14 +121,16 @@ class TestStaticAssets(unittest.TestCase):
             {"Cache-Control": "public, max-age=31536000, immutable"},
         )
 
-    def test_top_level_static_routes_include_url_helper(self) -> None:
-        source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
-        self.assertIn('if path == "/app_url.js":', source)
-        self.assertIn('self._send_static("app_url.js")', source)
-        self.assertIn('if path == "/app_storage.js":', source)
-        self.assertIn('self._send_static("app_storage.js")', source)
-        self.assertIn('if path == "/app_perf.js":', source)
-        self.assertIn('self._send_static("app_perf.js")', source)
+    def test_top_level_static_routes_are_registry_driven(self) -> None:
+        routes = dict(TOP_LEVEL_STATIC_ASSETS)
+        for name in FRONTEND_ASSET_FILES:
+            self.assertEqual(routes.get(f"/{name}"), name)
+        self.assertEqual(routes.get("/favicon.ico"), "favicon.png")
+        self.assertEqual(routes.get("/manifest.webmanifest"), "manifest.webmanifest")
+        self.assertEqual(routes.get("/service-worker.js"), "service-worker.js")
+        self.assertEqual(routes.get("/favicon.png"), "favicon.png")
+        self.assertEqual(routes.get("/"), "index.html")
+        self.assertEqual(len(routes), len(TOP_LEVEL_STATIC_ASSETS))
 
     def test_sidebar_logo_uses_url_prefix_safe_relative_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")

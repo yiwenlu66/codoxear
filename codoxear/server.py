@@ -239,7 +239,16 @@ PROC_ROOT = Path("/proc")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
-STATIC_ASSET_VERSION_FILES = ("app_url.js", "app_storage.js", "app_perf.js", "app.js", "app.css")
+FRONTEND_ASSET_FILES = ("app_url.js", "app_storage.js", "app_perf.js", "app.js", "app.css")
+STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES
+TOP_LEVEL_STATIC_ASSETS = (
+    ("/favicon.ico", "favicon.png"),
+    ("/manifest.webmanifest", "manifest.webmanifest"),
+    ("/service-worker.js", "service-worker.js"),
+    *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
+    ("/favicon.png", "favicon.png"),
+    ("/", "index.html"),
+)
 CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
@@ -5497,36 +5506,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return u, path
 
     def _handle_static_get(self, path: str) -> bool:
-        if path == "/favicon.ico":
-            self._send_static("favicon.png")
-            return True
-        if path == "/manifest.webmanifest":
-            self._send_static("manifest.webmanifest")
-            return True
-        if path == "/service-worker.js":
-            self._send_static("service-worker.js")
-            return True
-        if path == "/app_url.js":
-            self._send_static("app_url.js")
-            return True
-        if path == "/app_storage.js":
-            self._send_static("app_storage.js")
-            return True
-        if path == "/app_perf.js":
-            self._send_static("app_perf.js")
-            return True
-        if path == "/app.js":
-            self._send_static("app.js")
-            return True
-        if path == "/app.css":
-            self._send_static("app.css")
-            return True
-        if path == "/favicon.png":
-            self._send_static("favicon.png")
-            return True
-        if path == "/":
-            self._send_static("index.html")
-            return True
+        for route, asset in TOP_LEVEL_STATIC_ASSETS:
+            if path == route:
+                self._send_static(asset)
+                return True
         if path.startswith("/static/"):
             self._send_static(path[len("/static/") :])
             return True
