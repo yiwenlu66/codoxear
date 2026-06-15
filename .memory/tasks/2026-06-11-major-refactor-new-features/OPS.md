@@ -2827,3 +2827,41 @@
 - Final-final Codex cwd alias critic `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned `NO BLOCKERS`.
 - Functional Codex binding fix committed: `2d8e1e2 fix Codex rollout cwd alias binding`.
 - Updated `recon/refactor-entry-checkpoint.md` to record the direct web-owned Codex browser-send/final-response evidence, validation counts, and tmux isolation caveat.
+
+## 2026-06-15 09:27
+- Implemented Claude Code closed-log binding fallback after live evidence showed Claude writes JSONL logs under `.claude/projects` without exposing a writable log fd through the broker's current `/proc` open-file discovery path.
+- Changed shared cwd matching so both `proc_find_open_rollout_log()` and `find_new_session_log()` accept either exact cwd strings or existing absolute filesystem identity via `os.path.samefile()`; relative, tilde, unknown-user, and nonexistent aliases fail closed.
+- Changed `read_cc_session_header()` to merge early CC metadata rows because live CC logs begin with mode/permission rows containing `sessionId` but no `cwd`; the scan is capped at 512 KiB.
+- Added regressions in `tests/test_broker_proc_rollout.py`, `tests/test_cc_log.py`, and `tests/test_claude_backend_source.py` for CC samefile cwd alias discovery, malformed alias rejection, bounded header merge, and broker fallback source wiring.
+- Focused validation after hardening: `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_claude_backend_source.py tests/test_cc_log.py tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_session_resume.py tests/test_stale_sidecars.py` passed: 100 tests.
+- Full local validation: `python3 -m pytest -q` passed: 948 tests and 104 subtests.
+- Docker validation: `scripts/codoxear-docker-sandbox test` passed: 947 tests, 1 skipped, and 104 subtests.
+- Isolated Claude live run on port 19048 launched web-owned direct broker PID 1630561 with temp HOME/root `/tmp/codoxear-live-cc4.EeoSB2`; first-run trust prompt was accepted for the empty temp workspace.
+- Browser UI sent: `Reply with exactly CLAUDE_WEB_LIVE_OK_20260615 and nothing else.`; composer cleared and the user prompt appeared in transcript.
+- CC fallback bound placeholder `broker-1630561` to real thread `410ef3d0-6967-49cd-9488-45b30c40f5d6` and log path `/home/yiwen/.claude/projects/--tmp-on-ssd-codoxear-live-cc4-EeoSB2-work/410ef3d0-6967-49cd-9488-45b30c40f5d6.jsonl`.
+- Claude upstream returned repeated 503 connection failures, then wrote a synthetic assistant API-error row plus `turn_duration`; Codoxear `/messages/tail` showed the user prompt and assistant API error, and `/api/sessions` / tail both reported `busy=false`, `queue_len=0`.
+- Cleaned the isolated Claude session via API delete (`{"ok": true}`) and stopped the isolated browser/server/broker processes; no live checkout processes were touched.
+
+## 2026-06-15 09:34
+- Clean-room critic subagent `05290a8a-033a-46c1-ab02-c0d8f52d3254` returned blockers for the first CC fallback patch: (1) CC could create and close its log before the broker populated `known_rollout_paths`, causing the new log to be skipped forever as preexisting; (2) relative `--cwd` remained relative in broker state, preventing fallback matching against CC's absolute log cwd.
+- Fixed the lifecycle race by snapshotting Pi/CC known rollout/session logs before fork/exec, immediately after `sessions_dir` exists and before either `os.fork()` or `pty.fork()`; `State.known_rollout_paths` now receives this prelaunch snapshot.
+- Fixed relative cwd matching by making broker `_expand_cwd()` return an absolute path after HOME/env/tilde expansion.
+- Added regressions for the critic counterexamples: post-start CC log found with a prelaunch snapshot but missed with a post-fork snapshot, relative `--cwd .` expansion matching an absolute CC log cwd, and source-order guard proving the prelaunch snapshot happens before both fork paths.
+- Blocker-focused validation: `python3 -m pytest -q tests/test_broker_proc_rollout.py::TestBrokerProcRolloutDiscovery::test_find_new_cc_session_log_finds_after_start_log_with_prelaunch_snapshot tests/test_broker_proc_rollout.py::TestBrokerProcRolloutDiscovery::test_find_new_cc_session_log_matches_relative_broker_cwd_after_expansion tests/test_claude_backend_source.py::TestClaudeBackendSource::test_broker_has_cc_closed_log_discovery_fallback` passed: 3 tests.
+- Focused CC/Codex validation: `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_claude_backend_source.py tests/test_cc_log.py tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_session_resume.py tests/test_stale_sidecars.py` passed: 102 tests.
+- Full local validation: `python3 -m pytest -q` passed: 950 tests and 104 subtests; `git diff --check` clean.
+- Docker validation: `scripts/codoxear-docker-sandbox test` passed: 949 tests, 1 skipped, and 104 subtests.
+
+## 2026-06-15 09:40
+- Clean-room critic subagent `62c6924a-cbdf-4535-b3d8-d6886680fd2a` confirmed the race and relative-cwd blockers were fixed, then found a remaining blocker: `read_cc_session_header()` bounded by line end offset, so a valid first CC JSONL row over 512 KiB was discarded after being read, making closed-log fallback miss large first prompts.
+- Fixed CC header scanning so the 512 KiB cap bounds which row start offsets are considered; a valid JSONL line whose start is inside the window is still parsed even if its end crosses the cap.
+- Added regressions for a >600 KiB valid first CC user row: `read_cc_session_header()` returns session id/cwd/timestamp, and `find_new_session_log(... agent_backend="cc", cwd=...)` finds the log.
+- Blocker-focused validation: `python3 -m pytest -q tests/test_cc_log.py::TestCcLog::test_read_session_header_parses_large_valid_first_record tests/test_broker_proc_rollout.py::TestBrokerProcRolloutDiscovery::test_find_new_cc_session_log_finds_large_valid_first_record tests/test_cc_log.py::TestCcLog::test_read_session_header_scan_is_bounded` passed: 3 tests.
+- Focused CC/Codex validation: `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_claude_backend_source.py tests/test_cc_log.py tests/test_cc_chat_and_idle.py tests/test_cc_busy_state.py tests/test_session_resume.py tests/test_stale_sidecars.py` passed: 104 tests.
+- Full local validation: `python3 -m pytest -q` passed: 952 tests and 104 subtests; `git diff --check` clean.
+- Docker validation: `scripts/codoxear-docker-sandbox test` passed: 951 tests, 1 skipped, and 104 subtests.
+
+## 2026-06-15 09:43
+- Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the CC fallback/header candidate after the race, relative-cwd, and large-first-row fixes.
+- Critic independently validated prelaunch snapshot ordering before both fork paths, absolute broker cwd expansion, safe exact-or-absolute-samefile payload cwd matching, large first-row header parsing, and rows-starting-after-window exclusion. Its focused run passed: 28 tests.
+- Functional commit created: `c1280cb fix Claude Code closed-log binding`.

@@ -35,10 +35,13 @@ Recent committed recovery checkpoints include:
   - Pi tool-call accounting tracks arbitrary string IDs exactly, including empty/whitespace/sentinel-looking IDs, preserves duplicate-ID multiplicity, and keeps absent/non-string IDs busy-closed until final/abort/error;
   - Pi registration, bind/rebind, and live tailing seed from complete JSONL rows without advancing over partial rows, replace stale pending calls on log switch, and discard stale tail batches;
   - confirmed-send barriers now require parseable JSON object row evidence and block send/queue/attachment plus list/messages/diagnostics busy display until resolved.
-- Codex live web-send/final-response path:
+- Codex and Claude Code live web-send/log-bind paths:
   - isolated direct web-owned Codex broker under temp Codoxear app state reproduced a binding failure when Codex logged cwd as `/.tmp-on-ssd/...` while Codoxear filtered on `/tmp/...`;
-  - rollout discovery now matches cwd by exact string or existing absolute filesystem identity (`samefile`) while failing closed for relative, tilde, unknown-user, and nonexistent payload cwd aliases;
-  - after the fix, the isolated browser composer sent a prompt, `/messages/tail` showed the expected user/assistant sequence ending in `CODEX_WEB_LIVE_OK_20260615`, and the session returned idle.
+  - rollout/new-log discovery now matches cwd by exact string or existing absolute filesystem identity (`samefile`) while failing closed for relative, tilde, unknown-user, and nonexistent payload cwd aliases;
+  - after the Codex fix, the isolated browser composer sent a prompt, `/messages/tail` showed the expected user/assistant sequence ending in `CODEX_WEB_LIVE_OK_20260615`, and the session returned idle;
+  - isolated Claude Code evidence showed CC writes logs under `.claude/projects` without a writable log fd visible to the current `/proc` discovery path, so CC now has a bounded closed-log fallback constrained by launch time, preexisting paths, and cwd identity;
+  - CC header extraction now merges early metadata rows because live CC mode/permission rows carry `sessionId` before the first row with `cwd`;
+  - after the CC fallback/header fix, a browser-sent prompt rebound placeholder `broker-1630561` to real thread `410ef3d0-6967-49cd-9488-45b30c40f5d6`; Claude's upstream gateway returned a terminal 503, which Codoxear rendered as an assistant API-error row and then reported idle.
 - File/inline reference UX:
   - file candidates remain visible without git state;
   - equivalent inline refs merge only after inspected identity;
@@ -63,13 +66,17 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the Codex live binding repair:
+Latest code-validation evidence after the Codex and Claude Code live binding repairs:
 
-- Focused Codex rollout discovery validation: `python3 -m py_compile codoxear/util.py tests/test_broker_proc_rollout.py` plus `tests/test_broker_proc_rollout.py`, `tests/test_session_resume.py`, and `tests/test_stale_sidecars.py` -> `63 passed`.
-- Full local suite: `python3 -m pytest -q` -> `943 passed, 104 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `942 passed, 1 skipped, 104 subtests passed`.
+- Focused CC/Codex discovery validation after hardening: `python3 -m py_compile codoxear/util.py codoxear/broker.py codoxear/cc_log.py tests/test_broker_proc_rollout.py tests/test_claude_backend_source.py tests/test_cc_log.py` plus `tests/test_broker_proc_rollout.py`, `tests/test_claude_backend_source.py`, `tests/test_cc_log.py`, `tests/test_cc_chat_and_idle.py`, `tests/test_cc_busy_state.py`, `tests/test_session_resume.py`, and `tests/test_stale_sidecars.py` -> `104 passed`.
+- Full local suite: `python3 -m pytest -q` -> `952 passed, 104 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `951 passed, 1 skipped, 104 subtests passed`.
 - Isolated live Codex proof: temp HOME/app state on port 19044, real `CODEX_HOME`, direct web-owned broker, temp cwd trust accepted, bootstrap log bound, browser composer sent the final prompt, `/messages/tail` and browser DOM showed assistant `CODEX_WEB_LIVE_OK_20260615`, and session state returned `busy=false`, `queue_len=0`.
-- Clean-room critic subagent `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned `NO BLOCKERS`; residual risks are that exact string cwd matches preserve prior behavior, alias matching follows current filesystem identity, and Pi/CC share the same ambiguity-fail-closed helper when used.
+- Isolated live Claude Code proof: temp HOME/app state on port 19048, real Claude config symlinked without printing secrets, direct web-owned broker, temp cwd trust accepted, browser composer sent the prompt, fallback rebound `broker-1630561` to thread `410ef3d0-6967-49cd-9488-45b30c40f5d6` and log path `/home/yiwen/.claude/projects/--tmp-on-ssd-codoxear-live-cc4-EeoSB2-work/410ef3d0-6967-49cd-9488-45b30c40f5d6.jsonl`, `/messages/tail` and browser DOM showed the user prompt plus Claude's synthetic assistant API-error row, and session state returned `busy=false`, `queue_len=0`.
+- Clean-room critic subagent `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned `NO BLOCKERS` for the earlier Codex cwd-alias fix.
+- Clean-room critic subagent `05290a8a-033a-46c1-ab02-c0d8f52d3254` found two CC fallback blockers: post-fork known-log snapshotting could skip a fast-created CC log forever, and relative `--cwd` could fail absolute CC cwd matching. Both were fixed by prelaunch snapshotting, absolute broker cwd expansion, and focused regressions.
+- Clean-room critic subagent `62c6924a-cbdf-4535-b3d8-d6886680fd2a` confirmed those fixes, then found a large-first-row blocker in the bounded CC header scan. The cap now bounds row start offsets, so a valid first CC row larger than 512 KiB remains discoverable while rows starting after the window remain ignored.
+- Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the committed CC fallback/header repair (`c1280cb fix Claude Code closed-log binding`).
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -141,7 +148,7 @@ The branch is stronger than the historical `develop` summary, but these limits r
 - Real-browser/manual backend exercise of the Details → New like this button remains incomplete; source/VM tests, full pytest, Docker, and critic review cover the implemented semantics.
 - Markdown rendering evidence covers CSS/source tests and headless Chromium fixtures, not real mobile-device or assistive-technology review.
 - Codex live response evidence now covers the direct web-owned broker/browser-send/final-response path in isolated app state. Tmux web-owned Codex isolation remains caveated because a tmux launch attempt inherited the long-lived tmux server HOME and was not accepted as isolated proof.
-- Claude Code live response evidence remains incomplete under isolated HOME because first-run theme/onboarding blocked log binding.
+- Claude Code live log binding and terminal API-error rendering are now validated under isolated HOME. A successful live Claude model answer remains incomplete because the inference gateway returned terminal 503 connection failures during validation.
 - Real mobile-device, assistive-tech, slow-network, huge-transcript, and full live backend lifecycle evidence remain incomplete.
 - Pi busy-after-interrupt evidence is deterministic fixture/source/server/broker validation plus full local/Docker suites, not a live Pi TUI/browser interruption replay.
 - Smooth scrolling for Jump to latest remains parked until scheduler/runtime harness evidence exists.

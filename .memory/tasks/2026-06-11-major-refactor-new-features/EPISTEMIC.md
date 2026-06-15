@@ -2311,3 +2311,31 @@ Observation: Final-final narrow critic `5df64f7b-12c0-4e8c-a65b-f36985c79e35` re
 Residual risks from critic: exact string cwd equality still preserves prior behavior even if an unusual explicit caller supplied identical relative/nonexistent cwd strings; alias matching uses current filesystem identity, so retargeted symlinks/mount aliases after log creation follow current state; Pi/CC inherit the same helper when used, with multiple matches still failing closed.
 
 Scoped claim update: The Codex direct live web-send/final-response gap is closed for isolated app state. Tmux-backed web-owned Codex isolation remains a separate caveat from the live attempt because tmux inherited an existing server HOME.
+
+## 2026-06-15 09:27
+- Observation: live Claude Code created a real JSONL log for a browser-sent turn, but `proc_open_writable_rollout_logs_for_backend(..., agent_backend="cc")` found no open writable log fd; before the fallback, sidecar metadata stayed `session_id=None`, `log_path=None`.
+- Interpretation: CC log binding cannot rely on the Codex-style writable-fd mechanism. CC needs a bounded directory scan constrained by launch time/preexisting paths and cwd identity.
+- Observation: live CC log rows used the same path-alias pattern as Codex (log cwd `/.tmp-on-ssd/.../work`, broker cwd `/tmp/.../work`), and initial mode/permission rows had `sessionId` without `cwd`.
+- Interpretation: safe samefile cwd identity is the correct binding predicate for both open-fd discovery and new-log discovery, but CC header extraction must merge early rows to expose cwd.
+- Commitment: CC new-log fallback is acceptable only when `current_log_path is None`, candidate log is not in the broker's preexisting set, timestamp is after broker start, and cwd matches by exact string or existing absolute samefile identity.
+- Observation: after the fallback/header fix, browser-sent CC session `broker-1630561` rebound to thread `410ef3d0-6967-49cd-9488-45b30c40f5d6`; transcript tail showed the user prompt and then Claude's synthetic assistant API error; busy cleared after `turn_duration`.
+- Scoped claim: Codoxear's CC web-send/log-bind/error-render/idle path is validated under isolated live conditions. A successful live Claude model answer remains unproven because the external inference gateway returned terminal 503 connection failures during validation.
+- Rejected hypothesis: the missing CC transcript was not caused by browser send failure or auth/onboarding after trust acceptance; the user prompt reached CC and was written to the real CC log.
+- Residual uncertainty: successful CC final-answer rendering should be re-run when the inference gateway is healthy; current evidence covers terminal API-error rendering, not successful model text.
+
+## 2026-06-15 09:34
+- Observation: critic review found that the first CC fallback snapshot was taken after child launch, so a fast CC process could create and close the only valid log before `known_rollout_paths` was populated; because `find_new_session_log()` skips preexisting paths before timestamp/cwd checks, that log would be ignored forever.
+- Observation: critic review found that broker `_expand_cwd()` did not absolutize relative `--cwd`, while CC logs record absolute cwd values. Under unavailable `/proc` discovery, fallback matching would fail for `--cwd .`.
+- Commitment: CC/Pi known-log baselines must be sampled before backend launch, and broker cwd stored in sidecars/state must be absolute. The safe cwd predicate remains exact string or existing absolute samefile identity; it does not expand or resolve payload cwd values.
+- Observation: new regressions distinguish the race mechanism: the same after-start CC log is found when the prelaunch snapshot is empty and missed when it is incorrectly included in a post-fork snapshot.
+- Scoped claim: the critic's two CC fallback blockers are fixed by mechanism-level changes and validated by focused, full local, and Docker suites. Successful CC model text remains unproven because the live backend evidence ended in an upstream 503, not a model answer.
+
+## 2026-06-15 09:40
+- Observation: critic review found a valid CC first row with `sessionId`, `cwd`, and >512 KiB user content was discarded by the header cap because the implementation broke after reading the oversized line and before parsing it.
+- Interpretation: the previous cap did not actually bound per-line memory and incorrectly made discovery depend on first-record size. For JSONL metadata discovery, the discriminating boundary is whether a row starts within the header window, not whether its end offset is below the window.
+- Commitment: CC header scanning parses any valid row whose start offset is within the bounded scan window; rows starting after the window remain ignored. This preserves large first-prompt discovery without turning the helper into an unbounded whole-file scan.
+- Scoped claim: all critic-discovered CC fallback blockers are now fixed with mechanism-level regressions: prelaunch snapshots avoid post-fork preexisting misclassification, broker cwd is absolute for matching, and valid large first rows remain discoverable.
+
+## 2026-06-15 09:43
+- Observation: final narrow critic `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` after inspecting the exact CC closed-log fallback/header candidate and running focused tests.
+- Commitment: CC closed-log binding repair is now accepted for commit-level evidence: prelaunch path baselines, absolute broker cwd, safe payload cwd identity matching, and large-first-row header discovery are all covered by tests and clean-room review.
