@@ -5,9 +5,11 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
-SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_CSS = ROOT / "codoxear" / "static" / "app.css"
+SERVER_PY = ROOT / "codoxear" / "server.py"
 
 
 def eval_video_preview_failure_path() -> dict:
@@ -73,6 +75,62 @@ def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
         vm.createContext(ctx);
         vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_useTouchFileEditorControls = useTouchFileEditorControls;\n")}, ctx);
         process.stdout.write(JSON.stringify(ctx.__test_useTouchFileEditorControls()));
+        """
+    )
+    proc = subprocess.run(
+        ["node", "-e", js],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def eval_open_file_reference_nonliteral() -> dict:
+    source = APP_JS.read_text(encoding="utf-8")
+    markdown_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    prelude_start = source.index("const codoxearMarkdown = window.CodoxearMarkdown;")
+    prelude_end = source.index("function iconSvg", prelude_start)
+    prelude = source[prelude_start:prelude_end]
+    open_start = source.index("async function openFileReference(ref) {")
+    open_end = source.index("async function confirmDirectorySession", open_start)
+    snippet = prelude + "\n" + source[open_start:open_end]
+    js = textwrap.dedent(
+        f"""
+        const vm = require("vm");
+        const ctx = {{
+          URL,
+          console,
+          location: {{ origin: "http://localhost", href: "http://localhost/" }},
+          window: {{
+            CodoxearUrls: {{
+              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^[/]/, ""), "http://localhost/").toString(),
+            }},
+          }},
+          selected: "sid-1",
+          sessionIndex: new Map([["sid-1", {{ session_id: "sid-1", cwd: "/repo" }}]]),
+          toastMessages: [],
+          showCalls: [],
+          selectCalls: [],
+          fmtBytes: (n) => `${{n}} B`,
+        }};
+        ctx.setToast = (message) => ctx.toastMessages.push(String(message));
+        ctx.showFileViewer = (options) => {{ ctx.showCalls.push(options); return Promise.resolve(); }};
+        ctx.sessionRelativePath = () => null;
+        ctx.selectSession = async (sessionId) => {{ ctx.selectCalls.push(sessionId); ctx.selected = sessionId; }};
+        vm.createContext(ctx);
+        vm.runInContext({json.dumps(markdown_source)}, ctx);
+        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_openFileReference = openFileReference;\n")}, ctx);
+        (async () => {{
+          await ctx.__test_openFileReference({{ path: "src/app.py", line: 7 }});
+          await ctx.__test_openFileReference({{ path: "not a local ref" }});
+          process.stdout.write(JSON.stringify({{
+            showCalls: ctx.showCalls,
+            toastMessages: ctx.toastMessages,
+            selectCalls: ctx.selectCalls,
+          }}));
+        }})().catch((err) => {{ console.error(err && err.stack ? err.stack : err); process.exit(1); }});
         """
     )
     proc = subprocess.run(
@@ -253,6 +311,24 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('acceptSuggestionOnEnter: "off"', source)
         self.assertIn('tabCompletion: "off"', source)
         self.assertIn('wordBasedSuggestions: "off"', source)
+
+    def test_file_viewer_helpers_remain_app_owned(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        markdown_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+        for helper in [
+            "isTextFileKind",
+            "isDiffableFileKind",
+            "blockedFileMessage",
+            "formatPriorityOffset",
+        ]:
+            self.assertIn(f"function {helper}", source)
+            self.assertNotIn(f"function {helper}", markdown_source)
+
+    def test_open_file_reference_nonliteral_uses_exported_parser(self) -> None:
+        result = eval_open_file_reference_nonliteral()
+        self.assertEqual(result["showCalls"], [{"path": "src/app.py", "mode": "file", "manual": False, "line": 7}])
+        self.assertEqual(result["toastMessages"], ["unsupported file reference"])
+        self.assertEqual(result["selectCalls"], [])
 
     def test_file_viewer_session_sync_aborts_after_selected_changes(self) -> None:
         result = eval_file_viewer_session_sync_race()
@@ -703,7 +779,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('throw new Error(`file too large (max ${fmtBytes(maxBytes)})`);', source)
 
     def test_clickable_file_extensions_include_pdf_and_archives(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
+        source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
         self.assertIn('"pdf"', source)
         self.assertIn('"mp4"', source)
         self.assertIn('"mkv"', source)

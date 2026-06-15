@@ -21,6 +21,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
 APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
 APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
+APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 
 
 class TestStaticAssets(unittest.TestCase):
@@ -31,10 +32,12 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
 
     def test_app_shell_does_not_execute_third_party_assets(self) -> None:
         index = INDEX_HTML.read_text(encoding="utf-8")
@@ -42,6 +45,7 @@ class TestStaticAssets(unittest.TestCase):
         app_url = APP_URL_JS.read_text(encoding="utf-8")
         app_storage = APP_STORAGE_JS.read_text(encoding="utf-8")
         app_perf = APP_PERF_JS.read_text(encoding="utf-8")
+        app_markdown = APP_MARKDOWN_JS.read_text(encoding="utf-8")
         server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
         self.assertIn("self.send_header(\"Content-Security-Policy\", CONTENT_SECURITY_POLICY)", server_source)
@@ -53,6 +57,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_url)
             self.assertNotIn(forbidden, app_storage)
             self.assertNotIn(forbidden, app_perf)
+            self.assertNotIn(forbidden, app_markdown)
         self.assertNotIn('src="https://', index)
         self.assertNotIn('href="https://', index)
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
@@ -69,6 +74,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_url.js": "window.CodoxearUrls = {};\n",
             "app_storage.js": "window.CodoxearStorage = {};\n",
             "app_perf.js": "window.CodoxearPerf = {};\n",
+            "app_markdown.js": "window.CodoxearMarkdown = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
         }
@@ -95,6 +101,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                 ),
                 encoding="utf-8",
@@ -107,6 +114,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_url.js?v={version}", rendered)
             self.assertIn(f"app_storage.js?v={version}", rendered)
             self.assertIn(f"app_perf.js?v={version}", rendered)
+            self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
     def test_static_cache_headers_default_to_no_store(self) -> None:
@@ -171,6 +179,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_url.js", names)
         self.assertIn("codoxear/static/app_storage.js", names)
         self.assertIn("codoxear/static/app_perf.js", names)
+        self.assertIn("codoxear/static/app_markdown.js", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
         self.assertIn("codoxear/static/logos/cc.svg", names)

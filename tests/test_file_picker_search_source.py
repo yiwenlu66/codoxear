@@ -331,7 +331,6 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     names = [
         "listFromFilesField",
-        "parseFileLocation",
         "stripPathLocationSuffix",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",
@@ -412,7 +411,6 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     names = [
         "listFromFilesField",
-        "parseFileLocation",
         "stripPathLocationSuffix",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",
@@ -494,7 +492,6 @@ def eval_file_candidate_cache_helpers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     names = [
         "listFromFilesField",
-        "parseFileLocation",
         "stripPathLocationSuffix",
         "fileCandidateKey",
         "fileCandidateKeyForEntry",

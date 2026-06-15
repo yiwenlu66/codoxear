@@ -6,24 +6,29 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 
 
 def render_markdown(markdown: str) -> str:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function escapeHtml(s) {")
-    end = source.index("function isMarkdownPreviewable(path) {", start)
-    snippet = source[start:end]
+    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          URL,
           location: {{ origin: "http://localhost", href: "http://localhost/" }},
           console,
+          window: {{
+            CodoxearUrls: {{
+              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
+            }},
+          }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_mdToHtml = mdToHtml;\n")}, ctx);
-        process.stdout.write(ctx.__test_mdToHtml({json.dumps(markdown)}));
+        vm.runInContext({json.dumps(source)}, ctx);
+        process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
         """
     )
     proc = subprocess.run(
@@ -37,6 +42,22 @@ def render_markdown(markdown: str) -> str:
 
 
 class TestMarkdownRendererSource(unittest.TestCase):
+    def test_app_js_requires_markdown_module_without_fallback(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        markdown_source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+        self.assertIn("const codoxearMarkdown = window.CodoxearMarkdown;", source)
+        self.assertIn('throw new Error("Codoxear markdown helpers failed to load")', source)
+        self.assertIn("function normalizeLineNumber(value) {", source)
+        self.assertIn("function parseLocalFileRef(rawValue) {", source)
+        self.assertIn("function isMarkdownPreviewable(path) {", source)
+        self.assertIn("function markdownPreviewHtml(src, options = {}) {", source)
+        self.assertIn("function chatMarkdownHtmlCached(src, sessionId) {", source)
+        self.assertNotIn("const mdCache = new Map();", source)
+        self.assertIn("const codoxearUrls = window.CodoxearUrls;", markdown_source)
+        self.assertIn('throw new Error("Codoxear URL helpers failed to load")', markdown_source)
+        self.assertIn("parseLocalFileRef,", markdown_source)
+        self.assertIn("window.CodoxearMarkdown = Object.freeze({", markdown_source)
+
     def test_fenced_code_block_nested_under_list_item_renders_as_code(self) -> None:
         html = render_markdown(
             "\n".join(

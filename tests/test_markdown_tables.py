@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
 def css_block(source: str, selector: str) -> str:
@@ -15,23 +17,31 @@ def css_block(source: str, selector: str) -> str:
     return source[start:end]
 
 
-def render_markdown(markdown: str) -> str:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function escapeHtml")
-    end = source.index("const mdCache = new Map();")
-    snippet = source[start:end]
-    js = textwrap.dedent(
+def markdown_vm_prelude(source: str) -> str:
+    return textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
           URL,
           console,
           location: {{ origin: "http://localhost", href: "http://localhost/" }},
-          resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
+          window: {{
+            CodoxearUrls: {{
+              resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
+            }},
+          }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_mdToHtml = mdToHtml;\n")}, ctx);
-        process.stdout.write(ctx.__test_mdToHtml({json.dumps(markdown)}));
+        vm.runInContext({json.dumps(source)}, ctx);
+        """
+    )
+
+
+def render_markdown(markdown: str) -> str:
+    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    js = markdown_vm_prelude(source) + textwrap.dedent(
+        f"""
+        process.stdout.write(ctx.window.CodoxearMarkdown.mdToHtml({json.dumps(markdown)}));
         """
     )
     proc = subprocess.run(
@@ -45,22 +55,10 @@ def render_markdown(markdown: str) -> str:
 
 
 def render_markdown_preview(markdown: str, file_path: str, session_id: str) -> str:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function escapeHtml")
-    end = source.index("function iconSvg")
-    snippet = source[start:end]
-    js = textwrap.dedent(
+    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    js = markdown_vm_prelude(source) + textwrap.dedent(
         f"""
-        const vm = require("vm");
-        const ctx = {{
-          URL,
-          console,
-          location: {{ origin: "http://localhost", href: "http://localhost/" }},
-          resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_markdownPreviewHtml = markdownPreviewHtml;\n")}, ctx);
-        process.stdout.write(ctx.__test_markdownPreviewHtml({json.dumps(markdown)}, {{ filePath: {json.dumps(file_path)}, sessionId: {json.dumps(session_id)} }}));
+        process.stdout.write(ctx.window.CodoxearMarkdown.markdownPreviewHtml({json.dumps(markdown)}, {{ filePath: {json.dumps(file_path)}, sessionId: {json.dumps(session_id)} }}));
         """
     )
     proc = subprocess.run(
@@ -74,22 +72,10 @@ def render_markdown_preview(markdown: str, file_path: str, session_id: str) -> s
 
 
 def render_chat_markdown_sequence(markdown: str, session_ids: list[str | None]) -> list[str]:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function escapeHtml")
-    end = source.index("function iconSvg")
-    snippet = source[start:end]
-    js = textwrap.dedent(
+    source = APP_MARKDOWN_JS.read_text(encoding="utf-8")
+    js = markdown_vm_prelude(source) + textwrap.dedent(
         f"""
-        const vm = require("vm");
-        const ctx = {{
-          URL,
-          console,
-          location: {{ origin: "http://localhost", href: "http://localhost/" }},
-          resolveAppUrl: (path) => new URL(String(path ?? "").replace(/^\\//, ""), "http://localhost/").toString(),
-        }};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_chatMarkdownHtmlCached = chatMarkdownHtmlCached;\n")}, ctx);
-        const outputs = {json.dumps(session_ids)}.map((sid) => sid === null ? ctx.__test_chatMarkdownHtmlCached({json.dumps(markdown)}) : ctx.__test_chatMarkdownHtmlCached({json.dumps(markdown)}, sid));
+        const outputs = {json.dumps(session_ids)}.map((sid) => sid === null ? ctx.window.CodoxearMarkdown.chatMarkdownHtmlCached({json.dumps(markdown)}) : ctx.window.CodoxearMarkdown.chatMarkdownHtmlCached({json.dumps(markdown)}, sid));
         process.stdout.write(JSON.stringify(outputs));
         """
     )
