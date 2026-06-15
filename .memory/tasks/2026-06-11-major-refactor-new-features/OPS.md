@@ -2929,3 +2929,8 @@
 ## 2026-06-15 10:41
 - Final summary gate rerun critic `2ed71af5-3fe4-4b94-9b74-f229773d1d0f` returned `NO BLOCKERS` after the parked-limit repair.
 - Reviewer confirmed the uncommitted diff was docs/task-memory only, the prior parked-limit blocker was repaired, Docker-only frontend/static evidence was scoped correctly, the prompt was in completed-state workbench form, `git diff --check` was clean, and no untracked secret/runtime artifacts were found by its inspection.
+
+## 2026-06-15 10:59
+- User clarified that broad refactor work remains and that the promotion-plan detour was unauthorized.
+- Discarded the uncommitted promotion-plan artifact and uncommitted plan-related task-memory edits; no `main` or protected checkout mutation had occurred.
+- Reset `PROMPT.md` from approval/promotion-planning state back to active bounded refactor work, with markdown-renderer extraction as the current tranche.

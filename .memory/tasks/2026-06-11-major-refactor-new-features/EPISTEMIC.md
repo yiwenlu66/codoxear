@@ -2385,3 +2385,8 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 ## 2026-06-15 10:41
 - Observation: the final summary gate rerun returned `NO BLOCKERS` after verifying the repaired parked limits and completed-state prompt.
 - Commitment: the recovery candidate handoff is ready to commit as documentation/task state; the remaining action is explicit user approval or requested changes, not more autonomous implementation.
+
+## 2026-06-15 10:59
+- Observation: I incorrectly treated the completed recovery handoff as authorization to prepare promotion planning; the user rejected that interpretation and clarified that broad refactor work should continue.
+- Rejected mechanism: \"go ahead according to PROMPT\" did not authorize a merge/promotion plan. The correct mechanism is continuing bounded refactor tranches while preserving recovery invariants.
+- Commitment: ignore the discarded promotion-plan path and proceed with real refactor work; protected checkout and `main` remain untouched.

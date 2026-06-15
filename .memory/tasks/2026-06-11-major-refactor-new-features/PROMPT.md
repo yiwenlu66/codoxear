@@ -1,10 +1,12 @@
 ## Objective
-Prepare `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps` as a validated, reviewable candidate for explicit user approval. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without that approval.
+Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Await explicit user review/approval for `recovery/product-gaps`.
-2. If the user requests changes, repair the smallest causal scope with Docker-only validation and clean-room review.
-3. If the user approves promotion planning, prepare an explicit merge/promotion plan before touching `main`.
+1. Extract the next frontend subsystem only when its invariants and validation path are understood.
+2. For the current tranche, extract markdown rendering into a helper module while preserving escaping, local file refs, image/blob routing, table/code behavior, and session-scoped cache semantics.
+3. Validate each tranche with focused Docker tests, full Docker suite, clean diff review, and clean-room critic review.
+4. Commit functional changes and memory/checkpoint docs separately.
+5. After each tranche, choose the next bounded refactor from `recon/refactor-entry-checkpoint.md` or fresh scout evidence; do not switch back to promotion planning unless explicitly requested.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.
