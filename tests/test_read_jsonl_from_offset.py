@@ -26,6 +26,17 @@ def test_read_jsonl_from_offset_does_not_parse_truncated_utf8_tail(tmp_path):
     assert off2 == len(line1) + len(line2)
 
 
+def test_read_jsonl_from_offset_skips_non_object_json_rows(tmp_path):
+    line0 = json.dumps({"ready": 1}).encode("utf-8") + b"\n"
+    p = tmp_path / "rollout.jsonl"
+    p.write_bytes(line0 + b"[]\nnull\n1\n\"text\"\n" + json.dumps({"after": 2}).encode("utf-8") + b"\n")
+
+    objs, off = read_jsonl_from_offset(p, 0, max_bytes=4096)
+
+    assert objs == [{"ready": 1}, {"after": 2}]
+    assert off == p.stat().st_size
+
+
 def test_read_jsonl_from_offset_ignores_partial_appended_json_line(tmp_path):
     line0 = json.dumps({"ready": 1}).encode("utf-8") + b"\n"
     partial = b'{"partial": '

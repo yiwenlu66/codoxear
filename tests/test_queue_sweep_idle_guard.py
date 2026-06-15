@@ -143,6 +143,7 @@ class TestQueueSweepIdleGuard(unittest.TestCase):
             cwd="/tmp",
             log_path=lp,
             sock_path=Path("/tmp/s1.sock"),
+            last_send_boundary_active=True,
             last_send_log_path=lp,
             last_send_log_size=lp.stat().st_size,
         )

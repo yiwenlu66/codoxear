@@ -2071,6 +2071,8 @@ class Session:
     commit_unknown_send: dict[str, Any] | None = None
     sync_send_supported: bool = False
     key_write_errors_supported: bool = False
+    interrupted_idle: bool = False
+    last_send_boundary_active: bool = False
     last_send_log_path: Path | None = None
     last_send_log_size: int | None = None
 
@@ -2085,6 +2087,133 @@ def _broker_busy_queue_from_state(state: dict[str, Any]) -> tuple[bool, int]:
     if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
         raise ValueError("invalid broker state response")
     return busy_raw, int(queue_len_raw)
+
+
+def _broker_interrupted_idle_from_state(state: dict[str, Any]) -> bool:
+    if not isinstance(state, dict):
+        raise ValueError("invalid broker state response")
+    raw = state.get("interrupted_idle", False)
+    if not isinstance(raw, bool):
+        raise ValueError("invalid broker state response")
+    return raw
+
+
+def _broker_allows_interrupted_idle_override(state: dict[str, Any]) -> bool:
+    busy, queue_len = _broker_busy_queue_from_state(state)
+    return (not busy) and queue_len == 0 and _broker_interrupted_idle_from_state(state)
+
+
+def _complete_jsonl_offset_before(path: Path, before: int) -> int:
+    before = max(0, int(before))
+    if before <= 0:
+        return 0
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        end = max(0, min(before, size))
+        if end <= 0:
+            return 0
+        f.seek(end - 1)
+        if f.read(1) == b"\n":
+            return end
+        offset = end
+        while offset > 0:
+            read_size = min(64 * 1024, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            found = chunk.rfind(b"\n")
+            if found >= 0:
+                return offset + found + 1
+    return 0
+
+
+def _last_parseable_json_object_offset_before(path: Path, before: int) -> int:
+    before = _complete_jsonl_offset_before(path, before)
+    if before <= 0:
+        return 0
+
+    def prev_newline_before(f: Any, pos: int) -> int:
+        search_end = max(0, int(pos))
+        while search_end > 0:
+            start = max(0, search_end - 64 * 1024)
+            f.seek(start)
+            chunk = f.read(search_end - start)
+            found = chunk.rfind(b"\n")
+            if found >= 0:
+                return start + found
+            search_end = start
+        return -1
+
+    with path.open("rb") as f:
+        line_end = before
+        while line_end > 0:
+            prev_nl = prev_newline_before(f, line_end - 1)
+            line_start = prev_nl + 1
+            f.seek(line_start)
+            raw = f.read(line_end - line_start)
+            if raw.strip():
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    obj = None
+                if isinstance(obj, dict):
+                    return line_end
+            line_end = line_start
+    return 0
+
+
+def _log_path_size_or_none(log_path: Path | None) -> int | None:
+    if not isinstance(log_path, Path):
+        return None
+    try:
+        return _last_parseable_json_object_offset_before(log_path, int(log_path.stat().st_size))
+    except OSError:
+        return None
+
+
+def _confirmed_send_boundary_unresolved(
+    *,
+    active: bool,
+    last_send_log_path: Path | None,
+    last_send_log_size: int | None,
+    log_path: Path | None,
+    log_size: int | None,
+) -> bool:
+    if not active:
+        return False
+    if last_send_log_path is None and last_send_log_size is None:
+        return log_path is None or log_size is None or log_size <= 0
+    if last_send_log_path != log_path:
+        return False
+    if last_send_log_size is None:
+        return log_size is None or log_size <= 0
+    return log_size is None or log_size <= last_send_log_size
+
+
+def _clear_session_confirmed_send_boundary(session: Session) -> None:
+    session.last_send_boundary_active = False
+    session.last_send_log_path = None
+    session.last_send_log_size = None
+
+
+def _session_confirmed_send_boundary_unresolved(session: Session | None, log_path: Path | None, log_size: int | None) -> bool:
+    if session is None:
+        return False
+    return _confirmed_send_boundary_unresolved(
+        active=bool(session.last_send_boundary_active),
+        last_send_log_path=session.last_send_log_path,
+        last_send_log_size=session.last_send_log_size,
+        log_path=log_path,
+        log_size=log_size,
+    )
+
+
+def _consume_session_confirmed_send_boundary(session: Session | None, log_path: Path | None, log_size: int | None) -> bool:
+    unresolved = _session_confirmed_send_boundary_unresolved(session, log_path, log_size)
+    if session is not None and session.last_send_boundary_active and not unresolved:
+        _clear_session_confirmed_send_boundary(session)
+    return unresolved
 
 
 def _message_transcript_identity(session: Session) -> dict[str, Any]:
@@ -2945,33 +3074,30 @@ class SessionManager:
         return _broker_busy_queue_from_state(state)
 
     def _log_size_or_none(self, log_path: Path | None) -> int | None:
-        if not isinstance(log_path, Path):
-            return None
-        try:
-            return int(log_path.stat().st_size)
-        except OSError:
-            return None
+        return _log_path_size_or_none(log_path)
+
+    def _clear_confirmed_send_boundary_locked(self, s: Session) -> None:
+        _clear_session_confirmed_send_boundary(s)
+
+    def _confirmed_send_boundary_unresolved_for_session(self, session_id: str, log_path: Path | None, log_size: int | None) -> bool:
+        with self._lock:
+            s = self._sessions.get(session_id)
+            return _consume_session_confirmed_send_boundary(s, log_path, log_size)
 
     def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
         busy_raw, queue_len = self._broker_busy_queue_from_state(state)
         if queue_len > 0:
             return False
         log_idle: bool | None = None
-        log_size: int | None = None
+        log_size = self._log_size_or_none(log_path)
+        if self._confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size):
+            return False
         if isinstance(log_path, Path) and log_path.exists():
             log_idle = bool(self.idle_from_log(session_id))
-            if not log_idle:
+            if not log_idle and not _broker_allows_interrupted_idle_override(state):
                 return False
-            log_size = self._log_size_or_none(log_path)
-        if busy_raw:
-            if log_idle is not True:
-                return False
-            with self._lock:
-                s = self._sessions.get(session_id)
-                last_send_log_path = s.last_send_log_path if s is not None else None
-                last_send_log_size = s.last_send_log_size if s is not None else None
-            if last_send_log_path == log_path and last_send_log_size is not None and (log_size is None or log_size <= last_send_log_size):
-                return False
+        if busy_raw and log_idle is not True:
+            return False
         return True
 
     def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
@@ -2984,7 +3110,7 @@ class SessionManager:
                 return False
             if s.pending_attachment and not allow_pending_attachment:
                 return False
-            log_path = s.log_path
+            log_path_before_state = s.log_path
         st = self.get_state(session_id)
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
@@ -2992,6 +3118,8 @@ class SessionManager:
             if not s:
                 raise KeyError("unknown session")
             log_path = s.log_path
+        if log_path != log_path_before_state:
+            st = self.get_state(session_id)
         return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
@@ -3004,7 +3132,7 @@ class SessionManager:
                 return False
             if s.pending_attachment:
                 return False
-            log_path = s.log_path
+            log_path_before_state = s.log_path
         st = self.get_state(session_id)
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
@@ -3016,6 +3144,8 @@ class SessionManager:
             if s.pending_attachment:
                 return False
             log_path = s.log_path
+        if log_path != log_path_before_state:
+            st = self.get_state(session_id)
         return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def _promote_queue_head_if_sendable(
@@ -3659,6 +3789,7 @@ class SessionManager:
                 token = None
             try:
                 broker_busy, broker_queue_len = self._broker_busy_queue_from_state(resp)
+                broker_interrupted_idle = _broker_interrupted_idle_from_state(resp)
             except ValueError as e:
                 sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
                 sys.stderr.flush()
@@ -3699,6 +3830,7 @@ class SessionManager:
                 commit_unknown_send=dict(getattr(self, "_commit_unknown_sends", {}).get(session_id) or {}) or None,
                 sync_send_supported=sync_send_supported,
                 key_write_errors_supported=key_write_errors_supported,
+                interrupted_idle=broker_interrupted_idle,
             )
             with self._lock:
                 prev = self._sessions.get(session_id)
@@ -3722,6 +3854,7 @@ class SessionManager:
                     prev.cwd = s.cwd
                     prev.busy = s.busy
                     prev.queue_len = s.queue_len
+                    prev.interrupted_idle = s.interrupted_idle
                     prev.token = s.token
                     if prev.log_path != s.log_path:
                         prev.log_path = s.log_path
@@ -3752,6 +3885,7 @@ class SessionManager:
             return False, e
         try:
             busy_val, queue_len = self._broker_busy_queue_from_state(resp)
+            interrupted_idle = _broker_interrupted_idle_from_state(resp)
         except ValueError as e:
             return False, e
         with self._lock:
@@ -3759,6 +3893,7 @@ class SessionManager:
             if s2:
                 s2.busy = busy_val
                 s2.queue_len = queue_len
+                s2.interrupted_idle = interrupted_idle
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -4033,6 +4168,11 @@ class SessionManager:
                         "needs_run_settings": needs_run_settings,
                         "needs_history_scan": needs_history_scan,
                         "state_busy": bool(s.busy),
+                        "interrupted_idle": bool(s.interrupted_idle),
+                        "broker_queue_len": int(s.queue_len),
+                        "last_send_boundary_active": bool(s.last_send_boundary_active),
+                        "last_send_log_path": s.last_send_log_path,
+                        "last_send_log_size": s.last_send_log_size,
                         "queue_len": int(queue_len),
                         "queue_recovery": bool(queue_recovery),
                         "pending_attachment": bool(s.pending_attachment),
@@ -4132,12 +4272,18 @@ class SessionManager:
                             model_provider=s_cur.model_provider,
                             preferred_auth_method=s_cur.preferred_auth_method,
                         )
-            if (not log_exists) or not isinstance(log_path_obj, Path):
+            log_path_for_boundary = log_path_obj if isinstance(log_path_obj, Path) else None
+            log_size = self._log_size_or_none(log_path_for_boundary)
+            last_send_boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(sid, log_path_for_boundary, log_size)
+            if last_send_boundary_unresolved:
+                busy_out = True
+            elif (not log_exists) or not isinstance(log_path_obj, Path):
                 busy_out = False
             else:
                 try:
                     idle_val = bool(self.idle_from_log_path(sid, log_path_obj))
-                    busy_out = not idle_val
+                    interrupted_idle = bool(it.get("interrupted_idle")) and not bool(it.get("state_busy")) and int(it.get("broker_queue_len", 0)) == 0
+                    busy_out = not (idle_val or interrupted_idle)
                 except FileNotFoundError:
                     busy_out = False
             cwd_path_obj = it.get("_cwd_path_obj")
@@ -4149,6 +4295,11 @@ class SessionManager:
             it2.pop("needs_run_settings", None)
             it2.pop("needs_history_scan", None)
             it2.pop("state_busy", None)
+            it2.pop("interrupted_idle", None)
+            it2.pop("broker_queue_len", None)
+            it2.pop("last_send_boundary_active", None)
+            it2.pop("last_send_log_path", None)
+            it2.pop("last_send_log_size", None)
             it2["git_branch"] = git_branch
             it2["busy"] = bool(busy_out)
             out.append(it2)
@@ -4360,6 +4511,7 @@ class SessionManager:
             s2.transport = transport
             if s2.log_path != log_path:
                 s2.log_path = log_path
+                s2.interrupted_idle = False
                 if log_path is not None:
                     log_off = int(log_path.stat().st_size)
                 else:
@@ -4975,9 +5127,10 @@ class SessionManager:
                 self._record_prelog_user_message(s, text, source="send")
                 s2 = self._sessions.get(session_id)
                 if s2:
-                    if busy_resp is not None:
-                        s2.busy = busy_resp
+                    s2.busy = busy_resp if busy_resp is not None else True
+                    s2.interrupted_idle = False
                     s2.queue_len = queue_len
+                    s2.last_send_boundary_active = True
                     s2.last_send_log_path = pre_send_log_path
                     s2.last_send_log_size = pre_send_log_size
             self._set_pending_attachment(session_id, False)
@@ -5041,8 +5194,10 @@ class SessionManager:
             s2 = self._sessions.get(session_id)
             if s2:
                 busy_val, queue_len = self._broker_busy_queue_from_state(resp)
+                interrupted_idle = _broker_interrupted_idle_from_state(resp)
                 s2.busy = busy_val
                 s2.queue_len = queue_len
+                s2.interrupted_idle = interrupted_idle
                 if "token" in resp:
                     tok = resp.get("token")
                     if isinstance(tok, dict) or tok is None:
@@ -5099,7 +5254,7 @@ class SessionManager:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
-            log_path = s.log_path
+            log_path_before_state = s.log_path
         st = self.get_state(session_id)
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
         with self._lock:
@@ -5115,6 +5270,8 @@ class SessionManager:
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
             log_path = s.log_path
+        if log_path != log_path_before_state:
+            st = self.get_state(session_id)
         return self._remote_ready_from_state_and_log(session_id, st, log_path)
 
     def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
@@ -5145,14 +5302,17 @@ class SessionManager:
             self._set_pending_attachment(session_id, True)
             return resp
 
-    def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False) -> dict[str, Any]:
+    def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
             sock = s.sock_path
         try:
-            resp = self._sock_call(sock, {"cmd": "keys", "seq": seq}, timeout_s=2.0, track_request_sent=track_request_sent)
+            req: dict[str, Any] = {"cmd": "keys", "seq": seq}
+            if interrupt:
+                req["interrupt"] = True
+            resp = self._sock_call(sock, req, timeout_s=2.0, track_request_sent=track_request_sent)
         except ControlSocketCallError as e:
             if track_request_sent and e.request_sent:
                 raise SessionCommitUnknownError("attachment commit status unknown; broker response failed") from e
@@ -5218,9 +5378,18 @@ def _message_runtime_snapshot(
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     state = MANAGER.get_state(session_id)
     _broker_busy_queue_from_state(state)
-    if s.log_path is not None and s.log_path.exists():
+    log_size = _log_path_size_or_none(s.log_path)
+    boundary_checker = getattr(MANAGER, "_confirmed_send_boundary_unresolved_for_session", None)
+    if callable(boundary_checker):
+        last_send_boundary_unresolved = bool(boundary_checker(session_id, s.log_path, log_size))
+    else:
+        last_send_boundary_unresolved = _consume_session_confirmed_send_boundary(s, s.log_path, log_size)
+    if last_send_boundary_unresolved:
+        busy_val = True
+    elif s.log_path is not None and s.log_path.exists():
         idle_val = MANAGER.idle_from_log(session_id)
-        busy_val = not bool(idle_val)
+        interrupted_idle = _broker_allows_interrupted_idle_override(state)
+        busy_val = not (bool(idle_val) or interrupted_idle)
     else:
         busy_val = False
     queue_val = MANAGER._queue_len(session_id)
@@ -5656,9 +5825,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
                 final_priority = 0.0 if (snoozed or blocked) else base_priority
                 busy_val = broker_busy
-                if s.log_path is not None and s.log_path.exists():
+                log_size = MANAGER._log_size_or_none(s.log_path)
+                last_send_boundary_unresolved = MANAGER._confirmed_send_boundary_unresolved_for_session(session_id, s.log_path, log_size)
+                if last_send_boundary_unresolved:
+                    busy_val = True
+                elif s.log_path is not None and s.log_path.exists():
                     idle_val = MANAGER.idle_from_log(session_id)
-                    busy_val = not bool(idle_val)
+                    interrupted_idle = _broker_allows_interrupted_idle_override(state)
+                    busy_val = not (bool(idle_val) or interrupted_idle)
                 _json_response(
                     self,
                     200,
@@ -7493,7 +7667,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 try:
                     # Send a literal ESC byte. Older brokers may not recognize "ESC" but will
                     # decode "\\x1b" via unicode_escape into a single 0x1b byte.
-                    resp = MANAGER.inject_keys(session_id, "\\x1b")
+                    resp = MANAGER.inject_keys(session_id, "\\x1b", interrupt=True)
                 except KeyError:
                     _json_response(self, 404, {"error": "unknown session"})
                     return

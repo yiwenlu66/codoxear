@@ -788,7 +788,7 @@ def proc_find_open_rollout_log(
     return matches[0]
 
 
-def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[list[dict[str, Any]], int]:
+def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int, advance_on_oversized_unterminated: bool = True) -> tuple[list[dict[str, Any]], int]:
     try:
         with path.open("rb") as f:
             f.seek(offset)
@@ -796,11 +796,25 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
             chunk_size = max(64 * 1024, min(target, 1024 * 1024))
             data = f.read(target)
             if b"\n" not in data:
-                # Read at most one overflow chunk so a live, unterminated JSONL
-                # record cannot make every poll read the rest of a huge file.
-                # Complete oversized records with a nearby newline still advance;
-                # fragments with no newline in this bounded window are skipped.
-                data += f.read(chunk_size)
+                if advance_on_oversized_unterminated:
+                    # Read at most one overflow chunk so a live, unterminated JSONL
+                    # record cannot make every poll read the rest of a huge file.
+                    # Complete oversized records with a nearby newline still advance;
+                    # fragments with no newline in this bounded window are skipped.
+                    data += f.read(chunk_size)
+                else:
+                    # Live broker tailing must not advance over an incomplete row,
+                    # but it also must not get stuck once an oversized row is
+                    # completed beyond the bounded poll window. In no-advance mode,
+                    # keep scanning until a newline proves at least one full record
+                    # is available, or EOF proves the row is still incomplete.
+                    while True:
+                        chunk = f.read(chunk_size)
+                        if not chunk:
+                            break
+                        data += chunk
+                        if b"\n" in chunk:
+                            break
     except Exception as e:
         _log_exception(f"read jsonl {path} from offset {offset}", e)
         raise
@@ -815,7 +829,7 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
     last_nl = data.rfind(b"\n")
     if last_nl < 0:
         read_cap = max(1, int(max_bytes)) + max(64 * 1024, min(max(1, int(max_bytes)), 1024 * 1024))
-        if len(data) >= read_cap:
+        if advance_on_oversized_unterminated and len(data) >= read_cap:
             return [], int(offset) + len(data)
         return [], int(offset)
     data = data[: last_nl + 1]
@@ -825,10 +839,12 @@ def read_jsonl_from_offset(path: Path, offset: int, *, max_bytes: int) -> tuple[
     out: list[dict[str, Any]] = []
     for line in lines:
         try:
-            out.append(json.loads(line))
+            obj = json.loads(line)
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
         except Exception as e:
             _log_exception(f"decode jsonl line from {path}", e)
             raise
+        if isinstance(obj, dict):
+            out.append(obj)
     return out, new_off

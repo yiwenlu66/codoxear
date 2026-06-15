@@ -57,7 +57,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("if not s.sync_send_supported:", source)
         self.assertIn("if not (s.sync_send_supported and s.key_write_errors_supported):", source)
         self.assertIn("resp = self.inject_keys(session_id, seq, track_request_sent=True)", source)
-        self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False)", source)
+        self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)", source)
         self.assertIn("attachment commit status unknown; broker response failed", source)
         self.assertIn("except SessionNotReadyError as e:\n                    _json_response(self, 409, {\"error\": str(e)})", block)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)

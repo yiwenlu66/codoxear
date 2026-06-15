@@ -34,6 +34,11 @@ from codoxear.cc_log import cc_is_turn_end as _cc_is_turn_end
 from codoxear.cc_log import cc_current_turn_state_before as _cc_current_turn_state_before
 from codoxear.cc_log import cc_message_role as _cc_message_role
 from codoxear.cc_log import cc_user_text as _cc_user_text
+from codoxear.pi_log import PiPendingToolCallId as _PiPendingToolCallId
+from codoxear.pi_log import pi_apply_assistant_tool_calls_to_pending as _pi_apply_assistant_tool_calls_to_pending
+from codoxear.pi_log import pi_apply_tool_result_to_pending as _pi_apply_tool_result_to_pending
+from codoxear.pi_log import pi_complete_jsonl_offset_before as _pi_complete_jsonl_offset_before
+from codoxear.pi_log import pi_current_turn_state_before as _pi_current_turn_state_before
 from codoxear.pi_log import pi_assistant_text as _pi_assistant_text
 from codoxear.pi_log import pi_assistant_error_text as _pi_assistant_error_text
 from codoxear.pi_log import pi_assistant_is_aborted_turn as _pi_assistant_is_aborted_turn
@@ -507,6 +512,8 @@ def _detach_current_session_binding(st: "State") -> None:
     st.log_path = None
     st.session_id = None
     st.log_off = 0
+    st.last_interrupt_request_ts = 0.0
+    st.last_interrupted_idle_ts = 0.0
     st.last_rollout_path = None
     st.last_detected_rollout_path = None
     st.detach_trigger_tail = ""
@@ -529,7 +536,7 @@ def _maybe_detach_on_session_switch_trigger(*, st: "State", tail: str, cleaned: 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 256 * 1024) -> tuple[list[dict[str, Any]], int]:
     if not path.exists():
         return [], offset
-    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
+    return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes, advance_on_oversized_unterminated=False)
 
 
 def _strip_ansi(text: str) -> str:
@@ -603,12 +610,33 @@ def _should_clear_busy_state(st: "State", now_ts: float) -> bool:
     if st.pending_calls:
         return False
     if st.turn_open and (not st.turn_has_completion_candidate):
-        return False
+        if st.last_interrupt_request_ts <= 0.0:
+            return False
+        if (now_ts - st.last_interrupt_request_ts) < BUSY_INTERRUPT_GRACE_SECONDS:
+            return False
     if st.last_interrupt_hint_ts > 0.0 and (now_ts - st.last_interrupt_hint_ts) < BUSY_INTERRUPT_GRACE_SECONDS:
         return False
     if st.last_turn_activity_ts <= 0.0:
         return False
     return (now_ts - st.last_turn_activity_ts) >= BUSY_QUIET_SECONDS
+
+
+def _mark_explicit_interrupt_request(st: "State", now_ts: float) -> None:
+    st.last_interrupt_request_ts = now_ts
+    st.last_interrupted_idle_ts = 0.0
+    if now_ts > st.last_turn_activity_ts:
+        st.last_turn_activity_ts = now_ts
+
+
+def _mark_busy_state_idle(st: "State", now_ts: float) -> None:
+    interrupted_idle = st.turn_open and st.last_interrupt_request_ts > 0.0
+    st.busy = False
+    st.turn_open = False
+    st.turn_has_completion_candidate = False
+    st.last_turn_activity_ts = 0.0
+    st.last_interrupt_hint_ts = 0.0
+    st.last_interrupt_request_ts = 0.0
+    st.last_interrupted_idle_ts = now_ts if interrupted_idle else 0.0
 
 
 def _reopen_turn_on_activity(st: "State") -> None:
@@ -624,6 +652,8 @@ def _close_turn_state(st: "State") -> None:
     st.turn_open = False
     st.turn_has_completion_candidate = False
     st.last_interrupt_hint_ts = 0.0
+    st.last_interrupt_request_ts = 0.0
+    st.last_interrupted_idle_ts = 0.0
     st.last_turn_activity_ts = 0.0
 
 
@@ -643,6 +673,8 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
                 st.turn_open = True
                 st.turn_has_completion_candidate = False
                 st.last_interrupt_hint_ts = 0.0
+                st.last_interrupt_request_ts = 0.0
+                st.last_interrupted_idle_ts = 0.0
                 st.last_turn_activity_ts = now_ts
             return
         if ev_type in ("turn_aborted", "thread_rolled_back"):
@@ -682,6 +714,8 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.turn_open = True
             st.turn_has_completion_candidate = False
             st.last_interrupt_hint_ts = 0.0
+            st.last_interrupt_request_ts = 0.0
+            st.last_interrupted_idle_ts = 0.0
             st.last_turn_activity_ts = now_ts
             return
 
@@ -699,6 +733,12 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
         if has_error and role == "assistant":
             _close_turn_state(st)
             return
+
+        if is_tool_result:
+            _pi_apply_tool_result_to_pending(obj, st.pending_calls)
+
+        if tool_count > 0:
+            _pi_apply_assistant_tool_calls_to_pending(obj, st.pending_calls)
 
         if has_text and role == "assistant" and _pi_assistant_is_final_turn_end(obj):
             _close_turn_state(st)
@@ -722,6 +762,8 @@ def _apply_rollout_obj_to_state(st: "State", obj: dict[str, Any], now_ts: float)
             st.turn_open = True
             st.turn_has_completion_candidate = False
             st.last_interrupt_hint_ts = 0.0
+            st.last_interrupt_request_ts = 0.0
+            st.last_interrupted_idle_ts = 0.0
             st.last_turn_activity_ts = now_ts
             return
         if _cc_message_role(obj) == "toolResult":
@@ -861,7 +903,9 @@ class State:
     last_local_input_ts: float = 0.0
     last_turn_activity_ts: float = 0.0
     last_interrupt_hint_ts: float = 0.0
-    pending_calls: set[str] = field(default_factory=set)
+    last_interrupt_request_ts: float = 0.0
+    last_interrupted_idle_ts: float = 0.0
+    pending_calls: set[str | _PiPendingToolCallId] = field(default_factory=set)
     turn_open: bool = False
     turn_has_completion_candidate: bool = False
     interrupt_hint_tail: str = ""
@@ -1016,9 +1060,16 @@ class Broker:
             return False
 
         try:
-            off = log_path.stat().st_size
+            raw_off = int(log_path.stat().st_size)
         except Exception:
-            off = 0
+            raw_off = 0
+        if AGENT_BACKEND == "pi" and raw_off > 0:
+            try:
+                off = _pi_complete_jsonl_offset_before(log_path, raw_off)
+            except Exception:
+                off = 0
+        else:
+            off = raw_off
 
         headless = (OWNER_TAG == "web")
         sock_path = SOCK_DIR / f"{sid}-{os.getpid()}.sock"
@@ -1246,11 +1297,7 @@ class Broker:
                 with self._lock:
                     st3 = self.state
                     if st3 and _should_clear_busy_state(st3, now_ts):
-                        st3.busy = False
-                        st3.turn_open = False
-                        st3.turn_has_completion_candidate = False
-                        st3.last_turn_activity_ts = 0.0
-                        st3.last_interrupt_hint_ts = 0.0
+                        _mark_busy_state_idle(st3, now_ts)
 
             def maybe_clear_resume_delivery_mute() -> None:
                 clear_meta = False
@@ -1262,6 +1309,12 @@ class Broker:
                 if clear_meta:
                     self._write_meta()
 
+            with self._lock:
+                st_check = self.state
+                batch_still_current = bool(st_check and st_check.log_path is not None and _paths_match(st_check.log_path, log_path) and st_check.log_off == off)
+            if not batch_still_current:
+                continue
+
             if new_off == off:
                 maybe_mark_idle()
                 maybe_clear_resume_delivery_mute()
@@ -1271,41 +1324,34 @@ class Broker:
 
             with self._lock:
                 st2 = self.state
-                if st2:
-                    st2.log_off = new_off
-
-            for obj in objs:
-                now_ts = _now()
-                token_update = _pi_token_update(obj)
-                if token_update is not None:
-                    with self._lock:
-                        if self.state:
-                            self.state.token = token_update
-                if obj.get("type") == "event_msg":
-                    p = obj.get("payload")
-                    if not isinstance(p, dict):
-                        raise ValueError("invalid rollout event_msg payload")
-                    pt = p.get("type")
-                    if pt == "token_count":
-                        info = p.get("info")
-                        if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
-                            ctx = info.get("model_context_window")
-                            last = info.get("last_token_usage")
-                            if isinstance(ctx, int) and isinstance(last, dict):
-                                tt = last.get("total_tokens")
-                                if isinstance(tt, int):
-                                    token_update = _pi_context_token_update(
-                                        context_window=ctx,
-                                        tokens_in_context=tt,
-                                        as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-                                    )
-                                    with self._lock:
-                                        if self.state:
-                                            self.state.token = token_update
-                with self._lock:
-                    st3 = self.state
-                    if st3:
-                        _apply_rollout_obj_to_state(st3, obj, now_ts=now_ts)
+                if not st2 or st2.log_path is None or (not _paths_match(st2.log_path, log_path)) or st2.log_off != off:
+                    continue
+                for obj in objs:
+                    now_ts = _now()
+                    token_update = _pi_token_update(obj)
+                    if token_update is not None:
+                        st2.token = token_update
+                    if obj.get("type") == "event_msg":
+                        p = obj.get("payload")
+                        if not isinstance(p, dict):
+                            raise ValueError("invalid rollout event_msg payload")
+                        pt = p.get("type")
+                        if pt == "token_count":
+                            info = p.get("info")
+                            if isinstance(info, dict) and isinstance(info.get("total_token_usage"), dict):
+                                ctx = info.get("model_context_window")
+                                last = info.get("last_token_usage")
+                                if isinstance(ctx, int) and isinstance(last, dict):
+                                    tt = last.get("total_tokens")
+                                    if isinstance(tt, int):
+                                        token_update = _pi_context_token_update(
+                                            context_window=ctx,
+                                            tokens_in_context=tt,
+                                            as_of=obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                                        )
+                                        st2.token = token_update
+                    _apply_rollout_obj_to_state(st2, obj, now_ts=now_ts)
+                st2.log_off = new_off
 
             maybe_mark_idle()
             maybe_clear_resume_delivery_mute()
@@ -1381,7 +1427,12 @@ class Broker:
                 st = self.state
                 if not st:
                     return {"error": "no state"}, None
-                return {"busy": st.busy, "queue_len": 0, "token": st.token}, None
+                return {
+                    "busy": st.busy,
+                    "queue_len": 0,
+                    "token": st.token,
+                    "interrupted_idle": (not st.busy) and st.last_interrupted_idle_ts > 0.0,
+                }, None
 
         def tail_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
             with self._lock:
@@ -1405,12 +1456,16 @@ class Broker:
                 prev_turn_open = st.turn_open
                 prev_turn_has_completion_candidate = st.turn_has_completion_candidate
                 prev_last_interrupt_hint_ts = st.last_interrupt_hint_ts
+                prev_last_interrupt_request_ts = st.last_interrupt_request_ts
+                prev_last_interrupted_idle_ts = st.last_interrupted_idle_ts
                 prev_last_turn_activity_ts = st.last_turn_activity_ts
                 st.pending_calls.clear()
                 st.busy = True
                 st.turn_open = True
                 st.turn_has_completion_candidate = False
                 st.last_interrupt_hint_ts = 0.0
+                st.last_interrupt_request_ts = 0.0
+                st.last_interrupted_idle_ts = 0.0
                 if now_ts > st.last_turn_activity_ts:
                     st.last_turn_activity_ts = now_ts
                 fd = st.pty_master_fd
@@ -1421,6 +1476,8 @@ class Broker:
                         st.turn_open = prev_turn_open
                         st.turn_has_completion_candidate = prev_turn_has_completion_candidate
                         st.last_interrupt_hint_ts = prev_last_interrupt_hint_ts
+                        st.last_interrupt_request_ts = prev_last_interrupt_request_ts
+                        st.last_interrupted_idle_ts = prev_last_interrupted_idle_ts
                         st.last_turn_activity_ts = prev_last_turn_activity_ts
 
             if sync_commit:
@@ -1449,6 +1506,7 @@ class Broker:
             if not isinstance(seq_raw, str) or not seq_raw:
                 return {"error": "seq required"}, None
             b = _seq_bytes(seq_raw)
+            mark_interrupt = req.get("interrupt") is True and b == b"\x1b"
             fd: int | None = None
             with self._lock:
                 st = self.state
@@ -1456,11 +1514,17 @@ class Broker:
                     return {"error": "no state"}, None
                 fd = st.pty_master_fd
                 resp = {"ok": True, "queued": False, "n": len(b), "key_queue_len": len(st.key_queue)}
+            wrote_keys = False
             if fd is not None:
                 try:
                     _write_all(fd, b)
+                    wrote_keys = True
                 except Exception as e:
                     return {"error": str(e), "queued": False, "n": 0, "key_queue_len": 0, "commit_unknown": True}, None
+            if mark_interrupt and wrote_keys:
+                with self._lock:
+                    if self.state is st:
+                        _mark_explicit_interrupt_request(st, _now())
             return resp, None
 
         def shutdown_handler(_req: dict[str, Any]) -> tuple[dict[str, Any], Any]:
@@ -1529,12 +1593,21 @@ class Broker:
             log_size = int(lp.stat().st_size)
         except Exception:
             log_size = 0
-        seed_pending: set[str] = set()
+        seed_pending: set[str | _PiPendingToolCallId] = set()
         seed_idle: bool | None = None
+        seed_log_off = log_size
         if AGENT_BACKEND == "cc" and log_size > 0:
             try:
                 seed_pending, seed_idle = _cc_current_turn_state_before(lp, log_size)
             except Exception:
+                seed_pending = set()
+                seed_idle = None
+        elif AGENT_BACKEND == "pi" and log_size > 0:
+            try:
+                seed_log_off = _pi_complete_jsonl_offset_before(lp, log_size)
+                seed_pending, seed_idle = _pi_current_turn_state_before(lp, seed_log_off)
+            except Exception:
+                seed_log_off = 0
                 seed_pending = set()
                 seed_idle = None
 
@@ -1548,12 +1621,14 @@ class Broker:
             st.last_rollout_path = lp
             have_sock = st.sock_path is not None
             prev_lp = st.log_path
+            if prev_lp is None or not _paths_match(prev_lp, lp):
+                st.last_interrupt_request_ts = 0.0
+                st.last_interrupted_idle_ts = 0.0
             st.session_id = sid
             st.log_path = lp
             st.known_rollout_paths.add(lp)
-            st.log_off = log_size
-            if seed_pending:
-                st.pending_calls.update(seed_pending)
+            st.log_off = seed_log_off
+            st.pending_calls = set(seed_pending)
             if seed_pending or seed_idle is False:
                 st.busy = True
                 st.turn_open = True

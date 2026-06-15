@@ -5,14 +5,35 @@ import json
 import os
 import shutil
 import subprocess
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from typing import Iterator
 
 from .agent_backend import get_agent_backend
 
 PI_DEFAULT_RESERVED_TOKENS = 16384
 PI_MODEL_QUERY_TIMEOUT_SECONDS = 10.0
 PI_MODEL_QUERY_ID = "codoxear-models"
+PI_UNKNOWN_TOOL_CALL_ID_PREFIX = "__pi_unknown_tool_call__:"
+PI_DUPLICATE_TOOL_CALL_ID_PREFIX = "__pi_duplicate_tool_call__:"
+
+
+@dataclass(frozen=True)
+class PiUnknownToolCallId:
+    nonce: str
+    index: int
+
+
+@dataclass(frozen=True)
+class PiDuplicateToolCallId:
+    tool_id: str
+    nonce: str
+    index: int
+
+
+PiPendingToolCallId = str | PiUnknownToolCallId | PiDuplicateToolCallId
 
 
 def _read_jsonl_first_object(path: Path) -> dict[str, Any] | None:
@@ -354,8 +375,10 @@ def pi_assistant_is_final_turn_end(obj: dict[str, Any]) -> bool:
         return False
     if not pi_assistant_text(obj):
         return False
+    if pi_assistant_tool_use_count(obj) > 0:
+        return False
 
-    if pi_assistant_tool_use_count(obj) <= 0 and pi_assistant_thinking_count(obj) <= 0:
+    if pi_assistant_thinking_count(obj) <= 0:
         stop_reason = message.get("stopReason")
         if not isinstance(stop_reason, str) or stop_reason != "toolUse":
             return True
@@ -385,6 +408,202 @@ def pi_assistant_tool_use_count(obj: dict[str, Any]) -> int:
         if part.get("type") == "toolCall":
             count += 1
     return count
+
+
+def pi_unknown_tool_call_id(index: int = 0) -> PiUnknownToolCallId:
+    return PiUnknownToolCallId(nonce=uuid.uuid4().hex, index=index)
+
+
+def pi_duplicate_tool_call_id(tool_id: str, index: int = 0) -> PiDuplicateToolCallId:
+    return PiDuplicateToolCallId(tool_id=tool_id, nonce=uuid.uuid4().hex, index=index)
+
+
+def pi_pending_tool_call_is_unknown(pending_id: object) -> bool:
+    return isinstance(pending_id, PiUnknownToolCallId)
+
+
+def pi_pending_tool_call_is_duplicate(pending_id: object) -> bool:
+    return isinstance(pending_id, PiDuplicateToolCallId)
+
+
+def pi_assistant_pending_tool_call_ids(obj: dict[str, Any]) -> list[PiPendingToolCallId]:
+    ids: list[PiPendingToolCallId] = []
+    seen: set[str] = set()
+    unknown_index = 0
+    duplicate_index = 0
+    for part in pi_assistant_content_parts(obj):
+        if part.get("type") != "toolCall":
+            continue
+        tool_id = part.get("id")
+        if isinstance(tool_id, str):
+            if tool_id not in seen:
+                ids.append(tool_id)
+                seen.add(tool_id)
+            else:
+                ids.append(pi_duplicate_tool_call_id(tool_id, duplicate_index))
+                duplicate_index += 1
+        else:
+            ids.append(pi_unknown_tool_call_id(unknown_index))
+            unknown_index += 1
+    return ids
+
+
+def pi_tool_result_id(obj: dict[str, Any]) -> str | None:
+    if obj.get("type") != "message":
+        return None
+    message = obj.get("message")
+    if not isinstance(message, dict) or message.get("role") != "toolResult":
+        return None
+    tool_id = message.get("toolCallId")
+    return tool_id if isinstance(tool_id, str) else None
+
+
+def pi_apply_tool_result_to_pending(obj: dict[str, Any], pending: set[PiPendingToolCallId]) -> None:
+    tool_id = pi_tool_result_id(obj)
+    if tool_id is None:
+        return
+    if tool_id in pending:
+        pending.discard(tool_id)
+        return
+    for pending_id in list(pending):
+        if isinstance(pending_id, PiDuplicateToolCallId) and pending_id.tool_id == tool_id:
+            pending.discard(pending_id)
+            return
+
+
+def pi_apply_assistant_tool_calls_to_pending(obj: dict[str, Any], pending: set[PiPendingToolCallId]) -> None:
+    for pending_id in pi_assistant_pending_tool_call_ids(obj):
+        if isinstance(pending_id, str) and pending_id in pending:
+            pending.add(pi_duplicate_tool_call_id(pending_id, len(pending)))
+        else:
+            pending.add(pending_id)
+
+
+def _iter_jsonl_objects_reverse(path: Path, *, before: int | None = None, block_bytes: int = 64 * 1024) -> Iterator[dict[str, Any]]:
+    if block_bytes <= 0:
+        raise ValueError("block_bytes must be positive")
+    with path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        end = size if before is None else max(0, min(int(before), size))
+        offset = end
+        carry = b""
+        drop_trailing_partial = False
+        if end > 0:
+            f.seek(end - 1)
+            drop_trailing_partial = f.read(1) != b"\n"
+        while offset > 0:
+            read_size = min(block_bytes, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            data = chunk + carry
+            parts = data.split(b"\n")
+            if drop_trailing_partial and parts:
+                parts = parts[:-1]
+                drop_trailing_partial = False
+            if offset > 0:
+                carry = parts[0] if parts else b""
+                parts = parts[1:] if parts else []
+            else:
+                carry = b""
+            for raw_line in reversed(parts):
+                line = raw_line.rstrip(b"\r")
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line.decode("utf-8"))
+                except Exception:
+                    continue
+                if isinstance(obj, dict):
+                    yield obj
+
+
+def pi_complete_jsonl_offset_before(log_path: Path, before: int) -> int:
+    before = max(0, int(before))
+    if before <= 0:
+        return 0
+    with log_path.open("rb") as f:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        end = max(0, min(before, size))
+        if end <= 0:
+            return 0
+        f.seek(end - 1)
+        if f.read(1) == b"\n":
+            return end
+        offset = end
+        while offset > 0:
+            read_size = min(64 * 1024, offset)
+            offset -= read_size
+            f.seek(offset)
+            chunk = f.read(read_size)
+            found = chunk.rfind(b"\n")
+            if found >= 0:
+                return offset + found + 1
+    return 0
+
+
+def pi_current_turn_state_before(log_path: Path, before: int) -> tuple[set[PiPendingToolCallId], bool | None]:
+    before = pi_complete_jsonl_offset_before(log_path, before)
+    if before <= 0:
+        return set(), None
+    newest_first: list[dict[str, Any]] = []
+    for obj in _iter_jsonl_objects_reverse(log_path, before=before):
+        newest_first.append(obj)
+        if obj.get("type") == "message" and pi_user_text(obj):
+            break
+
+    pending: set[PiPendingToolCallId] = set()
+    saw_signal = False
+    idle = True
+    for obj in reversed(newest_first):
+        if obj.get("type") != "message":
+            continue
+        if pi_user_text(obj):
+            pending.clear()
+            saw_signal = True
+            idle = False
+            continue
+        if pi_assistant_is_aborted_turn(obj):
+            pending.clear()
+            saw_signal = True
+            idle = True
+            continue
+        if pi_assistant_error_text(obj):
+            pending.clear()
+            saw_signal = True
+            idle = True
+            continue
+        if pi_message_role(obj) == "toolResult":
+            pi_apply_tool_result_to_pending(obj, pending)
+            saw_signal = True
+            idle = False
+            continue
+        tool_count = pi_assistant_tool_use_count(obj)
+        if tool_count > 0:
+            pi_apply_assistant_tool_calls_to_pending(obj, pending)
+            saw_signal = True
+            idle = False
+            continue
+        if pi_assistant_text(obj):
+            saw_signal = True
+            if pi_assistant_is_final_turn_end(obj):
+                pending.clear()
+                idle = True
+            else:
+                idle = False
+            continue
+        if pi_assistant_thinking_count(obj) > 0:
+            saw_signal = True
+            idle = False
+            continue
+    return pending, (idle if saw_signal else None)
+
+
+def pi_pending_tool_ids_before(log_path: Path, before: int) -> set[PiPendingToolCallId]:
+    pending, _idle = pi_current_turn_state_before(log_path, before)
+    return pending
 
 
 def pi_assistant_thinking_count(obj: dict[str, Any]) -> int:
