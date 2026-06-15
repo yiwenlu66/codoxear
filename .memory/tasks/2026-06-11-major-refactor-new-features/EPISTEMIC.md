@@ -2080,3 +2080,202 @@ Interpretation: The user-visible gap is likely in the app interaction path: MP4/
 Intervention: Added a contextual compatible-MP4 preview button for active videos and changed automatic fallback to preflight the preview route with a one-byte range request. Route errors are parsed from JSON/text and surfaced in the file status before setting the video element source.
 Evidence: focused tests 33 passed; full local 880 passed + 104 subtests; Docker 879 passed + 1 skipped + 104 subtests; API fixture showed H.264/yuv420p preview output; browser fixture reached loadedmetadata from the preview URL after a 206 range preflight; VM regression showed a 500 JSON preview route error surfaces into fileStatus without setting video src.
 Residual uncertainty: Browser evidence used headless Chromium and an isolated generated fixture, not the user's original failing video file or a real mobile browser.
+
+## 2026-06-14 20:53
+Observation: Historical local Pi logs, scanned without printing message text, contain 27 assistant rows with `stopReason:"aborted"`, including text/toolCall-bearing abort records. Nearby-role windows showed abort records followed by later user turns rather than unrecognized terminal stop reasons. This supports the existing abort-row normalizer but does not explain reports where busy persists after interruption.
+
+Interpretation: The remaining plausible mechanism is an explicit web interrupt that Pi accepts at the TUI level without producing a recognized abort row. Broker state then keeps `turn_open=True` and `turn_has_completion_candidate=False` from the submitted prompt, and `_should_clear_busy_state()` intentionally never clears ordinary long-silent no-candidate turns.
+
+Intervention: Extend the existing `keys` control command with an `interrupt` marker used only by `/api/sessions/<id>/interrupt`. The broker records `last_interrupt_request_ts` only after successfully writing the ESC byte, resets it on new user turns and terminal turn-close paths, and allows no-completion-candidate turns to clear only after an explicit interrupt plus the existing interrupt grace/quiet windows with no pending calls.
+
+Scoped claim: Focused and full-suite evidence now constrain the no-row interrupt recovery path: ordinary no-candidate silence remains busy, successful marked ESC writes become causal evidence for eventual idle, and pending calls still block idle. This is still fixture/code-path evidence rather than a live Pi TUI interruption replay in an isolated browser session.
+
+## 2026-06-14 20:55
+Observation: Local self-review found that using `bool(req.get("interrupt"))` would treat a non-empty string such as `"false"` as an interrupt marker on the local broker control socket.
+
+Intervention: The broker now requires `req.get("interrupt") is True` before marking an explicit interrupt request, and tests directly cover that pending calls remain non-idle even after explicit interrupt.
+
+Scoped claim update: The interrupt marker is boolean-strict and does not override pending-call/tool accounting.
+
+## 2026-06-14 21:04
+Observation: Clean-room critic found a blocker in the first interrupt repair: Pi assistant `toolCall` rows did not populate `st.pending_calls`, so an explicit interrupt could clear a no-completion-candidate turn even while a Pi tool call was outstanding.
+
+Interpretation: The intended "pending calls remain busy" invariant was backend-incomplete. It held for Codex/Claude paths that populate pending call IDs, but not for Pi toolCall/toolResult rows.
+
+Intervention: Added Pi pending-tool helpers keyed by observed real schema (`toolCall.id`, `toolResult.toolCallId`) and wired broker state to add Pi tool call IDs and remove matching tool results. Malformed id-less Pi toolCalls create unknown pending IDs and therefore fail busy-closed until a terminal event or matched/unknown result clears them. The interrupt marker remains boolean-strict and `_should_clear_busy_state()` is unchanged.
+
+Scoped claim: The critic counterexample is now directly covered: Pi user -> assistant toolCall -> explicit interrupt -> no result/final remains busy; matching toolResult clears the pending blocker and then the explicit-interrupt quiet path can clear if no terminal row arrives. Residual: this is still deterministic log/control-socket evidence, not a live interrupted Pi tool replay.
+
+## 2026-06-14 21:24
+Observation: A second critic review found two remaining Pi pending-tool blockers. First, real Pi logs contain `stopReason:"length"` assistant rows with both text and `toolCall`; the prior broker ordering and shared `pi_assistant_is_final_turn_end()` could treat those rows as terminal before tracking the tool ID. Second, unknown pending IDs from malformed id-less Pi toolCalls were incorrectly discharged by any id-less toolResult.
+
+Interpretation: The repair had fixed ordinary `toolUse` rows but not all observed Pi tool-call stop reasons, and the malformed fail-closed property was weaker than the tests claimed.
+
+Intervention: Pi final-turn detection now refuses any assistant row containing a `toolCall`. Broker Pi handling records tool IDs before final-close logic and keeps text+toolCall+`length` rows busy. `pi_apply_tool_result_to_pending()` now removes only concrete matching `toolCallId` values; id-less results do not prove completion of unknown calls.
+
+Observation: A separate mechanism check found that broker-side idle clearing alone would not change the UI/message polling path when a bound log remains non-terminal, because server display/readiness normally recomputes busy from log idle.
+
+Intervention: Broker state now reports `interrupted_idle:true` only after busy has actually been cleared by the explicit-interrupt quiet path. Server parsing treats absent `interrupted_idle` as false and malformed non-bool values as invalid broker state. List sessions, message snapshots, diagnostics, and send/queue readiness may override log-busy only when broker state is `busy:false`, `queue_len:0`, and `interrupted_idle:true`.
+
+Scoped claim: Under deterministic focused/full/Docker evidence, Pi interruption can recover no-terminal-row turns without reopening the false-idle tool-call hole: observed `length`+toolCall rows stay busy until a matching result/terminal close, malformed id-less calls stay busy-closed, and server UI/readiness consumes broker interrupt-idle evidence only after the broker is already idle and queue-free. Residual: no live Pi TUI interruption replay was run in an isolated browser session.
+
+## 2026-06-14 21:31
+Observation: A newly added list-session regression showed `interrupted_idle:true` with broker `queue_len=1` still rendered idle, because the override checked the public/local queued-prompt count rather than broker queue length.
+
+Intervention: `list_sessions()` now carries an internal `broker_queue_len` alongside the public local `queue_len`, uses broker queue length for the interrupted-idle override, and strips the internal field from the API response.
+
+Scoped claim update: The interrupted-idle display override now requires broker busy false, broker queue empty, and `interrupted_idle:true`; local queued-prompt count remains the public `queue_len` field.
+
+## 2026-06-14 21:45
+Observation: A third critic review found that ordinary Pi final responses containing both `thinking` and final `text` still stayed broker-busy, because the broker returned from the generic `thinking_count > 0` activity branch before checking final assistant text.
+
+Intervention: Broker Pi handling now evaluates final assistant text after tool pending updates but before generic tool/thinking activity. This preserves `length`+toolCall busy behavior because the shared final helper is false when tool calls are present, while letting thinking+final-text responses close the turn.
+
+Scoped claim update: Pi final-with-thinking rows close broker busy; Pi text+toolCall rows still stay busy; the prior interrupt/tool pending invariants remain covered by focused, local, and Docker validation.
+
+## 2026-06-14 22:02
+Observation: A fourth critic review found three remaining edge cases: interrupted-idle evidence was not reported after a partial assistant text candidate was interrupted; stale `interrupted_idle` could survive detach/log switch; and Pi final text could not close stale unknown pending sentinels created by malformed id-less tool calls.
+
+Intervention: `_mark_busy_state_idle()` now marks `interrupted_idle` for any open turn with an explicit interrupt request, not only no-candidate turns. Detach and different-log binding reset interrupt request/idle markers. Pi final assistant text closes the turn unconditionally because `pi_assistant_is_final_turn_end()` is already false when the same row contains a toolCall.
+
+Scoped claim update: The explicit-interrupt override now applies to partial assistant text turns as well as no-candidate turns, cannot leak across detached/switched logs, and cannot leave Pi broker busy forever after a final answer merely because a malformed unknown pending sentinel remains.
+
+## 2026-06-14 22:18
+Observation: A final critic pass found that even after broker marker resets, the server could keep a stale cached `Session.interrupted_idle` across log rebinding or confirmed send, and `_send_remote_ready()` could apply one broker-state sample to a log path changed by the second metadata refresh.
+
+Intervention: Server metadata refresh now clears cached `interrupted_idle` when `log_path` changes. Confirmed send success clears cached `interrupted_idle` and marks cached busy true unless the broker explicitly returns a busy boolean. Direct-send and queue readiness now re-query broker state if the second metadata refresh changes the bound log path after the initial state sample.
+
+Scoped claim update: The server interrupted-idle override is now cache-scoped to the log/turn represented by broker state and is cleared on the next confirmed send or log rebind.
+
+## 2026-06-14 22:31
+Observation: The cache-specific critic found the same post-refresh stale-state shape in attachment readiness: `attachment_injection_ready()` sampled broker state, refreshed metadata, and could apply an old `interrupted_idle:true` state to a newly rebound active log.
+
+Intervention: Attachment readiness now re-queries broker state if the second metadata refresh changes `log_path`, matching direct-send and queue readiness.
+
+Scoped claim update: All three mutation readiness gates that can follow interrupt recovery—send, queue promotion, and attachment injection—now avoid applying an interrupted-idle state sample across a metadata log rebind.
+
+## 2026-06-14 22:43
+Observation: The final-final cache critic found that `interrupted_idle:true` could still bypass the confirmed-send boundary when the current log had not advanced past `Session.last_send_log_size`. The guard existed only in the broker-busy branch, while interrupted-idle requires broker `busy:false`.
+
+Intervention: `_remote_ready_from_state_and_log()` now rejects interrupted-idle readiness on a still-busy log when `last_send_log_path` matches and the current log size is absent or not greater than `last_send_log_size`. The same helper continues to allow interrupted-idle after log advancement, preserving the no-terminal interrupt recovery path once the confirmed send has log evidence.
+
+Scoped claim update: The server now treats interrupted-idle as a recovery signal only after mutation safety boundaries hold: broker queue empty, no cross-log state sample, and no same-log unadvanced confirmed send.
+
+## 2026-06-14 22:55
+Observation: After fixing mutation readiness, the same confirmed-send boundary needed to govern UI-visible busy state. Otherwise list/message/diagnostics surfaces could report idle from `interrupted_idle:true` while direct send/queue/attachment correctly remained blocked until log advancement.
+
+Intervention: The last-send advancement predicate is now shared. `list_sessions()`, message runtime snapshots, and diagnostics only accept interrupted-idle display overrides when the matching log has advanced past `last_send_log_size` or when the last confirmed send belongs to a different log.
+
+Scoped claim update: Interrupted-idle no longer creates a split-brain state where UI display says idle but mutation gates reject the session due to an unadvanced confirmed send.
+
+## 2026-06-14 23:12
+Observation: The final review found a stronger confirmed-send boundary violation: a stale log that was already idle from a previous turn could still make readiness/display report idle before the latest confirmed send appeared in that same log. The previous fix only gated interrupted-idle on still-busy logs.
+
+Intervention: Same-log unadvanced confirmed sends now force not-ready/busy before accepting any idle evidence, including stale log-idle and interrupted-idle. This applies to mutation readiness, session-list display, message snapshots, and diagnostics busy reporting.
+
+Scoped claim update: A confirmed send is now treated as a mutation boundary until the bound log advances beyond the recorded pre-send size, regardless of broker idle markers or stale log-idle parsing.
+
+## 2026-06-14 23:28
+Observation: Local edge review after the stale-idle fix identified the `log_size is None` half of the same invariant: when the current log path is absent but matches `last_send_log_path`, the confirmed send is still unproven and must not be treated as pending-bind idle.
+
+Intervention: Mutation readiness, list display, message snapshots, and diagnostics now apply the same-log unadvanced confirmed-send predicate even when the log file is absent. Only if the last confirmed send belongs to another log/path does a missing current log retain the prior pending-bind idle display behavior.
+
+Scoped claim update: The confirmed-send boundary now dominates both idle evidence and absent-log/pending-bind behavior whenever it refers to the same current log path.
+
+## 2026-06-14 23:48
+Observation: The narrow critic found two remaining blockers. First, confirmed sends accepted before any log binding used `last_send_log_path=None` and `last_send_log_size=None`, indistinguishable from the default no-boundary state, so pending-bind idle behavior could win. Second, duplicate Pi `toolCall.id` values collapsed in the pending-call set, so one matching `toolResult` could clear multiple outstanding calls.
+
+Intervention: Session state now has an explicit `last_send_boundary_active` marker. The confirmed-send boundary predicate uses that marker and treats active no-log sends as unresolved until a current log path has a readable size, while inactive default `None/None` sessions remain pending-bind idle. Pi duplicate tool-call IDs now fail closed: duplicate IDs in one assistant row or across rows are represented as unknown sentinels, so one concrete result clears only one concrete pending ID and leaves the malformed duplicate busy until final close.
+
+Scoped claim update: Confirmed send safety no longer depends on path/size values doubling as a boundary marker, and Pi pending-tool accounting no longer loses multiplicity for duplicate IDs under the set-based state representation.
+
+## 2026-06-14 23:58
+Observation: Local review after adding an explicit no-log send boundary found that a zero-byte newly bound log is still not evidence that a confirmed no-log send was incorporated.
+
+Intervention: Active no-log confirmed-send boundaries remain unresolved until the current log path is non-null and its readable size is greater than zero. This is stricter than merely seeing a path exist.
+
+Scoped claim update: A no-log confirmed-send boundary now resolves only on non-empty log evidence, preserving default inactive pending-bind idle behavior separately.
+
+## 2026-06-15 00:10
+Observation: The final critic found that an active no-log confirmed-send boundary blocked correctly but was not consumed once a non-empty log resolved it, so a later detach/log_path=None could resurrect a stale boundary and falsely block readiness/display.
+
+Intervention: Boundary evaluation is now stateful in the manager: when an active confirmed-send boundary is observed resolved, the session clears `last_send_boundary_active`, `last_send_log_path`, and `last_send_log_size` under the session lock. Message snapshot test seams still have a pure fallback that consumes the passed `Session` object when no manager method is available. Regressions assert no-log boundaries stay busy through absent/zero-byte logs, clear after non-empty log evidence, and do not re-block after later detach.
+
+Scoped claim update: Confirmed-send boundaries now have a full lifecycle: created on confirmed send success, block until evidence resolves them, and are consumed once resolved so stale markers cannot reappear across detach/log switch.
+
+## 2026-06-15 00:24
+Observation: The final critic found that treating duplicate Pi tool-call IDs as anonymous unknown sentinels fixed the one-result false-idle hole but created a false-busy hole: a second concrete `toolResult` with the same `toolCallId` could not clear the duplicate occurrence.
+
+Intervention: Duplicate Pi tool-call sentinels now encode the concrete duplicated ID. `pi_apply_tool_result_to_pending()` clears the concrete pending ID first, then clears one duplicate sentinel matching the same `toolCallId` per subsequent result. Truly id-less calls remain anonymous unknown sentinels and still fail closed until final assistant close.
+
+Scoped claim update: Pi duplicate tool-call accounting now preserves multiplicity without making duplicate IDs permanently unmatchable: one result leaves one duplicate pending; two matching results clear two duplicate-ID calls.
+
+## 2026-06-15 00:52
+Observation: The final critic found two remaining Pi busy-state holes. First, broker bind/rebind seeded pending tool state only for Claude Code, so Pi rows written before bind were skipped when `log_off` advanced to the current log size. Second, duplicate Pi tool-call sentinels were strings in the same namespace as real tool IDs, so a real ID shaped like `__pi_duplicate_tool_call__:foo:bar` could be incorrectly cleared by a result for `foo`.
+
+Intervention: Pi internal pending entries for id-less and duplicate tool calls are now typed dataclass keys, not strings, so real string IDs cannot collide with internal duplicate/unknown markers. Pi log replay now has a current-turn seeding helper that scans backward to the last user row, replays the turn forward with the same strict pending accounting as live broker updates, and is used by broker bind/rebind before `log_off` is advanced.
+
+Scoped claim update: Pi pending-call state now covers both live rows and pre-bind rows. Duplicate IDs require one matching result per occurrence without making real sentinel-shaped IDs vulnerable to prefix clearing. Id-less calls remain unknown and busy-closed until terminal assistant close/abort/error.
+
+## 2026-06-15 01:10
+Observation: The critic found two bind-boundary holes after Pi current-turn seeding was added. First, broker bind merged `seed_pending` into existing `st.pending_calls`, allowing an old log's pending tool ID to survive a switch to a new Pi log. Second, Pi seeding skipped trailing partial JSONL rows but broker still advanced `log_off` to the physical file size, so a row that became complete later would never be replayed.
+
+Intervention: Broker bind/rebind now replaces `st.pending_calls` with the seeded current-turn pending set. Pi seed offset is bounded to the last newline-complete JSONL byte; broker sets `log_off` to that complete offset for Pi so any trailing partial row remains available for normal offset replay when completed.
+
+Scoped claim update: Pi bind/rebind no longer carries stale pending calls across logs, and does not mark unprocessed partial tail bytes as consumed.
+
+## 2026-06-15 01:35
+Observation: The critic found that two remaining paths still treated bytes as evidence. Confirmed-send boundaries compared raw file size, so a trailing partial JSONL row could clear the boundary while `idle_from_log()` still saw only the old idle row. Broker live tailing could also advance `log_off` over a large unterminated fragment, causing the completed row to be skipped later.
+
+Intervention: Server confirmed-send boundary size now means the last newline-complete JSONL offset, not physical file size. No-log boundaries therefore require at least one complete row. Broker live tailing now calls the shared JSONL reader with `advance_on_oversized_unterminated=False`, so unterminated fragments preserve the previous offset until a newline-complete row can be processed. Generic readers keep their existing bounded oversized-skip default for non-live/search-style callers.
+
+Scoped claim update: confirmed-send readiness/display gates and broker live tailing no longer treat partial JSONL bytes as committed backend evidence.
+
+## 2026-06-15 01:58
+Observation: The critic found that newline completion alone was still too weak as confirmed-send evidence. Blank complete lines, malformed complete lines, or non-object JSON rows could advance the complete-byte offset and clear the boundary while log idle still reflected an older valid row.
+
+Intervention: Confirmed-send boundary sizing now tracks the offset after the last non-empty parseable JSON object row. Blank rows, malformed JSONL rows, non-object JSON rows, and trailing partial rows do not advance the boundary evidence offset. Regressions cover same-log and no-log boundaries across send readiness, session list display, and message runtime snapshots.
+
+Scoped claim update: confirmed-send boundaries now resolve only on parseable JSON object row evidence, not raw bytes or newline-only structure.
+
+## 2026-06-15 02:20
+Observation: The critic found two final evidence-corruption paths. Broker live tail batches were not tied to the log path/offset captured for the read, so a batch read from an old log could be applied after rebind to a new log. The shared JSONL offset reader also returned non-dict JSON values despite its `list[dict]` contract, allowing rows such as `[]` to crash metadata/list processing before boundary logic could classify them as non-evidence.
+
+Intervention: Broker live tailing now verifies under lock that current `st.log_path` and `st.log_off` still match the captured path/offset after reading, and verifies again while applying. It processes the batch and advances `log_off` under that same path/offset association, after row processing. The shared JSONL reader now appends only decoded dict rows and skips arrays/scalars like malformed rows.
+
+Scoped claim update: broker live tail state updates are associated with the exact log/offset that produced the batch, and non-object JSONL rows cannot crash metadata/list paths or count as confirmed-send evidence.
+
+## 2026-06-15 02:35
+Observation: Static review after the race/schema fix found one related initialization path: `_register_from_log()` could overwrite a Pi bind's complete-row offset with raw file size while creating socket/metadata state. That would reintroduce partial-tail skipping for first registration.
+
+Intervention: `_register_from_log()` now uses the Pi complete-JSONL offset when registering Pi logs, matching bind/rebind seeding and live tailing. A regression covers Pi registration with a trailing partial row.
+
+Scoped claim update: Pi initial registration, bind/rebind seeding, and live tailing now share the invariant that unprocessed partial tail bytes are not marked consumed.
+
+## 2026-06-15 02:55
+Observation: The critic found that broker no-advance tailing could get stuck on a completed oversized Pi JSONL row. The offset was preserved for incomplete rows, but the reader only inspected one bounded overflow chunk; if a completed row's newline was beyond that window, every poll reread the same prefix and never processed the row.
+
+Intervention: In no-advance mode, the shared JSONL reader now continues reading until it sees a newline or reaches EOF. It still preserves offset when EOF arrives without a newline, but processes oversized completed rows once a newline exists. Generic/default callers keep bounded skip behavior.
+
+Scoped claim update: broker live tailing now preserves offsets for incomplete rows without starving completed oversized rows.
+
+## 2026-06-15 03:18
+Observation: The critic found two server lifecycle holes. Same-log confirmed-send boundaries with `last_send_log_size=None` (for example a known log path missing at send time) stayed unresolved forever even after the log produced a parseable row. Also, `get_state()` refreshed cached `busy` and `queue_len` but not cached `interrupted_idle`, allowing a stale true marker to survive after the broker reported false.
+
+Intervention: Same-path confirmed-send boundaries with an unknown baseline now behave like no-baseline boundaries: unresolved until a parseable row evidence offset is present, then consumable. `get_state()` now parses broker `interrupted_idle` and updates the cached session field with `busy`/`queue_len`.
+
+Scoped claim update: known-path missing-log sends no longer block forever after valid log evidence arrives, and readiness probes can no longer leave stale `interrupted_idle=True` cached for later list/display decisions.
+
+## 2026-06-15 03:42
+Observation: The critic found that Pi tool-call IDs were still not treated as arbitrary strings: whitespace-only string IDs were rejected by `.strip()` checks, so exact whitespace `toolResult.toolCallId` values could not clear them.
+
+Intervention: Pi tool-call and tool-result ID parsing now accepts every string value exactly, including empty or whitespace-only strings. Only absent or non-string IDs are treated as malformed/id-less and converted to unknown sentinels.
+
+Scoped claim update: Pi pending-call matching now follows exact string identity for all string IDs.
+
+## 2026-06-15 04:08
+Observation: Final narrow critic run `809c69e7-147b-4201-aed0-4f1565b0cb94` returned NO BLOCKERS for the Pi busy-after-interrupt diff.
+
+Residual risks from critic: broker no-advance tailing can repeatedly read very large unterminated partial JSONL rows until newline/EOF; Pi normal empty final-close assistant rows would not clear pending calls unless represented as aborted/error or text final close. No evidence found in inspected Pi schemas/tests that Pi emits that shape.
+
+Scoped claim update: The deterministic fixture/source/server/broker evidence now supports committing the Pi busy-after-interrupt repair. Evidence does not include a live Pi TUI/browser replay.

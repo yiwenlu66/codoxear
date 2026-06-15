@@ -2535,3 +2535,262 @@
 - Full local validation: python3 -m pytest -q => 880 passed, 104 subtests passed.
 - Docker validation: scripts/codoxear-docker-sandbox test => 879 passed, 1 skipped, 104 subtests passed.
 - Clean-room critic run 55510aad-c656-4ab1-a0a9-499922da34db found no blockers in inspected scope; after the review's non-blocking note, added a VM regression proving a 500 JSON preview error renders into fileStatus without setting video src.
+
+## 2026-06-14 20:53
+- Investigated Pi busy-after-interrupt from a clean `ef7fb11` working tree.
+- Local recursive Pi log schema scan under `~/.pi/agent/sessions` printed only aggregate roles/stop reasons/schema windows: 563 files, 62,272 JSON rows, 27 assistant `stopReason:"aborted"` rows, 411 assistant `stopReason:"error"` rows, 13 `length` rows, 983 `stop` rows, and 26,493 `toolUse` rows. No message text or secret/provider values were printed.
+- Implemented explicit web-interrupt state in `codoxear/broker.py` and `codoxear/server.py`: `/interrupt` calls `inject_keys(..., interrupt=True)`, `SessionManager.inject_keys()` adds an `interrupt` request flag, broker `keys_handler` records the interrupt request only after writing ESC, and `_should_clear_busy_state()` allows no-candidate turn clearing only after explicit interrupt grace/quiet.
+- Added/updated tests: `tests/test_broker_busy_state.py` for no-candidate silence vs explicit interrupt quiet clear, state reset on new user message, and runtime control-socket ESC write/state mutation; `tests/test_interrupt_semantics_source.py` for server/broker protocol source boundaries; `tests/test_file_upload_module_source.py` for the extended `inject_keys` signature.
+- Validation: `python3 -m py_compile codoxear/broker.py codoxear/server.py` passed.
+- Focused validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessiond_fail_closed.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_server_chat_flags.py tests/test_send_button_source.py` -> `177 passed, 22 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `885 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `884 passed, 1 skipped, 104 subtests passed`.
+- Async clean-room critic for the interrupt diff started as run `1c04b3b6-fda2-4fb1-900f-8874f11e939f`; result pending at this ledger entry.
+
+## 2026-06-14 20:55
+- Local self-review follow-up: changed broker interrupt marker parsing from truthy to boolean-strict (`req.get("interrupt") is True`) and added a pending-call guard regression.
+- Focused validation after follow-up: `python3 -m py_compile codoxear/broker.py codoxear/server.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py` -> `50 passed`.
+
+## 2026-06-14 21:04
+- Received clean-room critic blocker for run `1c04b3b6-fda2-4fb1-900f-8874f11e939f`: Pi tool calls were not tracked in `st.pending_calls`, so explicit interrupt could falsely idle an outstanding Pi tool turn.
+- Fixed by adding Pi pending-tool helpers in `codoxear/pi_log.py` and using them in `codoxear/broker.py` for assistant `toolCall` and `toolResult` rows.
+- Added regression coverage in `tests/test_broker_busy_state.py`: Pi toolCall blocks explicit-interrupt idle until matching toolResult; malformed id-less Pi toolCall fails busy-closed after interrupt.
+- Validation after blocker fix: `python3 -m py_compile codoxear/pi_log.py codoxear/broker.py codoxear/server.py` passed.
+- Focused validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py` -> `52 passed`.
+- Broader busy/readiness validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessiond_fail_closed.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_server_chat_flags.py tests/test_send_button_source.py` -> `180 passed, 22 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `888 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `887 passed, 1 skipped, 104 subtests passed`.
+- Started clean-room critic re-review as run `4606fe4c-7bd3-4bef-9a74-c3c4fd19ec5b`; result pending at this ledger entry.
+
+## 2026-06-14 21:24
+- Received second critic blockers from run `4606fe4c-7bd3-4bef-9a74-c3c4fd19ec5b`: (1) Pi text+toolCall rows with `stopReason:"length"` could close before pending IDs were added; (2) id-less toolResult cleared unknown pending IDs, weakening malformed fail-closed behavior.
+- Fixed shared Pi final detection and broker ordering: any assistant row containing `toolCall` is not final; broker records Pi pending tool IDs before final-close logic; id-less toolResult no longer removes unknown pending IDs.
+- Finished server-side explicit-interrupt idle propagation: broker state response includes `interrupted_idle` after interrupt quiet clear; server parser validates it strictly and uses it to override log-busy only with `busy:false` and `queue_len:0`.
+- Added focused regressions in `tests/test_broker_busy_state.py`, `tests/test_idle_heuristics.py`, `tests/test_sessions_pending_log_idle.py`, and `tests/test_server_queue_persistence.py` for the critic counterexamples and server override boundaries.
+- Focused validation: `python3 -m py_compile codoxear/pi_log.py codoxear/broker.py codoxear/server.py` plus `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `162 passed, 26 subtests passed`.
+- Adjacent diagnostics/sidebar/queue/sessiond validation: `python3 -m pytest -q tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `75 passed, 12 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `897 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `896 passed, 1 skipped, 104 subtests passed`.
+- Started fresh clean-room critic re-review as run `4f94ff86-d8f9-45db-9b02-b67f1437fbb6`; result pending at this ledger entry.
+
+## 2026-06-14 21:31
+- Added a regression that `interrupted_idle:true` does not override a nonempty broker queue in `list_sessions()`; initial run failed because the override used public local `queue_len` instead of broker queue length.
+- Fixed `list_sessions()` to carry internal `broker_queue_len` for the override and remove it before API output.
+- Focused validation after fix: `python3 -m py_compile codoxear/pi_log.py codoxear/broker.py codoxear/server.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py tests/test_idle_heuristics.py` -> `158 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `238 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `898 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `897 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-14 21:45
+- Received third critic blocker from run `4f94ff86-d8f9-45db-9b02-b67f1437fbb6`: Pi final messages with thinking and final text were treated as generic thinking activity before final close.
+- Fixed broker Pi ordering so final assistant text closes before generic thinking activity, after tool pending updates.
+- Added broker regression for Pi thinking+final text clearing busy.
+- Targeted validation: `python3 -m py_compile codoxear/pi_log.py codoxear/broker.py codoxear/server.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_idle_heuristics.py tests/test_server_chat_flags.py` -> `89 passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `239 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `899 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `898 passed, 1 skipped, 104 subtests passed`.
+- Started final clean-room critic re-review as run `821fcf69-84b4-4416-a515-ebc769ead20e`; result pending at this ledger entry.
+
+## 2026-06-14 22:02
+- Received fourth critic blockers from run `821fcf69-84b4-4416-a515-ebc769ead20e`: assistant-candidate interrupted clears did not report `interrupted_idle`, markers were not reset on detach/log switch, and Pi final text refused to close stale pending sentinels.
+- Fixed broker interrupt idle marker, detach/log-switch marker reset, and Pi final close semantics.
+- Added/extended regressions in `tests/test_broker_busy_state.py` for assistant-candidate interrupted idle marker, detach reset, log-switch reset, and Pi final text closing stale unknown pending calls.
+- Targeted validation: `python3 -m py_compile codoxear/pi_log.py codoxear/broker.py codoxear/server.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_idle_heuristics.py tests/test_server_chat_flags.py` -> `92 passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `242 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `902 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `901 passed, 1 skipped, 104 subtests passed`.
+- Started final targeted clean-room re-review as run `5c7cc9e8-06ea-4651-b916-c0aa16f96d76`; result pending at this ledger entry.
+
+## 2026-06-14 22:18
+- Received stale server-cache blocker from run `5c7cc9e8-06ea-4651-b916-c0aa16f96d76`: cached `Session.interrupted_idle` could survive log-path changes or confirmed sends, and readiness could apply a state sample across a metadata rebind.
+- Fixed server cache boundaries: clear `interrupted_idle` on `refresh_session_meta()` log-path changes; clear it and set cached busy on confirmed send success unless broker explicitly reports busy; re-query broker state in send/queue readiness when post-state metadata refresh changes log path.
+- Added regressions in `tests/test_sessions_pending_log_idle.py` and `tests/test_server_queue_persistence.py` for log-change clearing, send success clearing, and state re-query on log rebind.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `148 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `244 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `904 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `903 passed, 1 skipped, 104 subtests passed`.
+- Started final cache-specific critic re-review as run `0d745b8f-1dd7-44c6-9e72-1256b5915eef`; result pending at this ledger entry.
+
+## 2026-06-14 22:31
+- Received cache-specific critic blocker from run `0d745b8f-1dd7-44c6-9e72-1256b5915eef`: attachment readiness missed the send/queue post-refresh log-rebind state re-query.
+- Fixed `attachment_injection_ready()` to re-query broker state if metadata refresh changes `log_path` after the first state sample.
+- Added regression in `tests/test_server_queue_persistence.py` for stale interrupted-idle attachment false-idle after log rebind.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_server_queue_persistence.py tests/test_sessions_pending_log_idle.py tests/test_broker_busy_state.py` -> `149 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `245 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `905 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `904 passed, 1 skipped, 104 subtests passed`.
+- Started final-final cache review as run `5d476347-8712-4bdb-9f74-ccca4253f2c0`; result pending at this ledger entry.
+
+## 2026-06-14 22:43
+- Received final-final cache critic blocker from run `5d476347-8712-4bdb-9f74-ccca4253f2c0`: interrupted-idle readiness bypassed the confirmed-send `last_send_log_size` advancement guard because that guard only ran when broker state was busy.
+- Fixed `_remote_ready_from_state_and_log()` by factoring the last-send advancement check into `_last_send_log_unadvanced()` and applying it before accepting interrupted-idle on a log that still parses busy.
+- Added regression in `tests/test_server_queue_persistence.py` proving same-log unadvanced confirmed send stays not ready despite `interrupted_idle:true`, while an advanced log boundary still allows interrupted-idle recovery.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_server_queue_persistence.py tests/test_sessions_pending_log_idle.py tests/test_broker_busy_state.py` -> `150 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `246 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `906 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `905 passed, 1 skipped, 104 subtests passed`.
+- Started final-final-final read-only critic review as run `147bfab9-ee48-4689-85d6-c5528fb45e11`; result pending at this ledger entry.
+
+## 2026-06-14 22:55
+- Before finalizing, local semantic review found that message/list/diagnostics display overrides still accepted `interrupted_idle:true` before a same-log confirmed send advanced, even though mutation readiness was fixed.
+- Interrupted stale critic run `147bfab9-ee48-4689-85d6-c5528fb45e11` because it was reviewing a superseded diff.
+- Added shared last-send/log-size helper functions and applied the advancement boundary to `list_sessions()`, `_message_runtime_snapshot()`, and diagnostics busy computation.
+- Added display regressions in `tests/test_sessions_pending_log_idle.py` for list/session and message snapshot busy state before/after confirmed-send log advancement.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `152 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `248 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `908 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `907 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-14 23:12
+- Received critic blocker from run `9578c3af-f0d8-495f-bbb7-ecfa83314915`: same-log unadvanced confirmed sends could be bypassed if the stale current log already parsed idle.
+- Fixed `_remote_ready_from_state_and_log()` so unadvanced same-log confirmed sends return not-ready before either log-idle or interrupted-idle is accepted.
+- Fixed display busy computations in `list_sessions()`, `_message_runtime_snapshot()`, and diagnostics so unadvanced same-log confirmed sends force busy before idle evidence is applied.
+- Added stale-idle-log regressions in `tests/test_server_queue_persistence.py` and `tests/test_sessions_pending_log_idle.py` for mutation readiness, list display, and message snapshot display.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `155 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `251 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `911 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `910 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-14 23:28
+- Interrupted superseded final review run `d0f1cd9e-c9f5-4896-8414-82125c65c2f4` after local edge review found missing-log display/readiness needed the same `log_size is None` confirmed-send guard.
+- Fixed `_remote_ready_from_state_and_log()` to apply same-log unadvanced confirmed-send rejection for existing and missing log paths.
+- Fixed list/message/diagnostics display to force busy when the current log path is missing but matches an unadvanced confirmed send.
+- Added missing-log regressions in `tests/test_server_queue_persistence.py` and `tests/test_sessions_pending_log_idle.py` for mutation readiness, list display, and message snapshot display.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `158 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_queue_sweep_idle_guard.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `254 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `914 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `913 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-14 23:48
+- Received blockers from narrow critic run `41288862-49a9-408c-8f0f-82bff68b89f3`: active no-log confirmed sends were indistinguishable from default `None/None` state, and duplicate Pi `toolCall.id` values collapsed in `pending_calls`.
+- Added explicit `Session.last_send_boundary_active`; successful confirmed sends set it true, and readiness/display boundary checks require it before treating no-log or path/size state as unresolved.
+- Updated list/message/diagnostics/readiness boundary checks so active no-log sends block pending-bind idle, while inactive default no-log sessions remain idle.
+- Updated Pi tool-call ID handling so duplicates in one assistant row become unknown sentinels and duplicates across rows add an unknown sentinel if the concrete ID is already pending.
+- Added regressions for no-log confirmed-send readiness/list/message behavior and duplicate Pi tool-call IDs in one row and across rows.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `163 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `259 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `919 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `918 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-14 23:58
+- Interrupted stale final critic run `b28ff477-b90a-42e2-a2a1-37658929d995` after tightening the no-log boundary semantics.
+- Updated no-log confirmed-send boundary to remain unresolved for absent or zero-byte current logs; added regression for zero-byte log path becoming ready only after bytes appear.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `164 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `260 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `920 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `919 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 00:10
+- Received critic blocker from run `813ee469-c34c-428f-a98d-5dbc88af1dfc`: active no-log confirmed-send boundary was not cleared after non-empty log evidence resolved it, so later detach/log_path=None could resurrect stale busy/not-ready state.
+- Added central consuming boundary evaluator on `SessionManager`: resolved active boundaries clear `last_send_boundary_active`, `last_send_log_path`, and `last_send_log_size` under lock.
+- Updated readiness, list display, message snapshots, and diagnostics to use the consuming evaluator; message snapshot retains a fallback for tests that patch `MANAGER` with a lightweight stub.
+- Extended no-log boundary regressions for readiness, list display, and message snapshot: absent/zero-byte logs block; non-empty log evidence clears marker; later log_path=None remains idle/not-ready-free.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_broker_busy_state.py` -> `164 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `260 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `920 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `919 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 00:24
+- Received critic blocker from run `eafea54e-add1-49d3-85ad-9ead8c5a2aca`: duplicate Pi tool-call IDs were converted into anonymous unknown sentinels, so a second matching concrete tool result could not clear the duplicate occurrence.
+- Updated duplicate Pi tool-call handling to use per-ID duplicate sentinels (`__pi_duplicate_tool_call__:<encoded-id>:...`) and to let each matching `toolResult.toolCallId` clear one occurrence after the concrete ID is gone.
+- Updated regressions for duplicate IDs in one assistant row and across rows: one result leaves a duplicate sentinel pending; the second matching result clears pending calls and allows the explicit-interrupt quiet path.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `164 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `260 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `920 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `919 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 00:52
+- Received critic blockers from run `32447d72-ec5f-4c7a-9fa1-f4d064936548`: Pi bind skipped pre-existing rows while advancing `log_off`, and duplicate pending string sentinels could collide with real tool IDs shaped like the sentinel prefix.
+- Replaced Pi duplicate/unknown string sentinels with typed internal pending keys (`PiDuplicateToolCallId`, `PiUnknownToolCallId`). Matching concrete `toolResult.toolCallId` clears the concrete ID first, then one typed duplicate key with the same real ID; id-less unknown keys remain uncleared by id-less results.
+- Added `pi_current_turn_state_before()` to seed Pi pending/idle state by scanning current-turn rows before broker bind/rebind advances `log_off`.
+- Updated broker bind/rebind to call Pi seeding for `AGENT_BACKEND=pi` just as it already seeded Claude Code state.
+- Added regressions for sentinel-shaped real IDs, Pi current-turn pre-bind tool-call seeding, duplicate multiplicity during Pi seeding, id-less unknown Pi seeding, and broker bind seeding before `log_off` advancement.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `169 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `265 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `925 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `924 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 01:10
+- Received critic blockers from run `065436df-dc0d-4866-a776-111c72a56135`: bind/rebind merged old pending calls with seed pending, and Pi bind set `log_off` past a trailing partial JSONL row that the seeding scanner intentionally dropped.
+- Updated broker bind/rebind to replace `st.pending_calls` with `set(seed_pending)` instead of merging.
+- Added `pi_complete_jsonl_offset_before()` and made Pi current-turn seeding operate only over complete JSONL bytes. Broker Pi bind/rebind now sets `st.log_off` to that complete offset, not physical file size, so a trailing partial row is replayed when newline-completed.
+- Added regressions for stale pending replacement on Pi log switch and trailing partial Pi tool-call rows not being skipped after completion.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `171 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py` -> `267 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `927 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `926 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 01:35
+- Received critic blockers from run `8c98fbe7-32ca-4b63-bfc6-3d1f84ea9430`: confirmed-send boundaries resolved on raw file-size growth from partial JSONL rows, and broker live tailing could advance over oversized unterminated fragments.
+- Added server `_complete_jsonl_offset_before()` and changed confirmed-send boundary sizing to last newline-complete JSONL offset rather than raw `stat().st_size`.
+- Added `advance_on_oversized_unterminated` to `util.read_jsonl_from_offset()` with default `True` for existing generic behavior. Broker live tailing opts into `False`, preserving offsets when no newline is observed.
+- Added regressions: send readiness does not clear stale/no-log confirmed-send boundaries on partial rows; list/message snapshot no-log boundaries stay busy on partial rows; broker JSONL reader does not advance over large unterminated fragments and can process the completed row later.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `178 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `301 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `928 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `927 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 01:58
+- Received critic blocker from run `2321773f-37eb-47e3-87b9-7c4bef377f23`: confirmed-send boundary resolution still accepted newline-complete but blank/malformed/non-object rows as evidence.
+- Added server `_last_parseable_json_object_offset_before()` and changed `_log_path_size_or_none()` to return the offset after the last parseable JSON object row, not the last newline-complete byte.
+- Extended regressions for same-log stale idle boundaries and no-log boundaries: blank rows, malformed rows, JSON arrays, and trailing partial rows all keep boundaries active; a parseable JSON object row resolves them.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `178 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `301 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `928 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `927 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 02:20
+- Received critic blockers from run `b08b02e8-dbfd-4116-9bdc-a5177c0fe76d`: stale broker tail batches could apply after log rebind, and non-dict JSONL rows could reach metadata analysis despite the `list[dict]` reader contract.
+- Updated broker `_log_watcher()` to discard a read batch unless current state still matches the captured `log_path` and `log_off`; row processing and `log_off` advancement now happen under the same lock/path/offset association, with offset advanced after processing.
+- Updated `util.read_jsonl_from_offset()` to skip decoded non-dict JSON rows.
+- Added regressions for stale tail-batch discard after rebind, non-dict JSONL reader rows, and `list_sessions()` with a JSON array row.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `181 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `304 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `931 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `930 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 02:35
+- Interrupted stale critic run `ed10ae34-f69d-4a1d-8829-7007b6521e5f` after static review found a new local registration-offset fix.
+- Updated broker `_register_from_log()` to use `_pi_complete_jsonl_offset_before()` for Pi logs instead of raw file size.
+- Added regression `test_register_from_pi_log_uses_complete_jsonl_offset`.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `182 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `305 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `932 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `931 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 02:55
+- Received critic blocker from run `9efb716c-be43-422d-b07c-c77de5ad3e29`: broker no-advance JSONL tailing could preserve offset forever for completed rows larger than `max_bytes + chunk_size`.
+- Updated `util.read_jsonl_from_offset(..., advance_on_oversized_unterminated=False)` to continue scanning until newline or EOF, preserving offset only if EOF is reached before any newline.
+- Added regression `test_broker_jsonl_reader_processes_completed_row_beyond_bounded_window` with a ~600 KiB completed Pi row and broker `max_bytes=256 KiB`.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `183 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `306 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `933 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `932 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 03:18
+- Received critic blockers from run `146d49f1-eee5-4611-b4e4-0b91a1fb4d0f`: same-path confirmed-send boundary with `last_send_log_size=None` blocked forever, and `get_state()` did not refresh cached `interrupted_idle`.
+- Updated `_confirmed_send_boundary_unresolved()` so same-path `last_send_log_size is None` resolves once `log_size > 0` using the parseable-row evidence offset.
+- Updated `SessionManager.get_state()` to parse `_broker_interrupted_idle_from_state(resp)` and assign `s2.interrupted_idle` with cached `busy` and `queue_len`.
+- Added regressions for missing-log same-path unknown baseline resolving on parseable row (not blank row) and `get_state()` clearing stale cached interrupted idle.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `185 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `308 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `935 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `934 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 03:42
+- Received critic blocker from run `ea736dc9-0dc9-4e11-8352-3df3728ae60b`: whitespace-only Pi tool-call IDs were treated as malformed due to `.strip()` checks.
+- Updated `pi_assistant_pending_tool_call_ids()` and `pi_tool_result_id()` to accept any string ID exactly; only absent/non-string IDs are malformed.
+- Added regressions for live broker application and current-turn seeding with `" "` tool IDs/results.
+- Focused validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` and `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_read_jsonl_from_offset.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py` -> `187 passed, 26 subtests passed`.
+- Adjacent validation: `python3 -m pytest -q tests/test_broker_busy_state.py tests/test_interrupt_semantics_source.py tests/test_file_upload_module_source.py tests/test_idle_heuristics.py tests/test_sessions_pending_log_idle.py tests/test_server_queue_persistence.py tests/test_queue_sweep_idle_guard.py tests/test_diagnostics_source.py tests/test_launch_provenance.py tests/test_session_sidebar_priority.py tests/test_server_chat_flags.py tests/test_sessiond_fail_closed.py tests/test_send_button_source.py tests/test_read_jsonl_from_offset.py tests/test_broker_fail_closed.py` -> `310 passed, 38 subtests passed`.
+- Full local validation: `python3 -m pytest -q` -> `937 passed, 104 subtests passed`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` -> `936 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 04:08
+- Final narrow critic `809c69e7-147b-4201-aed0-4f1565b0cb94` returned `NO BLOCKERS`.
+- Residual risks: repeated reads for huge unterminated partial broker rows; unobserved Pi empty normal final-close row shape would still not clear pending calls.
+- Proceeding to stage explicit functional files for an atomic Pi repair commit; memory/checkpoint files remain unstaged for a separate docs/memory commit.
+
+## 2026-06-15 04:13
+- Functional Pi repair committed: `9e2d4b8 fix Pi interrupt busy-state accounting`.
+- Updated `recon/refactor-entry-checkpoint.md` to record the Pi busy-after-interrupt repair, validation evidence, and residual scoped risks.

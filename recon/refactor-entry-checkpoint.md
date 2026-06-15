@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Current HEAD: `5a10aae feat: add compatible video preview control`
+Latest functional code checkpoint: `9e2d4b8 fix Pi interrupt busy-state accounting`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -30,6 +30,11 @@ Recent committed recovery checkpoints include:
   - failed web-owned launches now appear as recoverable non-session rows with a redacted in-chat recovery card, review-only New like this action, Dismiss/Copy details actions, and disabled send/enqueue/attach paths.
 - Pi live-backed launch path:
   - `model_provider=anthropic`, `model=claude-haiku-4-5`, `reasoning_effort=low` launched through the web path, accepted a send, bound a log, produced an assistant final response, reached idle, and cleaned up in isolated Codoxear app state.
+- Pi busy-after-interrupt recovery:
+  - explicit web ESC is tagged only after a successful broker write and broker `interrupted_idle` is published only after busy actually clears;
+  - Pi tool-call accounting tracks arbitrary string IDs exactly, including empty/whitespace/sentinel-looking IDs, preserves duplicate-ID multiplicity, and keeps absent/non-string IDs busy-closed until final/abort/error;
+  - Pi registration, bind/rebind, and live tailing seed from complete JSONL rows without advancing over partial rows, replace stale pending calls on log switch, and discard stale tail batches;
+  - confirmed-send barriers now require parseable JSON object row evidence and block send/queue/attachment plus list/messages/diagnostics busy display until resolved.
 - File/inline reference UX:
   - file candidates remain visible without git state;
   - equivalent inline refs merge only after inspected identity;
@@ -54,14 +59,20 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the video preview fix:
+Latest code-validation evidence after the Pi busy-after-interrupt repair:
+
+- Focused Pi/server JSONL validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` plus `tests/test_broker_busy_state.py`, `tests/test_read_jsonl_from_offset.py`, `tests/test_sessions_pending_log_idle.py`, and `tests/test_server_queue_persistence.py` -> `187 passed, 26 subtests passed`.
+- Adjacent readiness/interrupt/source validation: `tests/test_broker_busy_state.py`, `tests/test_interrupt_semantics_source.py`, `tests/test_file_upload_module_source.py`, `tests/test_idle_heuristics.py`, `tests/test_sessions_pending_log_idle.py`, `tests/test_server_queue_persistence.py`, `tests/test_queue_sweep_idle_guard.py`, `tests/test_diagnostics_source.py`, `tests/test_launch_provenance.py`, `tests/test_session_sidebar_priority.py`, `tests/test_server_chat_flags.py`, `tests/test_sessiond_fail_closed.py`, `tests/test_send_button_source.py`, `tests/test_read_jsonl_from_offset.py`, and `tests/test_broker_fail_closed.py` -> `310 passed, 38 subtests passed`.
+- Full local suite: `python3 -m pytest -q` -> `937 passed, 104 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `936 passed, 1 skipped, 104 subtests passed`.
+- Clean-room critic subagent `809c69e7-147b-4201-aed0-4f1565b0cb94` returned `NO BLOCKERS`; residual risks are repeated reads of huge unterminated partial Pi JSONL rows until newline/EOF and unobserved normal empty Pi final-close assistant rows.
+
+Prior video preview evidence remains valid:
 
 - Focused video/file-viewer validation: node syntax check plus `tests/test_file_viewer_source.py`, ffmpeg transcode fixtures in `tests/test_file_inspect.py`, and `tests/test_video_preview_cache.py` -> `33 passed`.
 - API fixture under isolated Docker: generated odd-dimension MPEG4/PCM MKV; `/api/files/read` returned `kind=video` and `video_preview_url`; `/api/files/video_preview` returned `video/mp4`; ffprobe showed H.264/yuv420p and even encoded dimensions.
 - Browser fixture under isolated Docker: preview preflight `Range: bytes=0-0` returned `206` with `Content-Range`; Chromium loaded metadata from the preview URL.
 - VM regression: 500 JSON preview route error surfaced into fileStatus and did not set the video source.
-- Full local suite: `python3 -m pytest -q` -> `880 passed, 104 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `879 passed, 1 skipped, 104 subtests passed`.
 
 Recent clean-room reviews returned no blockers after fixes:
 
@@ -97,10 +108,10 @@ Any broad frontend/server refactor must keep these product semantics explicit an
 2. **Unknown commit state blocks unsafe actions:** unresolved direct/queued uncertainty blocks send, enqueue, attach, sweep, reorder, and silent destructive cleanup bypasses; recovery UI may explain/review/clear explicit markers but must not silently resume mutation paths.
 3. **Git/file identity:** changed-file paths are repo-root-relative literals; candidate identity is `(gitPath, path)`; path text must not be normalized destructively. Visual highlighting may wrap displayed substrings but must preserve original path strings for titles, copy/open actions, and identity keys. Git helper extraction must preserve literal pathspec handling and existing server wrapper/patch seams.
 4. **Inline refs:** ambiguous inline refs route through the identity-aware picker; failed/truncated project search is ambiguity, not uniqueness proof.
-5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced.
-6. **Stale busy override:** stale broker busy can be overridden only with idle log evidence, empty queue, same-log last-send barrier cleared, and a bound log.
+5. **Broker state:** `busy` is bool and `queue_len` is nonnegative non-bool int; malformed state is fail-closed, not coerced. Explicit web ESC may set `interrupted_idle` only after a successful broker write, and server-side consumers may accept it only when broker busy is false and broker queue is empty.
+6. **Stale busy/confirmed-send override:** stale broker busy can be overridden only with idle log evidence or validated broker `interrupted_idle`, empty queue, and a cleared confirmed-send barrier. Confirmed-send barriers require parseable JSON object row evidence; raw bytes, blank/malformed rows, arrays/scalars, and trailing partial rows are not commit evidence.
 7. **Sidecar discovery:** malformed sidecar metadata is skipped/logged; fresh launch metadata requires a live broker pid; stale discovery still tolerates pid placeholders where explicitly allowed. Schema/type/capability parsing belongs in `codoxear.sidecar_metadata`; consumers may prune/skip only through explicit validation failure, not coercion.
-8. **Transcript scale:** live JSONL readers stay bounded; impossible-sized partial records may be skipped rather than repeatedly re-read unboundedly.
+8. **Transcript scale:** live JSONL readers stay bounded. Broker Pi tailing must not advance over incomplete rows and must process completed oversized rows, but pathological unterminated partial rows remain a known expense until newline/EOF.
 9. **Search semantics:** count is exact by default only when all records in scope were parseable under the bounded line cap; skipped oversized records make `match_count_truncated` true. Bounded counts are lower bounds; `count_max` is incompatible with `order=latest`; UI hints stay sparse and server-clipped.
 10. **Search navigation:** navigation refresh may recompute loaded DOM matches without discarding already-known all-transcript count evidence.
 11. **Modal/accessibility focus:** active dialogs must receive focus immediately; focus must not remain in inert/`aria-hidden` content; message-copy controls must not flood tab/accessibility traversal. Dialog copy actions should copy rendered/allowlisted rows rather than hidden raw response objects.
@@ -122,6 +133,7 @@ The branch is stronger than the historical `develop` summary, but these limits r
 - Codex live response evidence remains incomplete: current work proved the real interactive TUI can be reached with the trust override, but not a full web-send/final-response path.
 - Claude Code live response evidence remains incomplete under isolated HOME because first-run theme/onboarding blocked log binding.
 - Real mobile-device, assistive-tech, slow-network, huge-transcript, and full live backend lifecycle evidence remain incomplete.
+- Pi busy-after-interrupt evidence is deterministic fixture/source/server/broker validation plus full local/Docker suites, not a live Pi TUI/browser interruption replay.
 - Smooth scrolling for Jump to latest remains parked until scheduler/runtime harness evidence exists.
 - Non-UTF-8 Git filenames are replacement-decoded rather than byte-literal end-to-end.
 - Symlink containment checks are pre-open/read/write, not atomic against concurrent local filesystem mutation.
