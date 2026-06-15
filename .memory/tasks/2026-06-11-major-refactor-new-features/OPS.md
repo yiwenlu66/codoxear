@@ -2877,3 +2877,14 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 955 tests, 1 skipped, and 107 subtests.
 - Read-only critic subagent `82cb6205-46b9-428c-97e2-ded96036dd5a` returned `NO BLOCKERS`; it did not run tests and inspected static serving, asset versioning, packaging, script ordering, fail-loud behavior, URL-prefix behavior, CSP, service-worker path behavior, and broad UI semantic scope.
 - Functional commit created: `a427dab extract frontend URL helper`.
+
+## 2026-06-15 10:10
+- Implemented the second bounded frontend refactor tranche by extracting local-storage access from `codoxear/static/app.js` into `codoxear/static/app_storage.js`.
+- `index.html` now loads `app_url.js`, then `app_storage.js`, then `app.js`; `app.js` keeps the existing `optionalLocalStorage`, `storageGetItem`, `storageSetItem`, and `storageRemoveItem` names as wrappers and fails loudly if `window.CodoxearStorage` is unavailable.
+- Added `app_storage.js` to static asset versioning and top-level static routing; package data already includes direct `static/*` files, and tests assert wheel inclusion.
+- Updated `tests/test_storage_robustness_source.py` to evaluate the extracted storage module directly while preserving denied/throwing storage semantics.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_storage_robustness_source.py tests/test_static_assets.py tests/test_frontend_url_module_source.py tests/test_file_picker_session_state.py tests/test_new_session_model_options_source.py` passed: 39 tests and 3 subtests.
+- Docker runtime route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: in-container requests returned `/codoxear/api/me -> 401`, `/codoxear/app_url.js?v=test -> 200`, `/codoxear/app_storage.js?v=test -> 200` with helper content, and `/codoxear/app.js?v=test -> 200`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 955 tests, 1 skipped, and 107 subtests.
+- Read-only critic subagent `5679462c-49f1-4e14-aecb-ada1b99a3f80` returned `NO BLOCKERS`; it did not run tests and inspected storage-denial behavior, script ordering, fail-loud dependency, static routing/versioning/package inclusion, CSP/path behavior, and helper-name compatibility.
+- Functional commit created: `8f43ef8 extract frontend storage helper`.

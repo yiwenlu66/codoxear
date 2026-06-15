@@ -2346,3 +2346,9 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Commitment: frontend URL/base-path resolution now has a small source module as the first bounded refactor tranche. `app.js` depends on the module explicitly and fails loudly if it is not loaded, preserving no-silent-fallback semantics.
 - Observation: Docker-only validation and read-only critic review found no blocker for script order, CSP, URL-prefix behavior, service-worker path resolution, packaging, or broad UI semantic drift.
 - Scoped claim: the URL helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim real mobile, assistive-tech, slow-network, or host-browser evidence.
+
+## 2026-06-15 10:10
+- Observation: local-storage access was still embedded in `app.js` after URL helper extraction, but its behavior was already well-scoped by storage-denial tests: storage getter/method failures must degrade to defaults rather than crash.
+- Intervention: storage access now lives in `app_storage.js`; `app.js` keeps the same helper names as wrappers and fails loudly if the module is missing, avoiding a silent fallback.
+- Observation: Docker-only focused/full validation and read-only critic review found no blocker for denied-storage behavior, static serving/versioning, package inclusion, script order, CSP/path behavior, or broad UI semantic drift.
+- Scoped claim: storage helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim host-browser, real mobile, assistive-tech, or slow-network evidence.
