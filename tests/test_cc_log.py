@@ -70,6 +70,40 @@ class TestCcLog(unittest.TestCase):
         self.assertFalse(cc_assistant_is_final_turn_end(cc_assistant([{"type": "text", "text": "more"}], stop_reason="tool_use")))
         self.assertTrue(cc_is_turn_end({"type": "system", "subtype": "turn_duration", "durationMs": 123}))
 
+    def test_read_session_header_merges_cwd_from_later_record(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "mode", "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:00.000Z"},
+                cc_user("hello"),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            header = read_cc_session_header(path)
+            self.assertEqual(header, {"id": SESSION_ID, "sessionId": SESSION_ID, "cwd": "/repo", "timestamp": "2026-06-11T00:00:00.000Z"})
+
+    def test_read_session_header_parses_large_valid_first_record(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            row = cc_user("x" * (600 * 1024))
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+            header = read_cc_session_header(path)
+            self.assertEqual(header, {"id": SESSION_ID, "sessionId": SESSION_ID, "cwd": "/repo", "timestamp": "2026-06-11T00:00:00.000Z"})
+
+    def test_read_session_header_scan_is_bounded(self) -> None:
+        with TemporaryDirectory() as td:
+            path = Path(td) / "session.jsonl"
+            rows = [
+                {"type": "mode", "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:00.000Z"},
+                {"type": "noise", "payload": "x" * 200},
+                cc_user("hello"),
+            ]
+            path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+
+            header = read_cc_session_header(path, max_scan_bytes=160)
+            self.assertEqual(header, {"id": SESSION_ID, "sessionId": SESSION_ID, "timestamp": "2026-06-11T00:00:00.000Z"})
+
     def test_read_session_header_and_run_settings(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "session.jsonl"

@@ -469,6 +469,21 @@ def find_session_log_for_session_id(sessions_dir: Path, session_id: str, *, agen
     return None
 
 
+def _payload_cwd_matches(payload_cwd: object, cwd: str) -> bool:
+    if not isinstance(payload_cwd, str):
+        return False
+    if payload_cwd == cwd:
+        return True
+    payload_path = Path(payload_cwd)
+    cwd_path = Path(cwd)
+    if not (payload_path.is_absolute() and cwd_path.is_absolute()):
+        return False
+    try:
+        return bool(os.path.samefile(payload_path, cwd_path))
+    except Exception:
+        return False
+
+
 def find_new_session_log(
     *,
     sessions_dir: Path,
@@ -502,8 +517,7 @@ def find_new_session_log(
             if backend_name == "codex" and is_subagent_session_meta(payload):
                 continue
             if cwd is not None:
-                pcwd = payload.get("cwd")
-                if not (isinstance(pcwd, str) and pcwd == cwd):
+                if not _payload_cwd_matches(payload.get("cwd"), cwd):
                     continue
             if backend_name == "pi":
                 sid = read_pi_session_id(p)
@@ -779,20 +793,8 @@ def proc_find_open_rollout_log(
         if backend_name == "codex" and is_subagent_session_meta(payload):
             continue
         if cwd is not None:
-            pcwd = payload.get("cwd")
-            if not isinstance(pcwd, str):
+            if not _payload_cwd_matches(payload.get("cwd"), cwd):
                 continue
-            if pcwd != cwd:
-                pcwd_path = Path(pcwd)
-                cwd_path = Path(cwd)
-                if not (pcwd_path.is_absolute() and cwd_path.is_absolute()):
-                    continue
-                try:
-                    same_cwd = os.path.samefile(pcwd_path, cwd_path)
-                except Exception:
-                    same_cwd = False
-                if not same_cwd:
-                    continue
         matches.append(p)
     if len(matches) != 1:
         return None

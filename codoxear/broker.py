@@ -387,7 +387,7 @@ def _expand_cwd(cwd: str) -> str:
     home = str(Path.home())
     s = cwd.strip().replace("${HOME}", home)
     s = re.sub(r"\$HOME(?![A-Za-z0-9_])", home, s)
-    return os.path.expanduser(os.path.expandvars(s))
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(s)))
 
 
 def _user_shell() -> str:
@@ -1034,6 +1034,21 @@ class Broker:
                                 self._maybe_register_or_switch_rollout(log_path=lp)
                                 time.sleep(0.25)
                                 continue
+                        if AGENT_BACKEND == "cc" and current_log_path is None:
+                            found = _find_new_session_log(
+                                sessions_dir=self.sessions_dir,
+                                agent_backend=AGENT_BACKEND,
+                                cwd=self.cwd,
+                                after_ts=st.start_ts,
+                                preexisting=st.known_rollout_paths,
+                                exclude_paths=ignored_paths,
+                                timeout_s=0.0,
+                            )
+                            if found is not None:
+                                _sid, fallback_log_path = found
+                                self._maybe_register_or_switch_rollout(log_path=fallback_log_path)
+                                time.sleep(0.25)
+                                continue
                     # Exit early if Codex is gone.
                     try:
                         wpid, _status = os.waitpid(root_pid, os.WNOHANG)
@@ -1651,6 +1666,9 @@ class Broker:
 
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
         start_ts = _now()
+        prelaunch_rollout_paths: set[Path] = set()
+        if AGENT_BACKEND in ("pi", "cc"):
+            prelaunch_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend=AGENT_BACKEND))
         headless = (OWNER_TAG == "web")
         local_terminal = (not self._emulate_terminal) and sys.stdin.isatty()
 
@@ -1761,8 +1779,8 @@ class Broker:
         )
         declared_log_path = _session_log_path_from_args(args=self.codex_args, agent_backend=AGENT_BACKEND, sessions_dir=self.sessions_dir)
         st.declared_log_path = declared_log_path
-        if AGENT_BACKEND == "pi":
-            st.known_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend="pi"))
+        if AGENT_BACKEND in ("pi", "cc"):
+            st.known_rollout_paths = set(prelaunch_rollout_paths)
         st.sock_path = SOCK_DIR / f"broker-{os.getpid()}.sock"
         if declared_log_path is not None:
             st.log_path = declared_log_path

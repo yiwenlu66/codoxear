@@ -329,28 +329,60 @@ def cc_is_turn_end(obj: dict[str, Any]) -> bool:
     return obj.get("type") == "system" and obj.get("subtype") == "turn_duration"
 
 
-def read_cc_session_header(path: Path) -> dict[str, Any] | None:
-    obj = _read_jsonl_first_object_with_session_id(path)
-    if not isinstance(obj, dict):
+def read_cc_session_header(path: Path, *, max_scan_bytes: int = 512 * 1024) -> dict[str, Any] | None:
+    session_id: str | None = None
+    cwd: str | None = None
+    timestamp: str | None = None
+    git_branch: str | None = None
+    version: str | None = None
+    offset = 0
+    try:
+        with path.open("rb") as f:
+            for raw in f:
+                line_start = offset
+                offset += len(raw)
+                if line_start >= max_scan_bytes:
+                    break
+                if not raw.strip():
+                    continue
+                try:
+                    obj = json.loads(raw.decode("utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                raw_session_id = obj.get("sessionId")
+                if session_id is None and isinstance(raw_session_id, str) and raw_session_id.strip():
+                    session_id = raw_session_id
+                raw_cwd = obj.get("cwd")
+                if cwd is None and isinstance(raw_cwd, str) and raw_cwd.strip():
+                    cwd = raw_cwd
+                raw_timestamp = obj.get("timestamp")
+                if timestamp is None and isinstance(raw_timestamp, str) and raw_timestamp.strip():
+                    timestamp = raw_timestamp
+                raw_git_branch = obj.get("gitBranch")
+                if git_branch is None and isinstance(raw_git_branch, str) and raw_git_branch.strip():
+                    git_branch = raw_git_branch
+                raw_version = obj.get("version")
+                if version is None and isinstance(raw_version, str) and raw_version.strip():
+                    version = raw_version
+                if session_id is not None and cwd is not None:
+                    break
+    except FileNotFoundError:
         return None
-    session_id = obj.get("sessionId")
-    if not isinstance(session_id, str) or not session_id.strip():
+    if session_id is None:
         return None
     payload: dict[str, Any] = {
         "id": session_id,
         "sessionId": session_id,
     }
-    cwd = obj.get("cwd")
-    if isinstance(cwd, str) and cwd.strip():
+    if cwd is not None:
         payload["cwd"] = cwd
-    timestamp = obj.get("timestamp")
-    if isinstance(timestamp, str) and timestamp.strip():
+    if timestamp is not None:
         payload["timestamp"] = timestamp
-    git_branch = obj.get("gitBranch")
-    if isinstance(git_branch, str) and git_branch.strip():
+    if git_branch is not None:
         payload["git"] = {"branch": git_branch}
-    version = obj.get("version")
-    if isinstance(version, str) and version.strip():
+    if version is not None:
         payload["version"] = version
     return payload
 

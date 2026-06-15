@@ -4,6 +4,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 SERVER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "server.py"
+BROKER_PY = Path(__file__).resolve().parents[1] / "codoxear" / "broker.py"
 BACKEND_LAUNCH_PY = Path(__file__).resolve().parents[1] / "codoxear" / "backend_launch.py"
 LAUNCH_CONFIG_PY = Path(__file__).resolve().parents[1] / "codoxear" / "launch_config.py"
 
@@ -31,6 +32,18 @@ class TestClaudeBackendSource(unittest.TestCase):
         self.assertIn('args.extend(["--effort", reasoning_effort])', launch_source)
         self.assertIn('return ["--resume", resume_id]', launch_source)
         self.assertIn('"cc": "CLAUDE_CONFIG_DIR"', launch_source)
+
+    def test_broker_has_cc_closed_log_discovery_fallback(self) -> None:
+        source = BROKER_PY.read_text(encoding="utf-8")
+        self.assertIn('if AGENT_BACKEND == "cc" and current_log_path is None:', source)
+        self.assertIn('found = _find_new_session_log(', source)
+        self.assertIn('agent_backend=AGENT_BACKEND', source)
+        self.assertIn('preexisting=st.known_rollout_paths', source)
+        self.assertIn('prelaunch_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend=AGENT_BACKEND))', source)
+        prelaunch_idx = source.index('prelaunch_rollout_paths = set(_iter_session_logs(self.sessions_dir, agent_backend=AGENT_BACKEND))')
+        self.assertLess(prelaunch_idx, source.index('os.fork()'))
+        self.assertLess(prelaunch_idx, source.index('pty.fork()'))
+        self.assertIn('st.known_rollout_paths = set(prelaunch_rollout_paths)', source)
 
 
 if __name__ == "__main__":
