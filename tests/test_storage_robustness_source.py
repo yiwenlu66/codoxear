@@ -6,25 +6,25 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
 
 
 def eval_storage_helpers(storage_expression: str) -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function optionalLocalStorage() {")
-    end = source.index("\n\n      let newSessionBackend", start)
-    snippet = source[start:end]
+    source = APP_STORAGE_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{ window: {{}} }};
         {storage_expression}
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const storage = ctx.window.CodoxearStorage;
         const out = {{}};
-        try {{ out.getMissing = ctx.storageGetItem("missing"); }} catch (err) {{ out.getMissingError = err && err.name || String(err); }}
-        try {{ out.setValue = ctx.storageSetItem("k", "v"); }} catch (err) {{ out.setValueError = err && err.name || String(err); }}
-        try {{ out.removeValue = ctx.storageRemoveItem("k"); }} catch (err) {{ out.removeValueError = err && err.name || String(err); }}
+        try {{ out.getMissing = storage.getItem("missing"); }} catch (err) {{ out.getMissingError = err && err.name || String(err); }}
+        try {{ out.setValue = storage.setItem("k", "v"); }} catch (err) {{ out.setValueError = err && err.name || String(err); }}
+        try {{ out.removeValue = storage.removeItem("k"); }} catch (err) {{ out.removeValueError = err && err.name || String(err); }}
         process.stdout.write(JSON.stringify(out));
         """
     )
@@ -34,16 +34,23 @@ def eval_storage_helpers(storage_expression: str) -> dict:
 
 class TestStorageRobustnessSource(unittest.TestCase):
     def test_storage_access_is_wrapped(self) -> None:
-        source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("function optionalLocalStorage() {", source)
-        self.assertIn("function storageGetItem(key) {", source)
-        self.assertIn("function storageSetItem(key, value) {", source)
-        self.assertIn("function storageRemoveItem(key) {", source)
-        direct_calls = re.findall(r"(?<!window\.)\blocalStorage\.(?:getItem|setItem|removeItem)\(", source)
+        app_source = APP_JS.read_text(encoding="utf-8")
+        storage_source = APP_STORAGE_JS.read_text(encoding="utf-8")
+        self.assertIn("function optionalLocalStorage() {", storage_source)
+        self.assertIn("function getItem(key) {", storage_source)
+        self.assertIn("function setItem(key, value) {", storage_source)
+        self.assertIn("function removeItem(key) {", storage_source)
+        self.assertIn("window.CodoxearStorage = Object.freeze", storage_source)
+        self.assertIn("const codoxearStorage = window.CodoxearStorage;", app_source)
+        self.assertIn('throw new Error("Codoxear storage helpers failed to load")', app_source)
+        self.assertIn("function storageGetItem(key) {", app_source)
+        self.assertIn("function storageSetItem(key, value) {", app_source)
+        self.assertIn("function storageRemoveItem(key) {", app_source)
+        direct_calls = re.findall(r"(?<!window\.)\blocalStorage\.(?:getItem|setItem|removeItem)\(", app_source)
         self.assertEqual(direct_calls, [])
-        self.assertIn('storageGetItem("codexweb.selected")', source)
-        self.assertIn('storageSetItem("codexweb.selected", sessionId)', source)
-        self.assertIn('storageRemoveItem("codexweb.selected")', source)
+        self.assertIn('storageGetItem("codexweb.selected")', app_source)
+        self.assertIn('storageSetItem("codexweb.selected", sessionId)', app_source)
+        self.assertIn('storageRemoveItem("codexweb.selected")', app_source)
 
     def test_throwing_local_storage_getter_degrades_to_defaults(self) -> None:
         result = eval_storage_helpers(

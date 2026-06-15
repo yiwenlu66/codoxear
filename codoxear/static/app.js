@@ -100,42 +100,19 @@
         return codoxearUrls.resolveAppUrl(path);
       }
 
+      const codoxearStorage = window.CodoxearStorage;
+      if (!codoxearStorage || typeof codoxearStorage.getItem !== "function" || typeof codoxearStorage.setItem !== "function" || typeof codoxearStorage.removeItem !== "function") throw new Error("Codoxear storage helpers failed to load");
       function optionalLocalStorage() {
-        try {
-          const store = window.localStorage;
-          return store && typeof store.getItem === "function" ? store : null;
-        } catch (_) {
-          return null;
-        }
+        return typeof codoxearStorage.optionalLocalStorage === "function" ? codoxearStorage.optionalLocalStorage() : null;
       }
       function storageGetItem(key) {
-        const store = optionalLocalStorage();
-        if (!store) return null;
-        try {
-          return store.getItem(String(key));
-        } catch (_) {
-          return null;
-        }
+        return codoxearStorage.getItem(key);
       }
       function storageSetItem(key, value) {
-        const store = optionalLocalStorage();
-        if (!store) return false;
-        try {
-          store.setItem(String(key), String(value));
-          return true;
-        } catch (_) {
-          return false;
-        }
+        return codoxearStorage.setItem(key, value);
       }
       function storageRemoveItem(key) {
-        const store = optionalLocalStorage();
-        if (!store) return false;
-        try {
-          store.removeItem(String(key));
-          return true;
-        } catch (_) {
-          return false;
-        }
+        return codoxearStorage.removeItem(key);
       }
 
       let newSessionBackend = "codex";
