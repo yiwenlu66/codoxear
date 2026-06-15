@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `2d8e1e2 fix Codex rollout cwd alias binding`
+Latest functional code checkpoint: `b7216e2 extract frontend markdown helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -58,12 +58,14 @@ Recent committed recovery checkpoints include:
   - app URL/base-path resolution moved from `app.js` into `codoxear/static/app_url.js`;
   - local-storage access moved from `app.js` into `codoxear/static/app_storage.js`;
   - performance-sampling diagnostics moved from `app.js` into `codoxear/static/app_perf.js`;
-  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
+  - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
+  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_markdown.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
   - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
   - storage-denial behavior remains the same guarded contract: unavailable/throwing storage yields `null` for reads and `false` for writes/removes;
-  - performance diagnostics preserve the 200-sample window, nonnegative-value filter, percentile/rounding policy, and public `window.codoxearPerf` entry point.
+  - performance diagnostics preserve the 200-sample window, nonnegative-value filter, percentile/rounding policy, and public `window.codoxearPerf` entry point;
+  - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -107,6 +109,12 @@ Latest Docker-only evidence after frontend helper extractions:
 - Static registry Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_url.js`, `/codoxear/app_storage.js`, `/codoxear/app_perf.js`, `/codoxear/app.js`, `/codoxear/app.css`, `/codoxear/favicon.png`, `/codoxear/manifest.webmanifest`, `/codoxear/service-worker.js`, and `/codoxear/static/app.js` all returned 200.
 - Static registry full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `959 passed, 1 skipped, 107 subtests passed`.
 - Static registry read-only critic subagent `35973f5f-5be7-4c9f-80f4-15ac71ced0e9` returned `NO BLOCKERS` for route mappings, URL-prefix behavior, `/static/*` preservation, version hash order/coverage, unchanged `_send_static`/CSP/cache/content-type/package behavior, and Python compatibility. Its non-blocking notes were pre-existing or non-behavioral for exact-route matching.
+- Markdown helper focused local validation after extraction: `node --check codoxear/static/app.js`, `node --check codoxear/static/app_markdown.js`, and `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_static_assets.py` -> `80 passed`.
+- Markdown helper focused Docker validation: `scripts/codoxear-docker-sandbox test tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_static_assets.py` -> `80 passed`.
+- Markdown helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_markdown.js?v=test -> 200`.
+- Markdown helper full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `962 passed, 1 skipped, 107 subtests passed`.
+- Clean-room critic subagent `85d8069d-4e2f-40ef-bf96-eee6545b280d` found a real missing-global blocker after extraction: the non-literal `openFileReference()` path still called `parseLocalFileRef()` after it became private to `app_markdown.js`. The fix exported `parseLocalFileRef`, added the app wrapper/fail-loud check, and added an executable VM regression for the non-literal branch.
+- Clean-room critic subagent `4773fc5a-bbbf-4d0e-b29d-e65061972fcf` returned `NO BLOCKERS` after the parser export fix; focused reviewer `de87e7a2-ae7e-4120-9b54-0f6ad5232a9d` also returned `NO BLOCKERS` for the five extraction acceptance blockers. Residual risks: non-literal direct calls with an inline suffix such as `src/app.py:7` still do not consume the parsed line when `ref.line` is absent, which appears pre-existing and outside the extraction regression; duplicate `stripPathLocationSuffix()` copies can drift if suffix semantics change.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -187,4 +195,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-A broad refactor may start from this branch only if it treats the invariants above as contract tests. The first refactor tranche should be bounded and evidence-preserving: extract one frontend subsystem at a time, keep behavior tests/source guards green, run the full local and Docker suites after each coherent checkpoint, and retain isolated browser evidence for high-risk UI flows.
+A broad refactor may start from this branch only if it treats the invariants above as contract tests. The next refactor tranche should be bounded and evidence-preserving: extract one frontend subsystem at a time, keep behavior tests/source guards green, run the full local and Docker suites after each coherent checkpoint, and retain isolated browser evidence for high-risk UI flows.

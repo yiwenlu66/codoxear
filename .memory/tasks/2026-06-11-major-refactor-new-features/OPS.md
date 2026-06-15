@@ -2934,3 +2934,16 @@
 - User clarified that broad refactor work remains and that the promotion-plan detour was unauthorized.
 - Discarded the uncommitted promotion-plan artifact and uncommitted plan-related task-memory edits; no `main` or protected checkout mutation had occurred.
 - Reset `PROMPT.md` from approval/promotion-planning state back to active bounded refactor work, with markdown-renderer extraction as the current tranche.
+
+## 2026-06-15 11:31
+- Implemented the next bounded frontend refactor tranche by extracting markdown rendering/cache/preview and local file-reference parsing from `codoxear/static/app.js` into `codoxear/static/app_markdown.js`.
+- `index.html` now loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_markdown.js`, then `app.js`; `app.js` keeps wrapper names for `normalizeLineNumber`, `parseLocalFileRef`, `isMarkdownPreviewable`, `markdownPreviewHtml`, and `chatMarkdownHtmlCached`, and fails loudly if `window.CodoxearMarkdown` is missing or incomplete.
+- Added `app_markdown.js` to `FRONTEND_ASSET_FILES`, top-level static routes, asset versioning, and wheel/static source tests.
+- Added/updated source/VM tests so markdown renderer/table tests evaluate `app_markdown.js` directly, static tests assert load order/package inclusion, file-picker snippets retain app-owned `stripPathLocationSuffix`, and file-viewer tests execute the non-literal `openFileReference()` parser path.
+- Local focused validation: `node --check codoxear/static/app.js`, `node --check codoxear/static/app_markdown.js`, and `python3 -m pytest -q tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_static_assets.py` passed: 80 tests.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_markdown_renderer_source.py tests/test_markdown_tables.py tests/test_static_assets.py` passed: 80 tests.
+- Docker prefixed-route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_markdown.js?v=test -> 200`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 962 tests, 1 skipped, 107 subtests.
+- First clean-room critic `85d8069d-4e2f-40ef-bf96-eee6545b280d` returned `BLOCKERS` for a missing `parseLocalFileRef` global on the non-literal `openFileReference()` path; the blocker was fixed by exporting the parser through `window.CodoxearMarkdown`, adding an app wrapper/fail-loud check, and adding the executable VM regression.
+- Clean-room critic rerun `4773fc5a-bbbf-4d0e-b29d-e65061972fcf` returned `NO BLOCKERS`; focused reviewer `de87e7a2-ae7e-4120-9b54-0f6ad5232a9d` also returned `NO BLOCKERS` for wrapper coverage, dependency boundary, load order, static/package coverage, and non-literal parser execution.
+- Functional commit created: `b7216e2 extract frontend markdown helper`.
