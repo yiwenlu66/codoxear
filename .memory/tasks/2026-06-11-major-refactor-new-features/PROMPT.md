@@ -2,11 +2,9 @@
 Prepare `/home/yiwen/codex-web-product-recovery` on branch `recovery/product-gaps` as a validated, reviewable candidate for explicit user approval. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without that approval.
 
 ## Workbench
-1. Keep the branch clean and reviewable after every tranche: atomic functional commits, separate memory/checkpoint commits, and exact-file staging only.
-2. Before more implementation, run a final clean-room/adversarial review against `recon/refactor-entry-checkpoint.md` and current `HEAD` to decide whether any blocker remains.
-3. If review finds a blocker, fix the smallest causal scope with Docker-only validation and a follow-up critic.
-4. If review finds no blocker, update `recon/final-acceptance-summary.md` with supported claims, Docker evidence, live-backend evidence already obtained, and parked limits; then stop for explicit user approval.
-5. Optional only if final review identifies refactor risk as a blocker: choose the next bounded tranche from `/tmp/codoxear-next-refactor-after-perf.md` or a fresh scout, preserving existing invariants.
+1. Await explicit user review/approval for `recovery/product-gaps`.
+2. If the user requests changes, repair the smallest causal scope with Docker-only validation and clean-room review.
+3. If the user approves promotion planning, prepare an explicit merge/promotion plan before touching `main`.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.

@@ -2371,3 +2371,17 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Observation: the active PROMPT still listed earlier markdown/video/Pi items as active even though the checkpoint now records later evidence closing them.
 - Intervention: the PROMPT now points future turns at final review, blocker repair only if evidence demands it, and final acceptance-summary preparation instead of stale work replay.
 - Scoped claim: the task memory source of truth is aligned with the current checkpoint; this is not a product behavior change.
+
+## 2026-06-15 10:35
+- Observation: final pre-summary clean-room review found no blocker in current HEAD and identified the historical `develop` final summary as the remaining stale handoff artifact.
+- Intervention: `recon/final-acceptance-summary.md` now scopes the candidate to `recovery/product-gaps`, separates supported claims from parked limits, and does not imply merge approval.
+- Commitment: unless the final summary review finds a blocker, the remaining state is a user decision: approve promotion planning, request additional validation, or request changes.
+
+## 2026-06-15 10:39
+- Observation: the first final-summary gate found scope drift: the summary could mislead by omitting checkpoint limits for incomplete broad structural/frontend refactor and incomplete full live backend lifecycle evidence.
+- Intervention: the parked-limits section now carries both omitted limits forward explicitly.
+- Scoped claim: this repair changes handoff scope accuracy only; product code and validation evidence are unchanged.
+
+## 2026-06-15 10:41
+- Observation: the final summary gate rerun returned `NO BLOCKERS` after verifying the repaired parked limits and completed-state prompt.
+- Commitment: the recovery candidate handoff is ready to commit as documentation/task state; the remaining action is explicit user approval or requested changes, not more autonomous implementation.

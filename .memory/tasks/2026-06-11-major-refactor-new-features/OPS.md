@@ -2916,3 +2916,16 @@
 - Refreshed `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` from the stale long workbench into a short current action list.
 - The refreshed prompt directs future work to final clean-room review, smallest-scope blocker repair if needed, final acceptance summary if no blocker remains, and explicit user approval before any merge/promotion.
 - It records that Pi busy-after-interrupt, Codex live web-send binding, Claude Code closed-log/API-error idle path, markdown containment, video preview, and bounded frontend helper/static-registry refactors are closed unless new evidence reopens them.
+
+## 2026-06-15 10:35
+- Final pre-summary clean-room critic `90a8597a-fa0a-4a8a-b240-8e5989960b39` returned `NO BLOCKERS` for current `recovery/product-gaps` before the summary rewrite.
+- Replaced historical `develop` content in `recon/final-acceptance-summary.md` with a current `recovery/product-gaps` acceptance summary covering integrated work, Docker-only frontend/static validation, backend/live evidence, clean-room reviews, and parked limits.
+- Refreshed `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` workbench to the completed-state action list: await explicit user approval, repair only requested changes/blockers, or prepare a merge/promotion plan only after approval.
+
+## 2026-06-15 10:39
+- Final summary gate critic `2a5384ff-5b68-4d64-b07c-9a2fa32da6c9` returned `BLOCKERS`: `recon/final-acceptance-summary.md` omitted two parked limits from `recon/refactor-entry-checkpoint.md`.
+- Repaired the summary by explicitly parking that broad structural/frontend refactoring is not complete and that full live backend lifecycle evidence remains incomplete beyond scoped live paths.
+
+## 2026-06-15 10:41
+- Final summary gate rerun critic `2ed71af5-3fe4-4b94-9b74-f229773d1d0f` returned `NO BLOCKERS` after the parked-limit repair.
+- Reviewer confirmed the uncommitted diff was docs/task-memory only, the prior parked-limit blocker was repaired, Docker-only frontend/static evidence was scoped correctly, the prompt was in completed-state workbench form, `git diff --check` was clean, and no untracked secret/runtime artifacts were found by its inspection.
