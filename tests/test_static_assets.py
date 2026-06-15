@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import tempfile
@@ -23,6 +24,7 @@ APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
 APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
 
 
 class TestStaticAssets(unittest.TestCase):
@@ -35,12 +37,14 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
 
     def test_app_shell_does_not_execute_third_party_assets(self) -> None:
         index = INDEX_HTML.read_text(encoding="utf-8")
@@ -50,6 +54,7 @@ class TestStaticAssets(unittest.TestCase):
         app_perf = APP_PERF_JS.read_text(encoding="utf-8")
         app_markdown = APP_MARKDOWN_JS.read_text(encoding="utf-8")
         app_launch = APP_LAUNCH_JS.read_text(encoding="utf-8")
+        app_display = APP_DISPLAY_JS.read_text(encoding="utf-8")
         server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
         self.assertIn("self.send_header(\"Content-Security-Policy\", CONTENT_SECURITY_POLICY)", server_source)
@@ -63,6 +68,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_perf)
             self.assertNotIn(forbidden, app_markdown)
             self.assertNotIn(forbidden, app_launch)
+            self.assertNotIn(forbidden, app_display)
         self.assertNotIn('src="https://', index)
         self.assertNotIn('href="https://', index)
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
@@ -74,6 +80,15 @@ class TestStaticAssets(unittest.TestCase):
     def test_frontend_asset_manifest_drives_version_files(self) -> None:
         self.assertEqual(STATIC_ASSET_VERSION_FILES, FRONTEND_ASSET_FILES)
 
+    def test_versioned_index_assets_exist_and_are_registered(self) -> None:
+        source = INDEX_HTML.read_text(encoding="utf-8")
+        versioned_refs = re.findall(r'(?:src|href)="([^"?]+)\?v=__CODOXEAR_ASSET_VERSION__"', source)
+        self.assertEqual(set(versioned_refs), set(FRONTEND_ASSET_FILES))
+        routes = dict(TOP_LEVEL_STATIC_ASSETS)
+        for name in versioned_refs:
+            self.assertTrue((ROOT / "codoxear" / "static" / name).is_file(), name)
+            self.assertEqual(routes.get(f"/{name}"), name)
+
     def test_static_asset_version_changes_when_frontend_assets_change(self) -> None:
         initial_content = {
             "app_url.js": "window.CodoxearUrls = {};\n",
@@ -81,6 +96,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_perf.js": "window.CodoxearPerf = {};\n",
             "app_markdown.js": "window.CodoxearMarkdown = {};\n",
             "app_launch.js": "window.CodoxearLaunch = {};\n",
+            "app_display.js": "window.CodoxearDisplay = {};\n",
             "app.js": "console.log('one');\n",
             "app.css": "body { color: black; }\n",
         }
@@ -109,6 +125,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                 ),
                 encoding="utf-8",
@@ -123,6 +140,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_perf.js?v={version}", rendered)
             self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app_launch.js?v={version}", rendered)
+            self.assertIn(f"app_display.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
     def test_static_cache_headers_default_to_no_store(self) -> None:
@@ -189,6 +207,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_perf.js", names)
         self.assertIn("codoxear/static/app_markdown.js", names)
         self.assertIn("codoxear/static/app_launch.js", names)
+        self.assertIn("codoxear/static/app_display.js", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
         self.assertIn("codoxear/static/logos/cc.svg", names)
