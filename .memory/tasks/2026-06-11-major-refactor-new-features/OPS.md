@@ -3000,3 +3000,17 @@
 - Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18847: `/codoxear/api/me -> 401`, `/codoxear/app_file_helpers.js?v=test -> 200`, `/codoxear/app.js?v=test -> 200`, `/codoxear/ -> 200`, and `app_file_helpers.js` contained `window.CodoxearFileHelpers`.
 - Full Docker acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18850 scripts/codoxear-docker-sandbox test` -> 976 passed, 1 skipped, 107 subtests passed.
 - Clean-room critic `d3fbcd89-e7ce-4f46-87c4-39164d6a27f3` returned `NO BLOCKERS`; its non-blocking guard suggestions for newline no-suffix preservation and zero viewer-limit message behavior were applied before the functional commit.
+
+
+## 2026-06-15T13:06:00 Session helper extraction checkpoint
+- Functional commit created: `342aa52 extract frontend session helpers`.
+- Extracted pure session/sidebar render-state helpers into `codoxear/static/app_session_helpers.js`: immutable `SESSION_SIDEBAR_GROUPS`, launch failed/pending/kind/icon predicates, review/group classification, sidebar entry/signature construction, selectability, and fast-session detection.
+- `app.js` now requires `window.CodoxearSessionHelpers` fail-loudly with `Codoxear session helpers failed to load` and keeps wrapper names for existing call sites. DOM rendering (`renderSessionGroupHeader`) and redaction-aware `sessionLaunchLabel`/`redactedLaunchErrorText` stayed app-owned.
+- Static wiring: `index.html` loads `app_session_helpers.js` after `app_file_helpers.js` and before `app.js`; `codoxear/server.py` includes it in `FRONTEND_ASSET_FILES` for asset versioning and top-level static routing.
+- Guard tests added/updated: direct VM tests for grouping, failed/pending selectability, launch kind/icon, sidebar signature, fast-session detection, frozen export metadata, fail-loud wrapper checks, static version/package inclusion, load order, and a boundary assertion keeping launch redaction/label logic out of the helper.
+- Local diagnostic validation: `node --check codoxear/static/app_session_helpers.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_session_helpers_source.py tests/test_sidebar_gtd_source.py tests/test_session_polling_source.py tests/test_voice_push_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py tests/test_launch_ui_source.py` -> 70 passed.
+- Deterministic equivalence check against `HEAD:codoxear/static/app.js` pre-extraction bodies passed for representative launch, grouping, selectability, fast-session, sidebar entries, and signature cases.
+- Docker focused acceptance on final tree: `CODOXEAR_DOCKER_PORT=18856 scripts/codoxear-docker-sandbox test tests/test_frontend_session_helpers_source.py tests/test_sidebar_gtd_source.py tests/test_session_polling_source.py tests/test_voice_push_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py tests/test_launch_ui_source.py -q` -> 70 passed.
+- Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18858: `/codoxear/api/me -> 401`, `/codoxear/app_session_helpers.js?v=test -> 200`, `/codoxear/ -> 200`, and the served helper contained the immutable `SESSION_SIDEBAR_GROUPS` definition.
+- Full Docker acceptance on final tree: `CODOXEAR_DOCKER_PORT=18857 scripts/codoxear-docker-sandbox test` -> 979 passed, 1 skipped, 107 subtests passed.
+- Clean-room critic `a02bb3b9-2860-486d-a79d-0448cc5be833` returned `NO BLOCKERS`; its suggestions to guard the redaction/label boundary and freeze exported group metadata were applied before commit.
