@@ -780,8 +780,19 @@ def proc_find_open_rollout_log(
             continue
         if cwd is not None:
             pcwd = payload.get("cwd")
-            if not (isinstance(pcwd, str) and pcwd == cwd):
+            if not isinstance(pcwd, str):
                 continue
+            if pcwd != cwd:
+                pcwd_path = Path(pcwd)
+                cwd_path = Path(cwd)
+                if not (pcwd_path.is_absolute() and cwd_path.is_absolute()):
+                    continue
+                try:
+                    same_cwd = os.path.samefile(pcwd_path, cwd_path)
+                except Exception:
+                    same_cwd = False
+                if not same_cwd:
+                    continue
         matches.append(p)
     if len(matches) != 1:
         return None
