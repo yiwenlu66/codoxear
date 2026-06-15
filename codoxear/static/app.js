@@ -162,50 +162,16 @@
         return codoxearLaunch.rememberProviderModelChoice(backend, provider, model, options);
       }
 
-      const apiEtags = new Map();
-      const API_NOT_MODIFIED = Symbol("api.notModified");
-
+      const codoxearApi = window.CodoxearApi;
+      if (!codoxearApi || typeof codoxearApi.api !== "function" || typeof codoxearApi.apiResponseNotModified !== "function" || typeof codoxearApi.clearApiCache !== "function") throw new Error("Codoxear API helpers failed to load");
       function apiResponseNotModified(obj) {
-        return !!(obj && obj[API_NOT_MODIFIED]);
+        return codoxearApi.apiResponseNotModified(obj);
       }
-
-      async function api(path, { method = "GET", body, signal } = {}) {
-        const t0 = performance.now();
-        const rawPath = String(path ?? "");
-        const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";
-        const opts = { method, headers: {}, signal };
-        if (cacheableSessionsRequest && apiEtags.has(rawPath)) {
-          opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;
-        }
-        if (body !== undefined) {
-          opts.headers["Content-Type"] = "application/json";
-          opts.body = JSON.stringify(body);
-        }
-        const url = resolveAppUrl(path);
-        const res = await fetch(url, opts);
-        const dt = performance.now() - t0;
-        if (rawPath === "/api/sessions" && method === "GET") pushPerfSample("api_sessions_ms", dt);
-        else if (rawPath.includes("/messages") && method === "GET") {
-          if (rawPath.includes("init=1")) pushPerfSample("api_messages_init_ms", dt);
-          else pushPerfSample("api_messages_poll_ms", dt);
-        }
-        if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {
-          const cached = JSON.parse(apiEtags.get(rawPath).text);
-          Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });
-          return cached;
-        }
-        const txt = await res.text();
-        let obj;
-        try {
-          obj = JSON.parse(txt);
-        } catch (e) {
-          console.error("api: invalid json response", { path, url, method, txt });
-          throw e;
-        }
-        if (!res.ok) throw Object.assign(new Error(obj.error || "request failed"), { status: res.status, obj });
-        const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;
-        if (etag) apiEtags.set(rawPath, { etag, text: txt });
-        return obj;
+      function clearApiCache() {
+        return codoxearApi.clearApiCache();
+      }
+      async function api(path, options = {}) {
+        return codoxearApi.api(path, options);
       }
 
       function fmtTs(ts) {
@@ -861,7 +827,7 @@
               cleanup();
             } catch (_error) {}
           }
-          apiEtags.clear();
+          clearApiCache();
           if (activeAppCleanup === cleanupApp) activeAppCleanup = null;
         }
         function handleAppAuthLoss() {

@@ -239,7 +239,7 @@ PROC_ROOT = Path("/proc")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
-FRONTEND_ASSET_FILES = ("app_url.js", "app_storage.js", "app_perf.js", "app_markdown.js", "app_launch.js", "app_display.js", "app.js", "app.css")
+FRONTEND_ASSET_FILES = ("app_url.js", "app_storage.js", "app_perf.js", "app_api.js", "app_markdown.js", "app_launch.js", "app_display.js", "app.js", "app.css")
 STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES
 TOP_LEVEL_STATIC_ASSETS = (
     ("/favicon.ico", "favicon.png"),

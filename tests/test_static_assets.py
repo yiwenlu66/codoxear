@@ -22,6 +22,7 @@ APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
 APP_STORAGE_JS = ROOT / "codoxear" / "static" / "app_storage.js"
 APP_PERF_JS = ROOT / "codoxear" / "static" / "app_perf.js"
+APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
 APP_LAUNCH_JS = ROOT / "codoxear" / "static" / "app_launch.js"
 APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
@@ -35,13 +36,15 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_storage.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
-        self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_perf.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
+        self.assertLess(source.index(f"app_api.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_markdown.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_launch.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
         self.assertLess(source.index(f"app_display.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
@@ -52,6 +55,7 @@ class TestStaticAssets(unittest.TestCase):
         app_url = APP_URL_JS.read_text(encoding="utf-8")
         app_storage = APP_STORAGE_JS.read_text(encoding="utf-8")
         app_perf = APP_PERF_JS.read_text(encoding="utf-8")
+        app_api = APP_API_JS.read_text(encoding="utf-8")
         app_markdown = APP_MARKDOWN_JS.read_text(encoding="utf-8")
         app_launch = APP_LAUNCH_JS.read_text(encoding="utf-8")
         app_display = APP_DISPLAY_JS.read_text(encoding="utf-8")
@@ -66,6 +70,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(forbidden, app_url)
             self.assertNotIn(forbidden, app_storage)
             self.assertNotIn(forbidden, app_perf)
+            self.assertNotIn(forbidden, app_api)
             self.assertNotIn(forbidden, app_markdown)
             self.assertNotIn(forbidden, app_launch)
             self.assertNotIn(forbidden, app_display)
@@ -94,6 +99,7 @@ class TestStaticAssets(unittest.TestCase):
             "app_url.js": "window.CodoxearUrls = {};\n",
             "app_storage.js": "window.CodoxearStorage = {};\n",
             "app_perf.js": "window.CodoxearPerf = {};\n",
+            "app_api.js": "window.CodoxearApi = {};\n",
             "app_markdown.js": "window.CodoxearMarkdown = {};\n",
             "app_launch.js": "window.CodoxearLaunch = {};\n",
             "app_display.js": "window.CodoxearDisplay = {};\n",
@@ -123,6 +129,7 @@ class TestStaticAssets(unittest.TestCase):
                     '<script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_storage.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_perf.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
+                    '<script src="app_api.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_markdown.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_launch.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app_display.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
@@ -138,6 +145,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertIn(f"app_url.js?v={version}", rendered)
             self.assertIn(f"app_storage.js?v={version}", rendered)
             self.assertIn(f"app_perf.js?v={version}", rendered)
+            self.assertIn(f"app_api.js?v={version}", rendered)
             self.assertIn(f"app_markdown.js?v={version}", rendered)
             self.assertIn(f"app_launch.js?v={version}", rendered)
             self.assertIn(f"app_display.js?v={version}", rendered)
@@ -205,6 +213,7 @@ class TestStaticAssets(unittest.TestCase):
         self.assertIn("codoxear/static/app_url.js", names)
         self.assertIn("codoxear/static/app_storage.js", names)
         self.assertIn("codoxear/static/app_perf.js", names)
+        self.assertIn("codoxear/static/app_api.js", names)
         self.assertIn("codoxear/static/app_markdown.js", names)
         self.assertIn("codoxear/static/app_launch.js", names)
         self.assertIn("codoxear/static/app_display.js", names)

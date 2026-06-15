@@ -66,7 +66,7 @@ class TestAuthCleanupSource(unittest.TestCase):
         self.assertIn("resetLiveAudioState();", cleanup)
         self.assertIn("while (appEventCleanups.length)", cleanup)
         self.assertIn("cleanup();", cleanup)
-        self.assertIn("apiEtags.clear();", cleanup)
+        self.assertIn("clearApiCache();", cleanup)
 
     def test_auth_loss_and_logout_use_shared_cleanup(self) -> None:
         app = render_app_block()

@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
 
 
 def eval_message_poll_delay_policy() -> dict:
@@ -76,17 +78,26 @@ class TestSessionPollingSource(unittest.TestCase):
 
     def test_sessions_api_uses_etag_cache_for_unchanged_polls(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const apiEtags = new Map();", source)
-        self.assertIn('const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";', source)
-        self.assertIn('opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;', source)
-        self.assertIn("const API_NOT_MODIFIED = Symbol(\"api.notModified\");", source)
+        api_source = APP_API_JS.read_text(encoding="utf-8")
+        self.assertIn("const codoxearApi = window.CodoxearApi;", source)
+        self.assertIn('throw new Error("Codoxear API helpers failed to load")', source)
+        self.assertIn("typeof codoxearApi.clearApiCache !== \"function\"", source)
         self.assertIn("function apiResponseNotModified(obj) {", source)
-        self.assertIn("if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {", source)
-        self.assertIn("Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });", source)
+        self.assertIn("return codoxearApi.apiResponseNotModified(obj);", source)
+        self.assertIn("function clearApiCache() {", source)
+        self.assertIn("async function api(path, options = {}) {", source)
+        self.assertIn("const apiEtags = new Map();", api_source)
+        self.assertIn("function clearApiCache() {", api_source)
+        self.assertIn("apiEtags.clear();", api_source)
+        self.assertIn('const cacheableSessionsRequest = method === "GET" && rawPath === "/api/sessions";', api_source)
+        self.assertIn('opts.headers["If-None-Match"] = apiEtags.get(rawPath).etag;', api_source)
+        self.assertIn("const API_NOT_MODIFIED = Symbol(\"api.notModified\");", api_source)
+        self.assertIn("if (res.status === 304 && cacheableSessionsRequest && apiEtags.has(rawPath)) {", api_source)
+        self.assertIn("Object.defineProperty(cached, API_NOT_MODIFIED, { value: true });", api_source)
         self.assertIn("const notModified = apiResponseNotModified(data);", source)
         self.assertIn("if (notModified && !swipeRefreshDeferred) return latestSessions;", source)
-        self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', source)
-        self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", source)
+        self.assertIn('const etag = cacheableSessionsRequest ? res.headers.get("ETag") : null;', api_source)
+        self.assertIn("if (etag) apiEtags.set(rawPath, { etag, text: txt });", api_source)
 
     def test_session_refreshes_are_serialized(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
