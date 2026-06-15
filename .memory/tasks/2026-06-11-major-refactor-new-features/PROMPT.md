@@ -2,11 +2,10 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Extract the next frontend subsystem only when its invariants and validation path are understood.
-2. For the current tranche, extract markdown rendering into a helper module while preserving escaping, local file refs, image/blob routing, table/code behavior, and session-scoped cache semantics.
-3. Validate each tranche with focused Docker tests, full Docker suite, clean diff review, and clean-room critic review.
-4. Commit functional changes and memory/checkpoint docs separately.
-5. After each tranche, choose the next bounded refactor from `recon/refactor-entry-checkpoint.md` or fresh scout evidence; do not switch back to promotion planning unless explicitly requested.
+1. Select the next bounded refactor from `recon/refactor-entry-checkpoint.md` or fresh scout evidence; no promotion/merge planning unless explicitly requested.
+2. Before editing, state the subsystem invariant, source of truth, and Docker validation path; preserve fail-loud helper boundaries and no silent fallbacks.
+3. For each tranche, run focused Docker tests, full Docker suite, static prefix smoke when assets change, clean diff review, and clean-room critic review.
+4. Commit functional changes and memory/checkpoint docs separately, then refresh this workbench to the next short action list.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.

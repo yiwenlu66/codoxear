@@ -2409,3 +2409,12 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Intervention: `app_launch.js` now consumes the real storage API, and `tests/test_launch_ui_source.py` executes `app_url.js`, `app_storage.js`, and `app_launch.js` together before checking provider-memory behavior.
 - Observation: Docker-only focused/full validation, prefixed route validation, and focused clean-room review found no remaining blocker for launch helper wrappers, explicit defaults forwarding, Pi/Codex/Claude provider/default/reasoning behavior, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, app-owned failed-launch redaction, or static version/route/package coverage.
 - Scoped claim: launch-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim broader browser UX, real mobile-device, assistive-tech, slow-network, huge-transcript, or live backend lifecycle evidence.
+
+
+## 2026-06-15T12:15:16 Display helper extraction evidence
+Observation: `app_display.js` now owns pure presentation helpers for button tooltip defaults, byte/time/age/session labels, and SVG icon markup; `app.js` delegates through fail-loud wrappers instead of retaining duplicate helper bodies.
+Observation: Docker focused validation passed with 51 tests, Docker prefix smoke served `app_display.js` under `/codoxear/`, and the full Docker suite passed with 969 passed, 1 skipped, 107 subtests passed on the final staged tree.
+Observation: The clean-room critic returned `NO BLOCKERS`. Its non-blocking concerns were future drift risks: icon/formatter tests could be too sparse and versioned HTML could reference a missing helper in an incomplete package/checkout.
+Intervention: Added guard tests for formatter boundaries, every literal `iconSvg("...")` use plus dynamic session-launch icon names, and existence/route registration for every versioned `index.html` asset.
+Interpretation: The tranche changed helper ownership and static load ordering, not session/backend behavior. The remaining deployment-skew behavior is deliberately fail-loud when a required helper is missing rather than hidden by a fallback.
+Scoped claim: display-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new real mobile-device, assistive-tech, slow-network, huge-transcript, or live backend lifecycle evidence.

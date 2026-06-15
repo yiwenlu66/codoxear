@@ -2960,3 +2960,17 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 964 tests, 1 skipped, 107 subtests.
 - Focused reviewer `f3542620-2f37-4c18-9f1b-7de723caabf9` returned `NO BLOCKERS` after the storage-contract repair for the launch-helper extraction scope.
 - Functional commit created: `320e646 extract frontend launch helper`.
+
+
+## 2026-06-15T12:15:16 Display helper extraction checkpoint
+- Functional commit created: `c5580fe extract frontend display helper`.
+- Extracted pure display helpers into `codoxear/static/app_display.js`: `defaultButtonTooltip`, `fmtTs`, `fmtBytes`, `baseName`, `shortSessionId`, `sessionDisplayName`, `fmtIdleAge`, `fmtRelativeAge`, `sessionTitleWithId`, and `iconSvg`.
+- `app.js` now requires `window.CodoxearDisplay` fail-loudly with `Codoxear display helpers failed to load` and keeps wrapper names for existing call sites.
+- Static wiring: `index.html` loads `app_display.js` after `app_launch.js` and before `app.js`; `codoxear/server.py` includes it in `FRONTEND_ASSET_FILES` for asset versioning and top-level static routing.
+- Guard tests added: display-helper formatter/age/byte/session-label cases, literal plus dynamic icon coverage for current `app.js` uses, and a static test that every versioned `index.html` script/link points to an existing registered frontend asset.
+- Local diagnostic validation: `node --check codoxear/static/app_display.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_display_module_source.py tests/test_button_tooltips_source.py tests/test_static_assets.py tests/test_send_button_source.py tests/test_file_viewer_source.py tests/test_launch_ui_source.py` -> 51 passed.
+- Docker focused acceptance on final staged tree: `CODOXEAR_DOCKER_PORT=18836 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_button_tooltips_source.py tests/test_static_assets.py tests/test_send_button_source.py tests/test_file_viewer_source.py tests/test_launch_ui_source.py -q` -> 51 passed.
+- Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18832: `/codoxear/api/me -> 401`, `/codoxear/app_display.js?v=test -> 200`, `/codoxear/app.js?v=test -> 200`, `/codoxear/ -> 200`, and index contained `app_display.js?v=...`.
+- Full Docker acceptance on final staged tree: `CODOXEAR_DOCKER_PORT=18837 scripts/codoxear-docker-sandbox test` -> 969 passed, 1 skipped, 107 subtests passed.
+- Clean-room critic `a1a8273c-19a5-45d5-a395-d32c0a301ac9` returned `NO BLOCKERS`; its suggestions for icon coverage and versioned static-file existence were applied before the functional commit. Deployment-skew/no-fallback behavior is intentionally fail-loud, consistent with the helper-boundary policy.
+- Repaired a malformed intermediate display-helper ledger entry caused by an unquoted shell heredoc; no product/runtime files were affected.
