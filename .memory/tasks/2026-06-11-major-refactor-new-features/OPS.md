@@ -2899,3 +2899,15 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 958 tests, 1 skipped, and 107 subtests.
 - Read-only critic subagent `690d8a0d-02e9-4a46-974c-f0d925df8523` returned `NO BLOCKERS`; it inspected sample-window/filter/percentile/rounding semantics, script order, `window.codoxearPerf` compatibility, static routing/versioning/package inclusion, CSP/path behavior, and Docker-only evidence. Non-blocking note: stale cached old `index.html` plus new `app.js` would fail loudly because the old shell lacks `app_perf.js`; default no-store and asset versioning keep this within the existing stale-static limitation.
 - Functional commit created: `82e674d extract frontend performance helper`.
+
+## 2026-06-15 10:28
+- Implemented the next bounded frontend/server refactor by centralizing static frontend asset registration in `codoxear/server.py`.
+- Added `FRONTEND_ASSET_FILES` as the ordered source for versioned frontend assets and `TOP_LEVEL_STATIC_ASSETS` as the source for exact top-level static routes; `STATIC_ASSET_VERSION_FILES` now aliases `FRONTEND_ASSET_FILES`.
+- Replaced the repeated `_handle_static_get` if-chain for top-level static files with registry iteration while leaving `/static/*` handling, `_send_static`, HTML placeholder replacement, CSP, cache headers, content types, and package-data globs unchanged.
+- Updated `tests/test_static_assets.py` to assert the manifest drives version files and top-level routes, and that every frontend asset mutation changes the static version.
+- Local syntax validation: `python3 -m py_compile codoxear/server.py tests/test_static_assets.py` passed.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py tests/test_url_prefix.py tests/test_frontend_url_module_source.py tests/test_storage_robustness_source.py tests/test_frontend_perf_module_source.py` passed: 24 tests and 3 subtests.
+- Docker runtime route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_url.js`, `/codoxear/app_storage.js`, `/codoxear/app_perf.js`, `/codoxear/app.js`, `/codoxear/app.css`, `/codoxear/favicon.png`, `/codoxear/manifest.webmanifest`, `/codoxear/service-worker.js`, and `/codoxear/static/app.js` all returned 200.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 959 tests, 1 skipped, and 107 subtests.
+- Read-only critic subagent `35973f5f-5be7-4c9f-80f4-15ac71ced0e9` returned `NO BLOCKERS`; it confirmed route mappings, URL-prefix stripping order, `/static/*` handling, version hash coverage/order, unchanged `_send_static`/CSP/cache/content-type/package behavior, and Python runtime compatibility. Non-blocking notes: tests do not assert route order because exact-route order is non-behavioral here; service worker/manifest/favicon remain outside the asset-version hash and all static files share the same cache policy as pre-existing behavior.
+- Functional commit created: `70fc3a1 centralize frontend static asset registry`.

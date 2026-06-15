@@ -2359,3 +2359,10 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Observation: Docker-only focused/full validation and read-only critic review found no blocker for summary semantics, script order, static serving/versioning, package inclusion, CSP/path behavior, or public diagnostic compatibility.
 - Interpretation: a stale cached old shell with a new `app.js` would abort because it does not load `app_perf.js`; this is the existing static-shell/version freshness limitation and is mitigated by default no-store, not by adding a silent fallback.
 - Scoped claim: performance helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim host-browser, real mobile, assistive-tech, slow-network, or huge-transcript evidence.
+
+## 2026-06-15 10:28
+- Observation: after helper extraction, the same frontend asset list was duplicated across version hashing, top-level static route handling, and tests, making future helper additions easy to partially register.
+- Intervention: `FRONTEND_ASSET_FILES` now defines the ordered version-hashed frontend assets and `TOP_LEVEL_STATIC_ASSETS` derives exact top-level routes for those files plus favicon/manifest/service-worker/index entries.
+- Observation: Docker-only focused/full validation, prefixed route probes, and read-only critic review found no blocker for route preservation, URL-prefix behavior, static version hashing order/coverage, CSP/cache/content-type/package behavior, or Python compatibility.
+- Interpretation: top-level registry order is not a behavioral mechanism for current entries because every registry match is exact and `/static/*` is checked after the exact routes; service worker/manifest/favicon remaining outside the version hash is pre-existing behavior rather than a new semantic claim.
+- Scoped claim: static frontend asset registration is now centralized without changing public static URLs or freshness semantics. It does not claim host-browser, real mobile, service-worker lifecycle, or CDN/cache deployment evidence.

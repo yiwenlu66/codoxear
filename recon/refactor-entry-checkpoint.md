@@ -60,6 +60,7 @@ Recent committed recovery checkpoints include:
   - performance-sampling diagnostics moved from `app.js` into `codoxear/static/app_perf.js`;
   - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
+  - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
   - storage-denial behavior remains the same guarded contract: unavailable/throwing storage yields `null` for reads and `false` for writes/removes;
   - performance diagnostics preserve the 200-sample window, nonnegative-value filter, percentile/rounding policy, and public `window.codoxearPerf` entry point.
@@ -102,6 +103,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Perf helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: in-container requests returned `/codoxear/api/me -> 401`, `/codoxear/app_url.js?v=test -> 200`, `/codoxear/app_storage.js?v=test -> 200`, `/codoxear/app_perf.js?v=test -> 200` with `window.CodoxearPerf`, and `/codoxear/app.js?v=test -> 200`.
 - Perf helper full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `958 passed, 1 skipped, 107 subtests passed`.
 - Perf helper read-only critic subagent `690d8a0d-02e9-4a46-974c-f0d925df8523` returned `NO BLOCKERS` for sample-window/filter/percentile/rounding semantics, script order, `window.codoxearPerf` compatibility, static routing/versioning/package inclusion, CSP/path behavior, and Docker-only evidence. It did not run tests. Its non-blocking stale-HTML/new-JS note remains within the existing static-shell freshness limitation and is handled by no-store/versioning rather than silent fallback.
+- Static registry focused Docker validation: `scripts/codoxear-docker-sandbox test tests/test_static_assets.py tests/test_url_prefix.py tests/test_frontend_url_module_source.py tests/test_storage_robustness_source.py tests/test_frontend_perf_module_source.py` -> `24 passed, 3 subtests passed`.
+- Static registry Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_url.js`, `/codoxear/app_storage.js`, `/codoxear/app_perf.js`, `/codoxear/app.js`, `/codoxear/app.css`, `/codoxear/favicon.png`, `/codoxear/manifest.webmanifest`, `/codoxear/service-worker.js`, and `/codoxear/static/app.js` all returned 200.
+- Static registry full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `959 passed, 1 skipped, 107 subtests passed`.
+- Static registry read-only critic subagent `35973f5f-5be7-4c9f-80f4-15ac71ced0e9` returned `NO BLOCKERS` for route mappings, URL-prefix behavior, `/static/*` preservation, version hash order/coverage, unchanged `_send_static`/CSP/cache/content-type/package behavior, and Python compatibility. Its non-blocking notes were pre-existing or non-behavioral for exact-route matching.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
