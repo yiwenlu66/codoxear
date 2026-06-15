@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `c5580fe extract frontend display helper`
+Latest functional code checkpoint: `7e5e43d extract frontend API helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -58,15 +58,17 @@ Recent committed recovery checkpoints include:
   - app URL/base-path resolution moved from `app.js` into `codoxear/static/app_url.js`;
   - local-storage access moved from `app.js` into `codoxear/static/app_storage.js`;
   - performance-sampling diagnostics moved from `app.js` into `codoxear/static/app_perf.js`;
+  - API request/ETag/perf-sampling wrapper moved from `app.js` into `codoxear/static/app_api.js`;
   - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
   - launch/backend/default/provider/model-memory helpers moved from `app.js` into `codoxear/static/app_launch.js`;
   - display/formatting/icon helpers moved from `app.js` into `codoxear/static/app_display.js`;
-  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
+  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_api.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
   - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
   - storage-denial behavior remains the same guarded contract: unavailable/throwing storage yields `null` for reads and `false` for writes/removes;
   - performance diagnostics preserve the 200-sample window, nonnegative-value filter, percentile/rounding policy, and public `window.codoxearPerf` entry point;
+  - API extraction preserves URL-prefix resolution, sessions ETag/304 reuse, private not-modified marker identity, JSON parse/error behavior, API timing sample names, and cleanup-time cache clearing through `window.CodoxearApi`;
   - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
   - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`.
@@ -129,6 +131,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Display helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_display.js?v=test -> 200`; `/codoxear/app.js?v=test -> 200`; `/codoxear/ -> 200` and the rendered index referenced `app_display.js?v=...`.
 - Display helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18837 scripts/codoxear-docker-sandbox test` -> `969 passed, 1 skipped, 107 subtests passed`.
 - Clean-room critic `a1a8273c-19a5-45d5-a395-d32c0a301ac9` returned `NO BLOCKERS` for contract drift, load order, static asset/versioning gaps, source-test blind spots, and runtime dependency/fallback issues. Its non-blocking guard suggestions were applied with formatter/icon coverage and versioned-index asset existence/route tests before commit.
+- API helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18844 scripts/codoxear-docker-sandbox test tests/test_frontend_api_module_source.py tests/test_session_polling_source.py tests/test_auth_cleanup_source.py tests/test_static_assets.py tests/test_frontend_url_module_source.py tests/test_frontend_perf_module_source.py` -> `40 passed, 3 subtests passed`.
+- API helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_api.js?v=test -> 200`; `/codoxear/app.js?v=test -> 200`; `/codoxear/ -> 200`, and `app_api.js` contained `window.CodoxearApi`.
+- API helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18845 scripts/codoxear-docker-sandbox test` -> `973 passed, 1 skipped, 107 subtests passed`.
+- Clean-room critic `8080791f-65d9-482f-8a84-4abb2388d6b5` returned `NO BLOCKERS` for contract drift, load order, static/version/package wiring, source-test blind spots, runtime dependency/fallback issues, cleanup cache clearing, 304 marker identity, URL-prefix resolution, and perf sample names. Its suggestions for `api_messages_init_ms` and error-contract VM coverage were applied before commit.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 

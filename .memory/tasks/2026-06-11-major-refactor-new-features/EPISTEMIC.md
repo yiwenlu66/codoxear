@@ -2418,3 +2418,11 @@ Observation: The clean-room critic returned `NO BLOCKERS`. Its non-blocking conc
 Intervention: Added guard tests for formatter boundaries, every literal `iconSvg("...")` use plus dynamic session-launch icon names, and existence/route registration for every versioned `index.html` asset.
 Interpretation: The tranche changed helper ownership and static load ordering, not session/backend behavior. The remaining deployment-skew behavior is deliberately fail-loud when a required helper is missing rather than hidden by a fallback.
 Scoped claim: display-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new real mobile-device, assistive-tech, slow-network, huge-transcript, or live backend lifecycle evidence.
+
+
+## 2026-06-15T12:30:24 API helper extraction evidence
+Observation: `app_api.js` now owns request mechanics, sessions ETag cache, 304 marker identity, JSON parse/error handling, API timing samples, and cache clearing; `app.js` delegates through fail-loud wrappers and preserves cleanup by calling `clearApiCache()`.
+Observation: Docker focused validation passed with 40 tests and 3 subtests, Docker prefix smoke served `app_api.js` under `/codoxear/`, and the full Docker suite passed with 973 passed, 1 skipped, 107 subtests passed on the final test tree.
+Observation: Clean-room critic returned `NO BLOCKERS`. Its only actionable gaps were missing executable coverage for `api_messages_init_ms` and API error contracts; both were covered before commit.
+Interpretation: The tranche changed helper ownership and static load ordering, not request semantics. 304 marker identity remains private to the module because returned cached objects and `apiResponseNotModified()` close over the same symbol; cleanup now uses an explicit public cache-clear boundary.
+Scoped claim: API-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new backend live-session behavior, real mobile-device, assistive-tech, slow-network, huge-transcript, or multi-version deployment evidence. Stale-shell/mixed-asset risk remains intentionally fail-loud rather than hidden by fallback.

@@ -2974,3 +2974,16 @@
 - Full Docker acceptance on final staged tree: `CODOXEAR_DOCKER_PORT=18837 scripts/codoxear-docker-sandbox test` -> 969 passed, 1 skipped, 107 subtests passed.
 - Clean-room critic `a1a8273c-19a5-45d5-a395-d32c0a301ac9` returned `NO BLOCKERS`; its suggestions for icon coverage and versioned static-file existence were applied before the functional commit. Deployment-skew/no-fallback behavior is intentionally fail-loud, consistent with the helper-boundary policy.
 - Repaired a malformed intermediate display-helper ledger entry caused by an unquoted shell heredoc; no product/runtime files were affected.
+
+
+## 2026-06-15T12:30:24 API helper extraction checkpoint
+- Functional commit created: `7e5e43d extract frontend API helper`.
+- Extracted request mechanics from `codoxear/static/app.js` into `codoxear/static/app_api.js`: `api()`, private sessions ETag cache, private `API_NOT_MODIFIED` marker, `apiResponseNotModified()`, JSON parse/error handling, API perf samples, and `clearApiCache()`.
+- `app.js` now requires `window.CodoxearApi` fail-loudly with `Codoxear API helpers failed to load`, keeps wrapper names for existing call sites, and calls `clearApiCache()` during app cleanup instead of reaching into private ETag state.
+- Static wiring: `index.html` loads `app_api.js` after URL/perf helpers and before `app.js`; `codoxear/server.py` includes it in `FRONTEND_ASSET_FILES` for asset versioning and top-level static routing.
+- Guard tests added: real-order VM load of `app_url.js`, `app_perf.js`, and `app_api.js`; sessions ETag reuse and 304 marker; `clearApiCache()` suppressing the next `If-None-Match`; URL-prefix resolution; all three API perf sample names; non-OK JSON errors; invalid-JSON logging/throwing; and app cleanup source using `clearApiCache()`.
+- Local diagnostic validation: `node --check codoxear/static/app_api.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_api_module_source.py tests/test_session_polling_source.py tests/test_auth_cleanup_source.py tests/test_static_assets.py tests/test_frontend_url_module_source.py tests/test_frontend_perf_module_source.py` -> 40 passed, 3 subtests passed.
+- Docker focused acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18844 scripts/codoxear-docker-sandbox test tests/test_frontend_api_module_source.py tests/test_session_polling_source.py tests/test_auth_cleanup_source.py tests/test_static_assets.py tests/test_frontend_url_module_source.py tests/test_frontend_perf_module_source.py` -> 40 passed, 3 subtests passed.
+- Docker URL-prefix static smoke under `CODEX_WEB_URL_PREFIX=/codoxear` on port 18839: `/codoxear/api/me -> 401`, `/codoxear/app_api.js?v=test -> 200`, `/codoxear/app.js?v=test -> 200`, `/codoxear/ -> 200`, and `app_api.js` contained `window.CodoxearApi`.
+- Full Docker acceptance on final test tree: `CODOXEAR_DOCKER_PORT=18845 scripts/codoxear-docker-sandbox test` -> 973 passed, 1 skipped, 107 subtests passed.
+- Clean-room critic `8080791f-65d9-482f-8a84-4abb2388d6b5` returned `NO BLOCKERS`; its suggestions for `api_messages_init_ms` and error-contract VM coverage were applied before the functional commit.
