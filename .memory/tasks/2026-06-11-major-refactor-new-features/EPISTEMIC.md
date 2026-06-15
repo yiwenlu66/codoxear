@@ -2279,3 +2279,35 @@ Observation: Final narrow critic run `809c69e7-147b-4201-aed0-4f1565b0cb94` retu
 Residual risks from critic: broker no-advance tailing can repeatedly read very large unterminated partial JSONL rows until newline/EOF; Pi normal empty final-close assistant rows would not clear pending calls unless represented as aborted/error or text final close. No evidence found in inspected Pi schemas/tests that Pi emits that shape.
 
 Scoped claim update: The deterministic fixture/source/server/broker evidence now supports committing the Pi busy-after-interrupt repair. Evidence does not include a live Pi TUI/browser replay.
+
+## 2026-06-15 09:05
+Observation: Isolated Codex live exercise initially reproduced the open Codex gap. A direct web-owned broker under temp HOME accepted a bootstrap prompt and Codex produced a real rollout log/final response, but the broker did not bind `session_id`/`log_path`. The rollout `session_meta.payload.cwd` was `/.tmp-on-ssd/.../work`, while Codoxear launched and filtered discovery with `/tmp/.../work`.
+
+Interpretation: `proc_find_open_rollout_log()` was using exact cwd string equality. On this host `/tmp` and `/.tmp-on-ssd` are the same filesystem object (`os.path.samefile` true) but are not normalized to the same string by `Path.resolve()`. Therefore the broker ignored the correct open Codex rollout log.
+
+Intervention: `proc_find_open_rollout_log()` now treats cwd values as matching when exact strings match, or when `os.path.samefile()` says the payload cwd and requested cwd identify the same existing filesystem object, with a resolved-path fallback for normal symlink cases and fail-closed behavior on comparison exceptions.
+
+Observation: After the fix, a fresh isolated live run with temp HOME and real `CODEX_HOME` launched a direct web-owned Codex broker, accepted the temp cwd trust prompt, bootstrapped a first prompt, and the sidecar bound `session_id=019ec8bc-f8f5-7912-8808-0debef74d6bd` plus its rollout `log_path`. Browser UI selected `broker-1460449`, showed the bootstrap transcript, sent `Reply with exactly CODEX_WEB_LIVE_OK_20260615 and nothing else.`, cleared the composer, and `/messages/tail` plus browser DOM showed assistant `CODEX_WEB_LIVE_OK_20260615` with `busy=false`.
+
+Scoped claim update: Codex live web-owned direct launch plus browser send/final-response path is now exercised in isolated Codoxear app state. Evidence used the user's real Codex auth/log home for backend access and did not use tmux because tmux launch inherited the long-lived tmux server HOME; tmux isolation remains a separate caveat.
+
+## 2026-06-15 09:22
+Observation: Narrow critic `7d128b0c-f4b4-4481-8f19-5ad5143b4366` found that the first cwd-alias fix still had a false-positive fallback: if `os.path.samefile()` raised for a nonexistent payload cwd such as `/tmp/work/missing/..`, non-strict `Path.resolve()` could normalize both payload and launched cwd to `/tmp/work` and bind the wrong log.
+
+Intervention: Alias matching now fails closed on `samefile()` exceptions. Exact string matches still work, and existing absolute filesystem aliases still work through `samefile()`. Non-absolute payload cwd strings and nonexistent alias paths no longer fall back to non-strict resolution.
+
+Scoped claim update: Codex rollout cwd alias matching now supports real existing path aliases such as `/tmp` versus `/.tmp-on-ssd` without accepting nonexistent normalized lookalikes.
+
+## 2026-06-15 09:36
+Observation: Final narrow critic found a second fail-open/fail-bad path in cwd alias matching: `Path(...).expanduser()` ran before the raw absolute-path gate, so payload cwd `"~"` could expand to the user's home and bind to a home cwd, while `"~nosuchuser..."` could raise instead of returning no match.
+
+Intervention: Alias matching now builds raw `Path` values without `expanduser()`, requires both raw strings to be absolute before `samefile()`, and fails closed on any `samefile()` exception.
+
+Scoped claim update: Codex cwd alias matching no longer treats shell/user expansion syntax as a recorded absolute cwd identity. It supports exact string matches and existing absolute filesystem aliases only.
+
+## 2026-06-15 09:45
+Observation: Final-final narrow critic `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned NO BLOCKERS for the Codex cwd-alias binding diff after non-strict resolve and expanduser fallbacks were removed.
+
+Residual risks from critic: exact string cwd equality still preserves prior behavior even if an unusual explicit caller supplied identical relative/nonexistent cwd strings; alias matching uses current filesystem identity, so retargeted symlinks/mount aliases after log creation follow current state; Pi/CC inherit the same helper when used, with multiple matches still failing closed.
+
+Scoped claim update: The Codex direct live web-send/final-response gap is closed for isolated app state. Tmux-backed web-owned Codex isolation remains a separate caveat from the live attempt because tmux inherited an existing server HOME.

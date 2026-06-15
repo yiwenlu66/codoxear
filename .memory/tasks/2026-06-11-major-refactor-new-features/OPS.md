@@ -2794,3 +2794,36 @@
 ## 2026-06-15 04:13
 - Functional Pi repair committed: `9e2d4b8 fix Pi interrupt busy-state accounting`.
 - Updated `recon/refactor-entry-checkpoint.md` to record the Pi busy-after-interrupt repair, validation evidence, and residual scoped risks.
+
+## 2026-06-15 09:05
+- Started isolated Codex live server attempts under temp HOME with real `CODEX_HOME=/home/yiwen/.codex` and disposable password; initial `python3 -m codoxear.server` failed due missing local `py_vapid`, so a temp venv was created and used for live runs.
+- Tmux launch attempt reproduced an isolation hazard: a web tmux broker inherited the pre-existing tmux server HOME `/home/yiwen`, wrote a sidecar under the live app dir, and stopped at Codex cwd trust. Cleaned only the uniquely identified test broker pid/sidecar/socket (`broker-1394461`) and switched to `create_in_tmux=false` for isolated proof.
+- Direct web-owned Codex run under temp HOME reached Codex, accepted temp cwd trust, and produced real rollout response `BOOTSTRAP_OK_20260615`, but broker failed to bind the log. The rollout cwd was `/.tmp-on-ssd/.../work`; Codoxear discovery filtered on `/tmp/.../work`.
+- Patched `codoxear/util.py` so `proc_find_open_rollout_log()` accepts cwd identity by exact string, `os.path.samefile()`, or resolved-path fallback, fail-closed on comparison errors.
+- Added regressions in `tests/test_broker_proc_rollout.py` for symlink-resolved cwd identity and samefile/bind-alias cwd identity.
+- Focused validation: `python3 -m py_compile codoxear/util.py tests/test_broker_proc_rollout.py` and `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_session_resume.py tests/test_stale_sidecars.py` -> `59 passed`.
+- Full local validation: `python3 -m pytest -q` -> `939 passed, 104 subtests passed`.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> `938 passed, 1 skipped, 104 subtests passed`.
+- Fresh isolated live proof after patch: temp HOME `/tmp/codoxear-live-codex4.4n15ph/home`, port `19044`, direct web-owned broker pid `1460449`; accepted temp cwd trust; bootstrap prompt created rollout `019ec8bc-f8f5-7912-8808-0debef74d6bd`; browser composer sent final prompt; `/messages/tail` showed user/assistant sequence ending in assistant `CODEX_WEB_LIVE_OK_20260615`; session list reported `busy=false`, `queue_len=0`; API delete returned `{"ok": true}`; browser/server/test-root processes were stopped. The real Codex rollout log remains in `CODEX_HOME` as backend history evidence.
+- Started narrow critic `7d128b0c-f4b4-4481-8f19-5ad5143b4366` on the cwd identity diff; result pending at this ledger entry.
+
+## 2026-06-15 09:22
+- Received critic blocker from `7d128b0c-f4b4-4481-8f19-5ad5143b4366`: non-strict `Path.resolve()` fallback could match nonexistent payload cwd `/tmp/work/missing/..` to launched cwd `/tmp/work` after `samefile()` raised.
+- Changed `proc_find_open_rollout_log()` cwd alias matching to fail closed on `samefile()` exceptions; exact string equality remains the only path that does not require absolute existing samefile identity.
+- Added regression `test_proc_rejects_nonexistent_payload_cwd_resolve_alias`.
+- Focused validation: `python3 -m py_compile codoxear/util.py tests/test_broker_proc_rollout.py` and `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_session_resume.py tests/test_stale_sidecars.py` -> `61 passed`.
+- Full local validation: `python3 -m pytest -q` -> `941 passed, 104 subtests passed`.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> `940 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 09:36
+- Received critic blocker from `a2069118-5b76-4a93-a589-a229492c467e`: `expanduser()` before the absolute-path gate allowed raw payload cwd `"~"` to bind to `$HOME` and allowed `"~nosuchuser..."` to raise before fail-closed handling.
+- Removed `expanduser()` from `proc_find_open_rollout_log()` cwd alias matching; exact string equality is unchanged, alias matching now requires raw absolute paths plus successful `os.path.samefile()`.
+- Added regressions for payload cwd `"~"` not binding to `Path.home()` and `"~nosuchuser123456/work"` returning `None` rather than raising.
+- Focused validation: `python3 -m py_compile codoxear/util.py tests/test_broker_proc_rollout.py` and `python3 -m pytest -q tests/test_broker_proc_rollout.py tests/test_session_resume.py tests/test_stale_sidecars.py` -> `63 passed`.
+- Full local validation: `python3 -m pytest -q` -> `943 passed, 104 subtests passed`.
+- Docker validation: `scripts/codoxear-docker-sandbox test` -> `942 passed, 1 skipped, 104 subtests passed`.
+
+## 2026-06-15 09:45
+- Final-final Codex cwd alias critic `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned `NO BLOCKERS`.
+- Functional Codex binding fix committed: `2d8e1e2 fix Codex rollout cwd alias binding`.
+- Updated `recon/refactor-entry-checkpoint.md` to record the direct web-owned Codex browser-send/final-response evidence, validation counts, and tmux isolation caveat.

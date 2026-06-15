@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `9e2d4b8 fix Pi interrupt busy-state accounting`
+Latest functional code checkpoint: `2d8e1e2 fix Codex rollout cwd alias binding`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -35,6 +35,10 @@ Recent committed recovery checkpoints include:
   - Pi tool-call accounting tracks arbitrary string IDs exactly, including empty/whitespace/sentinel-looking IDs, preserves duplicate-ID multiplicity, and keeps absent/non-string IDs busy-closed until final/abort/error;
   - Pi registration, bind/rebind, and live tailing seed from complete JSONL rows without advancing over partial rows, replace stale pending calls on log switch, and discard stale tail batches;
   - confirmed-send barriers now require parseable JSON object row evidence and block send/queue/attachment plus list/messages/diagnostics busy display until resolved.
+- Codex live web-send/final-response path:
+  - isolated direct web-owned Codex broker under temp Codoxear app state reproduced a binding failure when Codex logged cwd as `/.tmp-on-ssd/...` while Codoxear filtered on `/tmp/...`;
+  - rollout discovery now matches cwd by exact string or existing absolute filesystem identity (`samefile`) while failing closed for relative, tilde, unknown-user, and nonexistent payload cwd aliases;
+  - after the fix, the isolated browser composer sent a prompt, `/messages/tail` showed the expected user/assistant sequence ending in `CODEX_WEB_LIVE_OK_20260615`, and the session returned idle.
 - File/inline reference UX:
   - file candidates remain visible without git state;
   - equivalent inline refs merge only after inspected identity;
@@ -59,12 +63,18 @@ Recent committed recovery checkpoints include:
 
 ## Latest validation evidence
 
-Latest code-validation evidence after the Pi busy-after-interrupt repair:
+Latest code-validation evidence after the Codex live binding repair:
+
+- Focused Codex rollout discovery validation: `python3 -m py_compile codoxear/util.py tests/test_broker_proc_rollout.py` plus `tests/test_broker_proc_rollout.py`, `tests/test_session_resume.py`, and `tests/test_stale_sidecars.py` -> `63 passed`.
+- Full local suite: `python3 -m pytest -q` -> `943 passed, 104 subtests passed`.
+- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `942 passed, 1 skipped, 104 subtests passed`.
+- Isolated live Codex proof: temp HOME/app state on port 19044, real `CODEX_HOME`, direct web-owned broker, temp cwd trust accepted, bootstrap log bound, browser composer sent the final prompt, `/messages/tail` and browser DOM showed assistant `CODEX_WEB_LIVE_OK_20260615`, and session state returned `busy=false`, `queue_len=0`.
+- Clean-room critic subagent `5df64f7b-12c0-4e8c-a65b-f36985c79e35` returned `NO BLOCKERS`; residual risks are that exact string cwd matches preserve prior behavior, alias matching follows current filesystem identity, and Pi/CC share the same ambiguity-fail-closed helper when used.
+
+Prior Pi busy-after-interrupt evidence remains valid:
 
 - Focused Pi/server JSONL validation: `python3 -m py_compile codoxear/server.py codoxear/broker.py codoxear/pi_log.py codoxear/util.py` plus `tests/test_broker_busy_state.py`, `tests/test_read_jsonl_from_offset.py`, `tests/test_sessions_pending_log_idle.py`, and `tests/test_server_queue_persistence.py` -> `187 passed, 26 subtests passed`.
 - Adjacent readiness/interrupt/source validation: `tests/test_broker_busy_state.py`, `tests/test_interrupt_semantics_source.py`, `tests/test_file_upload_module_source.py`, `tests/test_idle_heuristics.py`, `tests/test_sessions_pending_log_idle.py`, `tests/test_server_queue_persistence.py`, `tests/test_queue_sweep_idle_guard.py`, `tests/test_diagnostics_source.py`, `tests/test_launch_provenance.py`, `tests/test_session_sidebar_priority.py`, `tests/test_server_chat_flags.py`, `tests/test_sessiond_fail_closed.py`, `tests/test_send_button_source.py`, `tests/test_read_jsonl_from_offset.py`, and `tests/test_broker_fail_closed.py` -> `310 passed, 38 subtests passed`.
-- Full local suite: `python3 -m pytest -q` -> `937 passed, 104 subtests passed`.
-- Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `936 passed, 1 skipped, 104 subtests passed`.
 - Clean-room critic subagent `809c69e7-147b-4201-aed0-4f1565b0cb94` returned `NO BLOCKERS`; residual risks are repeated reads of huge unterminated partial Pi JSONL rows until newline/EOF and unobserved normal empty Pi final-close assistant rows.
 
 Prior video preview evidence remains valid:
@@ -130,7 +140,7 @@ The branch is stronger than the historical `develop` summary, but these limits r
 - Broad structural/frontend refactor is not complete; this checkpoint only defines its entry state.
 - Real-browser/manual backend exercise of the Details → New like this button remains incomplete; source/VM tests, full pytest, Docker, and critic review cover the implemented semantics.
 - Markdown rendering evidence covers CSS/source tests and headless Chromium fixtures, not real mobile-device or assistive-technology review.
-- Codex live response evidence remains incomplete: current work proved the real interactive TUI can be reached with the trust override, but not a full web-send/final-response path.
+- Codex live response evidence now covers the direct web-owned broker/browser-send/final-response path in isolated app state. Tmux web-owned Codex isolation remains caveated because a tmux launch attempt inherited the long-lived tmux server HOME and was not accepted as isolated proof.
 - Claude Code live response evidence remains incomplete under isolated HOME because first-run theme/onboarding blocked log binding.
 - Real mobile-device, assistive-tech, slow-network, huge-transcript, and full live backend lifecycle evidence remain incomplete.
 - Pi busy-after-interrupt evidence is deterministic fixture/source/server/broker validation plus full local/Docker suites, not a live Pi TUI/browser interruption replay.
