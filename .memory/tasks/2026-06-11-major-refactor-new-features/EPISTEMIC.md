@@ -2366,3 +2366,8 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 - Observation: Docker-only focused/full validation, prefixed route probes, and read-only critic review found no blocker for route preservation, URL-prefix behavior, static version hashing order/coverage, CSP/cache/content-type/package behavior, or Python compatibility.
 - Interpretation: top-level registry order is not a behavioral mechanism for current entries because every registry match is exact and `/static/*` is checked after the exact routes; service worker/manifest/favicon remaining outside the version hash is pre-existing behavior rather than a new semantic claim.
 - Scoped claim: static frontend asset registration is now centralized without changing public static URLs or freshness semantics. It does not claim host-browser, real mobile, service-worker lifecycle, or CDN/cache deployment evidence.
+
+## 2026-06-15 10:29
+- Observation: the active PROMPT still listed earlier markdown/video/Pi items as active even though the checkpoint now records later evidence closing them.
+- Intervention: the PROMPT now points future turns at final review, blocker repair only if evidence demands it, and final acceptance-summary preparation instead of stale work replay.
+- Scoped claim: the task memory source of truth is aligned with the current checkpoint; this is not a product behavior change.

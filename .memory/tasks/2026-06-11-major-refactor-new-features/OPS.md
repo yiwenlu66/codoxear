@@ -2911,3 +2911,8 @@
 - Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 959 tests, 1 skipped, and 107 subtests.
 - Read-only critic subagent `35973f5f-5be7-4c9f-80f4-15ac71ced0e9` returned `NO BLOCKERS`; it confirmed route mappings, URL-prefix stripping order, `/static/*` handling, version hash coverage/order, unchanged `_send_static`/CSP/cache/content-type/package behavior, and Python runtime compatibility. Non-blocking notes: tests do not assert route order because exact-route order is non-behavioral here; service worker/manifest/favicon remain outside the asset-version hash and all static files share the same cache policy as pre-existing behavior.
 - Functional commit created: `70fc3a1 centralize frontend static asset registry`.
+
+## 2026-06-15 10:29
+- Refreshed `.memory/tasks/2026-06-11-major-refactor-new-features/PROMPT.md` from the stale long workbench into a short current action list.
+- The refreshed prompt directs future work to final clean-room review, smallest-scope blocker repair if needed, final acceptance summary if no blocker remains, and explicit user approval before any merge/promotion.
+- It records that Pi busy-after-interrupt, Codex live web-send binding, Claude Code closed-log/API-error idle path, markdown containment, video preview, and bounded frontend helper/static-registry refactors are closed unless new evidence reopens them.
