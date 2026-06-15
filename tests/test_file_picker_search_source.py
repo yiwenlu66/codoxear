@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 
 
 def js_function(source: str, name: str) -> str:
@@ -35,6 +38,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         const vm = require("vm");
         const state = {json.dumps(state)};
         const ctx = {{
+          window: {{}},
           fileCandidateList: [],
           fileEntryMap: new Map(),
           activeFileDraft: Boolean(state.activeFileDraft),
@@ -345,10 +349,13 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
         "refreshFileCandidates",
     ]
     snippet = "\n".join(js_function(source, name) for name in names)
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{}},
           fileCandidateList: [],
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
@@ -365,7 +372,10 @@ def eval_file_candidates_while_changed_files_pending() -> dict:
           resolveChangedFiles: null,
         }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext(`
+          const codoxearFileHelpers = window.CodoxearFileHelpers;
           class Element {{
             constructor(attrs) {{ this.attrs = attrs || {{}}; }}
             getAttribute(name) {{ return this.attrs[name] || ""; }}
@@ -425,10 +435,13 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
         "refreshFileCandidates",
     ]
     snippet = "\n".join(js_function(source, name) for name in names)
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{}},
           fileCandidateList: [],
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
@@ -444,7 +457,10 @@ def eval_file_candidates_after_changed_files_failure() -> dict:
           apiCalls: [],
         }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext(`
+          const codoxearFileHelpers = window.CodoxearFileHelpers;
           class Element {{
             constructor(attrs) {{ this.attrs = attrs || {{}}; }}
             getAttribute(name) {{ return this.attrs[name] || ""; }}
@@ -506,10 +522,13 @@ def eval_file_candidate_cache_helpers() -> dict:
         "refreshFileCandidates",
     ]
     snippet = "\n".join(js_function(source, name) for name in names)
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{}},
           fileCandidateList: [],
           fileEntryMap: new Map(),
           fileCandidateGitStateFresh: false,
@@ -525,7 +544,10 @@ def eval_file_candidate_cache_helpers() -> dict:
           apiCalls: 0,
         }};
         vm.createContext(ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
         vm.runInContext(`
+          const codoxearFileHelpers = window.CodoxearFileHelpers;
           async function api(path) {{
             apiCalls += 1;
             return {{ entries: [{{ path: "changed.py", additions: 1, deletions: 0 }}] }};

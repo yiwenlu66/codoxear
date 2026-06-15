@@ -182,16 +182,19 @@
         return codoxearDisplay.fmtBytes(n);
       }
 
+      const codoxearFileHelpers = window.CodoxearFileHelpers;
+      if (
+        !codoxearFileHelpers ||
+        typeof codoxearFileHelpers.listFromFilesField !== "function" ||
+        typeof codoxearFileHelpers.stripPathLocationSuffix !== "function" ||
+        typeof codoxearFileHelpers.isTextFileKind !== "function" ||
+        typeof codoxearFileHelpers.isDiffableFileKind !== "function" ||
+        typeof codoxearFileHelpers.blockedFileMessage !== "function" ||
+        typeof codoxearFileHelpers.formatPriorityOffset !== "function"
+      )
+        throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
-        if (!Array.isArray(val)) return [];
-        const out = [];
-        for (const v of val) {
-          if (typeof v !== "string") continue;
-          const p = v;
-          if (p === "" || out.includes(p)) continue;
-          out.push(p);
-        }
-        return out;
+        return codoxearFileHelpers.listFromFilesField(val);
       }
 
       function baseName(p) {
@@ -388,36 +391,23 @@
       }
 
       function stripPathLocationSuffix(rawPath) {
-        const raw = String(rawPath ?? "");
-        const trimmed = raw.trim();
-        let m = trimmed.match(/^(.*)#L(\d+)(?:-\d+)?$/);
-        if (m) return m[1];
-        m = trimmed.match(/^(.*):(\d+)(?::\d+)?$/);
-        if (m && !/^[A-Za-z]:$/.test(m[1])) return m[1];
-        return raw;
+        return codoxearFileHelpers.stripPathLocationSuffix(rawPath);
       }
 
       function isTextFileKind(kind) {
-        return kind === "text" || kind === "markdown";
+        return codoxearFileHelpers.isTextFileKind(kind);
       }
 
       function isDiffableFileKind(kind) {
-        return isTextFileKind(kind);
+        return codoxearFileHelpers.isDiffableFileKind(kind);
       }
 
       function blockedFileMessage(rel, reason, viewerMaxBytes, size) {
-        const name = String(rel || "file");
-        if (reason === "too_large") {
-          const maxText = viewerMaxBytes ? fmtBytes(viewerMaxBytes) : "the viewer limit";
-          return `${name} is ${fmtBytes(size)}. The viewer refuses to render text beyond ${maxText}. Use Download instead.`;
-        }
-        return `${name} is not renderable as text, markdown, image, or PDF. Use Download instead.`;
+        return codoxearFileHelpers.blockedFileMessage(rel, reason, viewerMaxBytes, size);
       }
 
       function formatPriorityOffset(value) {
-        const n = Number(value);
-        if (!Number.isFinite(n)) return "0.00";
-        return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
+        return codoxearFileHelpers.formatPriorityOffset(value);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;

@@ -1,0 +1,103 @@
+import json
+import subprocess
+import textwrap
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
+INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
+
+
+def eval_file_helpers_real_order() -> dict:
+    scripts = [APP_DISPLAY_JS, APP_FILE_HELPERS_JS]
+    js = textwrap.dedent(
+        f"""
+        const fs = require("fs");
+        const vm = require("vm");
+        const ctx = {{ window: {{}} }};
+        vm.createContext(ctx);
+        for (const file of {json.dumps([str(path) for path in scripts])}) {{
+          vm.runInContext(fs.readFileSync(file, "utf8"), ctx, {{ filename: file }});
+        }}
+        const helpers = ctx.window.CodoxearFileHelpers;
+        process.stdout.write(JSON.stringify({{
+          listed: helpers.listFromFilesField(["/repo/trail.md ", "/repo/new\\n.md", "", "/repo/trail.md ", 7, null]),
+          listedNonArray: helpers.listFromFilesField("/repo/a"),
+          hashSuffix: helpers.stripPathLocationSuffix("/repo/file.py#L12-20"),
+          colonSuffix: helpers.stripPathLocationSuffix("/repo/file.py:12:3"),
+          noSuffixPreservesRaw: helpers.stripPathLocationSuffix("/repo/trail.md "),
+          noSuffixPreservesNewline: helpers.stripPathLocationSuffix("/repo/new\\n.md"),
+          textKind: helpers.isTextFileKind("text"),
+          markdownKind: helpers.isTextFileKind("markdown"),
+          imageKind: helpers.isTextFileKind("image"),
+          diffMarkdown: helpers.isDiffableFileKind("markdown"),
+          diffBinary: helpers.isDiffableFileKind("binary"),
+          tooLarge: helpers.blockedFileMessage("big.txt", "too_large", 1024, 1536),
+          tooLargeZeroLimit: helpers.blockedFileMessage("big.txt", "too_large", 0, 1536),
+          unsupported: helpers.blockedFileMessage("image.bin", "unsupported", 1024, 1536),
+          priorityPositive: helpers.formatPriorityOffset(1.234),
+          priorityNegative: helpers.formatPriorityOffset(-0.5),
+          priorityInvalid: helpers.formatPriorityOffset(Number.NaN),
+          frozen: Object.isFrozen(helpers),
+        }}));
+        """
+    )
+    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return json.loads(proc.stdout)
+
+
+class TestFrontendFileHelpersSource(unittest.TestCase):
+    def test_index_loads_file_helpers_after_display_before_app(self) -> None:
+        source = INDEX_HTML.read_text(encoding="utf-8")
+        self.assertIn('app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__', source)
+        self.assertLess(source.index('app_display.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__'))
+        self.assertLess(source.index('app_file_helpers.js?v=__CODOXEAR_ASSET_VERSION__'), source.index('app.js?v=__CODOXEAR_ASSET_VERSION__'))
+
+    def test_app_js_requires_file_helpers_without_fallback(self) -> None:
+        source = APP_JS.read_text(encoding="utf-8")
+        helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
+        self.assertIn("const codoxearFileHelpers = window.CodoxearFileHelpers;", source)
+        self.assertIn('throw new Error("Codoxear file helpers failed to load")', source)
+        for helper in [
+            "listFromFilesField",
+            "stripPathLocationSuffix",
+            "isTextFileKind",
+            "isDiffableFileKind",
+            "blockedFileMessage",
+            "formatPriorityOffset",
+        ]:
+            self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
+            self.assertIn(f"function {helper}", source)
+        self.assertIn("window.CodoxearFileHelpers = Object.freeze({", helper_source)
+        self.assertIn('throw new Error("Codoxear display helpers failed to load")', helper_source)
+        self.assertNotIn("const raw = String(rawPath ?? \"\");", source)
+        self.assertNotIn("const out = [];\n        for (const v of val)", source)
+
+    def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
+        result = eval_file_helpers_real_order()
+        self.assertEqual(result["listed"], ["/repo/trail.md ", "/repo/new\n.md"])
+        self.assertEqual(result["listedNonArray"], [])
+        self.assertEqual(result["hashSuffix"], "/repo/file.py")
+        self.assertEqual(result["colonSuffix"], "/repo/file.py:12")
+        self.assertEqual(result["noSuffixPreservesRaw"], "/repo/trail.md ")
+        self.assertEqual(result["noSuffixPreservesNewline"], "/repo/new\n.md")
+        self.assertTrue(result["textKind"])
+        self.assertTrue(result["markdownKind"])
+        self.assertFalse(result["imageKind"])
+        self.assertTrue(result["diffMarkdown"])
+        self.assertFalse(result["diffBinary"])
+        self.assertEqual(result["tooLarge"], "big.txt is 1.50 KB. The viewer refuses to render text beyond 1.00 KB. Use Download instead.")
+        self.assertEqual(result["tooLargeZeroLimit"], "big.txt is 1.50 KB. The viewer refuses to render text beyond the viewer limit. Use Download instead.")
+        self.assertEqual(result["unsupported"], "image.bin is not renderable as text, markdown, image, or PDF. Use Download instead.")
+        self.assertEqual(result["priorityPositive"], "+1.23")
+        self.assertEqual(result["priorityNegative"], "-0.50")
+        self.assertEqual(result["priorityInvalid"], "0.00")
+        self.assertTrue(result["frozen"])
+
+
+if __name__ == "__main__":
+    unittest.main()
