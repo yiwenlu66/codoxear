@@ -15,6 +15,7 @@ from codoxear.server import _static_cache_control_headers
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
 
 
 class TestStaticAssets(unittest.TestCase):
@@ -22,11 +23,14 @@ class TestStaticAssets(unittest.TestCase):
         source = INDEX_HTML.read_text(encoding="utf-8")
         self.assertIn(f'window.CODOXEAR_ASSET_VERSION = "{STATIC_ASSET_VERSION_PLACEHOLDER}"', source)
         self.assertIn(f"app.css?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertIn(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
         self.assertIn(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}", source)
+        self.assertLess(source.index(f"app_url.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"), source.index(f"app.js?v={STATIC_ASSET_VERSION_PLACEHOLDER}"))
 
     def test_app_shell_does_not_execute_third_party_assets(self) -> None:
         index = INDEX_HTML.read_text(encoding="utf-8")
         app = APP_JS.read_text(encoding="utf-8")
+        app_url = APP_URL_JS.read_text(encoding="utf-8")
         server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
         self.assertIn("self.send_header(\"Content-Security-Policy\", CONTENT_SECURITY_POLICY)", server_source)
@@ -35,6 +39,7 @@ class TestStaticAssets(unittest.TestCase):
         for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com"]:
             self.assertNotIn(forbidden, index)
             self.assertNotIn(forbidden, app)
+            self.assertNotIn(forbidden, app_url)
         self.assertNotIn('src="https://', index)
         self.assertNotIn('href="https://', index)
         self.assertIn("script-src 'self' 'unsafe-inline'", index)
@@ -46,12 +51,16 @@ class TestStaticAssets(unittest.TestCase):
     def test_static_asset_version_changes_when_app_js_changes(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            (root / "app_url.js").write_text("window.CodoxearUrls = {};\n", encoding="utf-8")
             (root / "app.js").write_text("console.log('one');\n", encoding="utf-8")
             (root / "app.css").write_text("body { color: black; }\n", encoding="utf-8")
             before = _static_asset_version(root)
+            (root / "app_url.js").write_text("window.CodoxearUrls = { changed: true };\n", encoding="utf-8")
+            after_url = _static_asset_version(root)
             (root / "app.js").write_text("console.log('two');\n", encoding="utf-8")
-            after = _static_asset_version(root)
-            self.assertNotEqual(before, after)
+            after_app = _static_asset_version(root)
+            self.assertNotEqual(before, after_url)
+            self.assertNotEqual(after_url, after_app)
 
     def test_read_static_bytes_replaces_html_placeholder(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -63,6 +72,7 @@ class TestStaticAssets(unittest.TestCase):
                 (
                     '<script>window.CODOXEAR_ASSET_VERSION = "__CODOXEAR_ASSET_VERSION__";</script>\n'
                     '<link rel="stylesheet" href="app.css?v=__CODOXEAR_ASSET_VERSION__" />\n'
+                    '<script src="app_url.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                     '<script src="app.js?v=__CODOXEAR_ASSET_VERSION__" defer></script>\n'
                 ),
                 encoding="utf-8",
@@ -72,6 +82,7 @@ class TestStaticAssets(unittest.TestCase):
             self.assertNotIn(STATIC_ASSET_VERSION_PLACEHOLDER, rendered)
             self.assertIn(f'window.CODOXEAR_ASSET_VERSION = "{version}"', rendered)
             self.assertIn(f"app.css?v={version}", rendered)
+            self.assertIn(f"app_url.js?v={version}", rendered)
             self.assertIn(f"app.js?v={version}", rendered)
 
     def test_static_cache_headers_default_to_no_store(self) -> None:
@@ -85,6 +96,11 @@ class TestStaticAssets(unittest.TestCase):
             _static_cache_control_headers(enabled=True),
             {"Cache-Control": "public, max-age=31536000, immutable"},
         )
+
+    def test_top_level_static_routes_include_url_helper(self) -> None:
+        source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
+        self.assertIn('if path == "/app_url.js":', source)
+        self.assertIn('self._send_static("app_url.js")', source)
 
     def test_sidebar_logo_uses_url_prefix_safe_relative_path(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -122,6 +138,7 @@ class TestStaticAssets(unittest.TestCase):
             wheel = next(outdir.glob("codoxear-*.whl"))
             with zipfile.ZipFile(wheel) as zf:
                 names = set(zf.namelist())
+        self.assertIn("codoxear/static/app_url.js", names)
         self.assertIn("codoxear/static/logos/codex.svg", names)
         self.assertIn("codoxear/static/logos/pi.svg", names)
         self.assertIn("codoxear/static/logos/cc.svg", names)

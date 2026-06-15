@@ -239,7 +239,7 @@ PROC_ROOT = Path("/proc")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
 STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
-STATIC_ASSET_VERSION_FILES = ("app.js", "app.css")
+STATIC_ASSET_VERSION_FILES = ("app_url.js", "app.js", "app.css")
 CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
@@ -5505,6 +5505,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return True
         if path == "/service-worker.js":
             self._send_static("service-worker.js")
+            return True
+        if path == "/app_url.js":
+            self._send_static("app_url.js")
             return True
         if path == "/app.js":
             self._send_static("app.js")

@@ -94,21 +94,10 @@
 
       window.codoxearPerf = summarizePerf;
 
-      const appBaseUrl = (() => {
-        const here = new URL(window.location.href);
-        const p0 = String(here.pathname || "/");
-        if (p0.endsWith("/static/index.html")) {
-          return new URL(p0.slice(0, -"/static/index.html".length) + "/", here.origin);
-        }
-        if (p0.endsWith("/static/")) {
-          return new URL(p0.slice(0, -"/static/".length) + "/", here.origin);
-        }
-        return new URL(".", here);
-      })();
+      const codoxearUrls = window.CodoxearUrls;
+      if (!codoxearUrls || typeof codoxearUrls.resolveAppUrl !== "function") throw new Error("Codoxear URL helpers failed to load");
       function resolveAppUrl(path) {
-        const s = String(path ?? "");
-        const rel = s.startsWith("/") ? s.slice(1) : s;
-        return new URL(rel, appBaseUrl).toString();
+        return codoxearUrls.resolveAppUrl(path);
       }
 
       function optionalLocalStorage() {
