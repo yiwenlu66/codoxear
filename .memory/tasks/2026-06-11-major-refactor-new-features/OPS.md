@@ -2865,3 +2865,15 @@
 - Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the CC fallback/header candidate after the race, relative-cwd, and large-first-row fixes.
 - Critic independently validated prelaunch snapshot ordering before both fork paths, absolute broker cwd expansion, safe exact-or-absolute-samefile payload cwd matching, large first-row header parsing, and rows-starting-after-window exclusion. Its focused run passed: 28 tests.
 - Functional commit created: `c1280cb fix Claude Code closed-log binding`.
+
+## 2026-06-15 09:57
+- User corrected validation scope: this tranche must be validated only in Docker. A host-side temp-HOME prefix server/browser attempt for the URL helper extraction was stopped and its evidence was discarded.
+- Implemented the first bounded frontend refactor tranche by extracting app URL/base-path resolution from `codoxear/static/app.js` into `codoxear/static/app_url.js`.
+- `index.html` now loads `app_url.js` before `app.js`; `app.js` fails loudly if `window.CodoxearUrls.resolveAppUrl` is unavailable instead of recomputing a silent fallback.
+- Added `app_url.js` to static asset versioning and top-level static routing; package data already includes direct `static/*` files, and tests assert wheel inclusion.
+- Added `tests/test_frontend_url_module_source.py` plus static-asset regressions for URL-prefix resolution, script order, fail-loud dependency, cache versioning, route availability, and packaging.
+- Docker focused validation: `scripts/codoxear-docker-sandbox test tests/test_frontend_url_module_source.py tests/test_static_assets.py tests/test_url_prefix.py tests/test_session_polling_source.py` passed: 29 tests and 3 subtests.
+- Docker runtime route validation under `CODEX_WEB_URL_PREFIX=/codoxear`: in-container requests returned `/codoxear/api/me -> 401`, `/codoxear/app_url.js?v=test -> 200` with helper content, and `/codoxear/app.js?v=test -> 200`.
+- Full Docker validation: `scripts/codoxear-docker-sandbox test` passed: 955 tests, 1 skipped, and 107 subtests.
+- Read-only critic subagent `82cb6205-46b9-428c-97e2-ded96036dd5a` returned `NO BLOCKERS`; it did not run tests and inspected static serving, asset versioning, packaging, script ordering, fail-loud behavior, URL-prefix behavior, CSP, service-worker path behavior, and broad UI semantic scope.
+- Functional commit created: `a427dab extract frontend URL helper`.

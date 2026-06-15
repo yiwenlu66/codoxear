@@ -2339,3 +2339,10 @@ Scoped claim update: The Codex direct live web-send/final-response gap is closed
 ## 2026-06-15 09:43
 - Observation: final narrow critic `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` after inspecting the exact CC closed-log fallback/header candidate and running focused tests.
 - Commitment: CC closed-log binding repair is now accepted for commit-level evidence: prelaunch path baselines, absolute broker cwd, safe payload cwd identity matching, and large-first-row header discovery are all covered by tests and clean-room review.
+
+## 2026-06-15 09:57
+- Observation: a host-side prefix probe found `/codoxear/app_url.js` returned 404 before the route fix, but the user clarified validation must be Docker-only. That host evidence was used only as diagnostic context, then the host server/browser state was stopped and excluded from acceptance evidence.
+- Interpretation: the route miss was a real static-serving mechanism gap caused by adding a new top-level script without adding it to `_handle_static_get()`; Docker route validation later confirmed the fix inside the required isolation boundary.
+- Commitment: frontend URL/base-path resolution now has a small source module as the first bounded refactor tranche. `app.js` depends on the module explicitly and fails loudly if it is not loaded, preserving no-silent-fallback semantics.
+- Observation: Docker-only validation and read-only critic review found no blocker for script order, CSP, URL-prefix behavior, service-worker path resolution, packaging, or broad UI semantic drift.
+- Scoped claim: the URL helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim real mobile, assistive-tech, slow-network, or host-browser evidence.

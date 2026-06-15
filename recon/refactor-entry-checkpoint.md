@@ -54,6 +54,10 @@ Recent committed recovery checkpoints include:
   - mobile composer stop control added;
   - read endpoints remain observation-only and do not promote queued prompts;
   - orphan, queued-recovery, and unknown-send sessions now render an in-chat recovery panel with safe review actions instead of opening to an empty disabled pane.
+- First bounded frontend refactor tranche:
+  - app URL/base-path resolution moved from `app.js` into `codoxear/static/app_url.js`;
+  - `index.html` loads `app_url.js` before `app.js`, `app.js` fails loudly if the helper is missing, and `app_url.js` participates in static asset versioning, top-level static routing, and wheel packaging;
+  - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -77,6 +81,14 @@ Latest code-validation evidence after the Codex and Claude Code live binding rep
 - Clean-room critic subagent `05290a8a-033a-46c1-ab02-c0d8f52d3254` found two CC fallback blockers: post-fork known-log snapshotting could skip a fast-created CC log forever, and relative `--cwd` could fail absolute CC cwd matching. Both were fixed by prelaunch snapshotting, absolute broker cwd expansion, and focused regressions.
 - Clean-room critic subagent `62c6924a-cbdf-4535-b3d8-d6886680fd2a` confirmed those fixes, then found a large-first-row blocker in the bounded CC header scan. The cap now bounds row start offsets, so a valid first CC row larger than 512 KiB remains discoverable while rows starting after the window remain ignored.
 - Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the committed CC fallback/header repair (`c1280cb fix Claude Code closed-log binding`).
+
+Latest Docker-only evidence after the frontend URL helper extraction:
+
+- Focused Docker validation: `scripts/codoxear-docker-sandbox test tests/test_frontend_url_module_source.py tests/test_static_assets.py tests/test_url_prefix.py tests/test_session_polling_source.py` -> `29 passed, 3 subtests passed`.
+- Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: in-container requests returned `/codoxear/api/me -> 401`, `/codoxear/app_url.js?v=test -> 200` with helper content, and `/codoxear/app.js?v=test -> 200`.
+- Full Docker sandbox suite: `scripts/codoxear-docker-sandbox test` -> `955 passed, 1 skipped, 107 subtests passed`.
+- Read-only critic subagent `82cb6205-46b9-428c-97e2-ded96036dd5a` returned `NO BLOCKERS` for static serving, asset versioning, packaging, script ordering, fail-loud behavior, URL-prefix behavior, CSP, service-worker path behavior, and broad UI semantic scope. It did not run tests.
+- Host-side prefix server/browser evidence for this tranche was discarded after the user clarified validation must be Docker-only.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
