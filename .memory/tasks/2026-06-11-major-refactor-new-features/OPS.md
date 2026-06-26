@@ -3224,3 +3224,10 @@
 - Parked non-candidates: `redactedLaunchErrorText`/`sessionLaunchLabel` are mechanically pure but intentionally pinned out of `app_session_helpers.js` by source tests and include security-sensitive redaction/label composition; `launchPresetProviderChoice` is mechanically pure but pinned in `app.js` by the new-session model-options source-slicing tests and launch-dialog orchestration context.
 - Other apparent helpers are wrappers, state readers, unused/dead code, DOM-dependent, browser-side-effect code, or render/orchestration functions inside `renderApp()`.
 - Decision: do not force another helper-extraction tranche under the current constraints. Further work requires broader design/ownership decisions or product-gap work rather than mechanical pure-helper extraction.
+
+
+## 2026-06-26T12:37:32Z User scope correction: stop over-narrowing to bounded helper work
+- User stated: "why is everything 'bounded'? i never ask you to do things boundedly. be thorough and aggressive!!!"
+- Interpretation: the prior helper-extraction stop condition should not be treated as task completion. The pure-helper wave remains complete, but the active objective expands back to aggressive product-gap recovery, reliability hardening, and meaningful structural/frontend work.
+- Preserved constraints: work only in `/home/yiwen/codex-web-product-recovery` unless explicitly approved; do not promote/merge to protected `/home/yiwen/codex-web` or `main`; do not kill live sessions/servers; no secrets/runtime artifacts; Docker evidence for acceptance claims; functional/docs commits separate; no silent fallbacks.
+- Next decision: choose a high-value implementable gap rather than another mechanical helper extraction. Candidate classes include parked security/reliability gaps (for example symlink containment atomicity or non-UTF-8 Git filename behavior), executable UX regressions, or product-flow failures discoverable from recon/tests.

@@ -2574,3 +2574,9 @@ Observation: Advisory scout `/tmp/codoxear-next-pure-helper-scout-after-queue.md
 Observation: The closest mechanically pure functions are parked, not actionable: `redactedLaunchErrorText`/`sessionLaunchLabel` are explicitly pinned out of `app_session_helpers.js` and include security-sensitive redaction/label composition; `launchPresetProviderChoice` is pinned in `app.js` by source-slicing launch-dialog tests.
 Interpretation: The bounded pure-helper extraction wave has reached a natural stop under the current invariants. Continuing would require changing ownership semantics or tests for security/launch orchestration code, or moving into broader UI/product design rather than a mechanical extraction.
 Scoped claim: no further helper-extraction tranche is justified without a new user-approved scope or a newly identified candidate that clears the existing deterministic/no-state/no-DOM/no-dead-code bar.
+
+
+## Scope correction: aggressive product/reliability work
+Observation: The user rejected the agent's narrow/bounded stopping posture and requested thorough, aggressive work.
+Interpretation: Pure-helper extraction exhaustion is not a completion condition for the overall recovery effort. It only rules out one class of low-risk mechanical refactor. The next justified action is to identify and attack a high-value implementable product/reliability gap with direct validation.
+Commitment: Continue on the recovery branch with stronger product-gap/reliability orientation while preserving safety constraints around protected checkout mutation, live sessions, secrets, no silent fallbacks, Docker acceptance evidence, and separate functional/docs commits.

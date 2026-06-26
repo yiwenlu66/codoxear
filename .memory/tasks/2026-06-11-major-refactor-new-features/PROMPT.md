@@ -1,12 +1,12 @@
 ## Objective
-Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
+Continue aggressive product-gap recovery, reliability hardening, and structural/frontend improvement work on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: queue API-payload normalization now lives in `codoxear/static/app_session_helpers.js` at functional commit `35be96c extract queue normalization helper`; checkpoint docs are recorded separately from the functional change.
-2. Advisory scout `/tmp/codoxear-next-pure-helper-scout-after-queue.md` found no remaining safe pure-helper extraction candidates under the current constraints.
-3. Parked non-candidates: `redactedLaunchErrorText`/`sessionLaunchLabel` are pinned/security-sensitive; `launchPresetProviderChoice` is pinned by launch-dialog source-slicing tests; other remaining inline functions are wrappers, state readers, unused/dead code, DOM/browser-side-effect code, or orchestration/render logic.
-4. Do not force another tranche without explicit broader ownership/design approval or a newly identified deterministic argument-only candidate with an obvious helper-module home and validation path.
-5. If work resumes, re-anchor on a clean tree, preserve the Docker-only acceptance rule, and run focused Docker, full Docker, clean diff review, and exactly one clean-room review before any functional commit.
+1. User explicitly rejected a narrow/bounded stopping posture: proceed thoroughly and aggressively on meaningful product/reliability/frontend gaps rather than stopping at pure-helper exhaustion.
+2. Completed pure-helper wave remains valid through `35be96c extract queue normalization helper`; scout `/tmp/codoxear-next-pure-helper-scout-after-queue.md` found no further safe mechanical pure-helper targets, so do not waste motion forcing helper extractions.
+3. Next work should attack the highest-value implementable gap with causal evidence: security/reliability invariants, parked evidence gaps that can be converted into tests, or user-visible UX/product failures. Prefer hard gaps over easy structural bookkeeping.
+4. Keep safety constraints: recovery checkout only; no protected `/home/yiwen/codex-web` mutation/promotion; no live server/session killing; no secrets; no silent fallbacks; Docker evidence for acceptance claims; functional and docs commits remain separate.
+5. For each aggressive tranche: understand ownership/source of truth first, implement the mechanism (not symptoms), run focused Docker plus full Docker when scope warrants, use a clean-room review before functional commit, and checkpoint evidence separately.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.
