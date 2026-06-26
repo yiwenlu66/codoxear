@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `c13dd1e extract file picker source label helpers`
+Latest functional code checkpoint: `afe054f extract file editor cursor helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -87,7 +87,8 @@ Recent committed recovery checkpoints include:
   - recovery prompt preview and recent-cwd fuzzy scoring now live in the display-helper boundary while recovery security/session state and recent-cwd UI state remain app-owned;
   - file-picker matching/scoring extraction preserves exact/basename/token/subsequence scoring, draft path normalization, Unicode folded match ranges, normalized candidate scoring, and comparator tie-breaks through `window.CodoxearFileHelpers`, while file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, validation caches, and file-viewer state remain app-owned;
   - chat-search display extraction preserves snippet compaction and all-transcript hint role labeling through `window.CodoxearDisplay`, while row text extraction, rendered-row matching, search timers, transcript-search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions remain app-owned;
-  - file-picker source/label extraction preserves candidate-source normalization and source-section label text through `window.CodoxearFileHelpers`, while file identity keys, clone/merge semantics, candidate maps/cache, changed-file API calls, DOM section insertion/rendering/highlighting, active file/open behavior, file-viewer state, focus/timers, and recovery/security behavior remain app-owned.
+  - file-picker source/label extraction preserves candidate-source normalization and source-section label text through `window.CodoxearFileHelpers`, while file identity keys, clone/merge semantics, candidate maps/cache, changed-file API calls, DOM section insertion/rendering/highlighting, active file/open behavior, file-viewer state, focus/timers, and recovery/security behavior remain app-owned;
+  - file-editor cursor-helper extraction preserves inserted-text cursor arithmetic through `window.CodoxearFileHelpers`, while Monaco/editor access, paste execution, file dirty state, touch-selection reset, selection application, focus, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -194,6 +195,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - File-picker source/label full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18897 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline bodies passed for 13 source-normalization cases and 10 section-label cases; helper side-effect probe found no DOM/API/file-state/timer/focus/storage references.
 - Clean-room delegate review `26c0dc6c-8ce0-4714-9c6c-e17422448ada` saved to `/tmp/codoxear-file-source-label-review.md` returned `NO BLOCKERS` for pure helper ownership, fail-loud guard coverage, wrapper/call-site preservation, app-owned file identity/cache/API/DOM/viewer/focus/timer/recovery/security boundaries, static wiring sufficiency, and test coverage.
+- File-editor cursor-helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18898 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_file_picker_search_source.py tests/test_static_assets.py -q` -> `63 passed`.
+- File-editor cursor-helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18899 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline body passed for 33 cursor cases across empty/falsy text, single-line text, LF/CRLF/CR normalization, leading/trailing newlines, and multiple start positions; helper side-effect probe found no DOM/API/editor/file-state/timer/focus/storage references.
+- Clean-room delegate review `4d727bae-5f06-462e-ba1e-986659d18308` saved to `/tmp/codoxear-cursor-helper-review.md` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard coverage, wrapper scope/call-site preservation, app-owned editor/paste/dirty/focus behavior, static wiring sufficiency, and branch-covering tests.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -274,4 +279,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. A current candidate is extracting only the pure file-editor cursor arithmetic helper `positionAfterInsertedText(start, text)` while keeping Monaco/editor access, paste execution, dirty-state mutation, touch-selection reset, focus, DOM, file-viewer availability, and save/edit behavior in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. Re-anchor on a clean tree and inspect remaining short pure helpers before choosing another tranche. Do not force a helper extraction if the next candidate touches DOM, API calls, mutable session/file/chat state, focus, timers, recovery/security behavior, or browser/time globals; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.

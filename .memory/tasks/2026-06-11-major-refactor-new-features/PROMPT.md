@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: file-picker source normalization and section-label helpers now live in `codoxear/static/app_file_helpers.js` at functional commit `c13dd1e extract file picker source label helpers`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: inspect `positionAfterInsertedText(start, text)` as a tiny deterministic file-editor cursor-position helper. It may move only if the boundary remains pure argument-only newline/column arithmetic.
-3. Keep Monaco editor access, paste execution, file dirty state, touch-selection reset, focus, DOM, file-viewer availability, and save/edit behavior in `app.js`.
+1. Completed tranche: file-editor cursor-position arithmetic now lives in `codoxear/static/app_file_helpers.js` at functional commit `afe054f extract file editor cursor helper`; checkpoint docs are recorded separately from the functional change.
+2. Next bounded candidate: re-inspect remaining short pure helpers on a clean tree before choosing. Most obvious leftovers are wrappers or state readers; do not force a tranche if the next candidate touches DOM, API calls, mutable session/file/chat state, focus, timers, recovery/security behavior, or browser/time globals.
+3. A possible direction is only a tiny deterministic formatting/classification helper with explicit arguments and an existing helper-module home; otherwise stop and report that no safe further bounded helper remains without broader design work.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
