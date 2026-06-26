@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
+SESSION_LISTING_PY = ROOT / "codoxear" / "session_listing.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -33,6 +34,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
 
     def test_inject_file_route_checks_session_idle_before_staging(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
+        listing_source = SESSION_LISTING_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -79,8 +81,8 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("PENDING_ATTACHMENTS_PATH", source)
         self.assertIn("if s.pending_attachment and not allow_pending_attachment:", source)
         self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
-        self.assertIn('"pending_attachment": bool(s.pending_attachment)', source)
-        self.assertIn('"commit_unknown_send": bool(s.commit_unknown_send)', source)
+        self.assertIn('pending_attachment=bool(s.pending_attachment)', listing_source)
+        self.assertIn('commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None', listing_source)
         self.assertIn('(\"commit_unknown_send\", \"clear\", _handle_commit_unknown_send_clear)', route_source)
         self.assertIn("res = manager.clear_commit_unknown_send(session_id)", route_source)
         self.assertIn("if s.commit_unknown_send:\n                    raise SessionNotReadyError(\"resolve the unknown send before submitting more text\")", source)
