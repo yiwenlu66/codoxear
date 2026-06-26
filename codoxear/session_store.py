@@ -164,6 +164,57 @@ class SessionStore:
     def save_files(self, obj: dict[str, list[str]]) -> None:
         atomic_write_json(self.paths.files, dict(obj))
 
+    def file_history_for_keys(self, key: str, legacy_keys: list[str]) -> tuple[list[str], bool]:
+        cur = self.files.get(key)
+        if isinstance(cur, list) and cur:
+            return list(cur), False
+        for legacy_key in legacy_keys:
+            legacy = self.files.get(legacy_key)
+            if isinstance(legacy, list) and legacy:
+                out = list(legacy)
+                if legacy_key != key:
+                    self.files[key] = list(legacy)
+                    self.files.pop(legacy_key, None)
+                    return out, True
+                return out, False
+        return [], False
+
+    def add_file_history_entry(self, key: str, legacy_keys: list[str], path: str) -> list[str]:
+        cur = list(self.files.get(key, []))
+        if not cur:
+            for legacy_key in legacy_keys:
+                legacy = self.files.get(legacy_key)
+                if isinstance(legacy, list) and legacy:
+                    cur = list(legacy)
+                    if legacy_key != key:
+                        self.files.pop(legacy_key, None)
+                    break
+        cur = [item for item in cur if item != path]
+        cur.insert(0, path)
+        if len(cur) > self.file_history_max:
+            cur = cur[: self.file_history_max]
+        self.files[key] = cur
+        return list(cur)
+
+    def clear_file_history_for_keys(self, key: str, legacy_keys: list[str], *, cwd: str = "") -> bool:
+        keys_to_clear = list(legacy_keys)
+        cwd_clean = str(cwd or "").strip()
+        if cwd_clean:
+            # `cwd:` buckets are legacy pre-session-scoping state. Do not migrate
+            # them into active sessions because they leak history across sessions
+            # with the same cwd, but do discard the matching legacy bucket when
+            # the owning session/cwd is deleted.
+            keys_to_clear.append(f"cwd:{cwd_clean}")
+        dirty = False
+        for legacy_key in keys_to_clear:
+            if legacy_key in self.files:
+                self.files.pop(legacy_key, None)
+                dirty = True
+        if key in self.files:
+            self.files.pop(key, None)
+            dirty = True
+        return dirty
+
     def load_queues(self) -> dict[str, list[dict[str, Any]]]:
         return self.queue_store.load()
 

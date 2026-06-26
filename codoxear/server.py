@@ -3028,19 +3028,7 @@ class SessionManager:
         out: list[str] = []
         with self._lock:
             key, legacy_keys, _s = self._files_key_for_session(session_id)
-            arr = self._files.get(key)
-            if isinstance(arr, list) and arr:
-                out = list(arr)
-            else:
-                for lk in legacy_keys:
-                    arr2 = self._files.get(lk)
-                    if isinstance(arr2, list) and arr2:
-                        out = list(arr2)
-                        if lk != key:
-                            self._files[key] = list(arr2)
-                            self._files.pop(lk, None)
-                            dirty = True
-                        break
+            out, dirty = self._session_store_for_manager().file_history_for_keys(key, legacy_keys)
         if dirty:
             self._save_files()
         return list(out)
@@ -3049,24 +3037,9 @@ class SessionManager:
         p = str(path)
         if p == "":
             return self.files_get(session_id)
-        dirty = False
         with self._lock:
             key, legacy_keys, _s = self._files_key_for_session(session_id)
-            cur = list(self._files.get(key, []))
-            if not cur:
-                for lk in legacy_keys:
-                    legacy = self._files.get(lk)
-                    if isinstance(legacy, list) and legacy:
-                        cur = list(legacy)
-                        if lk != key:
-                            self._files.pop(lk, None)
-                            dirty = True
-                        break
-            cur = [x for x in cur if x != p]
-            cur.insert(0, p)
-            if len(cur) > FILE_HISTORY_MAX:
-                cur = cur[:FILE_HISTORY_MAX]
-            self._files[key] = cur
+            cur = self._session_store_for_manager().add_file_history_entry(key, legacy_keys, p)
         self._save_files()
         return list(cur)
 
@@ -3074,21 +3047,8 @@ class SessionManager:
         dirty = False
         with self._lock:
             key, legacy_keys, s = self._files_key_for_session(session_id)
-            keys_to_clear = list(legacy_keys)
-            cwd = str(getattr(s, "cwd", "") or "").strip()
-            if cwd:
-                # `cwd:` buckets are legacy pre-session-scoping state. Do not
-                # migrate them into active sessions because they leak history
-                # across sessions with the same cwd, but do discard the matching
-                # legacy bucket when the owning session/cwd is deleted.
-                keys_to_clear.append(f"cwd:{cwd}")
-            for lk in keys_to_clear:
-                if lk in self._files:
-                    self._files.pop(lk, None)
-                    dirty = True
-            if key in self._files:
-                self._files.pop(key, None)
-                dirty = True
+            cwd = str(getattr(s, "cwd", "") or "")
+            dirty = self._session_store_for_manager().clear_file_history_for_keys(key, legacy_keys, cwd=cwd)
         if dirty:
             self._save_files()
 
@@ -3756,19 +3716,8 @@ class SessionManager:
                     key = ""
                     legacy_keys = []
                 if key:
-                    cur = self._files.get(key)
-                    if isinstance(cur, list) and cur:
-                        files = list(cur)
-                    else:
-                        for lk in legacy_keys:
-                            legacy = self._files.get(lk)
-                            if isinstance(legacy, list) and legacy:
-                                files = list(legacy)
-                                if lk != key:
-                                    self._files[key] = list(legacy)
-                                    self._files.pop(lk, None)
-                                    files_dirty = True
-                                break
+                    files, file_history_dirty = self._session_store_for_manager().file_history_for_keys(key, legacy_keys)
+                    files_dirty = files_dirty or file_history_dirty
                 log_exists = bool(s.log_path is not None and s.log_path.exists())
                 needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
                 needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))

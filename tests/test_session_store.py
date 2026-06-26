@@ -26,6 +26,44 @@ def test_session_manager_persistent_maps_are_store_owned() -> None:
     assert mgr._pending_attachment_ids is pending
 
 
+def test_session_store_file_history_migrates_legacy_session_key() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.files = {"s1": ["a.py", "b.py"]}
+
+    out, dirty = store.file_history_for_keys("sid:s1", ["s1"])
+
+    assert out == ["a.py", "b.py"]
+    assert dirty is True
+    assert store.files == {"sid:s1": ["a.py", "b.py"]}
+
+
+def test_session_store_file_history_adds_from_legacy_and_caps() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.file_history_max = 3
+    store.files = {"s1": ["a.py", "b.py", "c.py"]}
+
+    out = store.add_file_history_entry("sid:s1", ["s1"], "b.py")
+
+    assert out == ["b.py", "a.py", "c.py"]
+    assert store.files == {"sid:s1": ["b.py", "a.py", "c.py"]}
+
+
+def test_session_store_file_history_clear_removes_session_and_cwd_legacy_keys() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.files = {"sid:s1": ["new.py"], "s1": ["old.py"], "cwd:/repo": ["leak.py"], "sid:other": ["keep.py"]}
+
+    dirty = store.clear_file_history_for_keys("sid:s1", ["s1"], cwd="/repo")
+
+    assert dirty is True
+    assert store.files == {"sid:other": ["keep.py"]}
+
+
 def test_session_store_rebinds_paths_without_losing_in_memory_state() -> None:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
