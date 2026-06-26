@@ -138,6 +138,10 @@ from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .queue_runtime import clear_queue_promotion as _queue_runtime_clear_promotion
+from .queue_runtime import queue_idle_grace_ready as _queue_runtime_idle_grace_ready
+from .queue_runtime import reset_queue_idle as _queue_runtime_reset_idle
+from .queue_runtime import start_queue_promotion as _queue_runtime_start_promotion
 from .queue_routes import QueueRouteDeps
 from .queue_routes import handle_queue_get_route as _handle_queue_get_route
 from .queue_routes import handle_queue_post_route as _handle_queue_post_route
@@ -2899,12 +2903,12 @@ class SessionManager:
                 return None
             queue_store = self._queue_store_for_manager()
             if queue_store.queue_len(self._queues, session_id) <= 0:
-                s0.queue_idle_since = None
+                _queue_runtime_reset_idle(s0)
                 return None
             if s0.queue_sending_item_id is not None:
                 return None
             if queue_store.has_recovery_items(self._queues, session_id):
-                s0.queue_idle_since = None
+                _queue_runtime_reset_idle(s0)
                 return None
             head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
             if head is None:
@@ -2916,7 +2920,7 @@ class SessionManager:
             with self._lock:
                 s0 = self._sessions.get(session_id)
                 if s0:
-                    s0.queue_idle_since = None
+                    _queue_runtime_reset_idle(s0)
             return None
         with self._lock:
             s0 = self._sessions.get(session_id)
@@ -2924,29 +2928,28 @@ class SessionManager:
                 return None
             queue_store = self._queue_store_for_manager()
             if queue_store.queue_len(self._queues, session_id) <= 0:
-                s0.queue_idle_since = None
+                _queue_runtime_reset_idle(s0)
                 return None
             if s0.queue_sending_item_id is not None:
                 return None
             if queue_store.has_recovery_items(self._queues, session_id):
-                s0.queue_idle_since = None
+                _queue_runtime_reset_idle(s0)
                 return None
             head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
             if head is None:
                 return None
             head_id = head.item_id
             if not ready:
-                s0.queue_idle_since = None
+                _queue_runtime_reset_idle(s0)
                 return None
-            if require_idle_grace:
-                idle_since = s0.queue_idle_since
-                if idle_since is None:
-                    s0.queue_idle_since = float(now_ts)
-                    return None
-                if (float(now_ts) - idle_since) < QUEUE_IDLE_GRACE_SECONDS:
-                    return None
-            s0.queue_idle_since = None
-            s0.queue_sending_item_id = head_id
+            if not _queue_runtime_idle_grace_ready(
+                s0,
+                now_ts=float(now_ts),
+                grace_seconds=QUEUE_IDLE_GRACE_SECONDS,
+                require_idle_grace=require_idle_grace,
+            ):
+                return None
+            _queue_runtime_start_promotion(s0, head_id)
             text = queue_store.mark_promotion_commit_unknown(
                 self._queues,
                 session_id,
@@ -2954,7 +2957,7 @@ class SessionManager:
                 ts=time.time(),
             )
             if text is None:
-                s0.queue_sending_item_id = None
+                _queue_runtime_clear_promotion(s0, head_id)
                 return None
         self._save_queues()
         try:
@@ -2962,9 +2965,8 @@ class SessionManager:
         except (SessionNotReadyError, SessionInjectionError):
             with self._lock:
                 s0 = self._sessions.get(session_id)
-                if s0 and s0.queue_sending_item_id == head_id:
-                    s0.queue_sending_item_id = None
-                    s0.queue_idle_since = None
+                if s0:
+                    _queue_runtime_clear_promotion(s0, head_id)
                 self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
             self._save_queues()
             return None
@@ -2973,9 +2975,8 @@ class SessionManager:
             queue_len = 0
             with self._lock:
                 s0 = self._sessions.get(session_id)
-                if s0 and s0.queue_sending_item_id == head_id:
-                    s0.queue_sending_item_id = None
-                    s0.queue_idle_since = None
+                if s0:
+                    _queue_runtime_clear_promotion(s0, head_id)
                 unknown_item, queue_len = self._queue_store_for_manager().preserve_commit_unknown_marker(
                     self._queues,
                     session_id,
@@ -2987,17 +2988,15 @@ class SessionManager:
         except Exception:
             with self._lock:
                 s0 = self._sessions.get(session_id)
-                if s0 and s0.queue_sending_item_id == head_id:
-                    s0.queue_sending_item_id = None
-                    s0.queue_idle_since = None
+                if s0:
+                    _queue_runtime_clear_promotion(s0, head_id)
                 self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
             self._save_queues()
             return None
         with self._lock:
             s0 = self._sessions.get(session_id)
-            if s0 and s0.queue_sending_item_id == head_id:
-                s0.queue_sending_item_id = None
-                s0.queue_idle_since = None
+            if s0:
+                _queue_runtime_clear_promotion(s0, head_id)
             self._queue_store_for_manager().pop_sent(self._queues, session_id, head_id)
         self._save_queues()
         return resp
