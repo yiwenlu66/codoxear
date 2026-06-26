@@ -43,6 +43,7 @@
         typeof codoxearDisplay.fmtRelativeAge !== "function" ||
         typeof codoxearDisplay.sessionTitleWithId !== "function" ||
         typeof codoxearDisplay.recoveryPromptPreview !== "function" ||
+        typeof codoxearDisplay.fuzzyRecentCwdScore !== "function" ||
         typeof codoxearDisplay.iconSvg !== "function"
       )
         throw new Error("Codoxear display helpers failed to load");
@@ -201,6 +202,10 @@
 
       function baseName(p) {
         return codoxearDisplay.baseName(p);
+      }
+
+      function fuzzyRecentCwdScore(candidate, query) {
+        return codoxearDisplay.fuzzyRecentCwdScore(candidate, query);
       }
 
       function shortSessionId(sid) {
@@ -5945,43 +5950,6 @@
             out.push(cwd);
           }
           return out;
-        }
-
-        function fuzzyRecentCwdScore(candidate, query) {
-          const text = String(candidate || "");
-          const raw = String(query || "").trim().toLowerCase();
-          if (!raw) return 0;
-          const lower = text.toLowerCase();
-          if (lower === raw) return 10000;
-          const base = baseName(text).toLowerCase();
-          if (base === raw) return 9000;
-          let total = 0;
-          for (const token of raw.split(/\s+/).filter(Boolean)) {
-            const exactIdx = lower.indexOf(token);
-            if (exactIdx >= 0) {
-              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
-              const boundaryBonus = !prev || "/._-".includes(prev) ? 28 : 0;
-              const baseIdx = base.indexOf(token);
-              total += 260 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 36 - baseIdx : 0);
-              continue;
-            }
-            let pos = -1;
-            let first = -1;
-            let last = -1;
-            let consecutive = 0;
-            let boundaries = 0;
-            for (const ch of token) {
-              pos = lower.indexOf(ch, pos + 1);
-              if (pos < 0) return -1;
-              if (first < 0) first = pos;
-              if (last >= 0 && pos === last + 1) consecutive += 1;
-              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
-              last = pos;
-            }
-            const span = last - first + 1;
-            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
-          }
-          return total;
         }
 
         function filteredRecentCwdOptions() {

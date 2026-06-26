@@ -67,6 +67,13 @@ def eval_display_module() -> dict:
           recoveryPreviewExact: display.recoveryPromptPreview("abc", 3),
           recoveryPreviewFalsy: display.recoveryPromptPreview(0),
           recoveryPreviewDefaultLimit: display.recoveryPromptPreview("x".repeat(321)).length,
+          cwdScoreNoQuery: display.fuzzyRecentCwdScore("/tmp/project", "   "),
+          cwdScoreExact: display.fuzzyRecentCwdScore("/tmp/project", " /TMP/PROJECT "),
+          cwdScoreBaseExact: display.fuzzyRecentCwdScore("/tmp/project", "project"),
+          cwdScoreBoundaryToken: display.fuzzyRecentCwdScore("/tmp/project-alpha", "project"),
+          cwdScoreMultiToken: display.fuzzyRecentCwdScore("/work/foo-bar", "foo bar"),
+          cwdScoreSubsequence: display.fuzzyRecentCwdScore("abc", "ac"),
+          cwdScoreNoMatch: display.fuzzyRecentCwdScore("abc", "az"),
           iconKnown: display.iconSvg("send").includes("<svg"),
           iconUnknown: display.iconSvg("missing"),
           frozen: Object.isFrozen(display),
@@ -112,9 +119,17 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearDisplay.recoveryPromptPreview !== "function"', source)
         self.assertIn("function recoveryPromptPreview(text, maxLen = 320)", source)
         self.assertIn("return codoxearDisplay.recoveryPromptPreview(text, maxLen);", source)
+        self.assertIn('typeof codoxearDisplay.fuzzyRecentCwdScore !== "function"', source)
+        self.assertIn("function fuzzyRecentCwdScore(candidate, query)", source)
+        self.assertIn("return codoxearDisplay.fuzzyRecentCwdScore(candidate, query);", source)
         self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
+        recent_cwd_start = source.index("function renderRecentCwdOptions()")
+        recent_cwd_end = source.index("function filteredRecentCwdOptions()", recent_cwd_start)
+        recent_cwd_block = source[recent_cwd_start:recent_cwd_end]
         self.assertNotIn("function fmtBytes(n) {\n        const v = Number(n);", source)
         self.assertNotIn('const raw = String(text || "").replace(/\\s+/g, " ").trim();', source)
+        self.assertNotIn("function fuzzyRecentCwdScore(candidate, query)", recent_cwd_block)
+        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', recent_cwd_block)
         self.assertNotIn("function iconSvg(name) {\n    if (name ===", source)
 
     def test_display_module_preserves_presentation_helpers(self) -> None:
@@ -151,6 +166,13 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertEqual(result["recoveryPreviewExact"], "abc")
         self.assertEqual(result["recoveryPreviewFalsy"], "")
         self.assertEqual(result["recoveryPreviewDefaultLimit"], 321)
+        self.assertEqual(result["cwdScoreNoQuery"], 0)
+        self.assertEqual(result["cwdScoreExact"], 10000)
+        self.assertEqual(result["cwdScoreBaseExact"], 9000)
+        self.assertEqual(result["cwdScoreBoundaryToken"], 314)
+        self.assertEqual(result["cwdScoreMultiToken"], 612)
+        self.assertEqual(result["cwdScoreSubsequence"], 124)
+        self.assertEqual(result["cwdScoreNoMatch"], -1)
         self.assertTrue(result["iconKnown"])
         self.assertEqual(result["iconUnknown"], "")
         self.assertTrue(result["frozen"])
