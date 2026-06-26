@@ -147,6 +147,9 @@ from .queue_routes import handle_queue_get_route as _handle_queue_get_route
 from .queue_routes import handle_queue_post_route as _handle_queue_post_route
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
+from .session_routes import SessionRouteDeps
+from .session_routes import handle_session_get_route as _handle_session_get_route
+from .session_routes import handle_session_post_route as _handle_session_post_route
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -5282,6 +5285,31 @@ def _diagnostics_route_deps() -> DiagnosticsRouteDeps:
     )
 
 
+def _session_route_deps() -> SessionRouteDeps:
+    return SessionRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        json_response_with_etag=_json_response_with_etag,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+        read_new_session_defaults=_read_new_session_defaults,
+        static_asset_version=_static_asset_version,
+        tmux_available=_tmux_available,
+        tmux_session_name=TMUX_SESSION_NAME,
+        metrics_snapshot=_metrics_snapshot,
+        record_metric=_record_metric,
+        perf_counter=time.perf_counter,
+        normalize_agent_backend=normalize_agent_backend,
+        default_agent_backend=DEFAULT_AGENT_BACKEND,
+        resolve_dir_target=_resolve_dir_target,
+        describe_session_cwd=_describe_session_cwd,
+        list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
+        first_user_message_preview_from_log=_first_user_message_preview_from_log,
+        parse_new_session_launch_request=_parse_new_session_launch_request,
+        launch_request_validation_error=LaunchRequestValidationError,
+        session_launch_error=SessionLaunchError,
+    )
+
+
 def _file_get_route_deps() -> FileGetRouteDeps:
     return FileGetRouteDeps(
         require_auth=_require_auth,
@@ -5644,64 +5672,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self._handle_voice_get(path, u.query):
                 return
 
-            if path == "/api/sessions":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                t0 = time.perf_counter()
-                sessions = MANAGER.list_sessions()
-                recent_cwds = MANAGER.recent_cwds()
-                new_session_defaults = _read_new_session_defaults()
-                dt_ms = (time.perf_counter() - t0) * 1000.0
-                _record_metric("api_sessions_ms", dt_ms)
-                _json_response_with_etag(
-                    self,
-                    {
-                        "app_version": _static_asset_version(),
-                        "sessions": sessions,
-                        "recent_cwds": recent_cwds,
-                        "new_session_defaults": new_session_defaults,
-                        "tmux_available": _tmux_available(),
-                        "tmux_session_name": TMUX_SESSION_NAME,
-                    },
-                )
-                return
-
-            if path == "/api/session_resume_candidates":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                cwd_raw = qs.get("cwd", [""])[0]
-                try:
-                    agent_backend = normalize_agent_backend(qs.get("agent_backend", [""])[0], default=DEFAULT_AGENT_BACKEND)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    cwd_path = _resolve_dir_target(str(cwd_raw), field_name="cwd")
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e), "field": "cwd"})
-                    return
-                info = _describe_session_cwd(cwd_path)
-                rows = _list_resume_candidates_for_cwd(info["cwd"], agent_backend=agent_backend) if info["exists"] else []
-                for row in rows:
-                    sid = row.get("session_id")
-                    log_path_raw = row.get("log_path")
-                    alias = MANAGER.alias_get(sid) if isinstance(sid, str) and sid else ""
-                    preview = ""
-                    if isinstance(log_path_raw, str) and log_path_raw:
-                        preview = _first_user_message_preview_from_log(Path(log_path_raw))
-                    row["alias"] = alias
-                    row["first_user_message"] = preview
-                _json_response(self, 200, {"ok": True, **info, "sessions": rows})
-                return
-
-            if path == "/api/metrics":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                _json_response(self, 200, {"metrics": _metrics_snapshot()})
+            if _handle_session_get_route(
+                self,
+                path=path,
+                query=u.query,
+                manager=MANAGER,
+                deps=_session_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             if _handle_diagnostics_get_route(
@@ -5752,32 +5730,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ):
                 return
 
-            session_id = _match_session_route(path, "tail")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                try:
-                    tail = MANAGER.get_tail(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, {"tail": tail})
-                return
-
-            session_id = _match_session_route(path, "unattended")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                try:
-                    cfg = MANAGER.unattended_get(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, {"ok": True, **cfg})
-                return
-
             self.send_error(404)
         except KeyError:
             _json_response(self, 404, {"error": "unknown session"})
@@ -5821,51 +5773,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self._handle_voice_post(path):
                 return
 
-            if path == "/api/sessions":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                try:
-                    launch_req = _parse_new_session_launch_request(obj)
-                except LaunchRequestValidationError as e:
-                    payload: dict[str, Any] = {"error": str(e)}
-                    if e.field:
-                        payload["field"] = e.field
-                    _json_response(self, 400, payload)
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    res = MANAGER.spawn_web_session(
-                        cwd=launch_req.cwd,
-                        args=launch_req.args,
-                        agent_backend=launch_req.agent_backend,
-                        resume_session_id=launch_req.resume_session_id,
-                        worktree_branch=launch_req.worktree_branch,
-                        model_provider=launch_req.model_provider,
-                        preferred_auth_method=launch_req.preferred_auth_method,
-                        model=launch_req.model,
-                        reasoning_effort=launch_req.reasoning_effort,
-                        service_tier=launch_req.service_tier,
-                        create_in_tmux=launch_req.create_in_tmux,
-                    )
-                except ValueError as e:
-                    payload: dict[str, Any] = {"error": str(e)}
-                    if str(e).startswith("cwd "):
-                        payload["field"] = "cwd"
-                    _json_response(self, 400, payload)
-                    return
-                except SessionLaunchError as e:
-                    payload = {
-                        "error": str(e),
-                        "launch_attempt": e.record,
-                        "launch_id": e.record.get("launch_id"),
-                    }
-                    _json_response(self, 500, payload)
-                    return
-                _json_response(self, 200, {"ok": True, **res})
+            if _handle_session_post_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_session_route_deps(),
+            ):
                 return
 
             if _handle_global_file_post_route(
