@@ -206,7 +206,8 @@
         typeof codoxearFileHelpers.compareFilePickerEntries !== "function" ||
         typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
         typeof codoxearFileHelpers.filePickerSectionLabel !== "function" ||
-        typeof codoxearFileHelpers.positionAfterInsertedText !== "function"
+        typeof codoxearFileHelpers.positionAfterInsertedText !== "function" ||
+        typeof codoxearFileHelpers.fileEditorDeleteCommandForKey !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -478,6 +479,10 @@
 
       function positionAfterInsertedText(start, text) {
         return codoxearFileHelpers.positionAfterInsertedText(start, text);
+      }
+
+      function fileEditorDeleteCommandForKey(key) {
+        return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;
@@ -7744,12 +7749,6 @@
           const editor = getActiveFileCodeEditor();
           const node = editor && typeof editor.getDomNode === "function" ? editor.getDomNode() : null;
           return Boolean(node && node.contains(target));
-        }
-
-        function fileEditorDeleteCommandForKey(key) {
-          if (key === "backspace") return "deleteLeft";
-          if (key === "delete") return "deleteRight";
-          return "";
         }
 
         function handleFileEditorDeleteKeydown(e) {

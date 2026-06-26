@@ -87,6 +87,11 @@ def eval_file_helpers_real_order() -> dict:
           positionCrLf: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, "a\\r\\nbc"),
           positionCr: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, "a\\rb"),
           positionTrailingNewline: helpers.positionAfterInsertedText({{ lineNumber: 2, column: 5 }}, "abc\\n"),
+          deleteBackspace: helpers.fileEditorDeleteCommandForKey("backspace"),
+          deleteDelete: helpers.fileEditorDeleteCommandForKey("delete"),
+          deleteBackspaceUpper: helpers.fileEditorDeleteCommandForKey("Backspace"),
+          deleteUnknown: helpers.fileEditorDeleteCommandForKey("x"),
+          deleteBlank: helpers.fileEditorDeleteCommandForKey(""),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -126,6 +131,7 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "normalizeFileCandidateSource",
             "filePickerSectionLabel",
             "positionAfterInsertedText",
+            "fileEditorDeleteCommandForKey",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
@@ -138,9 +144,12 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.normalizeFileCandidateSource(source);", source)
         self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
         self.assertIn("return codoxearFileHelpers.positionAfterInsertedText(start, text);", source)
+        self.assertIn("return codoxearFileHelpers.fileEditorDeleteCommandForKey(key);", source)
         self.assertIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', helper_source)
         self.assertIn('if (source === "changed") return "Changed files";', helper_source)
         self.assertIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', helper_source)
+        self.assertIn('if (key === "backspace") return "deleteLeft";', helper_source)
+        self.assertIn('if (key === "delete") return "deleteRight";', helper_source)
         file_search_region_start = source.index("function collectMessageFileRefs()")
         file_search_region_end = source.index("function appendHighlightedFileMenuPath(parent, text, query)", file_search_region_start)
         file_search_region = source[file_search_region_start:file_search_region_end]
@@ -153,6 +162,8 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', source)
         self.assertNotIn('if (source === "changed") return "Changed files";', source)
         self.assertNotIn('const parts = value.replace(/\\r\\n?/g, "\\n").split("\\n");', source)
+        self.assertNotIn('if (key === "backspace") return "deleteLeft";', source)
+        self.assertNotIn('if (key === "delete") return "deleteRight";', source)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
         result = eval_file_helpers_real_order()
@@ -218,6 +229,11 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["positionCrLf"], {"lineNumber": 3, "column": 3})
         self.assertEqual(result["positionCr"], {"lineNumber": 3, "column": 2})
         self.assertEqual(result["positionTrailingNewline"], {"lineNumber": 3, "column": 1})
+        self.assertEqual(result["deleteBackspace"], "deleteLeft")
+        self.assertEqual(result["deleteDelete"], "deleteRight")
+        self.assertEqual(result["deleteBackspaceUpper"], "")
+        self.assertEqual(result["deleteUnknown"], "")
+        self.assertEqual(result["deleteBlank"], "")
         self.assertTrue(result["frozen"])
 
 

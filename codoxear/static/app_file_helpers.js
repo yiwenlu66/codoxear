@@ -215,6 +215,12 @@
     return { lineNumber: start.lineNumber + parts.length - 1, column: parts[parts.length - 1].length + 1 };
   }
 
+  function fileEditorDeleteCommandForKey(key) {
+    if (key === "backspace") return "deleteLeft";
+    if (key === "delete") return "deleteRight";
+    return "";
+  }
+
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
     stripPathLocationSuffix,
@@ -234,5 +240,6 @@
     normalizeFileCandidateSource,
     filePickerSectionLabel,
     positionAfterInsertedText,
+    fileEditorDeleteCommandForKey,
   });
 })();
