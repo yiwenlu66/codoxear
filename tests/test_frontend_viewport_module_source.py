@@ -39,7 +39,7 @@ def eval_viewport(query_matches: dict[str, bool], with_match_media: bool = True)
 def run_app_viewport_guard(setup_js: str = "") -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("const codoxearViewport = window.CodoxearViewport;")
-    end = source.index("function normalizeAgentBackendName", start)
+    end = source.index("const codoxearPolling = window.CodoxearPolling;", start)
     guard_source = source[start:end]
     js = textwrap.dedent(
         f"""

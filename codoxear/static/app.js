@@ -303,6 +303,19 @@
       )
         throw new Error("Codoxear viewport helpers failed to load");
 
+      const codoxearPolling = window.CodoxearPolling;
+      if (
+        !codoxearPolling ||
+        !codoxearPolling.POLLING_INTERVALS ||
+        typeof codoxearPolling.sessionsPollDelayMs !== "function" ||
+        typeof codoxearPolling.secondaryPollDelayMs !== "function" ||
+        typeof codoxearPolling.browserOffline !== "function" ||
+        typeof codoxearPolling.messagePollErrorDelayMs !== "function" ||
+        typeof codoxearPolling.messagePollDelayMs !== "function" ||
+        typeof codoxearPolling.normalizeMessagePollKickDelay !== "function"
+      )
+        throw new Error("Codoxear polling helpers failed to load");
+
       function normalizeAgentBackendName(value) {
         return codoxearLaunch.normalizeAgentBackendName(value);
       }
@@ -602,17 +615,6 @@
          let secondaryPollTimer = null;
          let sessionsPollingEnabled = true;
          let secondaryPollingEnabled = true;
-         const SESSION_POLL_VISIBLE_MS = 2500;
-         const SESSION_POLL_HIDDEN_MS = 15000;
-         const SECONDARY_POLL_VISIBLE_MS = 10000;
-         const SECONDARY_POLL_HIDDEN_MS = 60000;
-         const MESSAGE_POLL_FAST_MS = 200;
-         const MESSAGE_POLL_RUNNING_MS = 250;
-         const MESSAGE_POLL_IDLE_MS = 900;
-         const MESSAGE_POLL_HIDDEN_MS = 5000;
-         const MESSAGE_POLL_OFFLINE_MS = 15000;
-         const MESSAGE_POLL_ERROR_MIN_MS = 2000;
-         const MESSAGE_POLL_ERROR_MAX_MS = 30000;
          let currentRunning = false;
          let openSwipeContent = null;
          let openSwipeSessionId = null;
@@ -816,27 +818,26 @@
           renderLogin(renderApp);
         }
         function sessionsPollDelayMs() {
-          return document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS;
+          return codoxearPolling.sessionsPollDelayMs(document.visibilityState);
         }
         function secondaryPollDelayMs() {
-          return document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS;
+          return codoxearPolling.secondaryPollDelayMs(document.visibilityState);
         }
         function browserOffline() {
-          return typeof navigator !== "undefined" && navigator.onLine === false;
+          return codoxearPolling.browserOffline(typeof navigator === "undefined" ? undefined : navigator);
         }
         function messagePollErrorDelayMs() {
-          if (!messagePollErrorStreak) return 0;
-          const exponent = Math.min(6, Math.max(0, messagePollErrorStreak - 1));
-          return Math.min(MESSAGE_POLL_ERROR_MAX_MS, MESSAGE_POLL_ERROR_MIN_MS * 2 ** exponent);
+          return codoxearPolling.messagePollErrorDelayMs(messagePollErrorStreak);
         }
         function messagePollDelayMs(now = Date.now()) {
-          const errorDelay = messagePollErrorDelayMs();
-          if (browserOffline()) return Math.max(MESSAGE_POLL_OFFLINE_MS, errorDelay);
-          if (document.visibilityState === "hidden") return Math.max(MESSAGE_POLL_HIDDEN_MS, errorDelay);
-          let delay = MESSAGE_POLL_IDLE_MS;
-          if (now < pollFastUntilMs) delay = MESSAGE_POLL_FAST_MS;
-          else if (turnOpen) delay = MESSAGE_POLL_RUNNING_MS;
-          return Math.max(delay, errorDelay);
+          return codoxearPolling.messagePollDelayMs({
+            now,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
         }
         function markMessagePollSuccess() {
           messagePollErrorStreak = 0;
@@ -845,10 +846,14 @@
           messagePollErrorStreak = Math.min(messagePollErrorStreak + 1, 20);
         }
         function normalizeMessagePollKickDelay(ms = 0) {
-          const requested = Math.max(0, Number(ms) || 0);
-          const errorDelay = messagePollErrorDelayMs();
-          if (browserOffline() || document.visibilityState === "hidden") return Math.max(requested, messagePollDelayMs());
-          return Math.max(requested, errorDelay);
+          return codoxearPolling.normalizeMessagePollKickDelay({
+            requested: ms,
+            visibilityState: document.visibilityState,
+            offline: browserOffline(),
+            errorStreak: messagePollErrorStreak,
+            pollFastUntilMs,
+            turnOpen,
+          });
         }
         function stopSessionsPolling() {
           if (sessionsTimer) clearTimeout(sessionsTimer);

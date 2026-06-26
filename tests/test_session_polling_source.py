@@ -8,26 +8,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_API_JS = ROOT / "codoxear" / "static" / "app_api.js"
+APP_POLLING_JS = ROOT / "codoxear" / "static" / "app_polling.js"
 
 
 def eval_message_poll_delay_policy() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
     start = source.index("function browserOffline()")
     end = source.index("function stopSessionsPolling()", start)
     helper_source = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        const moduleCtx = {{ window: {{}} }};
+        vm.createContext(moduleCtx);
+        vm.runInContext({json.dumps(polling_source)}, moduleCtx);
         const ctx = {{
           document: {{ visibilityState: "visible" }},
           navigator: {{ onLine: true }},
-          MESSAGE_POLL_FAST_MS: 200,
-          MESSAGE_POLL_RUNNING_MS: 250,
-          MESSAGE_POLL_IDLE_MS: 900,
-          MESSAGE_POLL_HIDDEN_MS: 5000,
-          MESSAGE_POLL_OFFLINE_MS: 15000,
-          MESSAGE_POLL_ERROR_MIN_MS: 2000,
-          MESSAGE_POLL_ERROR_MAX_MS: 30000,
+          codoxearPolling: moduleCtx.window.CodoxearPolling,
           messagePollErrorStreak: 0,
           pollFastUntilMs: 0,
           turnOpen: false,
@@ -69,9 +68,11 @@ def eval_message_poll_delay_policy() -> dict:
 class TestSessionPollingSource(unittest.TestCase):
     def test_session_polling_is_visibility_aware_timeout_loop(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const SESSION_POLL_VISIBLE_MS = 2500;", source)
-        self.assertIn("const SESSION_POLL_HIDDEN_MS = 15000;", source)
-        self.assertIn('document.visibilityState === "hidden" ? SESSION_POLL_HIDDEN_MS : SESSION_POLL_VISIBLE_MS', source)
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        self.assertIn("SESSION_POLL_VISIBLE_MS: 2500", polling_source)
+        self.assertIn("SESSION_POLL_HIDDEN_MS: 15000", polling_source)
+        self.assertIn('return visibilityState === "hidden" ? hiddenMs : visibleMs;', polling_source)
+        self.assertIn("return codoxearPolling.sessionsPollDelayMs(document.visibilityState);", source)
         self.assertIn("function scheduleSessionsPoll(delayMs = sessionsPollDelayMs())", source)
         self.assertIn("sessionsTimer = setTimeout", source)
         self.assertNotIn("sessionsTimer = setInterval", source)
@@ -163,21 +164,25 @@ class TestSessionPollingSource(unittest.TestCase):
 
     def test_active_message_polling_is_visibility_offline_error_aware(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const MESSAGE_POLL_FAST_MS = 200;", source)
-        self.assertIn("const MESSAGE_POLL_RUNNING_MS = 250;", source)
-        self.assertIn("const MESSAGE_POLL_IDLE_MS = 900;", source)
-        self.assertIn("const MESSAGE_POLL_HIDDEN_MS = 5000;", source)
-        self.assertIn("const MESSAGE_POLL_OFFLINE_MS = 15000;", source)
-        self.assertIn("const MESSAGE_POLL_ERROR_MIN_MS = 2000;", source)
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        self.assertIn("MESSAGE_POLL_FAST_MS: 200", polling_source)
+        self.assertIn("MESSAGE_POLL_RUNNING_MS: 250", polling_source)
+        self.assertIn("MESSAGE_POLL_IDLE_MS: 900", polling_source)
+        self.assertIn("MESSAGE_POLL_HIDDEN_MS: 5000", polling_source)
+        self.assertIn("MESSAGE_POLL_OFFLINE_MS: 15000", polling_source)
+        self.assertIn("MESSAGE_POLL_ERROR_MIN_MS: 2000", polling_source)
         self.assertIn("let pollKickDelayMs = null;", source)
         self.assertIn("let messagePollErrorStreak = 0;", source)
         self.assertIn("function messagePollDelayMs(now = Date.now())", source)
         self.assertIn("function normalizeMessagePollKickDelay(ms = 0)", source)
-        self.assertIn("const errorDelay = messagePollErrorDelayMs();", source)
-        self.assertIn("if (browserOffline()) return Math.max(MESSAGE_POLL_OFFLINE_MS, errorDelay);", source)
-        self.assertIn('if (document.visibilityState === "hidden") return Math.max(MESSAGE_POLL_HIDDEN_MS, errorDelay);', source)
-        self.assertIn("return Math.max(delay, errorDelay);", source)
-        self.assertIn("return Math.max(requested, errorDelay);", source)
+        self.assertIn("return codoxearPolling.messagePollErrorDelayMs(messagePollErrorStreak);", source)
+        self.assertIn("return codoxearPolling.messagePollDelayMs({", source)
+        self.assertIn("visibilityState: document.visibilityState", source)
+        self.assertIn("offline: browserOffline()", source)
+        self.assertIn("errorStreak: messagePollErrorStreak", source)
+        self.assertIn("pollFastUntilMs,", source)
+        self.assertIn("turnOpen,", source)
+        self.assertIn("return codoxearPolling.normalizeMessagePollKickDelay({", source)
         self.assertIn("markMessagePollSuccess();", source)
         self.assertIn("markMessagePollFailure();", source)
         open_start = source.index("async function openSession(sessionId")
@@ -199,9 +204,10 @@ class TestSessionPollingSource(unittest.TestCase):
 
     def test_secondary_polling_is_decoupled_from_session_polling(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
-        self.assertIn("const SECONDARY_POLL_VISIBLE_MS = 10000;", source)
-        self.assertIn("const SECONDARY_POLL_HIDDEN_MS = 60000;", source)
-        self.assertIn('document.visibilityState === "hidden" ? SECONDARY_POLL_HIDDEN_MS : SECONDARY_POLL_VISIBLE_MS', source)
+        polling_source = APP_POLLING_JS.read_text(encoding="utf-8")
+        self.assertIn("SECONDARY_POLL_VISIBLE_MS: 10000", polling_source)
+        self.assertIn("SECONDARY_POLL_HIDDEN_MS: 60000", polling_source)
+        self.assertIn("return codoxearPolling.secondaryPollDelayMs(document.visibilityState);", source)
         self.assertIn("function scheduleSecondaryPoll(delayMs = secondaryPollDelayMs())", source)
         self.assertIn("secondaryPollTimer = setTimeout", source)
         session_tick = source[source.index("async function runSessionsPollTick()") : source.index("async function runSecondaryPollTick()")]
