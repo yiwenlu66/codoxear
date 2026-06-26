@@ -2504,3 +2504,12 @@ Observation: Deterministic equivalence testing matched the previous inline helpe
 Observation: Clean-room delegate review `/tmp/codoxear-file-picker-helper-review.md` returned `NO BLOCKERS` and independently confirmed the app-owned boundary and real-helper module tests.
 Interpretation: The tranche changes helper ownership only. File-search lifecycle, candidate maps, API fetching, DOM highlighting/rendering, open/create actions, validation caches, and file-viewer state remain governed by `app.js`; absence or mismatch of required helper exports remains intentionally fail-loud.
 Scoped claim: file-picker helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new file-picker UX behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
+
+
+## Chat-search display helper extraction evidence
+Observation: `app_display.js` now owns deterministic chat-search snippet and transcript-hint formatting; `app.js` delegates through fail-loud wrappers while retaining DOM row text extraction and all chat-search state/API/focus/load-older behavior.
+Observation: Docker focused validation passed with 27 tests, and the full Docker suite passed with 994 passed, 1 skipped, 107 subtests on the final tree before commit `c09ace2`.
+Observation: Deterministic equivalence testing matched the previous inline helper bodies for representative snippet/hint cases, and a helper-body probe found no chat DOM/state/API references.
+Observation: Clean-room delegate review `/tmp/codoxear-chat-search-display-review.md` returned `NO BLOCKERS` and independently confirmed semantics, app-owned boundaries, real-module tests, and static wiring sufficiency.
+Interpretation: The tranche changes helper ownership only. Loaded-chat search mechanics, rendered-row matching, all-transcript search count/hint state, transcript-search API calls, DOM status updates, focus/navigation, and load-older actions remain governed by `app.js`; absence or mismatch of required display helper exports remains intentionally fail-loud.
+Scoped claim: chat-search display-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new chat-search UX behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.

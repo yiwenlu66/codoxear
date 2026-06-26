@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `4288221 extract file picker helpers`
+Latest functional code checkpoint: `c09ace2 extract chat search display helpers`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -85,7 +85,8 @@ Recent committed recovery checkpoints include:
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
   - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`;
   - recovery prompt preview and recent-cwd fuzzy scoring now live in the display-helper boundary while recovery security/session state and recent-cwd UI state remain app-owned;
-  - file-picker matching/scoring extraction preserves exact/basename/token/subsequence scoring, draft path normalization, Unicode folded match ranges, normalized candidate scoring, and comparator tie-breaks through `window.CodoxearFileHelpers`, while file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, validation caches, and file-viewer state remain app-owned.
+  - file-picker matching/scoring extraction preserves exact/basename/token/subsequence scoring, draft path normalization, Unicode folded match ranges, normalized candidate scoring, and comparator tie-breaks through `window.CodoxearFileHelpers`, while file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, validation caches, and file-viewer state remain app-owned;
+  - chat-search display extraction preserves snippet compaction and all-transcript hint role labeling through `window.CodoxearDisplay`, while row text extraction, rendered-row matching, search timers, transcript-search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions remain app-owned.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -184,6 +185,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - File-picker helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18891 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline bodies passed for file-search scoring, draft path normalization, Unicode folded/range mapping, normalized candidate scoring, and entry comparator tie-breaks; helper side-effect probe found no file state/DOM/API references.
 - Clean-room delegate review `d52041b0-0f7b-4cb7-986b-99ffccd2c32d` saved to `/tmp/codoxear-file-picker-helper-review.md` returned `NO BLOCKERS` for scoring/path/range/comparator equivalence, fail-loud guard coverage, wrapper preservation, `CodoxearDisplay.baseName` dependency, app-owned file state/API/DOM boundaries, real-helper test loading, and no static wiring requirement.
+- Chat-search display helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18894 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_chat_navigation_source.py tests/test_static_assets.py -q` -> `27 passed`.
+- Chat-search display helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18895 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline bodies passed for representative chat-search snippet/hint cases; helper side-effect probe found no chat DOM/state/API references.
+- Replacement clean-room delegate review `48a1112c-dedd-475b-be3c-bfb882fcb56f` saved to `/tmp/codoxear-chat-search-display-review.md` returned `NO BLOCKERS` for snippet/hint semantics, fail-loud guard coverage, wrapper preservation, app-owned chat-search state/API/DOM/load-older boundaries, real-helper test execution, and no static wiring requirement. The earlier delegate `edc2af3c-a1c9-4e0b-b4be-f0fb8ef9f29b` failed before findings due model output-config and was not counted as a substantive review.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -264,4 +269,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. A current candidate is extracting only pure chat-search display formatting helpers (`compactChatSearchSnippet` and `chatSearchTranscriptHint`) while keeping `rowSearchText()`, rendered-row matching, transcript-search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. Re-anchor on a clean tree, inspect remaining short pure helpers, and choose only a boundary that depends solely on arguments and existing helper modules; avoid helpers that touch DOM, API calls, mutable session/file/chat state, focus, timers, recovery/security behavior, or already-extracted wrappers. Keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.

@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: file-picker matching/scoring helpers now live in `codoxear/static/app_file_helpers.js` at functional commit `4288221 extract file picker helpers`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: extract only pure chat-search display formatting helpers if the ownership boundary remains narrow. Candidate pure functions are `compactChatSearchSnippet(text, query, limit = 96)` and `chatSearchTranscriptHint(match, query)`; keep `rowSearchText()`, rendered-row matching, search timers, transcript search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions in `app.js`.
-3. Prefer extending `app_display.js` only if the boundary stays deterministic string formatting; add fail-loud display-helper wiring, wrapper-preserving call sites, real-module VM tests for whitespace collapse, min-limit clamping, query-centered snippets, default-limit behavior, role labels, and blank-hint handling, plus source/boundary coverage that `rowSearchText()` remains app-owned.
+1. Completed tranche: chat-search display formatting helpers now live in `codoxear/static/app_display.js` at functional commit `c09ace2 extract chat search display helpers`; checkpoint docs are recorded separately from the functional change.
+2. Next bounded candidate: inspect remaining short pure helpers only after re-anchoring on a clean tree. Avoid wrappers already extracted and avoid helpers that touch DOM, API calls, mutable session/file/chat state, focus, timers, or recovery/security behavior.
+3. A possible candidate is a tiny deterministic formatting/classification helper only if a read-only boundary check shows it depends solely on arguments and existing helper modules; otherwise stop and choose a smaller target.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
