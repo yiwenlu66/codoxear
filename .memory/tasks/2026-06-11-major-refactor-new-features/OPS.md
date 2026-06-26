@@ -3399,3 +3399,10 @@
 - What intentionally did not move: runtime evidence acquisition from history tail, run-settings logs, confirmed-send boundary, idle log parsing, and git probing remains in `SessionManager.list_sessions`; those reads still depend on manager/server helper seams.
 - Focused development sanity: py-compile of changed listing/server/tests passed; listing/server queue/sidebar/store group returned `126 passed, 22 subtests`. This was used to catch shape errors, not as the reason the architecture is better.
 - Current `list_sessions` shape: discovery/prune/meta-counter prelude; active snapshot call; runtime evidence enrichment loop; failed-launch overlay call; orphan recovery overlay call; dirty saves; sort/return.
+
+## 2026-06-26T21:20:00Z Queue promotion item-state checkpoint
+- Functional commit `e618c54 Move queue promotion item state into queue store`: moved queue promotion head selection, queue recovery-item detection, commit-unknown marker set/clear, and commit-unknown marker preservation into `QueueStore`.
+- Actual architecture moved: queue item state transitions for auto-send promotion now live with the queue persistence/mutation authority. `SessionManager._promote_queue_head_if_sendable` still owns remote readiness checks, idle-grace timing, session-level `queue_sending_item_id`/`queue_idle_since`, the actual `send()` call, and save orchestration.
+- Direct unknown send state remains manager-owned; `_queue_has_recovery_items_locked` still combines manager direct-unknown evidence with `QueueStore.has_recovery_items`.
+- The commit preserved the old commit-unknown error response behavior by returning `dict(item)` from the queue store preservation helper, including incidental item fields, rather than sanitizing through `copy_queue_item`.
+- Focused development sanity: queue-store/server queue/sweep/route group returned `106 passed, 22 subtests`. This was used as a mistake detector after moving the item-state mechanics.
