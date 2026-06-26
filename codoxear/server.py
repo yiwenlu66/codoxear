@@ -161,13 +161,12 @@ from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
-from .session_listing import ActiveSessionRowFacts as _ActiveSessionRowFacts
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import listing_priority as _listing_priority
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
-from .session_listing import build_active_session_row as _build_active_session_row
+from .session_listing import build_active_session_rows_snapshot as _build_active_session_rows_snapshot
 from .session_listing import build_launch_attempt_rows as _build_launch_attempt_rows
 from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
 from .session_listing import build_public_session_row as _build_public_session_row
@@ -3694,133 +3693,26 @@ class SessionManager:
         recent_cwd_dirty = False
         now_ts = time.time()
         with self._lock:
-            items: list[dict[str, Any]] = []
-            qmap = getattr(self, "_queues", None)
-            active_ids = set(self._sessions.keys())
-            for s in self._sessions.values():
-                cfg0 = self._unattended.get(s.session_id)
-                unattended_cooldown_minutes = _clean_unattended_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else UNATTENDED_DEFAULT_IDLE_MINUTES
-                unattended_remaining_injections = (
-                    _clean_unattended_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
-                    if isinstance(cfg0, dict)
-                    else UNATTENDED_DEFAULT_MAX_INJECTIONS
-                )
-                unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0 if isinstance(cfg0, dict) else False
-                alias = self._aliases.get(s.session_id)
-                if not isinstance(alias, str):
-                    alias = ""
-                files: list[str] = []
-                try:
-                    key, legacy_keys, _sref = self._files_key_for_session(s.session_id)
-                except KeyError:
-                    key = ""
-                    legacy_keys = []
-                if key:
-                    files, file_history_dirty = self._session_store_for_manager().file_history_for_keys(key, legacy_keys)
-                    files_dirty = files_dirty or file_history_dirty
-                log_exists = bool(s.log_path is not None and s.log_path.exists())
-                needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
-                needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
-                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
-                recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s.cwd, updated_ts)
-                queue_len = 0
-                queue_recovery = False
-                if isinstance(qmap, dict):
-                    q0 = qmap.get(s.session_id)
-                    if isinstance(q0, list):
-                        queue_len = len(q0)
-                        queue_recovery = bool(s.commit_unknown_send) or any(
-                            isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                            for item in q0
-                        )
-                sidebar_state = self._session_store_for_manager().sidebar_state_for_session(
-                    s.session_id,
-                    active_session_ids=active_ids,
-                    now_ts=now_ts,
-                )
-                priority_offset = sidebar_state.priority_offset
-                snooze_until = sidebar_state.snooze_until
-                dependency_session_id = sidebar_state.dependency_session_id
-                sidebar_dirty = sidebar_dirty or sidebar_state.dirty
-                blocked = dependency_session_id is not None
-                snoozed = snooze_until is not None and snooze_until > now_ts
-                priority = _listing_priority(
-                    now_ts=now_ts,
-                    updated_ts=updated_ts,
-                    priority_offset=priority_offset,
-                    blocked=blocked,
-                    snoozed=snoozed,
-                    half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
-                    bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
-                )
-                time_priority = priority.time_priority
-                base_priority = priority.base_priority
-                final_priority = priority.final_priority
-                try:
-                    cwd_path: Path | None = _resolve_session_cwd(s.cwd)
-                except ValueError:
-                    cwd_path = None
-                items.append(
-                    _build_active_session_row(
-                        _ActiveSessionRowFacts(
-                            session_id=s.session_id,
-                            thread_id=s.thread_id,
-                            pid=s.codex_pid,
-                            broker_pid=s.broker_pid,
-                            agent_backend=s.agent_backend,
-                            owned=s.owned,
-                            transport=s.transport,
-                            cwd=s.cwd,
-                            start_ts=s.start_ts,
-                            updated_ts=updated_ts,
-                            log_path=s.log_path,
-                            log_exists=log_exists,
-                            needs_run_settings=needs_run_settings,
-                            needs_history_scan=needs_history_scan,
-                            state_busy=bool(s.busy),
-                            interrupted_idle=bool(s.interrupted_idle),
-                            broker_queue_len=int(s.queue_len),
-                            last_send_boundary_active=bool(s.last_send_boundary_active),
-                            last_send_log_path=s.last_send_log_path,
-                            last_send_log_size=s.last_send_log_size,
-                            queue_len=int(queue_len),
-                            queue_recovery=bool(queue_recovery),
-                            pending_attachment=bool(s.pending_attachment),
-                            commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
-                            token=s.token,
-                            thinking=int(s.meta_thinking),
-                            tools=int(s.meta_tools),
-                            system=int(s.meta_system),
-                            unattended_enabled=unattended_enabled,
-                            unattended_cooldown_minutes=unattended_cooldown_minutes,
-                            unattended_remaining_injections=unattended_remaining_injections,
-                            alias=alias,
-                            files=list(files),
-                            cwd_path=cwd_path,
-                            model_provider=s.model_provider,
-                            preferred_auth_method=s.preferred_auth_method,
-                            provider_choice=_provider_choice_for_settings(
-                                model_provider=s.model_provider,
-                                preferred_auth_method=s.preferred_auth_method,
-                            ),
-                            model=s.model,
-                            reasoning_effort=s.reasoning_effort,
-                            service_tier=s.service_tier,
-                            tmux_session=s.tmux_session,
-                            tmux_window=s.tmux_window,
-                            launch_id=s.launch_id,
-                            spawn_nonce=s.spawn_nonce,
-                            priority_offset=priority_offset,
-                            snooze_until=snooze_until,
-                            dependency_session_id=dependency_session_id,
-                            time_priority=time_priority,
-                            base_priority=base_priority,
-                            final_priority=final_priority,
-                            blocked=blocked,
-                            snoozed=snoozed,
-                        )
-                    )
-                )
+            snapshot = _build_active_session_rows_snapshot(
+                sessions=list(self._sessions.values()),
+                queues=getattr(self, "_queues", None),
+                unattended=getattr(self, "_unattended", {}),
+                aliases=getattr(self, "_aliases", {}),
+                store=self._session_store_for_manager(),
+                now_ts=now_ts,
+                unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+                unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
+                clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
+                provider_choice_for_settings=_provider_choice_for_settings,
+                resolve_session_cwd=_resolve_session_cwd,
+                priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+                priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+            )
+            items = snapshot.rows
+            files_dirty = files_dirty or snapshot.files_dirty
+            sidebar_dirty = sidebar_dirty or snapshot.sidebar_dirty
+            recent_cwd_dirty = recent_cwd_dirty or snapshot.recent_cwd_dirty
 
         out: list[dict[str, Any]] = []
         for it in items:

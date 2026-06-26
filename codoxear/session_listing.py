@@ -5,12 +5,23 @@ import math
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .session_model import Session
+from .session_store import SessionStore
+
 
 @dataclass(frozen=True)
 class ListingPriority:
     time_priority: float
     base_priority: float
     final_priority: float
+
+
+@dataclass(frozen=True)
+class ActiveSessionSnapshot:
+    rows: list[dict[str, Any]]
+    files_dirty: bool
+    sidebar_dirty: bool
+    recent_cwd_dirty: bool
 
 
 @dataclass(frozen=True)
@@ -233,6 +244,141 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "blocked": facts.blocked,
         "snoozed": facts.snoozed,
     }
+
+
+def build_active_session_rows_snapshot(
+    *,
+    sessions: Iterable[Session],
+    queues: Mapping[str, Any] | None,
+    unattended: Mapping[str, Any],
+    aliases: Mapping[str, Any],
+    store: SessionStore,
+    now_ts: float,
+    unattended_default_idle_minutes: int,
+    unattended_default_max_injections: int,
+    clean_unattended_cooldown_minutes: Callable[[Any], int],
+    clean_unattended_remaining_injections: Callable[..., int],
+    provider_choice_for_settings: Callable[..., str],
+    resolve_session_cwd: Callable[[str], Path],
+    priority_half_life_seconds: float,
+    priority_bucket_seconds: float,
+) -> ActiveSessionSnapshot:
+    session_list = list(sessions)
+    active_ids = {s.session_id for s in session_list}
+    files_dirty = False
+    sidebar_dirty = False
+    recent_cwd_dirty = False
+    rows: list[dict[str, Any]] = []
+    for s in session_list:
+        cfg0 = unattended.get(s.session_id)
+        unattended_cooldown_minutes = (
+            clean_unattended_cooldown_minutes(cfg0.get("cooldown_minutes")) if isinstance(cfg0, dict) else unattended_default_idle_minutes
+        )
+        unattended_remaining_injections = (
+            clean_unattended_remaining_injections(cfg0.get("remaining_injections"), allow_zero=True)
+            if isinstance(cfg0, dict)
+            else unattended_default_max_injections
+        )
+        unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0 if isinstance(cfg0, dict) else False
+        alias = aliases.get(s.session_id)
+        if not isinstance(alias, str):
+            alias = ""
+        files, file_history_dirty = store.file_history_for_keys(f"sid:{s.session_id}", [s.session_id])
+        files_dirty = files_dirty or file_history_dirty
+        log_exists = bool(s.log_path is not None and s.log_path.exists())
+        needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
+        needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
+        updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
+        recent_cwd_dirty = recent_cwd_dirty or store.note_recent_cwd(s.cwd, updated_ts)
+        queue_len = 0
+        queue_recovery = False
+        if isinstance(queues, Mapping):
+            q0 = queues.get(s.session_id)
+            if isinstance(q0, list):
+                queue_len = len(q0)
+                queue_recovery = bool(s.commit_unknown_send) or _queue_has_recovery_item(q0)
+        sidebar_state = store.sidebar_state_for_session(s.session_id, active_session_ids=active_ids, now_ts=now_ts)
+        priority_offset = sidebar_state.priority_offset
+        snooze_until = sidebar_state.snooze_until
+        dependency_session_id = sidebar_state.dependency_session_id
+        sidebar_dirty = sidebar_dirty or sidebar_state.dirty
+        blocked = dependency_session_id is not None
+        snoozed = snooze_until is not None and snooze_until > now_ts
+        priority = listing_priority(
+            now_ts=now_ts,
+            updated_ts=updated_ts,
+            priority_offset=priority_offset,
+            blocked=blocked,
+            snoozed=snoozed,
+            half_life_seconds=priority_half_life_seconds,
+            bucket_seconds=priority_bucket_seconds,
+        )
+        try:
+            cwd_path: Path | None = resolve_session_cwd(s.cwd)
+        except ValueError:
+            cwd_path = None
+        rows.append(
+            build_active_session_row(
+                ActiveSessionRowFacts(
+                    session_id=s.session_id,
+                    thread_id=s.thread_id,
+                    pid=s.codex_pid,
+                    broker_pid=s.broker_pid,
+                    agent_backend=s.agent_backend,
+                    owned=s.owned,
+                    transport=s.transport,
+                    cwd=s.cwd,
+                    start_ts=s.start_ts,
+                    updated_ts=updated_ts,
+                    log_path=s.log_path,
+                    log_exists=log_exists,
+                    needs_run_settings=needs_run_settings,
+                    needs_history_scan=needs_history_scan,
+                    state_busy=bool(s.busy),
+                    interrupted_idle=bool(s.interrupted_idle),
+                    broker_queue_len=int(s.queue_len),
+                    last_send_boundary_active=bool(s.last_send_boundary_active),
+                    last_send_log_path=s.last_send_log_path,
+                    last_send_log_size=s.last_send_log_size,
+                    queue_len=int(queue_len),
+                    queue_recovery=bool(queue_recovery),
+                    pending_attachment=bool(s.pending_attachment),
+                    commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
+                    token=s.token,
+                    thinking=int(s.meta_thinking),
+                    tools=int(s.meta_tools),
+                    system=int(s.meta_system),
+                    unattended_enabled=unattended_enabled,
+                    unattended_cooldown_minutes=unattended_cooldown_minutes,
+                    unattended_remaining_injections=unattended_remaining_injections,
+                    alias=alias,
+                    files=list(files),
+                    cwd_path=cwd_path,
+                    model_provider=s.model_provider,
+                    preferred_auth_method=s.preferred_auth_method,
+                    provider_choice=provider_choice_for_settings(
+                        model_provider=s.model_provider,
+                        preferred_auth_method=s.preferred_auth_method,
+                    ),
+                    model=s.model,
+                    reasoning_effort=s.reasoning_effort,
+                    service_tier=s.service_tier,
+                    tmux_session=s.tmux_session,
+                    tmux_window=s.tmux_window,
+                    launch_id=s.launch_id,
+                    spawn_nonce=s.spawn_nonce,
+                    priority_offset=priority_offset,
+                    snooze_until=snooze_until,
+                    dependency_session_id=dependency_session_id,
+                    time_priority=priority.time_priority,
+                    base_priority=priority.base_priority,
+                    final_priority=priority.final_priority,
+                    blocked=blocked,
+                    snoozed=snoozed,
+                )
+            )
+        )
+    return ActiveSessionSnapshot(rows=rows, files_dirty=files_dirty, sidebar_dirty=sidebar_dirty, recent_cwd_dirty=recent_cwd_dirty)
 
 
 def build_launch_attempt_rows(

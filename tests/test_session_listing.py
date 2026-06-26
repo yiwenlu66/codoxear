@@ -4,7 +4,9 @@ from pathlib import Path
 import subprocess
 import sys
 
-from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_launch_attempt_rows, build_orphan_recovery_rows, build_public_session_row, listing_priority, sidebar_time_priority_from_elapsed_seconds, sort_session_rows
+from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_active_session_rows_snapshot, build_launch_attempt_rows, build_orphan_recovery_rows, build_public_session_row, listing_priority, sidebar_time_priority_from_elapsed_seconds, sort_session_rows
+from codoxear.session_model import Session
+from codoxear.session_store import SessionStore, SessionStorePaths
 
 
 def test_session_listing_import_does_not_load_server() -> None:
@@ -42,6 +44,95 @@ def test_listing_priority_applies_bucket_offset_and_blocking() -> None:
         bucket_seconds=10.0,
     )
     assert blocked.final_priority == 0.0
+
+
+def _store(tmp_path: Path) -> SessionStore:
+    return SessionStore(
+        paths=SessionStorePaths(
+            aliases=tmp_path / "aliases.json",
+            sidebar_meta=tmp_path / "sidebar.json",
+            hidden_sessions=tmp_path / "hidden.json",
+            files=tmp_path / "files.json",
+            queues=tmp_path / "queues.json",
+            pending_attachments=tmp_path / "pending.json",
+            commit_unknown_sends=tmp_path / "unknown.json",
+            recent_cwds=tmp_path / "recent.json",
+            unattended=tmp_path / "unattended.json",
+        ),
+        file_history_max=5,
+        recent_cwd_max=5,
+        unattended_default_idle_minutes=5,
+        unattended_default_max_injections=10,
+        clean_alias=lambda value: value if isinstance(value, str) else "",
+        clean_priority_offset=lambda value: float(value or 0.0),
+        clean_snooze_until=lambda value: float(value) if value not in (None, "", 0) else None,
+        clean_dependency_session_id=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+        clean_recent_cwd=lambda value: value.strip() if isinstance(value, str) and value.strip() else None,
+        clean_commit_unknown_send_record=lambda value: value if isinstance(value, dict) else None,
+    )
+
+
+def test_build_active_session_rows_snapshot_combines_session_and_store_state(tmp_path: Path) -> None:
+    log_path = tmp_path / "session.jsonl"
+    log_path.write_text("", encoding="utf-8")
+    store = _store(tmp_path)
+    store.files = {"s1": ["legacy.py"]}
+    store.sidebar_meta = {"s1": {"priority_offset": 0.1, "dependency_session_id": "missing", "snooze_until": 1.0}}
+    session = Session(
+        session_id="s1",
+        thread_id="t1",
+        broker_pid=2,
+        codex_pid=1,
+        agent_backend="codex",
+        owned=True,
+        start_ts=5.0,
+        cwd="/repo",
+        log_path=log_path,
+        sock_path=tmp_path / "s1.sock",
+        busy=True,
+        queue_len=4,
+        commit_unknown_send={"text": "direct", "created_ts": 3.0},
+    )
+
+    snapshot = build_active_session_rows_snapshot(
+        sessions=[session],
+        queues={"s1": [{"commit_unknown": True}]},
+        unattended={"s1": {"enabled": True, "cooldown_minutes": 7, "remaining_injections": 2}},
+        aliases={"s1": "Alias"},
+        store=store,
+        now_ts=10.0,
+        unattended_default_idle_minutes=5,
+        unattended_default_max_injections=10,
+        clean_unattended_cooldown_minutes=lambda value: int(value),
+        clean_unattended_remaining_injections=lambda value, *, allow_zero=False: int(value),
+        provider_choice_for_settings=lambda **_kwargs: "provider-choice",
+        resolve_session_cwd=lambda _cwd: Path("/repo"),
+        priority_half_life_seconds=100.0,
+        priority_bucket_seconds=10.0,
+    )
+
+    assert snapshot.files_dirty is True
+    assert snapshot.sidebar_dirty is True
+    assert snapshot.recent_cwd_dirty is True
+    assert store.files == {"sid:s1": ["legacy.py"]}
+    assert store.sidebar_meta == {"s1": {"priority_offset": 0.1}}
+    assert store.recent_cwds == {"/repo": 5.0}
+    row = snapshot.rows[0]
+    assert row["session_id"] == "s1"
+    assert row["files"] == ["legacy.py"]
+    assert row["alias"] == "Alias"
+    assert row["queue_len"] == 1
+    assert row["queue_recovery"] is True
+    assert row["commit_unknown_send"] is True
+    assert row["unattended_enabled"] is True
+    assert row["unattended_cooldown_minutes"] == 7
+    assert row["unattended_remaining_injections"] == 2
+    assert row["provider_choice"] == "provider-choice"
+    assert row["log_exists"] is True
+    assert row["needs_history_scan"] is True
+    assert row["_cwd_path_obj"] == Path("/repo")
+    assert row["blocked"] is False
+    assert row["snoozed"] is False
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:
