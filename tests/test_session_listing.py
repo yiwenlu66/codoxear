@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_orphan_recovery_rows, build_public_session_row, listing_priority, sidebar_time_priority_from_elapsed_seconds, sort_session_rows
+from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_launch_attempt_rows, build_orphan_recovery_rows, build_public_session_row, listing_priority, sidebar_time_priority_from_elapsed_seconds, sort_session_rows
 
 
 def test_session_listing_import_does_not_load_server() -> None:
@@ -207,6 +207,33 @@ def test_sort_session_rows_orders_by_priority_recency_start_and_id() -> None:
     sort_session_rows(rows)
 
     assert [row["session_id"] for row in rows] == ["newer", "later-start", "a", "b", "z"]
+
+
+def test_build_launch_attempt_rows_filters_hidden_and_active_identity() -> None:
+    records = [
+        {"id": "hidden"},
+        {"id": "active-launch"},
+        {"id": "active-nonce"},
+        {"id": "kept"},
+        {"id": "ignored"},
+    ]
+
+    def row_from_record(record: dict[str, object]) -> dict[str, object] | None:
+        sid = str(record["id"])
+        if sid == "ignored":
+            return None
+        row: dict[str, object] = {"session_id": sid, "launch_id": sid, "spawn_nonce": sid}
+        return row
+
+    rows = build_launch_attempt_rows(
+        records=records,
+        hidden_failure_ids={"hidden"},
+        active_launch_ids={"active-launch"},
+        active_spawn_nonces={"active-nonce"},
+        row_from_record=row_from_record,
+    )
+
+    assert rows == [{"session_id": "kept", "launch_id": "kept", "spawn_nonce": "kept"}]
 
 
 def _rows(**kwargs):

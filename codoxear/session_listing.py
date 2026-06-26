@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -233,6 +233,31 @@ def build_active_session_row(facts: ActiveSessionRowFacts) -> dict[str, Any]:
         "blocked": facts.blocked,
         "snoozed": facts.snoozed,
     }
+
+
+def build_launch_attempt_rows(
+    *,
+    records: Iterable[dict[str, Any]],
+    hidden_failure_ids: set[str],
+    active_launch_ids: set[str],
+    active_spawn_nonces: set[str],
+    row_from_record: Callable[[dict[str, Any]], dict[str, Any] | None],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for record in records:
+        row = row_from_record(record)
+        if row is None:
+            continue
+        if row["session_id"] in hidden_failure_ids:
+            continue
+        launch_id = row.get("launch_id")
+        if isinstance(launch_id, str) and launch_id and launch_id in active_launch_ids:
+            continue
+        nonce = row.get("spawn_nonce")
+        if isinstance(nonce, str) and nonce and nonce in active_spawn_nonces:
+            continue
+        rows.append(row)
+    return rows
 
 
 def build_orphan_recovery_rows(

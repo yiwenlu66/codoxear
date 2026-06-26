@@ -168,6 +168,7 @@ from .session_listing import priority_from_elapsed_seconds as _listing_priority_
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_listing import build_active_session_row as _build_active_session_row
+from .session_listing import build_launch_attempt_rows as _build_launch_attempt_rows
 from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
 from .session_listing import build_public_session_row as _build_public_session_row
 from .session_listing import sort_session_rows as _sort_session_rows
@@ -3910,19 +3911,15 @@ class SessionManager:
                     for s in self._sessions.values()
                     if isinstance(s.spawn_nonce, str) and s.spawn_nonce
                 }
-            for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
-                row = _launch_attempt_row(rec)
-                if row is None:
-                    continue
-                if row["session_id"] in hidden_failure_ids:
-                    continue
-                launch_id = row.get("launch_id")
-                if isinstance(launch_id, str) and launch_id and launch_id in active_launch_ids:
-                    continue
-                nonce = row.get("spawn_nonce")
-                if isinstance(nonce, str) and nonce and nonce in active_spawn_nonces:
-                    continue
-                out.append(row)
+            out.extend(
+                _build_launch_attempt_rows(
+                    records=_read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
+                    hidden_failure_ids=hidden_failure_ids,
+                    active_launch_ids=active_launch_ids,
+                    active_spawn_nonces=active_spawn_nonces,
+                    row_from_record=_launch_attempt_row,
+                )
+            )
         with self._lock:
             active_ids = set(self._sessions.keys())
             commit_unknown_snapshot = {
