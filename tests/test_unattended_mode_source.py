@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 UNATTENDED_PY = ROOT / "codoxear" / "unattended.py"
+CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 README = ROOT / "README.md"
 
 
@@ -130,18 +131,20 @@ class TestUnattendedModeSource(unittest.TestCase):
 
     def test_server_exposes_unattended_route_and_fields_without_harness_alias(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn('_match_session_route(path, "unattended")', source)
-        self.assertNotIn('path.endswith("/harness") or path.endswith("/unattended")', source)
+        route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
+        self.assertIn('_match_session_route(path, "unattended")', source + route_source)
+        self.assertIn('("unattended", None, _handle_unattended)', route_source)
+        self.assertNotIn('path.endswith("/harness") or path.endswith("/unattended")', source + route_source)
         self.assertIn('"unattended_enabled": unattended_enabled', source)
         self.assertIn('unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0', source)
-        self.assertIn('elif isinstance(enabled_raw, bool):', source)
-        self.assertIn('"enabled must be a boolean"', source)
+        self.assertIn('elif isinstance(enabled_raw, bool):', route_source)
+        self.assertIn('"enabled must be a boolean"', route_source)
         self.assertIn('"unattended_cooldown_minutes": unattended_cooldown_minutes', source)
         self.assertIn('"unattended_remaining_injections": unattended_remaining_injections', source)
         self.assertIn('"unattended_enabled": False', source)
-        self.assertNotIn('"harness_enabled": h_enabled', source)
-        self.assertNotIn('"harness_cooldown_minutes": h_cooldown_minutes', source)
-        self.assertNotIn('"harness_remaining_injections": h_remaining_injections', source)
+        self.assertNotIn('"harness_enabled": h_enabled', source + route_source)
+        self.assertNotIn('"harness_cooldown_minutes": h_cooldown_minutes', source + route_source)
+        self.assertNotIn('"harness_remaining_injections": h_remaining_injections', source + route_source)
 
     def test_api_validation_errors_use_unattended_term_for_user_inputs(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")

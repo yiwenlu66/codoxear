@@ -1,30 +1,38 @@
+import hashlib
+import tempfile
 import unittest
 from pathlib import Path
 
+from codoxear.file_text import read_text_file_for_client
+from codoxear.file_text import read_text_file_for_write
+from codoxear.file_text import write_new_text_file_atomic
+from codoxear.file_text import write_text_file_atomic
 
-ROOT = Path(__file__).resolve().parents[1]
-SERVER_PY = ROOT / "codoxear" / "server.py"
-FILE_TEXT_PY = ROOT / "codoxear" / "file_text.py"
 
+class TestFileTextModuleBehavior(unittest.TestCase):
+    def test_text_read_write_helpers_preserve_versions(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "note.txt"
 
-class TestFileTextModuleSource(unittest.TestCase):
-    def test_file_text_helpers_live_outside_server(self) -> None:
-        server_source = SERVER_PY.read_text(encoding="utf-8")
-        module_source = FILE_TEXT_PY.read_text(encoding="utf-8")
+            size, version = write_new_text_file_atomic(path, text="hello\n")
+            self.assertEqual(size, len("hello\n".encode("utf-8")))
+            self.assertEqual(version, hashlib.sha256(b"hello\n").hexdigest())
 
-        self.assertIn("from .file_text import read_text_file_for_client as _read_text_file_for_client", server_source)
-        self.assertIn("from .file_text import write_text_file_atomic as _write_text_file_atomic", server_source)
-        self.assertNotIn("def _read_text_file_for_client(", server_source)
-        self.assertNotIn("def _read_text_file_for_write(", server_source)
-        self.assertNotIn("def _write_text_file_atomic(", server_source)
-        self.assertNotIn("def _write_new_text_file_atomic(", server_source)
-        self.assertNotIn("def _decode_text_view_for_client(", server_source)
+            text, read_size, read_version = read_text_file_for_write(path, max_bytes=1024)
+            self.assertEqual(text, "hello\n")
+            self.assertEqual(read_size, size)
+            self.assertEqual(read_version, version)
 
-        self.assertIn("def read_text_file_for_client(", module_source)
-        self.assertIn("def read_text_file_for_write(", module_source)
-        self.assertIn("def write_text_file_atomic(", module_source)
-        self.assertIn("def write_new_text_file_atomic(", module_source)
-        self.assertIn("def decode_text_view_for_client(", module_source)
+            client_text, client_size, client_editable, client_version = read_text_file_for_client(path, max_bytes=1024)
+            self.assertEqual(client_text, "hello\n")
+            self.assertEqual(client_size, size)
+            self.assertTrue(client_editable)
+            self.assertEqual(client_version, version)
+
+            new_size, new_version = write_text_file_atomic(path, text="goodbye\n")
+            self.assertEqual(new_size, len("goodbye\n".encode("utf-8")))
+            self.assertEqual(new_version, hashlib.sha256(b"goodbye\n").hexdigest())
+            self.assertEqual(path.read_text(encoding="utf-8"), "goodbye\n")
 
 
 if __name__ == "__main__":

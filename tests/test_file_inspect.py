@@ -21,12 +21,12 @@ from codoxear.server import _read_client_file_view
 from codoxear.server import _resolve_client_file_path
 from codoxear.server import _resolve_existing_absolute_file
 from codoxear.server import _resolve_session_cwd
-from codoxear.server import _read_text_file_for_client
-from codoxear.server import _read_text_file_for_write
+from codoxear.file_text import read_text_file_for_client as _read_text_file_for_client
+from codoxear.file_text import read_text_file_for_write as _read_text_file_for_write
+from codoxear.file_text import write_new_text_file_atomic as _write_new_text_file_atomic
+from codoxear.file_text import write_text_file_atomic as _write_text_file_atomic
 from codoxear.server import _read_text_or_image
 from codoxear.server import _single_byte_range
-from codoxear.server import _write_new_text_file_atomic
-from codoxear.server import _write_text_file_atomic
 
 
 REPO_CWD = Path(__file__).resolve().parents[1]
@@ -1408,6 +1408,26 @@ class TestInspectOpenableFile(unittest.TestCase):
             ):
                 server.Handler.do_POST(handler)
             self.assertEqual(responses, [(400, {"error": "invalid path"})])
+
+    def test_file_write_validation_runs_before_unknown_session_lookup(self) -> None:
+        class FakeManager:
+            def refresh_session_meta(self, _session_id: str) -> None:
+                raise AssertionError("session metadata should not be refreshed for invalid write bodies")
+
+            def get_session(self, _session_id: str) -> object | None:
+                raise AssertionError("session lookup should not run for invalid write bodies")
+
+        parsed = urllib.parse.urlparse("/api/sessions/missing/file/write")
+        handler = server.Handler.__new__(server.Handler)
+        handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+        handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+        handler._read_json_body = lambda **_kwargs: {"text": "new"}  # type: ignore[attr-defined]
+        responses = []
+        with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+            server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+        ):
+            server.Handler.do_POST(handler)
+        self.assertEqual(responses, [(400, {"error": "path required"})])
 
     def test_file_write_create_allows_root_cwd_descendant(self) -> None:
         with tempfile.TemporaryDirectory(dir="/tmp") as td:

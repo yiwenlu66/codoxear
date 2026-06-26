@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from codoxear.server import Session
-from codoxear.server import _message_transcript_identity
+from codoxear.message_routes import _message_transcript_identity
 
 
 def _session(*, thread_id: str = "thread-1", log_path: Path | None = None) -> Session:

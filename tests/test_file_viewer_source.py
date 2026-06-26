@@ -668,22 +668,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn(".fileConflictActions", css_source)
         self.assertNotIn("overwrite", block.lower())
 
-    def test_file_write_conflict_check_is_locked_with_write(self) -> None:
-        source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn("_FILE_WRITE_LOCKS_LOCK = threading.Lock()", source)
-        self.assertIn("_FILE_WRITE_LOCKS: dict[str, tuple[threading.Lock, int]] = {}", source)
-        self.assertIn("@contextmanager\ndef _file_write_lock(path: Path) -> Iterator[None]:", source)
-        self.assertIn("_FILE_WRITE_LOCKS[key] = (lock, refcount + 1)", source)
-        self.assertIn("_FILE_WRITE_LOCKS.pop(key, None)", source)
-        route_start = source.index('session_id = _match_session_route(path, "file", "write")')
-        route_end = source.index('session_id = _match_session_route(path, "delete")', route_start)
-        block = source[route_start:route_end]
-        update_block = block[block.index("else:\n                    try:\n                        if git_path:") :]
-        self.assertIn('except ValueError as e:\n                        _json_response(self, 400, {"error": str(e)})', update_block)
-        self.assertIn("with _file_write_lock(p):", update_block)
-        self.assertLess(update_block.index("with _file_write_lock(p):"), update_block.index("_read_text_file_for_write(p"))
-        self.assertLess(update_block.index("_read_text_file_for_write(p"), update_block.index("_write_text_file_atomic(p"))
-
     def test_file_viewer_handles_pdf_video_and_download_only_kinds(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
         css_source = APP_CSS.read_text(encoding="utf-8")
@@ -775,7 +759,6 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)', module_source)
         self.assertIn('def prune_video_preview_cache(', module_source)
         self.assertIn('prune_video_preview_cache(preview_dir, keep=out)', module_source)
-        self.assertIn('preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}{git_suffix}"', server_source)
         self.assertIn("preview_url=media_preview_url", server_source)
         self.assertIn('_send_inline_file_response(self, p, ctype or "application/octet-stream")', server_source)
         self.assertIn('_send_inline_file_response(self, path_obj, ctype or "application/octet-stream")', server_source)

@@ -951,6 +951,18 @@ class TestServerQueuePersistence(unittest.TestCase):
             if input_lock.acquire(blocking=False):
                 input_lock.release()
 
+    def test_remote_readiness_skips_log_parse_when_broker_queue_is_nonempty(self) -> None:
+        sid = "s1"
+        mgr = self._mgr()
+        with TemporaryDirectory() as td:
+            log_path = Path(td) / "pi.jsonl"
+            log_path.write_text('{"type":"message","message":{"role":"assistant","content":[],"stopReason":"aborted"}}\n', encoding="utf-8")
+            mgr._sessions[sid] = _make_session(sid)
+            mgr._sessions[sid].log_path = log_path
+            mgr.idle_from_log = lambda _sid: self.fail("broker queue should short-circuit before log idle parse")  # type: ignore[method-assign]
+
+            self.assertFalse(SessionManager._remote_ready_from_state_and_log(mgr, sid, {"busy": False, "queue_len": 1}, log_path))
+
     def test_send_readiness_allows_stale_broker_busy_when_log_is_idle(self) -> None:
         sid = "s1"
         mgr = self._mgr()

@@ -7,7 +7,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from codoxear import server
-from codoxear.server import _read_chat_export_events
+from codoxear.message_routes import _read_chat_export_events
+from codoxear.rollout_log import _read_chat_history_page
 from codoxear.server import Session
 from codoxear.transcript_search import casefold_match_span
 from codoxear.transcript_search import clip_search_match_text
@@ -360,27 +361,6 @@ class TestTranscriptExport(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["_before_byte"], 1)
 
-    def test_server_exposes_messages_export_and_search_routes(self) -> None:
-        source = SERVER_PY.read_text(encoding="utf-8")
-        self.assertIn('_match_session_route(path, "messages", "export")', source)
-        self.assertIn('_match_session_route(path, "messages", "search")', source)
-        self.assertIn('"event_count": len(events)', source)
-        self.assertIn('"match_count": match_count', source)
-        self.assertIn('order = (qs.get("order") or ["first"])[0]', source)
-        self.assertIn('before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)', source)
-        self.assertIn('match_count, matches, match_count_truncated = _search_chat_log_bounded(', source)
-        self.assertIn('max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,', source)
-        self.assertIn('count_limit=count_max if count_max > 0 else None,', source)
-        self.assertIn('text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)', source)
-        self.assertIn('count_max, count_max_error = _parse_bounded_query_int(qs, "count_max", default=0, min_value=0, max_value=100000)', source)
-        self.assertIn('if count_max > 0 and order == "latest":', source)
-        self.assertIn('"match_count_truncated": bool(match_count_truncated)', source)
-        self.assertIn('matches = _clip_search_match_text(matches, text_max, query=query)', source)
-        self.assertIn('TRANSCRIPT_SEARCH_MAX_LINE_BYTES', source)
-        self.assertIn('def _parse_bounded_query_int(', source)
-        self.assertIn('_json_response(self, 400, {"error": limit_error})', source)
-        self.assertIn('_json_response(self, 413', source)
-
     def test_messages_search_route_applies_text_max_to_response_matches(self) -> None:
         with TemporaryDirectory() as td:
             log_path = Path(td) / "rollout.jsonl"
@@ -456,7 +436,7 @@ class TestTranscriptExport(unittest.TestCase):
             self.assertEqual(target_pos, match["_before_byte"])
             load_pos = server._decode_message_cursor(match["load_cursor"], kind="history", session=session)
             self.assertGreater(load_pos, match["_before_byte"])
-            window_events, _next_before, _has_older = server._read_chat_history_page(log_path, before_byte=load_pos, limit=20)
+            window_events, _next_before, _has_older = _read_chat_history_page(log_path, before_byte=load_pos, limit=20)
             self.assertEqual(window_events[-1]["text"], text)
 
     def test_messages_search_route_marks_truncated_when_oversized_record_skipped(self) -> None:

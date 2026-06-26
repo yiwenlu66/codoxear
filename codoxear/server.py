@@ -45,24 +45,30 @@ from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from . import rollout_log as _rollout_log
+from .control_routes import ControlRouteDeps
+from .control_routes import handle_control_post_route as _handle_control_post_route
+from .diagnostics_routes import DiagnosticsRouteDeps
+from .diagnostics_routes import handle_diagnostics_get_route as _handle_diagnostics_get_route
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
+from .file_routes import FileRouteError as _FileRouteError
+from .file_routes import parse_session_file_write_request as _parse_session_file_write_request
+from .file_routes import session_file_read_payload as _session_file_read_payload
+from .file_routes import session_file_write_response as _session_file_write_response
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
 from .file_search import search_session_relative_files as _search_session_relative_files_impl
 from .file_text import FILE_READ_MAX_BYTES
-from .file_text import read_text_file_for_client as _read_text_file_for_client
-from .file_text import read_text_file_for_write as _read_text_file_for_write
 from .file_text import read_text_file_strict as _read_text_file_strict
-from .file_text import write_new_text_file_atomic as _write_new_text_file_atomic
-from .file_text import write_text_file_atomic as _write_text_file_atomic
 from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text
 from .file_upload import safe_filename as _safe_filename
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
+from .git_routes import GitRouteDeps
+from .git_routes import handle_git_get_route as _handle_git_get_route
 from .launch_config import LaunchConfigPaths
 from .launch_config import LaunchRequestValidationError
 from .launch_config import NewSessionLaunchRequest
@@ -94,6 +100,16 @@ from .launch_config import read_codex_launch_defaults as _launch_read_codex_laun
 from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
 from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
 from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
+from .launch_ledger import launch_attempt_id as _launch_attempt_id_impl
+from .launch_ledger import launch_attempt_row as _launch_attempt_row_impl
+from .launch_ledger import launch_attempt_transcript_for_session_id as _launch_attempt_transcript_for_session_id_impl
+from .launch_ledger import launch_attempt_transcript_payload as _launch_attempt_transcript_payload_impl
+from .launch_ledger import launch_failure_tail as _launch_failure_tail_impl
+from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
+from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
+from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
+from .message_routes import MessageRouteDeps
+from .message_routes import handle_messages_get_route as _handle_messages_get_route
 from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
@@ -124,8 +140,19 @@ from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .queue_routes import QueueRouteDeps
+from .queue_routes import handle_queue_get_route as _handle_queue_get_route
+from .queue_routes import handle_queue_post_route as _handle_queue_post_route
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
+from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
+from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
+from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
+from .session_runtime import broker_runtime_state as _runtime_broker_state
+from .session_runtime import resolve_runtime_status as _resolve_runtime_status
+from .session_runtime import select_runtime_token as _select_runtime_token
+from .session_store import SessionStore
+from .session_store import SessionStorePaths
 from .queue_store import copy_queue_item as _queue_store_copy_item
 from .queue_store import new_queue_item as _queue_store_new_item
 from .queue_store import new_queue_item_id as _queue_store_new_item_id
@@ -577,182 +604,46 @@ def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: st
 
 
 def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
-    rec = _append_launch_attempt(_redacted_launch_attempt_persist_record(record), path=LAUNCH_ATTEMPTS_PATH)
-    if rec.get("state") == "failed":
-        sys.stderr.write(
-            "error: session launch failed: "
-            f"{rec.get('launch_id')}: {rec.get('stage')}: {rec.get('error')}\n"
-        )
-        sys.stderr.flush()
-    return rec
+    return _record_launch_attempt_impl(record, path=LAUNCH_ATTEMPTS_PATH, stderr=sys.stderr)
 
 
 def _launch_attempt_id(record: dict[str, Any]) -> str:
-    raw = _clean_optional_text(record.get("launch_id"))
-    if raw is None:
-        updated_ts = record.get("updated_ts", record.get("created_ts", 0))
-        try:
-            millis = int(float(updated_ts) * 1000)
-        except (TypeError, ValueError):
-            millis = 0
-        raw = f"launch-{millis}"
-    return raw
+    return _launch_attempt_id_impl(record)
 
 
 def _latest_launch_attempt(launch_id: str) -> dict[str, Any] | None:
-    needle = str(launch_id or "").strip()
-    if not needle:
-        return None
-    for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
-        if _launch_attempt_id(rec) == needle:
-            return rec
-    return None
+    return _latest_launch_attempt_impl(launch_id, path=LAUNCH_ATTEMPTS_PATH)
 
 
 def _submitted_user_messages(record: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not isinstance(record, dict):
-        return []
-    raw = record.get("submitted_user_messages")
-    if not isinstance(raw, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        text = item.get("text")
-        if not isinstance(text, str) or not text.strip():
-            continue
-        ts = item.get("ts")
-        ts_out = float(ts) if isinstance(ts, (int, float)) else float(record.get("updated_ts", time.time()) or time.time())
-        source = _clean_optional_text(item.get("source")) or "send"
-        out.append({"text": text, "ts": ts_out, "source": source})
-    return out
+    return _submitted_user_messages_impl(record)
 
 
 def _launch_failure_tail(record: dict[str, Any]) -> str:
-    for key in ("pty_tail", "tmux_pane_tail"):
-        val = record.get(key)
-        if isinstance(val, str) and val.strip():
-            return val[-4000:]
-    return ""
+    return _launch_failure_tail_impl(record)
 
 
 def _launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]:
-    launch_id = _launch_attempt_id(record)
-    ts = record.get("updated_ts", record.get("created_ts", time.time()))
-    ts_f = float(ts) if isinstance(ts, (int, float)) else time.time()
-    events: list[dict[str, Any]] = []
-    for msg in _submitted_user_messages(record):
-        events.append({"role": "user", "text": msg["text"], "ts": msg["ts"]})
-    if record.get("state") == "failed":
-        stage = _clean_optional_text(record.get("stage"))
-        err = _redact_launch_failure_text(record.get("error")) or "session launch failed"
-        lines = ["Session launch failed before a transcript log was created."]
-        if stage:
-            lines.append(f"Stage: {stage}")
-        lines.append(f"Error: {err}")
-        agent_status = record.get("agent_exit_status", record.get("exit_code"))
-        broker_status = record.get("broker_exit_status")
-        if isinstance(agent_status, int):
-            lines.append(f"Agent exit status: {agent_status}")
-        if isinstance(broker_status, int):
-            lines.append(f"Broker exit status: {broker_status}")
-        tail = _redact_launch_failure_text(_launch_failure_tail(record))
-        if tail:
-            lines.extend(["", "Pre-log terminal tail:", tail])
-        events.append({"role": "assistant", "text": "\n".join(lines), "ts": ts_f, "message_class": "error"})
-    return {
-        "transcript_state": "failed",
-        "thread_id": launch_id or None,
-        "log_path": None,
-        "live_cursor": None,
-        "history_cursor": None,
-        "events": events,
-        "has_older": False,
-        "busy": False,
-        "queue_len": 0,
-        "token": None,
-    }
+    return _launch_attempt_transcript_payload_impl(record)
 
 
 def _launch_attempt_transcript_for_session_id(session_id: str) -> dict[str, Any] | None:
-    rec = _latest_launch_attempt(session_id)
-    if rec is None or rec.get("state") != "failed":
-        return None
-    row = _launch_attempt_row(rec)
-    if row is None or row.get("session_id") != session_id:
-        return None
-    return _launch_attempt_transcript_payload(rec)
+    return _launch_attempt_transcript_for_session_id_impl(
+        session_id,
+        path=LAUNCH_ATTEMPTS_PATH,
+        default_agent_backend=DEFAULT_AGENT_BACKEND,
+        unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+        unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+    )
 
 
 def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
-    launch_id = _launch_attempt_id(record)
-    state = _clean_optional_text(record.get("state")) or "starting"
-    if state in {"live", "log_bound", "broker_spawned", "broker_meta_bound"}:
-        return None
-    cwd = _clean_optional_text(record.get("cwd")) or "?"
-    start_ts_raw = record.get("created_ts", record.get("start_ts", record.get("updated_ts", time.time())))
-    updated_ts_raw = record.get("updated_ts", start_ts_raw)
-    try:
-        start_ts = float(start_ts_raw)
-    except (TypeError, ValueError):
-        start_ts = time.time()
-    try:
-        updated_ts = float(updated_ts_raw)
-    except (TypeError, ValueError):
-        updated_ts = start_ts
-    backend = normalize_agent_backend(record.get("agent_backend"), default=DEFAULT_AGENT_BACKEND)
-    provider = _clean_optional_text(record.get("model_provider"))
-    preferred_auth = _clean_optional_text(record.get("preferred_auth_method"))
-    failed = state == "failed"
-    return {
-        "session_id": launch_id,
-        "thread_id": launch_id,
-        "pid": None,
-        "broker_pid": record.get("broker_pid") if isinstance(record.get("broker_pid"), int) else None,
-        "agent_backend": backend,
-        "owned": True,
-        "transport": _clean_optional_text(record.get("transport")),
-        "cwd": cwd,
-        "start_ts": start_ts,
-        "updated_ts": updated_ts,
-        "log_path": None,
-        "state_busy": False,
-        "queue_len": 0,
-        "token": None,
-        "thinking": 0,
-        "tools": 0,
-        "system": 0,
-        "unattended_enabled": False,
-        "unattended_cooldown_minutes": UNATTENDED_DEFAULT_IDLE_MINUTES,
-        "unattended_remaining_injections": UNATTENDED_DEFAULT_MAX_INJECTIONS,
-        "alias": "",
-        "files": [],
-        "git_branch": "",
-        "model_provider": provider,
-        "preferred_auth_method": preferred_auth,
-        "provider_choice": _provider_choice_for_settings(model_provider=provider, preferred_auth_method=preferred_auth),
-        "model": _clean_optional_text(record.get("model")),
-        "reasoning_effort": _clean_optional_text(record.get("reasoning_effort")),
-        "service_tier": _clean_optional_text(record.get("service_tier")),
-        "tmux_session": _clean_optional_text(record.get("tmux_session")),
-        "tmux_window": _clean_optional_text(record.get("tmux_window")),
-        "priority_offset": 0.0,
-        "snooze_until": None,
-        "dependency_session_id": None,
-        "time_priority": 1.0,
-        "base_priority": 1.0,
-        "final_priority": 1.0,
-        "blocked": False,
-        "snoozed": False,
-        "busy": False,
-        "spawn_nonce": _clean_optional_text(record.get("spawn_nonce")),
-        "launch_id": launch_id,
-        "launch_state": state,
-        "launch_error": _redact_launch_failure_text(record.get("error")) or ("session launch failed" if failed else ""),
-        "launch_stage": _clean_optional_text(record.get("stage")),
-        "submitted_user_message_count": len(_submitted_user_messages(record)),
-    }
+    return _launch_attempt_row_impl(
+        record,
+        default_agent_backend=DEFAULT_AGENT_BACKEND,
+        unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+        unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+    )
 
 
 def _terminate_process_group(root_pid: int, *, wait_seconds: float = 1.0) -> bool:
@@ -828,10 +719,6 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
     if isinstance(exc, OSError):
         return exc.errno in (errno.ENOENT, errno.ECONNREFUSED, errno.ENOTSOCK)
     return False
-
-
-def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
-    return _rollout_log._extract_token_update(objs)
 
 
 def _video_preview_path(path: Path) -> Path:
@@ -1010,26 +897,6 @@ def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session")
     return _attach_history_cursors_impl(events, session=session, encode_cursor=_encode_message_cursor)
 
 
-def _attach_search_load_cursors(matches: list[dict[str, Any]], *, session: "Session") -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for match in matches:
-        if not isinstance(match, dict):
-            continue
-        item = dict(match)
-        before_byte = item.get("_before_byte")
-        if isinstance(before_byte, bool):
-            before_byte = None
-        if isinstance(before_byte, int) and before_byte >= 0:
-            item["history_cursor"] = _encode_message_cursor(kind="history", session=session, pos=before_byte)
-        after_byte = item.pop("_after_byte", None)
-        if isinstance(after_byte, bool):
-            after_byte = None
-        if isinstance(after_byte, int) and after_byte > 0:
-            item["load_cursor"] = _encode_message_cursor(kind="history", session=session, pos=after_byte)
-        out.append(item)
-    return out
-
-
 def _parse_cookies(header: str | None) -> dict[str, str]:
     return _parse_cookies_impl(header)
 
@@ -1122,26 +989,6 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
     if not resolved_base.is_absolute():
         resolved_base = resolved_base.resolve()
     return (resolved_base / p).resolve()
-
-
-def _resolve_session_write_update_path(base: Path, raw_path: str) -> Path:
-    if not isinstance(raw_path, str) or raw_path == "":
-        raise ValueError("path required")
-    if "\x00" in raw_path:
-        raise ValueError("invalid path")
-    p = Path(raw_path)
-    if p.is_absolute():
-        return _expanduser_path(p).resolve()
-    resolved_base = _expanduser_path(base)
-    if not resolved_base.is_absolute():
-        resolved_base = resolved_base.resolve()
-    resolved_base = resolved_base.resolve()
-    resolved = (resolved_base / p).resolve()
-    try:
-        resolved.relative_to(resolved_base)
-    except ValueError as e:
-        raise ValueError("path escapes session cwd") from e
-    return resolved
 
 
 def _require_existing_file(path: Path) -> Path:
@@ -1971,10 +1818,6 @@ def _extract_chat_events(
     return _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
 
 
-def _extract_positioned_chat_events(records: list[Any], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[dict[str, Any]]:
-    return _rollout_log._extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
-
-
 def _extract_delivery_messages(objs: list[dict[str, Any]], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[Any]:
     return _rollout_log._extract_delivery_messages(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
 
@@ -1986,41 +1829,6 @@ def _read_jsonl_records_from_offset(
     max_bytes: int = 2 * 1024 * 1024,
 ) -> tuple[list[Any], int]:
     return _rollout_log._read_jsonl_records_from_offset(path, offset, max_bytes=max_bytes)
-
-
-def _read_chat_tail_page(log_path: Path, *, limit: int) -> tuple[list[dict[str, Any]], int, int, bool]:
-    return _rollout_log._read_chat_tail_page(log_path, limit=limit)
-
-
-def _read_chat_history_page(log_path: Path, *, before_byte: int, limit: int) -> tuple[list[dict[str, Any]], int, bool]:
-    return _rollout_log._read_chat_history_page(log_path, before_byte=before_byte, limit=limit)
-
-
-def _read_chat_export_events(log_path: Path, *, max_bytes: int = TRANSCRIPT_EXPORT_MAX_BYTES) -> list[dict[str, Any]]:
-    size = int(log_path.stat().st_size)
-    limit = max(1, int(max_bytes))
-    if size > limit:
-        raise ValueError(f"transcript log is too large to export ({size} bytes > {limit} bytes)")
-    records, _next_after = _read_jsonl_records_from_offset(log_path, 0, max_bytes=max(size, 1))
-    return _extract_positioned_chat_events(records)
-
-
-def _parse_bounded_query_int(
-    qs: Mapping[str, list[str]],
-    name: str,
-    *,
-    default: int,
-    min_value: int,
-    max_value: int,
-) -> tuple[int, str | None]:
-    values = qs.get(name)
-    if not values:
-        return default, None
-    try:
-        value = int(values[0])
-    except (TypeError, ValueError):
-        return default, f"{name} must be an integer"
-    return max(min_value, min(max_value, value)), None
 
 
 def _event_ts(obj: dict[str, Any]) -> float | None:
@@ -2107,29 +1915,15 @@ class Session:
 
 
 def _broker_busy_queue_from_state(state: dict[str, Any]) -> tuple[bool, int]:
-    if not isinstance(state, dict) or "busy" not in state or "queue_len" not in state:
-        raise ValueError("invalid broker state response")
-    busy_raw = state.get("busy")
-    queue_len_raw = state.get("queue_len")
-    if not isinstance(busy_raw, bool):
-        raise ValueError("invalid broker state response")
-    if isinstance(queue_len_raw, bool) or not isinstance(queue_len_raw, int) or queue_len_raw < 0:
-        raise ValueError("invalid broker state response")
-    return busy_raw, int(queue_len_raw)
+    return _runtime_broker_busy_queue(state)
 
 
 def _broker_interrupted_idle_from_state(state: dict[str, Any]) -> bool:
-    if not isinstance(state, dict):
-        raise ValueError("invalid broker state response")
-    raw = state.get("interrupted_idle", False)
-    if not isinstance(raw, bool):
-        raise ValueError("invalid broker state response")
-    return raw
+    return _runtime_broker_interrupted_idle(state)
 
 
 def _broker_allows_interrupted_idle_override(state: dict[str, Any]) -> bool:
-    busy, queue_len = _broker_busy_queue_from_state(state)
-    return (not busy) and queue_len == 0 and _broker_interrupted_idle_from_state(state)
+    return _runtime_broker_allows_interrupted_idle_override(state)
 
 
 def _complete_jsonl_offset_before(path: Path, before: int) -> int:
@@ -2245,22 +2039,6 @@ def _consume_session_confirmed_send_boundary(session: Session | None, log_path: 
     return unresolved
 
 
-def _message_transcript_identity(session: Session) -> dict[str, Any]:
-    log_path = session.log_path
-    if log_path is None or (not log_path.exists()):
-        return {
-            "transcript_state": "pending_bind",
-            "thread_id": None,
-            "log_path": None,
-        }
-    return {
-        "transcript_state": "bound",
-        "thread_id": session.thread_id,
-        "log_path": str(log_path),
-    }
-
-
-
 def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
     if agent_backend != "codex" or not isinstance(tail, str):
         return False
@@ -2268,23 +2046,112 @@ def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> boo
 
 
 class SessionManager:
+    @property
+    def _unattended(self) -> dict[str, dict[str, Any]]:
+        return self._session_store_for_manager().unattended
+
+    @_unattended.setter
+    def _unattended(self, value: dict[str, dict[str, Any]]) -> None:
+        self._session_store_for_manager().unattended = value
+
+    @property
+    def _aliases(self) -> dict[str, str]:
+        return self._session_store_for_manager().aliases
+
+    @_aliases.setter
+    def _aliases(self, value: dict[str, str]) -> None:
+        self._session_store_for_manager().aliases = value
+
+    @property
+    def _sidebar_meta(self) -> dict[str, dict[str, Any]]:
+        return self._session_store_for_manager().sidebar_meta
+
+    @_sidebar_meta.setter
+    def _sidebar_meta(self, value: dict[str, dict[str, Any]]) -> None:
+        self._session_store_for_manager().sidebar_meta = value
+
+    @property
+    def _hidden_sessions(self) -> set[str]:
+        return self._session_store_for_manager().hidden_sessions
+
+    @_hidden_sessions.setter
+    def _hidden_sessions(self, value: set[str]) -> None:
+        self._session_store_for_manager().hidden_sessions = value
+
+    @property
+    def _files(self) -> dict[str, list[str]]:
+        return self._session_store_for_manager().files
+
+    @_files.setter
+    def _files(self, value: dict[str, list[str]]) -> None:
+        self._session_store_for_manager().files = value
+
+    @property
+    def _queues(self) -> dict[str, list[dict[str, Any]]]:
+        return self._session_store_for_manager().queues
+
+    @_queues.setter
+    def _queues(self, value: dict[str, list[dict[str, Any]]]) -> None:
+        self._session_store_for_manager().queues = value
+
+    @property
+    def _pending_attachment_ids(self) -> set[str]:
+        return self._session_store_for_manager().pending_attachment_ids
+
+    @_pending_attachment_ids.setter
+    def _pending_attachment_ids(self, value: set[str]) -> None:
+        self._session_store_for_manager().pending_attachment_ids = value
+
+    @property
+    def _commit_unknown_sends(self) -> dict[str, dict[str, Any]]:
+        return self._session_store_for_manager().commit_unknown_sends
+
+    @_commit_unknown_sends.setter
+    def _commit_unknown_sends(self, value: dict[str, dict[str, Any]]) -> None:
+        self._session_store_for_manager().commit_unknown_sends = value
+
+    @property
+    def _recent_cwds(self) -> dict[str, float]:
+        return self._session_store_for_manager().recent_cwds
+
+    @_recent_cwds.setter
+    def _recent_cwds(self, value: dict[str, float]) -> None:
+        self._session_store_for_manager().recent_cwds = value
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
-        self._unattended: dict[str, dict[str, Any]] = {}
-        self._unattended_store = UnattendedStore(
-            path=UNATTENDED_PATH,
-            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+        self._store = SessionStore(
+            paths=SessionStorePaths(
+                aliases=ALIAS_PATH,
+                sidebar_meta=SIDEBAR_META_PATH,
+                hidden_sessions=HIDDEN_SESSIONS_PATH,
+                files=FILE_HISTORY_PATH,
+                queues=QUEUE_PATH,
+                pending_attachments=PENDING_ATTACHMENTS_PATH,
+                commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
+                recent_cwds=RECENT_CWD_PATH,
+                unattended=UNATTENDED_PATH,
+            ),
+            file_history_max=FILE_HISTORY_MAX,
+            recent_cwd_max=RECENT_CWD_MAX,
+            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+            clean_alias=_clean_alias,
+            clean_priority_offset=_clean_priority_offset,
+            clean_snooze_until=_clean_snooze_until,
+            clean_dependency_session_id=_clean_dependency_session_id,
+            clean_recent_cwd=_clean_recent_cwd,
+            clean_commit_unknown_send_record=self._clean_commit_unknown_send_record,
         )
+        self._unattended: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
         self._sidebar_meta: dict[str, dict[str, Any]] = {}
         self._hidden_sessions: set[str] = set()
         self._files: dict[str, list[str]] = {}
         self._queues: dict[str, list[dict[str, Any]]] = {}
-        self._queue_store = QueueStore(QUEUE_PATH)
         self._pending_attachment_ids: set[str] = set()
         self._commit_unknown_sends: dict[str, dict[str, Any]] = {}
         self._input_locks: dict[str, threading.RLock] = {}
@@ -2380,82 +2247,86 @@ class SessionManager:
         except TypeError:
             self._discover_existing()
 
+    def _session_store_for_manager(self) -> SessionStore:
+        paths = SessionStorePaths(
+            aliases=ALIAS_PATH,
+            sidebar_meta=SIDEBAR_META_PATH,
+            hidden_sessions=HIDDEN_SESSIONS_PATH,
+            files=FILE_HISTORY_PATH,
+            queues=QUEUE_PATH,
+            pending_attachments=PENDING_ATTACHMENTS_PATH,
+            commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
+            recent_cwds=RECENT_CWD_PATH,
+            unattended=UNATTENDED_PATH,
+        )
+        existing = getattr(self, "_store", None)
+        if isinstance(existing, SessionStore) and existing.paths == paths:
+            return existing
+        store = SessionStore(
+            paths=paths,
+            file_history_max=FILE_HISTORY_MAX,
+            recent_cwd_max=RECENT_CWD_MAX,
+            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+            clean_alias=_clean_alias,
+            clean_priority_offset=_clean_priority_offset,
+            clean_snooze_until=_clean_snooze_until,
+            clean_dependency_session_id=_clean_dependency_session_id,
+            clean_recent_cwd=_clean_recent_cwd,
+            clean_commit_unknown_send_record=self._clean_commit_unknown_send_record,
+        )
+        if isinstance(existing, SessionStore):
+            store.unattended = existing.unattended
+            store.aliases = existing.aliases
+            store.sidebar_meta = existing.sidebar_meta
+            store.hidden_sessions = existing.hidden_sessions
+            store.files = existing.files
+            store.queues = existing.queues
+            store.pending_attachment_ids = existing.pending_attachment_ids
+            store.commit_unknown_sends = existing.commit_unknown_sends
+            store.recent_cwds = existing.recent_cwds
+        self._store = store
+        return store
+
     def _load_unattended(self) -> None:
-        cleaned = self._unattended_store.load()
+        cleaned = self._session_store_for_manager().load_unattended()
         with self._lock:
             self._unattended = cleaned
 
     def _save_unattended(self) -> None:
         with self._lock:
             obj = dict(self._unattended)
-        self._unattended_store.save(obj)
+        self._session_store_for_manager().save_unattended(obj)
 
     def _load_aliases(self) -> None:
-        obj = _load_json_file(ALIAS_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_aliases.json (expected object)")
-        cleaned: dict[str, str] = {}
-        for sid, v in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(v, str):
-                continue
-            alias = _clean_alias(v)
-            if alias:
-                cleaned[sid] = alias
+        cleaned = self._session_store_for_manager().load_aliases()
         with self._lock:
             self._aliases = cleaned
 
     def _save_aliases(self) -> None:
         with self._lock:
             obj = dict(self._aliases)
-        _atomic_write_json(ALIAS_PATH, obj)
+        self._session_store_for_manager().save_aliases(obj)
 
     def _load_sidebar_meta(self) -> None:
-        obj = _load_json_file(SIDEBAR_META_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_sidebar.json (expected object)")
-        cleaned: dict[str, dict[str, Any]] = {}
-        for sid, value in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if not isinstance(value, dict):
-                continue
-            offset = _clean_priority_offset(value.get("priority_offset"))
-            snooze_until = _clean_snooze_until(value.get("snooze_until"))
-            dependency_session_id = _clean_dependency_session_id(value.get("dependency_session_id"))
-            entry: dict[str, Any] = {"priority_offset": offset}
-            if snooze_until is not None:
-                entry["snooze_until"] = snooze_until
-            if dependency_session_id is not None:
-                entry["dependency_session_id"] = dependency_session_id
-            cleaned[sid] = entry
+        cleaned = self._session_store_for_manager().load_sidebar_meta()
         with self._lock:
             self._sidebar_meta = cleaned
 
     def _save_sidebar_meta(self) -> None:
         with self._lock:
             obj = dict(self._sidebar_meta)
-        _atomic_write_json(SIDEBAR_META_PATH, obj)
+        self._session_store_for_manager().save_sidebar_meta(obj)
 
     def _load_hidden_sessions(self) -> None:
-        obj = _load_json_file(HIDDEN_SESSIONS_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, list):
-            raise ValueError("invalid hidden_sessions.json (expected list)")
-        cleaned = {sid.strip() for sid in obj if isinstance(sid, str) and sid.strip()}
+        cleaned = self._session_store_for_manager().load_hidden_sessions()
         with self._lock:
             self._hidden_sessions = cleaned
 
     def _save_hidden_sessions(self) -> None:
         with self._lock:
-            obj = sorted(getattr(self, "_hidden_sessions", set()))
-        _atomic_write_json(HIDDEN_SESSIONS_PATH, obj, sort_keys=True)
+            obj = set(getattr(self, "_hidden_sessions", set()))
+        self._session_store_for_manager().save_hidden_sessions(obj)
 
     def _hide_session(self, session_id: str) -> None:
         with self._lock:
@@ -2666,46 +2537,17 @@ class SessionManager:
             self._save_queues()
 
     def _load_files(self) -> None:
-        obj = _load_json_file(FILE_HISTORY_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid session_files.json (expected object)")
-        cleaned: dict[str, list[str]] = {}
-        for sid, arr in obj.items():
-            if not isinstance(sid, str) or not sid:
-                continue
-            if sid.startswith("cwd:"):
-                continue
-            key = sid if sid.startswith("sid:") else f"sid:{sid}"
-            if not isinstance(arr, list):
-                continue
-            out: list[str] = []
-            for v in arr:
-                if not isinstance(v, str):
-                    continue
-                p = v
-                if p == "" or p in out:
-                    continue
-                out.append(p)
-                if len(out) >= FILE_HISTORY_MAX:
-                    break
-            if out:
-                cleaned[key] = out
+        cleaned = self._session_store_for_manager().load_files()
         with self._lock:
             self._files = cleaned
 
     def _save_files(self) -> None:
         with self._lock:
             obj = dict(self._files)
-        _atomic_write_json(FILE_HISTORY_PATH, obj)
+        self._session_store_for_manager().save_files(obj)
 
     def _queue_store_for_manager(self) -> QueueStore:
-        store = getattr(self, "_queue_store", None)
-        if not isinstance(store, QueueStore):
-            store = QueueStore(QUEUE_PATH)
-            self._queue_store = store
-        return store
+        return self._session_store_for_manager().queue_store
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         with self._lock:
@@ -2720,29 +2562,24 @@ class SessionManager:
             return lock
 
     def _load_queues(self) -> None:
-        cleaned = self._queue_store_for_manager().load()
+        cleaned = self._session_store_for_manager().load_queues()
         with self._lock:
             self._queues = cleaned
 
     def _save_queues(self) -> None:
         with self._lock:
             obj = dict(self._queues)
-        self._queue_store_for_manager().save(obj)
+        self._session_store_for_manager().save_queues(obj)
 
     def _load_pending_attachments(self) -> None:
-        obj = _load_json_file(PENDING_ATTACHMENTS_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, list):
-            raise ValueError("invalid pending_attachments.json (expected array)")
-        cleaned = {str(item).strip() for item in obj if isinstance(item, str) and str(item).strip()}
+        cleaned = self._session_store_for_manager().load_pending_attachments()
         with self._lock:
             self._pending_attachment_ids = cleaned
 
     def _save_pending_attachments(self) -> None:
         with self._lock:
-            ids = sorted(str(item) for item in getattr(self, "_pending_attachment_ids", set()) if str(item).strip())
-        _atomic_write_json(PENDING_ATTACHMENTS_PATH, ids)
+            ids = set(str(item) for item in getattr(self, "_pending_attachment_ids", set()) if str(item).strip())
+        self._session_store_for_manager().save_pending_attachments(ids)
 
     def _set_pending_attachment(self, session_id: str, value: bool) -> None:
         with self._lock:
@@ -2786,26 +2623,14 @@ class SessionManager:
         return record
 
     def _load_commit_unknown_sends(self) -> None:
-        obj = _load_json_file(COMMIT_UNKNOWN_SENDS_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid commit_unknown_sends.json (expected object)")
-        cleaned: dict[str, dict[str, Any]] = {}
-        for sid, raw in obj.items():
-            if not isinstance(sid, str) or not sid.strip():
-                continue
-            rec = self._clean_commit_unknown_send_record(raw)
-            if rec is not None:
-                cleaned[sid.strip()] = rec
+        cleaned = self._session_store_for_manager().load_commit_unknown_sends()
         with self._lock:
             self._commit_unknown_sends = cleaned
 
     def _save_commit_unknown_sends(self) -> None:
         with self._lock:
-            source = getattr(self, "_commit_unknown_sends", {})
-            obj = {str(sid): dict(rec) for sid, rec in source.items() if str(sid).strip() and isinstance(rec, dict)}
-        _atomic_write_json(COMMIT_UNKNOWN_SENDS_PATH, obj)
+            source = dict(getattr(self, "_commit_unknown_sends", {}))
+        self._session_store_for_manager().save_commit_unknown_sends(source)
 
     def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
         cleaned = self._clean_commit_unknown_send_record(record) if record is not None else None
@@ -2870,34 +2695,14 @@ class SessionManager:
         return changed
 
     def _load_recent_cwds(self) -> None:
-        obj = _load_json_file(RECENT_CWD_PATH, default=None)
-        if obj is None:
-            return
-        if not isinstance(obj, dict):
-            raise ValueError("invalid recent_cwds.json (expected object)")
-        cleaned: dict[str, float] = {}
-        for raw_cwd, raw_ts in obj.items():
-            cwd = _clean_recent_cwd(raw_cwd)
-            if cwd is None or isinstance(raw_ts, bool):
-                continue
-            try:
-                ts = float(raw_ts)
-            except (TypeError, ValueError):
-                continue
-            if not math.isfinite(ts) or ts <= 0:
-                continue
-            prev = cleaned.get(cwd)
-            if prev is None or ts > prev:
-                cleaned[cwd] = ts
-        top = sorted(cleaned.items(), key=lambda item: (-item[1], item[0]))[:RECENT_CWD_MAX]
+        cleaned = self._session_store_for_manager().load_recent_cwds()
         with self._lock:
-            self._recent_cwds = dict(top)
+            self._recent_cwds = cleaned
 
     def _save_recent_cwds(self) -> None:
         with self._lock:
-            items = sorted(getattr(self, "_recent_cwds", {}).items(), key=lambda item: (-float(item[1]), item[0]))[:RECENT_CWD_MAX]
-        obj = {cwd: ts for cwd, ts in items}
-        _atomic_write_json(RECENT_CWD_PATH, obj)
+            obj = dict(getattr(self, "_recent_cwds", {}))
+        self._session_store_for_manager().save_recent_cwds(obj)
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         cleaned = _clean_recent_cwd(cwd)
@@ -3114,20 +2919,31 @@ class SessionManager:
             return _consume_session_confirmed_send_boundary(s, log_path, log_size)
 
     def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
-        busy_raw, queue_len = self._broker_busy_queue_from_state(state)
-        if queue_len > 0:
+        broker = _runtime_broker_state(state)
+        if broker.queue_len > 0:
             return False
-        log_idle: bool | None = None
+        log_exists = isinstance(log_path, Path) and log_path.exists()
         log_size = self._log_size_or_none(log_path)
-        if self._confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size):
-            return False
-        if isinstance(log_path, Path) and log_path.exists():
-            log_idle = bool(self.idle_from_log(session_id))
-            if not log_idle and not _broker_allows_interrupted_idle_override(state):
-                return False
-        if busy_raw and log_idle is not True:
-            return False
-        return True
+        boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size)
+        log_idle = bool(self.idle_from_log(session_id)) if log_exists and not boundary_unresolved else None
+        return _resolve_runtime_status(
+            broker=broker,
+            log_exists=log_exists,
+            log_idle=log_idle,
+            send_boundary_unresolved=boundary_unresolved,
+        ).remote_ready
+
+    def _remote_state_after_metadata_probe(self, session_id: str, *, log_path_before_state: Path | None) -> tuple[dict[str, Any], Path | None]:
+        state = self.get_state(session_id)
+        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        with self._lock:
+            s = self._sessions.get(session_id)
+            if not s:
+                raise KeyError("unknown session")
+            log_path = s.log_path
+        if log_path != log_path_before_state:
+            state = self.get_state(session_id)
+        return state, log_path
 
     def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
@@ -3140,16 +2956,8 @@ class SessionManager:
             if s.pending_attachment and not allow_pending_attachment:
                 return False
             log_path_before_state = s.log_path
-        st = self.get_state(session_id)
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            log_path = s.log_path
-        if log_path != log_path_before_state:
-            st = self.get_state(session_id)
-        return self._remote_ready_from_state_and_log(session_id, st, log_path)
+        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
+        return self._remote_ready_from_state_and_log(session_id, state, log_path)
 
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
         self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
@@ -3162,8 +2970,7 @@ class SessionManager:
             if s.pending_attachment:
                 return False
             log_path_before_state = s.log_path
-        st = self.get_state(session_id)
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -3172,10 +2979,7 @@ class SessionManager:
                 return False
             if s.pending_attachment:
                 return False
-            log_path = s.log_path
-        if log_path != log_path_before_state:
-            st = self.get_state(session_id)
-        return self._remote_ready_from_state_and_log(session_id, st, log_path)
+        return self._remote_ready_from_state_and_log(session_id, state, log_path)
 
     def _promote_queue_head_if_sendable(
         self,
@@ -4303,18 +4107,24 @@ class SessionManager:
                         )
             log_path_for_boundary = log_path_obj if isinstance(log_path_obj, Path) else None
             log_size = self._log_size_or_none(log_path_for_boundary)
-            last_send_boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(sid, log_path_for_boundary, log_size)
-            if last_send_boundary_unresolved:
-                busy_out = True
-            elif (not log_exists) or not isinstance(log_path_obj, Path):
+            boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(sid, log_path_for_boundary, log_size)
+            broker_runtime = _runtime_broker_state(
+                {
+                    "busy": bool(it.get("state_busy")),
+                    "queue_len": int(it.get("broker_queue_len", 0)),
+                    "interrupted_idle": bool(it.get("interrupted_idle")),
+                }
+            )
+            try:
+                log_idle = bool(self.idle_from_log_path(sid, log_path_obj)) if log_exists and isinstance(log_path_obj, Path) and not boundary_unresolved else None
+                busy_out = _resolve_runtime_status(
+                    broker=broker_runtime,
+                    log_exists=log_exists and isinstance(log_path_obj, Path),
+                    log_idle=log_idle,
+                    send_boundary_unresolved=boundary_unresolved,
+                ).busy
+            except FileNotFoundError:
                 busy_out = False
-            else:
-                try:
-                    idle_val = bool(self.idle_from_log_path(sid, log_path_obj))
-                    interrupted_idle = bool(it.get("interrupted_idle")) and not bool(it.get("state_busy")) and int(it.get("broker_queue_len", 0)) == 0
-                    busy_out = not (idle_val or interrupted_idle)
-                except FileNotFoundError:
-                    busy_out = False
             cwd_path_obj = it.get("_cwd_path_obj")
             git_branch = _current_git_branch(cwd_path_obj) if isinstance(cwd_path_obj, Path) else None
             it2 = dict(it)
@@ -5284,8 +5094,7 @@ class SessionManager:
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
             log_path_before_state = s.log_path
-        st = self.get_state(session_id)
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
+        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
         with self._lock:
             s = self._sessions.get(session_id)
             if not s:
@@ -5298,10 +5107,7 @@ class SessionManager:
                 return False
             if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
                 return False
-            log_path = s.log_path
-        if log_path != log_path_before_state:
-            st = self.get_state(session_id)
-        return self._remote_ready_from_state_and_log(session_id, st, log_path)
+        return self._remote_ready_from_state_and_log(session_id, state, log_path)
 
     def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         input_lock = self._input_lock_for_session(session_id)
@@ -5406,35 +5212,105 @@ def _message_runtime_snapshot(
     token_update: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     state = MANAGER.get_state(session_id)
-    _broker_busy_queue_from_state(state)
+    broker = _runtime_broker_state(state)
+    log_available = s.log_path is not None and s.log_path.exists()
     log_size = _log_path_size_or_none(s.log_path)
     boundary_checker = getattr(MANAGER, "_confirmed_send_boundary_unresolved_for_session", None)
     if callable(boundary_checker):
-        last_send_boundary_unresolved = bool(boundary_checker(session_id, s.log_path, log_size))
+        boundary_unresolved = bool(boundary_checker(session_id, s.log_path, log_size))
     else:
-        last_send_boundary_unresolved = _consume_session_confirmed_send_boundary(s, s.log_path, log_size)
-    if last_send_boundary_unresolved:
-        busy_val = True
-    elif s.log_path is not None and s.log_path.exists():
-        idle_val = MANAGER.idle_from_log(session_id)
-        interrupted_idle = _broker_allows_interrupted_idle_override(state)
-        busy_val = not (bool(idle_val) or interrupted_idle)
-    else:
-        busy_val = False
+        boundary_unresolved = _consume_session_confirmed_send_boundary(s, s.log_path, log_size)
+    log_idle = MANAGER.idle_from_log(session_id) if log_available and not boundary_unresolved else None
+    runtime = _resolve_runtime_status(
+        broker=broker,
+        log_exists=log_available,
+        log_idle=log_idle,
+        send_boundary_unresolved=boundary_unresolved,
+    )
     queue_val = MANAGER._queue_len(session_id)
-    token_val: dict[str, Any] | None = None
-    if "token" in state:
-        state_token = state.get("token")
-        if not (isinstance(state_token, dict) or state_token is None):
-            raise ValueError("invalid token from broker state response")
-    log_available = s.log_path is not None and s.log_path.exists()
-    if isinstance(token_update, dict):
-        token_val = token_update
-    elif isinstance(s.token, dict):
-        token_val = s.token
-    elif (not log_available) and "token" in state and isinstance(state.get("token"), dict):
-        token_val = state.get("token")
-    return state, bool(busy_val), int(queue_val), token_val
+    token_val = _select_runtime_token(
+        broker_state=state,
+        session_token=s.token,
+        token_update=token_update,
+        log_available=log_available,
+    )
+    return state, bool(runtime.busy), int(queue_val), token_val
+
+
+
+
+def _message_route_deps() -> MessageRouteDeps:
+    return MessageRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        launch_attempt_transcript_for_session_id=_launch_attempt_transcript_for_session_id,
+        transcript_export_max_bytes=TRANSCRIPT_EXPORT_MAX_BYTES,
+        transcript_search_max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
+        decode_message_cursor=_decode_message_cursor,
+        encode_message_cursor=_encode_message_cursor,
+        record_metric=_record_metric,
+        message_runtime_snapshot=_message_runtime_snapshot,
+    )
+
+
+def _queue_route_deps() -> QueueRouteDeps:
+    return QueueRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_json_body=lambda handler: handler._read_json_body(),
+        session_not_ready_error=SessionNotReadyError,
+    )
+
+
+def _control_route_deps() -> ControlRouteDeps:
+    return ControlRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_body=_read_body,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+        attach_upload_body_max_bytes=ATTACH_UPLOAD_BODY_MAX_BYTES,
+        attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES,
+        stage_uploaded_file=_stage_uploaded_file,
+        attachment_inject_text=_attachment_inject_text,
+        clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
+        clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
+        session_not_ready_error=SessionNotReadyError,
+        session_injection_error=SessionInjectionError,
+        session_commit_unknown_error=SessionCommitUnknownError,
+    )
+
+
+def _diagnostics_route_deps() -> DiagnosticsRouteDeps:
+    return DiagnosticsRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        provider_choice_for_settings=_provider_choice_for_settings,
+        read_run_settings_from_log=_read_run_settings_from_log,
+        resolve_session_cwd=_resolve_session_cwd,
+        current_git_branch=_current_git_branch,
+        sidebar_time_priority_from_elapsed_seconds=_sidebar_time_priority_from_elapsed_seconds,
+        clip01=_clip01,
+        time_fn=time.time,
+    )
+
+
+def _git_route_deps() -> GitRouteDeps:
+    return GitRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        resolve_session_cwd=_resolve_session_cwd,
+        require_git_repo=_require_git_repo,
+        split_git_nul_paths=_split_git_nul_paths,
+        run_git=_run_git,
+        parse_git_numstat=_parse_git_numstat,
+        resolve_git_path=_resolve_git_path,
+        read_text_file_strict=_read_text_file_strict,
+        git_head_blob_oid=_git_head_blob_oid,
+        git_changed_files_max=GIT_CHANGED_FILES_MAX,
+        git_diff_timeout_seconds=GIT_DIFF_TIMEOUT_SECONDS,
+        git_diff_max_bytes=GIT_DIFF_MAX_BYTES,
+        file_read_max_bytes=FILE_READ_MAX_BYTES,
+    )
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -5794,112 +5670,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"metrics": _metrics_snapshot()})
                 return
 
-            session_id = _match_session_route(path, "diagnostics")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                state = MANAGER.get_state(session_id)
-                broker_busy, _broker_queue_len = MANAGER._broker_busy_queue_from_state(state)
-                token_val: dict[str, Any] | None = None
-                st_token = state.get("token")
-                if isinstance(st_token, dict) or st_token is None:
-                    token_val = st_token if isinstance(st_token, dict) else (s.token if isinstance(s.token, dict) else None)
-                model_provider = s.model_provider
-                preferred_auth_method = s.preferred_auth_method
-                model = s.model
-                reasoning_effort = s.reasoning_effort
-                service_tier = s.service_tier
-                if (model_provider is None or model is None or reasoning_effort is None) and s.log_path is not None and s.log_path.exists():
-                    log_provider, log_model, log_effort = _read_run_settings_from_log(s.log_path, agent_backend=s.agent_backend)
-                    if model_provider is None:
-                        model_provider = log_provider
-                    if model is None:
-                        model = log_model
-                    if reasoning_effort is None:
-                        reasoning_effort = log_effort
-                sidebar_meta = MANAGER.sidebar_meta_get(session_id)
-                try:
-                    cwd_path = _resolve_session_cwd(s.cwd)
-                    git_branch = _current_git_branch(cwd_path)
-                except ValueError:
-                    git_branch = None
-                updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
-                elapsed_s = max(0.0, time.time() - updated_ts)
-                time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
-                base_priority = _clip01(time_priority + float(sidebar_meta["priority_offset"]))
-                blocked = sidebar_meta["dependency_session_id"] is not None
-                snoozed = sidebar_meta["snooze_until"] is not None and float(sidebar_meta["snooze_until"]) > time.time()
-                final_priority = 0.0 if (snoozed or blocked) else base_priority
-                busy_val = broker_busy
-                log_size = MANAGER._log_size_or_none(s.log_path)
-                last_send_boundary_unresolved = MANAGER._confirmed_send_boundary_unresolved_for_session(session_id, s.log_path, log_size)
-                if last_send_boundary_unresolved:
-                    busy_val = True
-                elif s.log_path is not None and s.log_path.exists():
-                    idle_val = MANAGER.idle_from_log(session_id)
-                    interrupted_idle = _broker_allows_interrupted_idle_override(state)
-                    busy_val = not (bool(idle_val) or interrupted_idle)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "session_id": s.session_id,
-                        "thread_id": s.thread_id,
-                        "agent_backend": s.agent_backend,
-                        "owned": bool(s.owned),
-                        "transport": s.transport,
-                        "cwd": s.cwd,
-                        "start_ts": float(s.start_ts),
-                        "updated_ts": float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts),
-                        "log_path": (str(s.log_path) if s.log_path is not None else None),
-                        "broker_pid": int(s.broker_pid),
-                        "codex_pid": int(s.codex_pid),
-                        "busy": bool(busy_val),
-                        "broker_busy": broker_busy,
-                        "queue_len": MANAGER._queue_len(session_id),
-                        "token": token_val,
-                        "model_provider": model_provider,
-                        "preferred_auth_method": preferred_auth_method,
-                        "provider_choice": _provider_choice_for_settings(
-                            model_provider=model_provider,
-                            preferred_auth_method=preferred_auth_method,
-                        ),
-                        "model": model,
-                        "reasoning_effort": reasoning_effort,
-                        "service_tier": service_tier,
-                        "tmux_session": s.tmux_session,
-                        "tmux_window": s.tmux_window,
-                        "git_branch": git_branch,
-                        "time_priority": time_priority,
-                        "base_priority": base_priority,
-                        "final_priority": final_priority,
-                        "priority_offset": sidebar_meta["priority_offset"],
-                        "snooze_until": sidebar_meta["snooze_until"],
-                        "dependency_session_id": sidebar_meta["dependency_session_id"],
-                    },
-                )
+            if _handle_diagnostics_get_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_diagnostics_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
-            session_id = _match_session_route(path, "queue")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                try:
-                    q = MANAGER.queue_list(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except ValueError as e:
-                    _json_response(self, 502, {"error": str(e)})
-                    return
-                _json_response(self, 200, {"ok": True, "items": q, "queue": [str(item.get("text") or "") for item in q]})
+            if _handle_queue_get_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_queue_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             session_id = _match_session_route(path, "file", "read")
@@ -5938,83 +5724,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except RuntimeError as e:
                     _json_response(self, 409, {"error": str(e)})
                     return
-                git_suffix = "&git_path=1" if git_path else ""
                 try:
                     MANAGER.files_add(session_id, str(p))
                 except KeyError:
                     pass
-                if view.kind == "image":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "image",
-                            "content_type": view.content_type,
-                            "path": str(p),
-                            "rel": str(rel),
-                            "size": int(view.size),
-                            "image_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
-                        },
-                    )
-                    return
-                if view.kind == "pdf":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "pdf",
-                            "content_type": view.content_type,
-                            "path": str(p),
-                            "rel": str(rel),
-                            "size": int(view.size),
-                            "pdf_url": f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
-                        },
-                    )
-                    return
-                if view.kind == "video":
-                    _json_response(
-                        self,
-                        200,
-                        _video_response_payload(
-                            path_obj=p,
-                            rel=str(rel),
-                            size=int(view.size),
-                            content_type=view.content_type,
-                            video_url=f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel)}{git_suffix}",
-                            preview_url=f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel)}{git_suffix}",
-                        ),
-                    )
-                    return
-                if view.kind == "download_only":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "download_only",
-                            "path": str(p),
-                            "rel": str(rel),
-                            "size": int(view.size),
-                            "reason": view.blocked_reason,
-                            "viewer_max_bytes": view.viewer_max_bytes,
-                        },
-                    )
-                    return
                 _json_response(
                     self,
                     200,
-                    {
-                        "ok": True,
-                        "kind": view.kind,
-                        "path": str(p),
-                        "rel": str(rel),
-                        "size": int(view.size),
-                        "text": view.text,
-                        "editable": bool(view.editable),
-                        "version": view.version,
-                    },
+                    _session_file_read_payload(
+                        session_id=session_id,
+                        path_obj=p,
+                        rel=str(rel),
+                        view=view,
+                        git_path=git_path,
+                    ),
                 )
                 return
 
@@ -6335,573 +6058,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _send_attachment_file_response(self, p, size=size, content_disposition=_download_disposition(p))
                 return
 
-            session_id = _match_session_route(path, "git", "changed_files")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                try:
-                    cwd = _resolve_session_cwd(s.cwd)
-                    _require_git_repo(cwd)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    unstaged = _split_git_nul_paths(
-                        _run_git(
-                            cwd,
-                            ["diff", "--name-only", "-z"],
-                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                            max_bytes=64 * 1024,
-                        )
-                    )
-                    staged = _split_git_nul_paths(
-                        _run_git(
-                            cwd,
-                            ["diff", "--name-only", "--cached", "-z"],
-                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                            max_bytes=64 * 1024,
-                        )
-                    )
-                    unstaged_numstat = _run_git(
-                        cwd,
-                        ["diff", "--numstat", "-z"],
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=128 * 1024,
-                    )
-                    staged_numstat = _run_git(
-                        cwd,
-                        ["diff", "--numstat", "--cached", "-z"],
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=128 * 1024,
-                    )
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                def _norm_list(xs: list[str]) -> list[str]:
-                    out: list[str] = []
-                    for x in xs:
-                        if x == "":
-                            continue
-                        out.append(x)
-                        if len(out) >= GIT_CHANGED_FILES_MAX:
-                            break
-                    return out
-                unstaged2 = _norm_list(unstaged)
-                staged2 = _norm_list(staged)
-                seen: set[str] = set()
-                merged: list[str] = []
-                for x in [*unstaged2, *staged2]:
-                    if x in seen:
-                        continue
-                    seen.add(x)
-                    merged.append(x)
-                stats = _parse_git_numstat(unstaged_numstat)
-                for path_key, vals in _parse_git_numstat(staged_numstat).items():
-                    prev = stats.get(path_key)
-                    if prev is None:
-                        stats[path_key] = vals
-                        continue
-                    add_prev = prev.get("additions")
-                    del_prev = prev.get("deletions")
-                    add_new = vals.get("additions")
-                    del_new = vals.get("deletions")
-                    prev["additions"] = None if add_prev is None or add_new is None else int(add_prev) + int(add_new)
-                    prev["deletions"] = None if del_prev is None or del_new is None else int(del_prev) + int(del_new)
-                entries: list[dict[str, Any]] = []
-                for path_key in merged:
-                    vals = stats.get(path_key, {})
-                    entries.append(
-                        {
-                            "path": path_key,
-                            "additions": vals.get("additions"),
-                            "deletions": vals.get("deletions"),
-                            "changed": True,
-                        }
-                    )
-                _json_response(
-                    self,
-                    200,
-                    {"ok": True, "cwd": str(cwd), "files": merged, "entries": entries, "unstaged": unstaged2, "staged": staged2},
-                )
+            if _handle_git_get_route(
+                self,
+                path=path,
+                query=u.query,
+                manager=MANAGER,
+                deps=_git_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
-            session_id = _match_session_route(path, "git", "diff")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                staged_q = qs.get("staged")
-                staged = bool(staged_q and staged_q[0] == "1")
-                try:
-                    cwd = _resolve_session_cwd(s.cwd)
-                    _require_git_repo(cwd)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    _target, repo_root, rel = _resolve_git_path(cwd, rel)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                args = ["diff", "-U3"]
-                if staged:
-                    args.append("--cached")
-                args.extend(["--", rel])
-                try:
-                    diff = _run_git(
-                        repo_root,
-                        args,
-                        timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                        max_bytes=GIT_DIFF_MAX_BYTES,
-                        literal_pathspecs=True,
-                    )
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                _json_response(self, 200, {"ok": True, "cwd": str(cwd), "path": rel, "staged": staged, "diff": diff})
-                return
-
-            session_id = _match_session_route(path, "git", "file_versions")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                try:
-                    cwd = _resolve_session_cwd(s.cwd)
-                    _require_git_repo(cwd)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    p, repo_root, rel = _resolve_git_path(cwd, rel)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                current_text = ""
-                current_size = 0
-                current_exists = False
-                parent_inside_repo = False
-                try:
-                    p.parent.resolve().relative_to(repo_root)
-                    parent_inside_repo = True
-                except (OSError, ValueError):
-                    parent_inside_repo = False
-                if parent_inside_repo and p.is_symlink():
-                    try:
-                        current_raw = os.readlink(p).encode("utf-8", errors="surrogateescape")
-                        current_text = current_raw.decode("utf-8", errors="replace")
-                        current_size = len(current_raw)
-                        current_exists = True
-                    except FileNotFoundError:
-                        current_exists = False
-                        current_text = ""
-                        current_size = 0
-                    except PermissionError as e:
-                        _json_response(self, 403, {"error": str(e)})
-                        return
-                    except OSError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    try:
-                        current_real = p.resolve()
-                        current_real.relative_to(repo_root)
-                        current_exists = bool(current_real.is_file())
-                    except (OSError, ValueError):
-                        current_exists = False
-                    if current_exists:
-                        try:
-                            current_text, current_size = _read_text_file_strict(current_real, max_bytes=FILE_READ_MAX_BYTES)
-                        except FileNotFoundError:
-                            current_exists = False
-                            current_text = ""
-                            current_size = 0
-                        except PermissionError as e:
-                            _json_response(self, 403, {"error": str(e)})
-                            return
-                        except ValueError as e:
-                            _json_response(self, 400, {"error": str(e)})
-                            return
-                try:
-                    MANAGER.files_add(session_id, str(p))
-                except KeyError:
-                    pass
-                base_exists = False
-                base_text = ""
-                try:
-                    base_oid = _git_head_blob_oid(repo_root, rel)
-                    if base_oid:
-                        base_text = _run_git(
-                            repo_root,
-                            ["cat-file", "-p", base_oid],
-                            timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
-                            max_bytes=FILE_READ_MAX_BYTES,
-                        )
-                        base_exists = True
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "ok": True,
-                        "cwd": str(cwd),
-                        "path": rel,
-                        "abs_path": str(p),
-                        "current_exists": current_exists,
-                        "current_size": int(current_size),
-                        "current_text": current_text,
-                        "base_exists": base_exists,
-                        "base_text": base_text,
-                    },
-                )
-                return
-
-            session_id = _match_session_route(path, "messages", "export")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                transcript = _message_transcript_identity(s)
-                if s.log_path is None or (not s.log_path.exists()):
-                    _json_response(self, 200, {**transcript, "events": [], "event_count": 0})
-                    return
-                try:
-                    events = _read_chat_export_events(s.log_path)
-                except ValueError as e:
-                    _json_response(self, 413, {"error": str(e), "max_bytes": int(TRANSCRIPT_EXPORT_MAX_BYTES)})
-                    return
-                events = MANAGER._attach_notification_texts(events)
-                _json_response(self, 200, {**transcript, "events": events, "event_count": len(events)})
-                return
-
-            session_id = _match_session_route(path, "messages", "search")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                query = (qs.get("q") or [""])[0]
-                match_limit, limit_error = _parse_bounded_query_int(qs, "limit", default=20, min_value=0, max_value=100)
-                if limit_error is not None:
-                    _json_response(self, 400, {"error": limit_error})
-                    return
-                text_max, text_max_error = _parse_bounded_query_int(qs, "text_max", default=0, min_value=0, max_value=4096)
-                if text_max_error is not None:
-                    _json_response(self, 400, {"error": text_max_error})
-                    return
-                count_max, count_max_error = _parse_bounded_query_int(qs, "count_max", default=0, min_value=0, max_value=100000)
-                if count_max_error is not None:
-                    _json_response(self, 400, {"error": count_max_error})
-                    return
-                order = (qs.get("order") or ["first"])[0]
-                if order not in {"first", "latest"}:
-                    _json_response(self, 400, {"error": "order must be first or latest"})
-                    return
-                if count_max > 0 and order == "latest":
-                    _json_response(self, 400, {"error": "count_max is only supported with order=first"})
-                    return
-                before_byte: int | None = None
-                before_q = qs.get("before")
-                if before_q is not None and before_q and before_q[0].strip():
-                    try:
-                        before_byte = _decode_message_cursor(before_q[0], kind="history", session=s)
-                    except MessageCursorError as e:
-                        _json_response(self, 409, {"error": str(e)})
-                        return
-                transcript = _message_transcript_identity(s)
-                if not isinstance(query, str) or not query.strip():
-                    _json_response(self, 200, {**transcript, "query": "", "match_count": 0, "match_count_truncated": False, "matches": []})
-                    return
-                if s.log_path is None or (not s.log_path.exists()):
-                    _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": 0, "match_count_truncated": False, "matches": []})
-                    return
-                match_count, matches, match_count_truncated = _search_chat_log_bounded(
-                    s.log_path,
-                    query,
-                    limit=match_limit,
-                    max_line_bytes=TRANSCRIPT_SEARCH_MAX_LINE_BYTES,
-                    before_byte=before_byte,
-                    order=order,
-                    count_limit=count_max if count_max > 0 else None,
-                )
-                matches = _attach_search_load_cursors(matches, session=s)
-                matches = MANAGER._attach_notification_texts(matches)
-                matches = _clip_search_match_text(matches, text_max, query=query)
-                _json_response(self, 200, {**transcript, "query": query.strip(), "match_count": match_count, "match_count_truncated": bool(match_count_truncated), "matches": matches})
-                return
-
-            session_id = _match_session_route(path, "messages", "tail")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                t0_total = time.perf_counter()
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    launch_payload = _launch_attempt_transcript_for_session_id(session_id)
-                    if launch_payload is not None:
-                        _json_response(self, 200, launch_payload)
-                        _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
-                        return
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                limit, limit_error = _parse_bounded_query_int(qs, "limit", default=80, min_value=20, max_value=200)
-                if limit_error is not None:
-                    _json_response(self, 400, {"error": limit_error})
-                    return
-                if s.log_path is None or (not s.log_path.exists()):
-                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                    transcript = _message_transcript_identity(s)
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            **transcript,
-                            "live_cursor": None,
-                            "history_cursor": None,
-                            "events": [],
-                            "has_older": False,
-                            "busy": bool(busy_val),
-                            "queue_len": int(queue_val),
-                            "token": token_val,
-                        },
-                    )
-                    _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
-                    return
-                events, before_byte, after_byte, has_older = _read_chat_tail_page(s.log_path, limit=limit)
-                events = MANAGER._attach_notification_texts(events)
-                events = _attach_history_cursors(events, session=s)
-                live_cursor = _encode_message_cursor(kind="live", session=s, pos=after_byte)
-                history_cursor = _encode_message_cursor(kind="history", session=s, pos=before_byte) if has_older and before_byte > 0 else None
-                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                transcript = _message_transcript_identity(s)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        **transcript,
-                        "live_cursor": live_cursor,
-                        "history_cursor": history_cursor,
-                        "events": events,
-                        "has_older": bool(has_older),
-                        "busy": bool(busy_val),
-                        "queue_len": int(queue_val),
-                        "token": token_val,
-                    },
-                )
-                _record_metric("api_messages_init_ms", (time.perf_counter() - t0_total) * 1000.0)
-                return
-
-            session_id = _match_session_route(path, "messages", "history")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                cursor_q = qs.get("cursor")
-                if cursor_q is None or not cursor_q or not cursor_q[0].strip():
-                    _json_response(self, 400, {"error": "cursor required"})
-                    return
-                limit, limit_error = _parse_bounded_query_int(qs, "limit", default=60, min_value=20, max_value=200)
-                if limit_error is not None:
-                    _json_response(self, 400, {"error": limit_error})
-                    return
-                if s.log_path is None or (not s.log_path.exists()):
-                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                    transcript = _message_transcript_identity(s)
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            **transcript,
-                            "history_cursor": None,
-                            "events": [],
-                            "has_older": False,
-                            "busy": bool(busy_val),
-                            "queue_len": int(queue_val),
-                            "token": token_val,
-                        },
-                    )
-                    return
-                try:
-                    before_byte = _decode_message_cursor(cursor_q[0], kind="history", session=s)
-                except MessageCursorError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                events, next_before, has_older = _read_chat_history_page(s.log_path, before_byte=before_byte, limit=limit)
-                events = MANAGER._attach_notification_texts(events)
-                events = _attach_history_cursors(events, session=s)
-                history_cursor = _encode_message_cursor(kind="history", session=s, pos=next_before) if has_older and next_before > 0 else None
-                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                transcript = _message_transcript_identity(s)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        **transcript,
-                        "history_cursor": history_cursor,
-                        "events": events,
-                        "has_older": bool(has_older),
-                        "busy": bool(busy_val),
-                        "queue_len": int(queue_val),
-                        "token": token_val,
-                    },
-                )
-                return
-
-            session_id = _match_session_route(path, "messages", "live")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                t0_total = time.perf_counter()
-                t0_meta = time.perf_counter()
-                MANAGER.refresh_session_meta(session_id)
-                dt_meta_ms = (time.perf_counter() - t0_meta) * 1000.0
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                cursor_q = qs.get("cursor")
-                if cursor_q is None or not cursor_q or not cursor_q[0].strip():
-                    _json_response(self, 400, {"error": "cursor required"})
-                    return
-                if s.log_path is None or (not s.log_path.exists()):
-                    _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s)
-                    transcript = _message_transcript_identity(s)
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            **transcript,
-                            "live_cursor": None,
-                            "events": [],
-                            "meta_delta": {"thinking": 0, "tool": 0, "system": 0},
-                            "turn_start": False,
-                            "turn_end": False,
-                            "turn_aborted": False,
-                            "diag": {"pending_log": True, "meta_refresh_ms": round(dt_meta_ms, 3)},
-                            "busy": bool(busy_val),
-                            "queue_len": int(queue_val),
-                            "token": token_val,
-                        },
-                    )
-                    _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
-                    return
-                try:
-                    after_byte = _decode_message_cursor(cursor_q[0], kind="live", session=s)
-                except MessageCursorError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                records, next_after = _read_jsonl_records_from_offset(s.log_path, after_byte)
-                objs = [record.obj for record in records]
-                initial_cc_pending = _rollout_log._cc_pending_tool_ids_before(s.log_path, after_byte) if records and after_byte > 0 else set()
-                events, meta_delta, flags, diag = _extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending)
-                token_update = _extract_token_update(objs)
-                events = _extract_positioned_chat_events(records, initial_cc_pending_tool_ids=initial_cc_pending)
-                if objs:
-                    MANAGER.mark_log_delta(session_id, objs=objs, new_off=next_after)
-                s2 = MANAGER.get_session(session_id)
-                if token_update is not None and s2 is not None:
-                    s2.token = token_update
-                events = MANAGER._attach_notification_texts(events)
-                events = _attach_history_cursors(events, session=s)
-                live_cursor = _encode_message_cursor(kind="live", session=s, pos=next_after)
-                t0_state = time.perf_counter()
-                _state, busy_val, queue_val, token_val = _message_runtime_snapshot(session_id, s, token_update=token_update)
-                diag["state_ms"] = round((time.perf_counter() - t0_state) * 1000.0, 3)
-                diag["meta_refresh_ms"] = round(dt_meta_ms, 3)
-                transcript = _message_transcript_identity(s)
-                _json_response(
-                    self,
-                    200,
-                    {
-                        **transcript,
-                        "live_cursor": live_cursor,
-                        "events": events,
-                        "meta_delta": meta_delta,
-                        "turn_start": bool(flags.get("turn_start")),
-                        "turn_end": bool(flags.get("turn_end")),
-                        "turn_aborted": bool(flags.get("turn_aborted")),
-                        "diag": diag,
-                        "busy": bool(busy_val),
-                        "queue_len": int(queue_val),
-                        "token": token_val,
-                    },
-                )
-                _record_metric("api_messages_poll_ms", (time.perf_counter() - t0_total) * 1000.0)
+            if _handle_messages_get_route(
+                self,
+                path=path,
+                query=u.query,
+                manager=MANAGER,
+                deps=_message_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             session_id = _match_session_route(path, "tail")
@@ -6931,6 +6105,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
 
             self.send_error(404)
+        except KeyError:
+            _json_response(self, 404, {"error": "unknown session"})
         except Exception as e:
             _handle_route_exception(self, e)
 
@@ -7277,23 +6453,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self._unauthorized()
                     return
                 obj = self._read_json_body()
-                path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or path_raw == "":
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                text_raw = obj.get("text")
-                if not isinstance(text_raw, str):
-                    _json_response(self, 400, {"error": "text must be a string"})
-                    return
-                create_raw = obj.get("create")
-                create = create_raw if isinstance(create_raw, bool) else False
-                git_path = _body_flag(obj, "git_path")
-                if create and git_path:
-                    _json_response(self, 400, {"error": "git_path is only supported for existing files"})
-                    return
-                version_raw = obj.get("version")
-                if not create and (not isinstance(version_raw, str) or not version_raw.strip()):
-                    _json_response(self, 400, {"error": "version required"})
+                try:
+                    request = _parse_session_file_write_request(obj)
+                except _FileRouteError as e:
+                    _json_response(self, e.status, e.payload)
                     return
                 MANAGER.refresh_session_meta(session_id)
                 s = MANAGER.get_session(session_id)
@@ -7305,459 +6468,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError as e:
                     _json_response(self, 400, {"error": str(e)})
                     return
-                if create:
-                    try:
-                        p = _resolve_under(base, path_raw)
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    try:
-                        size, next_version = _write_new_text_file_atomic(p, text=text_raw)
-                    except FileExistsError:
-                        payload: dict[str, Any] = {"error": "file already exists", "conflict": True, "path": str(p)}
-                        if p.is_file():
-                            try:
-                                _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
-                                payload["version"] = current_version
-                            except (FileNotFoundError, PermissionError, ValueError):
-                                pass
-                        _json_response(self, 409, payload)
-                        return
-                    except FileNotFoundError as e:
-                        _json_response(self, 404, {"error": str(e)})
-                        return
-                    except PermissionError as e:
-                        _json_response(self, 403, {"error": str(e)})
-                        return
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    try:
-                        if git_path:
-                            p, _rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=path_raw)
-                        else:
-                            p = _resolve_session_write_update_path(base, path_raw)
-                    except FileNotFoundError as e:
-                        _json_response(self, 404, {"error": str(e)})
-                        return
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                    except RuntimeError as e:
-                        _json_response(self, 409, {"error": str(e)})
-                        return
-                    with _file_write_lock(p):
-                        try:
-                            _current_text, _current_size, current_version = _read_text_file_for_write(p, max_bytes=FILE_READ_MAX_BYTES)
-                        except FileNotFoundError as e:
-                            _json_response(self, 404, {"error": str(e)})
-                            return
-                        except PermissionError as e:
-                            _json_response(self, 403, {"error": str(e)})
-                            return
-                        except ValueError as e:
-                            _json_response(self, 400, {"error": str(e)})
-                            return
-                        if current_version != version_raw:
-                            _json_response(
-                                self,
-                                409,
-                                {"error": "file changed on disk", "conflict": True, "path": str(p), "version": current_version},
-                            )
-                            return
-                        try:
-                            size, next_version = _write_text_file_atomic(p, text=text_raw)
-                        except FileNotFoundError as e:
-                            _json_response(self, 404, {"error": str(e)})
-                            return
-                        except PermissionError as e:
-                            _json_response(self, 403, {"error": str(e)})
-                            return
-                        except ValueError as e:
-                            _json_response(self, 400, {"error": str(e)})
-                            return
-                try:
-                    MANAGER.files_add(session_id, str(p))
-                except KeyError:
-                    pass
-                _json_response(
-                    self,
-                    200,
-                    {"ok": True, "path": str(p), "rel": str(path_raw), "size": int(size), "version": next_version, "editable": True},
-                )
-                return
-
-            session_id = _match_session_route(path, "delete")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                _read_body(self)
-                ok = MANAGER.delete_session(session_id)
-                if not ok:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, {"ok": True})
-                return
-
-            session_id = _match_session_route(path, "edit")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                name = obj.get("name")
-                if not isinstance(name, str):
-                    _json_response(self, 400, {"error": "name required"})
-                    return
-                try:
-                    alias, sidebar_meta = MANAGER.edit_session(
-                        session_id,
-                        name=name,
-                        priority_offset=obj.get("priority_offset"),
-                        snooze_until=obj.get("snooze_until"),
-                        dependency_session_id=obj.get("dependency_session_id"),
-                    )
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                _json_response(self, 200, {"ok": True, "alias": alias, **sidebar_meta})
-                return
-
-            session_id = _match_session_route(path, "rename")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                name = obj.get("name")
-                if not isinstance(name, str):
-                    _json_response(self, 400, {"error": "name required"})
-                    return
-                try:
-                    alias = MANAGER.alias_set(session_id, name)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, {"ok": True, "alias": alias})
-                return
-
-            session_id = _match_session_route(path, "pending_attachment", "clear")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                try:
-                    res = MANAGER.clear_pending_attachment(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "commit_unknown_send", "clear")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                try:
-                    res = MANAGER.clear_commit_unknown_send(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "send")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                text = obj.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    _json_response(self, 400, {"error": "text required"})
-                    return
-                allow_pending_attachment = bool(obj.get("allow_pending_attachment"))
-                try:
-                    res = MANAGER.send(session_id, text, allow_pending_attachment=allow_pending_attachment)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except SessionNotReadyError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                except SessionInjectionError as e:
-                    _json_response(self, 502, {"error": str(e)})
-                    return
-                except SessionCommitUnknownError as e:
-                    _json_response(self, 504, {"error": str(e), "commit_unknown": True})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "enqueue")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                text = obj.get("text")
-                if not isinstance(text, str) or not text.strip():
-                    _json_response(self, 400, {"error": "text required"})
-                    return
-                try:
-                    res = MANAGER.enqueue(session_id, text)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except SessionNotReadyError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 502, {"error": str(e)})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "queue", "delete")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                item_id = obj.get("id")
-                if not isinstance(item_id, str) or not item_id.strip():
-                    _json_response(self, 400, {"error": "id required"})
-                    return
-                allow_commit_unknown_raw = obj.get("allow_commit_unknown", False)
-                if not isinstance(allow_commit_unknown_raw, bool):
-                    _json_response(self, 400, {"error": "allow_commit_unknown must be a boolean"})
-                    return
-                allow_orphan_recovery_raw = obj.get("allow_orphan_recovery", False)
-                if not isinstance(allow_orphan_recovery_raw, bool):
-                    _json_response(self, 400, {"error": "allow_orphan_recovery must be a boolean"})
-                    return
-                allow_commit_unknown = allow_commit_unknown_raw is True
-                allow_orphan_recovery = allow_orphan_recovery_raw is True
-                try:
-                    res = MANAGER.queue_delete(session_id, item_id, allow_commit_unknown=allow_commit_unknown, allow_orphan_recovery=allow_orphan_recovery)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except ValueError as e:
-                    err_text = str(e).lower()
-                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
-                    _json_response(self, status, {"error": str(e)})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "queue", "update")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                item_id = obj.get("id")
-                text = obj.get("text")
-                if not isinstance(item_id, str) or not item_id.strip():
-                    _json_response(self, 400, {"error": "id required"})
-                    return
-                if not isinstance(text, str) or not text.strip():
-                    _json_response(self, 400, {"error": "text required"})
-                    return
-                try:
-                    res = MANAGER.queue_update(session_id, item_id, text)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except ValueError as e:
-                    err_text = str(e).lower()
-                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
-                    _json_response(self, status, {"error": str(e)})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "queue", "move")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                item_id = obj.get("id")
-                to_index = obj.get("to_index")
-                if not isinstance(item_id, str) or not item_id.strip():
-                    _json_response(self, 400, {"error": "id required"})
-                    return
-                if isinstance(to_index, bool) or not isinstance(to_index, int):
-                    _json_response(self, 400, {"error": "to_index required"})
-                    return
-                try:
-                    res = MANAGER.queue_move(session_id, item_id, to_index)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except ValueError as e:
-                    err_text = str(e).lower()
-                    status = 409 if ("commit" in err_text or "recovery" in err_text) else 502
-                    _json_response(self, status, {"error": str(e)})
-                    return
-                _json_response(self, 200, res)
-                return
-
-            session_id = _match_session_route(path, "unattended")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                enabled_raw = obj.get("enabled", None)
-                request_raw = obj.get("request", None)
-                cooldown_minutes_raw = obj.get("cooldown_minutes", None)
-                remaining_injections_raw = obj.get("remaining_injections", None)
-                if "text" in obj:
-                    _json_response(self, 400, {"error": "unknown field: text (use request)"})
-                    return
-                enabled: bool | None
-                if enabled_raw is None:
-                    enabled = None
-                elif isinstance(enabled_raw, bool):
-                    enabled = enabled_raw
-                else:
-                    _json_response(self, 400, {"error": "enabled must be a boolean"})
-                    return
-
-                if request_raw is not None and (not isinstance(request_raw, str)):
-                    _json_response(self, 400, {"error": "request must be a string"})
-                    return
-                request: str | None
-                if request_raw is not None:
-                    request = request_raw
-                else:
-                    request = None
-                cooldown_minutes: int | None
-                if cooldown_minutes_raw is not None:
-                    try:
-                        cooldown_minutes = _clean_unattended_cooldown_minutes(cooldown_minutes_raw)
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    cooldown_minutes = None
-                remaining_injections: int | None
-                if remaining_injections_raw is not None:
-                    try:
-                        remaining_injections = _clean_unattended_remaining_injections(remaining_injections_raw, allow_zero=True)
-                    except ValueError as e:
-                        _json_response(self, 400, {"error": str(e)})
-                        return
-                else:
-                    remaining_injections = None
-
-                cfg = MANAGER.unattended_set(
-                    session_id,
-                    enabled=enabled,
+                response = _session_file_write_response(
+                    session_base=base,
                     request=request,
-                    cooldown_minutes=cooldown_minutes,
-                    remaining_injections=remaining_injections,
+                    resolve_create_path=_resolve_under,
+                    resolve_git_existing_regular_file=lambda raw_path: _resolve_git_existing_regular_file(
+                        session_id=session_id,
+                        raw_path=raw_path,
+                    ),
+                    file_write_lock=_file_write_lock,
+                    record_file=lambda path_value: MANAGER.files_add(session_id, path_value),
                 )
-                _json_response(self, 200, {"ok": True, **cfg})
+                _json_response(self, response.status, response.payload)
                 return
 
-            session_id = _match_session_route(path, "interrupt")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                _read_body(self)
-                try:
-                    # Send a literal ESC byte. Older brokers may not recognize "ESC" but will
-                    # decode "\\x1b" via unicode_escape into a single 0x1b byte.
-                    resp = MANAGER.inject_keys(session_id, "\\x1b", interrupt=True)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                _json_response(self, 200, {"ok": True, "broker": resp})
+            if _handle_control_post_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_control_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
-            session_id = _match_session_route(path, "inject_file")
-            if session_id is None:
-                session_id = _match_session_route(path, "inject_image")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body(
-                    limit=ATTACH_UPLOAD_BODY_MAX_BYTES,
-                    too_large_error=f"file too large (max {ATTACH_UPLOAD_MAX_BYTES} bytes)",
-                )
-                data_b64 = obj.get("data_b64")
-                filename = obj.get("filename")
-                attachment_index = obj.get("attachment_index")
-                if not isinstance(filename, str) or (not filename.strip()):
-                    _json_response(self, 400, {"error": "filename required"})
-                    return
-                if isinstance(attachment_index, bool) or not isinstance(attachment_index, int):
-                    _json_response(self, 400, {"error": "attachment_index must be an integer"})
-                    return
-                if not isinstance(data_b64, str) or not data_b64:
-                    _json_response(self, 400, {"error": "data_b64 required"})
-                    return
-                try:
-                    ready_for_attachment = MANAGER.attachment_injection_ready(session_id)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except SessionNotReadyError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                except Exception:
-                    _json_response(self, 409, {"error": "session state unavailable; wait before attaching a file"})
-                    return
-                if not ready_for_attachment:
-                    _json_response(self, 409, {"error": "session is busy; wait before attaching a file"})
-                    return
-                try:
-                    raw = base64.b64decode(data_b64.encode("ascii"), validate=True)
-                except Exception:
-                    _json_response(self, 400, {"error": "invalid base64"})
-                    return
-                try:
-                    out_path = _stage_uploaded_file(session_id, filename, raw)
-                except ValueError as e:
-                    status = 413 if str(e).startswith("file too large") else 400
-                    _json_response(self, status, {"error": str(e)})
-                    return
-
-                try:
-                    inject_text = _attachment_inject_text(attachment_index, out_path)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-
-                # Bracketed paste: inject the staged attachment line into the active broker input.
-                seq = f"\x1b[200~{inject_text}\x1b[201~"
-                try:
-                    resp = MANAGER.inject_attachment_keys(session_id, seq)
-                except KeyError:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                except SessionNotReadyError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                except SessionInjectionError as e:
-                    _json_response(self, 502, {"error": str(e)})
-                    return
-                except SessionCommitUnknownError as e:
-                    _json_response(self, 504, {"error": str(e), "commit_unknown": True})
-                    return
-                _json_response(self, 200, {"ok": True, "path": str(out_path), "inject_text": inject_text, "broker": resp})
+            if _handle_queue_post_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_queue_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             if path == "/api/hooks/notify":
