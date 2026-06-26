@@ -75,6 +75,8 @@ from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
 from .git_routes import GitRouteDeps
 from .git_routes import handle_git_get_route as _handle_git_get_route
+from .hook_routes import HookRouteDeps
+from .hook_routes import handle_hook_post_route as _handle_hook_post_route
 from .launch_config import LaunchConfigPaths
 from .launch_config import LaunchRequestValidationError
 from .launch_config import NewSessionLaunchRequest
@@ -5235,6 +5237,13 @@ def _queue_route_deps() -> QueueRouteDeps:
     )
 
 
+def _hook_route_deps() -> HookRouteDeps:
+    return HookRouteDeps(
+        read_body=_read_body,
+        json_response=_json_response,
+    )
+
+
 def _control_route_deps() -> ControlRouteDeps:
     return ControlRouteDeps(
         require_auth=_require_auth,
@@ -5614,10 +5623,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ):
                 return
 
-            if path == "/api/hooks/notify":
-                # Optional integration point. Current design does not rely on this.
-                _read_body(self)
-                _json_response(self, 200, {"ignored": True})
+            if _handle_hook_post_route(
+                self,
+                path=path,
+                deps=_hook_route_deps(),
+            ):
                 return
 
             self.send_error(404)

@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
 TRANSCRIPT_SEARCH_PY = ROOT / "codoxear" / "transcript_search.py"
 STATIC_ROUTES_PY = ROOT / "codoxear" / "static_routes.py"
+HOOK_ROUTES_PY = ROOT / "codoxear" / "hook_routes.py"
 VOICE_ROUTES_PY = ROOT / "codoxear" / "voice_routes.py"
 
 
@@ -13,6 +14,7 @@ class TestRouteDecompositionSource(unittest.TestCase):
     def test_handler_shares_url_prefix_parsing_between_get_and_post(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
         static_route_source = STATIC_ROUTES_PY.read_text(encoding="utf-8")
+        hook_route_source = HOOK_ROUTES_PY.read_text(encoding="utf-8")
         voice_route_source = VOICE_ROUTES_PY.read_text(encoding="utf-8")
         self.assertIn("def _parse_prefixed_request_path(self)", source)
         self.assertEqual(source.count("self._parse_prefixed_request_path()"), 2)
@@ -22,6 +24,10 @@ class TestRouteDecompositionSource(unittest.TestCase):
         self.assertIn("def handle_static_get_route(", static_route_source)
         self.assertIn("def send_static_file(", static_route_source)
         self.assertNotIn("def _send_static(self, rel: str) -> None:", source)
+        self.assertIn("def handle_hook_post_route(", hook_route_source)
+        self.assertIn('if path != "/api/hooks/notify":', hook_route_source)
+        self.assertIn("if _handle_hook_post_route(", source)
+        self.assertNotIn('if path == "/api/hooks/notify":', source)
         self.assertIn("def _handle_voice_get(self, path: str, query: str) -> bool:", source)
         self.assertIn("return _handle_voice_get_route(", source)
         self.assertIn("if self._handle_voice_get(path, u.query):", source)
