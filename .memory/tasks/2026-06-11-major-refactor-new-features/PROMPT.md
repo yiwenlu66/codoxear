@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: chat-search display formatting helpers now live in `codoxear/static/app_display.js` at functional commit `c09ace2 extract chat search display helpers`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: inspect remaining short pure helpers only after re-anchoring on a clean tree. Avoid wrappers already extracted and avoid helpers that touch DOM, API calls, mutable session/file/chat state, focus, timers, or recovery/security behavior.
-3. A possible candidate is a tiny deterministic formatting/classification helper only if a read-only boundary check shows it depends solely on arguments and existing helper modules; otherwise stop and choose a smaller target.
+1. Completed tranche: file-picker source normalization and section-label helpers now live in `codoxear/static/app_file_helpers.js` at functional commit `c13dd1e extract file picker source label helpers`; checkpoint docs are recorded separately from the functional change.
+2. Next bounded candidate: inspect `positionAfterInsertedText(start, text)` as a tiny deterministic file-editor cursor-position helper. It may move only if the boundary remains pure argument-only newline/column arithmetic.
+3. Keep Monaco editor access, paste execution, file dirty state, touch-selection reset, focus, DOM, file-viewer availability, and save/edit behavior in `app.js`.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
