@@ -17,6 +17,7 @@ from codoxear.server import _static_cache_control_headers
 
 
 ROOT = Path(__file__).resolve().parents[1]
+STATIC_ROUTES_PY = ROOT / "codoxear" / "static_routes.py"
 INDEX_HTML = ROOT / "codoxear" / "static" / "index.html"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_URL_JS = ROOT / "codoxear" / "static" / "app_url.js"
@@ -79,10 +80,10 @@ class TestStaticAssets(unittest.TestCase):
         app_viewport = APP_VIEWPORT_JS.read_text(encoding="utf-8")
         app_polling = APP_POLLING_JS.read_text(encoding="utf-8")
         app_conversation_copy = APP_CONVERSATION_COPY_JS.read_text(encoding="utf-8")
-        server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
+        static_routes_source = STATIC_ROUTES_PY.read_text(encoding="utf-8")
         self.assertIn("Content-Security-Policy", index)
-        self.assertIn("self.send_header(\"Content-Security-Policy\", CONTENT_SECURITY_POLICY)", server_source)
-        self.assertIn("self.send_header(\"X-Frame-Options\", \"DENY\")", server_source)
+        self.assertIn("handler.send_header(\"Content-Security-Policy\", deps.content_security_policy)", static_routes_source)
+        self.assertIn("handler.send_header(\"X-Frame-Options\", \"DENY\")", static_routes_source)
         self.assertIn("frame-ancestors 'none'", CONTENT_SECURITY_POLICY)
         for forbidden in ["fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "unpkg.com"]:
             self.assertNotIn(forbidden, index)

@@ -161,6 +161,18 @@ from .session_runtime import resolve_runtime_status as _resolve_runtime_status
 from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
+from .static_routes import CONTENT_SECURITY_POLICY
+from .static_routes import FRONTEND_ASSET_FILES
+from .static_routes import STATIC_ASSET_VERSION_FILES
+from .static_routes import STATIC_ASSET_VERSION_PLACEHOLDER
+from .static_routes import STATIC_ATTACH_MAX_BYTES_PLACEHOLDER
+from .static_routes import STATIC_DIR
+from .static_routes import TOP_LEVEL_STATIC_ASSETS
+from .static_routes import StaticRouteDeps
+from .static_routes import handle_static_get_route as _handle_static_get_route
+from .static_routes import read_static_bytes as _read_static_bytes_impl
+from .static_routes import static_asset_version as _static_asset_version
+from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
 from .queue_store import copy_queue_item as _queue_store_copy_item
 from .queue_store import new_queue_item as _queue_store_new_item
 from .queue_store import new_queue_item_id as _queue_store_new_item_id
@@ -274,20 +286,6 @@ def _strip_url_prefix(prefix: str, path: str) -> str | None:
 
 APP_DIR = _default_app_dir()
 PROC_ROOT = Path("/proc")
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-STATIC_ASSET_VERSION_PLACEHOLDER = "__CODOXEAR_ASSET_VERSION__"
-STATIC_ATTACH_MAX_BYTES_PLACEHOLDER = "__CODOXEAR_ATTACH_MAX_BYTES__"
-FRONTEND_ASSET_FILES = ("app_url.js", "app_storage.js", "app_perf.js", "app_api.js", "app_markdown.js", "app_launch.js", "app_display.js", "app_file_helpers.js", "app_session_helpers.js", "app_viewport.js", "app_polling.js", "app_conversation_copy.js", "app.js", "app.css")
-STATIC_ASSET_VERSION_FILES = FRONTEND_ASSET_FILES
-TOP_LEVEL_STATIC_ASSETS = (
-    ("/favicon.ico", "favicon.png"),
-    ("/manifest.webmanifest", "manifest.webmanifest"),
-    ("/service-worker.js", "service-worker.js"),
-    *((f"/{name}", name) for name in FRONTEND_ASSET_FILES),
-    ("/favicon.png", "favicon.png"),
-    ("/", "index.html"),
-)
-CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 SOCK_DIR = APP_DIR / "socks"
 STATE_PATH = APP_DIR / "state.json"
 HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
@@ -373,13 +371,7 @@ TRANSCRIPT_EXPORT_MAX_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_EXPORT_MA
 
 
 def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
-    if enabled:
-        return {"Cache-Control": "public, max-age=31536000, immutable"}
-    return {
-        "Cache-Control": "no-store",
-        "Pragma": "no-cache",
-        "Expires": "0",
-    }
+    return _static_cache_control_headers_impl(enabled=enabled)
 
 
 UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
@@ -5172,34 +5164,8 @@ class SessionManager:
 MANAGER = SessionManager()
 
 
-def _static_asset_version(static_dir: Path = STATIC_DIR) -> str:
-    base = static_dir.resolve()
-    digest = hashlib.sha256()
-    for rel in STATIC_ASSET_VERSION_FILES:
-        path = (base / rel).resolve()
-        if not str(path).startswith(str(base)):
-            raise ValueError(f"static asset escaped static dir: {path}")
-        if not path.is_file():
-            continue
-        digest.update(rel.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()[:12]
-
-
 def _read_static_bytes(path: Path) -> bytes:
-    data = path.read_bytes()
-    if path.suffix != ".html":
-        return data
-    replacements = {
-        STATIC_ASSET_VERSION_PLACEHOLDER.encode("ascii"): _static_asset_version(path.parent).encode("ascii"),
-        STATIC_ATTACH_MAX_BYTES_PLACEHOLDER.encode("ascii"): str(ATTACH_UPLOAD_MAX_BYTES).encode("ascii"),
-    }
-    for placeholder, value in replacements.items():
-        if placeholder in data:
-            data = data.replace(placeholder, value)
-    return data
+    return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
 
 
 def _message_runtime_snapshot(
@@ -5234,6 +5200,16 @@ def _message_runtime_snapshot(
     return state, bool(runtime.busy), int(queue_val), token_val
 
 
+
+
+def _static_route_deps() -> StaticRouteDeps:
+    return StaticRouteDeps(
+        static_dir=STATIC_DIR,
+        top_level_static_assets=TOP_LEVEL_STATIC_ASSETS,
+        read_static_bytes=_read_static_bytes,
+        static_cache_control_headers=_static_cache_control_headers,
+        content_security_policy=CONTENT_SECURITY_POLICY,
+    )
 
 
 def _message_route_deps() -> MessageRouteDeps:
@@ -5420,53 +5396,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             raise
 
-    def _send_static(self, rel: str) -> None:
-        static_root = STATIC_DIR.resolve()
-        path = (static_root / rel.lstrip("/")).resolve()
-        try:
-            path.relative_to(static_root)
-        except ValueError:
-            self.send_error(404)
-            return
-        if not path.exists() or not path.is_file():
-            self.send_error(404)
-            return
-        data = _read_static_bytes(path)
-        if path.suffix == ".html":
-            ctype = "text/html; charset=utf-8"
-        elif path.suffix == ".js":
-            ctype = "text/javascript; charset=utf-8"
-        elif path.suffix == ".css":
-            ctype = "text/css; charset=utf-8"
-        elif path.suffix == ".webmanifest":
-            ctype = "application/manifest+json; charset=utf-8"
-        elif path.suffix == ".png":
-            ctype = "image/png"
-        elif path.suffix in (".jpg", ".jpeg"):
-            ctype = "image/jpeg"
-        elif path.suffix == ".webp":
-            ctype = "image/webp"
-        elif path.suffix == ".svg":
-            ctype = "image/svg+xml; charset=utf-8"
-        elif path.suffix == ".ico":
-            ctype = "image/x-icon"
-        else:
-            ctype = "application/octet-stream"
-        self.send_response(200)
-        self.send_header("Content-Type", ctype)
-        if path.suffix == ".html":
-            self.send_header("Content-Security-Policy", CONTENT_SECURITY_POLICY)
-            self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Content-Length", str(len(data)))
-        # UI is used for interactive debugging; serve assets without caching by
-        # default so changes (including inline JS) show up immediately on
-        # refresh. Packaged deployments may opt into immutable static caching
-        # with CODEX_WEB_STATIC_CACHE=1.
-        for name, value in _static_cache_control_headers().items():
-            self.send_header(name, value)
-        self.end_headers()
-        self.wfile.write(data)
-
     def _unauthorized(self) -> None:
         _json_response(self, 401, {"error": "unauthorized"})
 
@@ -5490,14 +5419,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return u, path
 
     def _handle_static_get(self, path: str) -> bool:
-        for route, asset in TOP_LEVEL_STATIC_ASSETS:
-            if path == route:
-                self._send_static(asset)
-                return True
-        if path.startswith("/static/"):
-            self._send_static(path[len("/static/") :])
-            return True
-        return False
+        return _handle_static_get_route(
+            self,
+            path=path,
+            deps=_static_route_deps(),
+        )
 
     def _handle_voice_get(self, path: str, query: str) -> bool:
         return _handle_voice_get_route(
