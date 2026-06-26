@@ -48,6 +48,10 @@ def eval_session_helpers() -> dict:
           signature: helpers.sidebarRenderSignature(entries, {{ selectedId: "now", swipeActions: true }}),
           fast: helpers.sessionIsFast(sessions[3]),
           notFast: helpers.sessionIsFast({{ service_tier: "standard" }}),
+          diagnosticsPiProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "chatgpt" }}, "pi"),
+          diagnosticsCcProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "anthropic" }}, "cc"),
+          diagnosticsCodexProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "openai", provider_choice: "chatgpt" }}, "codex"),
+          diagnosticsCopyText: helpers.diagnosticsCopyText("sid-1", [["CWD", "/tmp/repo"], ["Empty", ""]]),
           frozen: Object.isFrozen(helpers),
           groupsFrozen: Object.isFrozen(helpers.SESSION_SIDEBAR_GROUPS),
           groupObjectsFrozen: helpers.SESSION_SIDEBAR_GROUPS.every((group) => Object.isFrozen(group)),
@@ -82,6 +86,8 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
             "sidebarRenderSignature",
             "sessionSelectable",
             "sessionIsFast",
+            "diagnosticsProviderDisplay",
+            "diagnosticsCopyText",
         ]:
             self.assertIn(f"typeof codoxearSessionHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
@@ -116,6 +122,10 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
         self.assertIn('"swipeActions":true', result["signature"])
         self.assertTrue(result["fast"])
         self.assertFalse(result["notFast"])
+        self.assertEqual(result["diagnosticsPiProvider"], "anthropic")
+        self.assertEqual(result["diagnosticsCcProvider"], "-")
+        self.assertEqual(result["diagnosticsCodexProvider"], "chatgpt")
+        self.assertEqual(result["diagnosticsCopyText"], "Codoxear session details\nSession: sid-1\nCWD: /tmp/repo\nEmpty: -")
         self.assertTrue(result["frozen"])
         self.assertTrue(result["groupsFrozen"])
         self.assertTrue(result["groupObjectsFrozen"])

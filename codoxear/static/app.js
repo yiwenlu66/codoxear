@@ -260,7 +260,9 @@
         typeof codoxearSessionHelpers.sidebarSessionEntries !== "function" ||
         typeof codoxearSessionHelpers.sidebarRenderSignature !== "function" ||
         typeof codoxearSessionHelpers.sessionSelectable !== "function" ||
-        typeof codoxearSessionHelpers.sessionIsFast !== "function"
+        typeof codoxearSessionHelpers.sessionIsFast !== "function" ||
+        typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function" ||
+        typeof codoxearSessionHelpers.diagnosticsCopyText !== "function"
       )
         throw new Error("Codoxear session helpers failed to load");
       const SESSION_SIDEBAR_GROUPS = codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;
@@ -313,6 +315,14 @@
 
       function sessionSelectable(s) {
         return codoxearSessionHelpers.sessionSelectable(s);
+      }
+
+      function diagnosticsProviderDisplay(d) {
+        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));
+      }
+
+      function diagnosticsCopyText(sessionId, rows) {
+        return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);
       }
 
       const codoxearViewport = window.CodoxearViewport;
@@ -10919,32 +10929,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           helpViewer.style.display = "none";
           afterModalVisibilityChanged();
           if (wasOpen) restoreModalFocus(focusTarget, () => isModalTargetOpen(helpViewer));
-        }
-
-        function diagnosticsProviderDisplay(d) {
-          if (!d || typeof d !== "object") return "-";
-          const backend = sessionAgentBackend(d);
-          if (backend === "pi") return typeof d.model_provider === "string" && d.model_provider.trim() ? d.model_provider.trim() : "-";
-          if (backend === "cc") return "-";
-          if (typeof d.provider_choice === "string" && d.provider_choice.trim()) return d.provider_choice.trim();
-          if (typeof d.model_provider === "string" && d.model_provider.trim()) return d.model_provider.trim();
-          return "-";
-        }
-
-        function diagnosticsCopyText(sessionId, rows) {
-          const rowLines = [];
-          let hasSessionRow = false;
-          for (const row of rows || []) {
-            if (!row || !row.length) continue;
-            const label = String(row[0] || "").trim();
-            const value = String(row[1] || "-").trim() || "-";
-            if (!label) continue;
-            if (label.toLowerCase() === "session") hasSessionRow = true;
-            rowLines.push(`${label}: ${value}`);
-          }
-          const lines = ["Codoxear session details"];
-          if (sessionId && !hasSessionRow) lines.push(`Session: ${sessionId}`);
-          return lines.concat(rowLines).join("\n");
         }
 
         diagNewLikeBtn.onclick = (e) => {

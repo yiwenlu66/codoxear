@@ -5,51 +5,36 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_SESSION_HELPERS_JS = ROOT / "codoxear" / "static" / "app_session_helpers.js"
 
 
-def eval_diagnostics_provider_display() -> dict:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function diagnosticsProviderDisplay(d) {")
-    end = source.index("function diagnosticsCopyText(sessionId, rows) {", start)
-    snippet = source[start:end]
+def eval_diagnostics_helpers() -> dict:
+    source = APP_SESSION_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{
-          sessionAgentBackend: (item) => item && item.agent_backend || "codex",
-        }};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = diagnosticsProviderDisplay;\n")}, ctx);
+        vm.runInContext({json.dumps(source)}, ctx);
+        const helpers = ctx.window.CodoxearSessionHelpers;
+        const copyText = helpers.diagnosticsCopyText("sid-1", [["Session", "sid-1"], ["", "ignored"], ["CWD", "/tmp/repo"], ["Empty", ""]]);
+        const copyTextWithInsertedSession = helpers.diagnosticsCopyText("sid-2", [["CWD", "/tmp/repo"]]);
         process.stdout.write(JSON.stringify({{
-          piAbsent: ctx.__test({{ agent_backend: "pi", model_provider: null, provider_choice: "openai-api" }}),
-          piActual: ctx.__test({{ agent_backend: "pi", model_provider: "anthropic", provider_choice: "openai-api" }}),
-          codexChoice: ctx.__test({{ agent_backend: "codex", model_provider: "openai", provider_choice: "chatgpt" }}),
-          ccIgnored: ctx.__test({{ agent_backend: "cc", model_provider: "anthropic", provider_choice: "anthropic" }}),
+          piAbsent: helpers.diagnosticsProviderDisplay({{ model_provider: null, provider_choice: "openai-api" }}, "pi"),
+          piActual: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "openai-api" }}, "pi"),
+          codexChoice: helpers.diagnosticsProviderDisplay({{ model_provider: "openai", provider_choice: "chatgpt" }}, "codex"),
+          codexModelProviderFallback: helpers.diagnosticsProviderDisplay({{ model_provider: "openai", provider_choice: "   " }}, "codex"),
+          ccIgnored: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "anthropic" }}, "cc"),
+          nullRow: helpers.diagnosticsProviderDisplay(null, "codex"),
+          copyText,
+          copyTextWithInsertedSession,
         }}));
         """
     )
     proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     return json.loads(proc.stdout)
-
-
-def eval_diagnostics_copy_text() -> str:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function diagnosticsCopyText(sessionId, rows) {")
-    end = source.index("diagNewLikeBtn.onclick", start)
-    snippet = source[start:end]
-    js = textwrap.dedent(
-        f"""
-        const vm = require("vm");
-        const ctx = {{}};
-        vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = diagnosticsCopyText;\n")}, ctx);
-        const out = ctx.__test("sid-1", [["Session", "sid-1"], ["", "ignored"], ["CWD", "/tmp/repo"], ["Empty", ""]]);
-        process.stdout.write(out);
-        """
-    )
-    proc = subprocess.run(["node", "-e", js], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    return proc.stdout
 
 
 class TestDiagnosticsSource(unittest.TestCase):
@@ -66,11 +51,13 @@ class TestDiagnosticsSource(unittest.TestCase):
         self.assertNotIn("/api/sessions/${selected}/diagnostics", block)
 
     def test_diagnostics_provider_display_is_backend_aware(self) -> None:
-        result = eval_diagnostics_provider_display()
+        result = eval_diagnostics_helpers()
         self.assertEqual(result["piAbsent"], "-")
         self.assertEqual(result["piActual"], "anthropic")
         self.assertEqual(result["codexChoice"], "chatgpt")
+        self.assertEqual(result["codexModelProviderFallback"], "openai")
         self.assertEqual(result["ccIgnored"], "-")
+        self.assertEqual(result["nullRow"], "-")
 
     def test_diagnostics_has_copy_details_action_for_rendered_rows(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
@@ -80,9 +67,13 @@ class TestDiagnosticsSource(unittest.TestCase):
         self.assertIn('let diagCopyText = "";', source)
         self.assertIn('diagCopyBtn.disabled = true;', source)
         self.assertIn('el("div", { class: "actions" }, [diagNewLikeBtn, diagCopyBtn, diagCloseBtn])', source)
-        self.assertIn('function diagnosticsProviderDisplay(d) {', source)
+        self.assertIn('typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function"', source)
+        self.assertIn('typeof codoxearSessionHelpers.diagnosticsCopyText !== "function"', source)
+        self.assertIn('function diagnosticsProviderDisplay(d) {\n        return codoxearSessionHelpers.diagnosticsProviderDisplay(d, sessionAgentBackend(d));\n      }', source)
         self.assertIn('addRow("Provider", diagnosticsProviderDisplay(d));', source)
-        self.assertIn('function diagnosticsCopyText(sessionId, rows) {', source)
+        self.assertIn('function diagnosticsCopyText(sessionId, rows) {\n        return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);\n      }', source)
+        self.assertIn('function diagnosticsProviderDisplay(d, backend) {', APP_SESSION_HELPERS_JS.read_text(encoding="utf-8"))
+        self.assertIn('function diagnosticsCopyText(sessionId, rows) {', APP_SESSION_HELPERS_JS.read_text(encoding="utf-8"))
         self.assertIn('diagRows.push([cleanLabel, v]);', source)
         self.assertIn('diagCopyText = diagnosticsCopyText(sid, diagRows);', source)
         self.assertIn('diagCopyBtn.disabled = !diagCopyText;', source)
@@ -91,10 +82,14 @@ class TestDiagnosticsSource(unittest.TestCase):
         self.assertIn('setToast("Copied details");', source)
 
     def test_diagnostics_copy_formatter_uses_label_value_rows(self) -> None:
-        out = eval_diagnostics_copy_text()
+        result = eval_diagnostics_helpers()
         self.assertEqual(
-            out,
+            result["copyText"],
             "Codoxear session details\nSession: sid-1\nCWD: /tmp/repo\nEmpty: -",
+        )
+        self.assertEqual(
+            result["copyTextWithInsertedSession"],
+            "Codoxear session details\nSession: sid-2\nCWD: /tmp/repo",
         )
 
 

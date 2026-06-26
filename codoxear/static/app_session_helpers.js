@@ -79,6 +79,31 @@
     return !!(s && typeof s.service_tier === "string" && s.service_tier.trim().toLowerCase() === "fast");
   }
 
+  function diagnosticsProviderDisplay(d, backend) {
+    if (!d || typeof d !== "object") return "-";
+    if (backend === "pi") return typeof d.model_provider === "string" && d.model_provider.trim() ? d.model_provider.trim() : "-";
+    if (backend === "cc") return "-";
+    if (typeof d.provider_choice === "string" && d.provider_choice.trim()) return d.provider_choice.trim();
+    if (typeof d.model_provider === "string" && d.model_provider.trim()) return d.model_provider.trim();
+    return "-";
+  }
+
+  function diagnosticsCopyText(sessionId, rows) {
+    const rowLines = [];
+    let hasSessionRow = false;
+    for (const row of rows || []) {
+      if (!row || !row.length) continue;
+      const label = String(row[0] || "").trim();
+      const value = String(row[1] || "-").trim() || "-";
+      if (!label) continue;
+      if (label.toLowerCase() === "session") hasSessionRow = true;
+      rowLines.push(`${label}: ${value}`);
+    }
+    const lines = ["Codoxear session details"];
+    if (sessionId && !hasSessionRow) lines.push(`Session: ${sessionId}`);
+    return lines.concat(rowLines).join("\n");
+  }
+
   window.CodoxearSessionHelpers = Object.freeze({
     SESSION_SIDEBAR_GROUPS,
     sessionLaunchFailed,
@@ -91,5 +116,7 @@
     sidebarRenderSignature,
     sessionSelectable,
     sessionIsFast,
+    diagnosticsProviderDisplay,
+    diagnosticsCopyText,
   });
 })();
