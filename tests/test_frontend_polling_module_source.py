@@ -66,7 +66,7 @@ def eval_polling_policy() -> dict:
 def run_app_polling_guard(setup_js: str = "") -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("const codoxearPolling = window.CodoxearPolling;")
-    end = source.index("function normalizeAgentBackendName", start)
+    end = source.index("const codoxearConversationCopy = window.CodoxearConversationCopy;", start)
     guard_source = source[start:end]
     js = textwrap.dedent(
         f"""
