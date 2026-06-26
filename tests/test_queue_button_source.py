@@ -32,8 +32,13 @@ class TestQueueButtonSource(unittest.TestCase):
     def test_commit_unknown_queue_items_are_visible_and_not_mutated(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
 
-        self.assertIn('commitUnknown: !!item.commit_unknown', source)
-        self.assertIn('orphanRecovery: !!item.orphan_recovery', source)
+        helper_source = (Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_session_helpers.js").read_text(encoding="utf-8")
+
+        self.assertIn('typeof codoxearSessionHelpers.normalizeQueueItems !== "function"', source)
+        self.assertIn('function normalizeQueueItems(data) {\n        return codoxearSessionHelpers.normalizeQueueItems(data);\n      }', source)
+        self.assertIn('const q = normalizeQueueItems(data);', source)
+        self.assertIn('commitUnknown: !!item.commit_unknown', helper_source)
+        self.assertIn('orphanRecovery: !!item.orphan_recovery', helper_source)
         self.assertIn('const commitUnknown = !!item.commitUnknown;', source)
         self.assertIn('const orphanRecovery = !!item.orphanRecovery;', source)
         self.assertIn('if (commitUnknown) actions.appendChild(el("div", { class: "queueSendingTag warning", text: "Commit unknown" }));', source)

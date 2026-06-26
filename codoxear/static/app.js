@@ -262,7 +262,8 @@
         typeof codoxearSessionHelpers.sessionSelectable !== "function" ||
         typeof codoxearSessionHelpers.sessionIsFast !== "function" ||
         typeof codoxearSessionHelpers.diagnosticsProviderDisplay !== "function" ||
-        typeof codoxearSessionHelpers.diagnosticsCopyText !== "function"
+        typeof codoxearSessionHelpers.diagnosticsCopyText !== "function" ||
+        typeof codoxearSessionHelpers.normalizeQueueItems !== "function"
       )
         throw new Error("Codoxear session helpers failed to load");
       const SESSION_SIDEBAR_GROUPS = codoxearSessionHelpers.SESSION_SIDEBAR_GROUPS;
@@ -323,6 +324,10 @@
 
       function diagnosticsCopyText(sessionId, rows) {
         return codoxearSessionHelpers.diagnosticsCopyText(sessionId, rows);
+      }
+
+      function normalizeQueueItems(data) {
+        return codoxearSessionHelpers.normalizeQueueItems(data);
       }
 
       const codoxearViewport = window.CodoxearViewport;
@@ -10512,27 +10517,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
         let queueSubmitBusy = false;
         let queueViewerSid = null;
         let queueViewerItems = [];
-
-        function normalizeQueueItems(data) {
-          if (data && Array.isArray(data.items)) {
-            return data.items
-              .filter((item) => item && typeof item === "object")
-              .map((item) => ({
-                id: typeof item.id === "string" ? item.id : "",
-                text: typeof item.text === "string" ? item.text : "",
-                sending: !!item.sending,
-                commitUnknown: !!item.commit_unknown,
-                orphanRecovery: !!item.orphan_recovery,
-              }))
-              .filter((item) => item.id && item.text.trim());
-          }
-          if (data && Array.isArray(data.queue)) {
-            return data.queue
-              .filter((text) => typeof text === "string" && text.trim())
-              .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false, commitUnknown: false, orphanRecovery: false }));
-          }
-          return [];
-        }
 
         function selectedSessionHasUnknownSend() {
           const s = selected ? sessionIndex.get(selected) : null;

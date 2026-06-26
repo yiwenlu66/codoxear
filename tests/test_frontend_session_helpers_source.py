@@ -52,6 +52,16 @@ def eval_session_helpers() -> dict:
           diagnosticsCcProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "anthropic", provider_choice: "anthropic" }}, "cc"),
           diagnosticsCodexProvider: helpers.diagnosticsProviderDisplay({{ model_provider: "openai", provider_choice: "chatgpt" }}, "codex"),
           diagnosticsCopyText: helpers.diagnosticsCopyText("sid-1", [["CWD", "/tmp/repo"], ["Empty", ""]]),
+          queueModern: helpers.normalizeQueueItems({{ items: [
+            {{ id: "q1", text: " first ", sending: 1, commit_unknown: true }},
+            {{ id: "", text: "missing id" }},
+            {{ id: "q2", text: "   " }},
+            null,
+            {{ id: "q3", text: "recover", orphan_recovery: true }},
+            {{ id: 42, text: "bad id" }},
+          ] }}),
+          queueLegacy: helpers.normalizeQueueItems({{ queue: ["one", " ", "two", 5, " three "] }}),
+          queueEmpty: helpers.normalizeQueueItems(null),
           frozen: Object.isFrozen(helpers),
           groupsFrozen: Object.isFrozen(helpers.SESSION_SIDEBAR_GROUPS),
           groupObjectsFrozen: helpers.SESSION_SIDEBAR_GROUPS.every((group) => Object.isFrozen(group)),
@@ -88,6 +98,7 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
             "sessionIsFast",
             "diagnosticsProviderDisplay",
             "diagnosticsCopyText",
+            "normalizeQueueItems",
         ]:
             self.assertIn(f"typeof codoxearSessionHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
@@ -126,6 +137,22 @@ class TestFrontendSessionHelpersSource(unittest.TestCase):
         self.assertEqual(result["diagnosticsCcProvider"], "-")
         self.assertEqual(result["diagnosticsCodexProvider"], "chatgpt")
         self.assertEqual(result["diagnosticsCopyText"], "Codoxear session details\nSession: sid-1\nCWD: /tmp/repo\nEmpty: -")
+        self.assertEqual(
+            result["queueModern"],
+            [
+                {"id": "q1", "text": " first ", "sending": True, "commitUnknown": True, "orphanRecovery": False},
+                {"id": "q3", "text": "recover", "sending": False, "commitUnknown": False, "orphanRecovery": True},
+            ],
+        )
+        self.assertEqual(
+            result["queueLegacy"],
+            [
+                {"id": "legacy-0", "text": "one", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+                {"id": "legacy-1", "text": "two", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+                {"id": "legacy-2", "text": " three ", "sending": False, "commitUnknown": False, "orphanRecovery": False},
+            ],
+        )
+        self.assertEqual(result["queueEmpty"], [])
         self.assertTrue(result["frozen"])
         self.assertTrue(result["groupsFrozen"])
         self.assertTrue(result["groupObjectsFrozen"])

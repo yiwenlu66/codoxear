@@ -104,6 +104,27 @@
     return lines.concat(rowLines).join("\n");
   }
 
+  function normalizeQueueItems(data) {
+    if (data && Array.isArray(data.items)) {
+      return data.items
+        .filter((item) => item && typeof item === "object")
+        .map((item) => ({
+          id: typeof item.id === "string" ? item.id : "",
+          text: typeof item.text === "string" ? item.text : "",
+          sending: !!item.sending,
+          commitUnknown: !!item.commit_unknown,
+          orphanRecovery: !!item.orphan_recovery,
+        }))
+        .filter((item) => item.id && item.text.trim());
+    }
+    if (data && Array.isArray(data.queue)) {
+      return data.queue
+        .filter((text) => typeof text === "string" && text.trim())
+        .map((text, idx) => ({ id: `legacy-${idx}`, text, sending: false, commitUnknown: false, orphanRecovery: false }));
+    }
+    return [];
+  }
+
   window.CodoxearSessionHelpers = Object.freeze({
     SESSION_SIDEBAR_GROUPS,
     sessionLaunchFailed,
@@ -118,5 +139,6 @@
     sessionIsFast,
     diagnosticsProviderDisplay,
     diagnosticsCopyText,
+    normalizeQueueItems,
   });
 })();
