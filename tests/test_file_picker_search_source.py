@@ -32,7 +32,20 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
     source = APP_JS.read_text(encoding="utf-8")
     start = source.index("function fileCandidateKey(path")
     end = source.index("async function getKnownFileRefCandidates() {", start)
-    snippet = source[start:end]
+    wrapper_names = [
+        "fileSearchScore",
+        "normalizeDraftFilePath",
+        "filePickerFoldedSearchText",
+        "filePickerOriginalRangeForFolded",
+        "filePickerMatchRanges",
+        "filePickerMatchRangesForQuery",
+        "filePickerCandidateScore",
+        "compareFilePickerEntries",
+    ]
+    snippet = "\n".join(js_function(source, name) for name in wrapper_names) + "\n" + source[start:end]
+    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n"
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -52,7 +65,9 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
           baseName: (path) => String(path || "").split("/").pop() || "",
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n")}, ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
+        vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
         const seedEntries = state.fileEntries || (state.fileCandidateList || []).map((path) => ({{ path }}));
         ctx.__test_file_picker_search.applyFileCandidateEntries(seedEntries);
         const entries = ctx.__test_file_picker_search.visibleFilePickerEntries();
@@ -78,12 +93,17 @@ def eval_file_picker_match_range_helpers() -> dict:
             "filePickerMatchRangesForQuery",
         ]
     )
+    snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\n" + snippet
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const ctx = {{}};
+        const ctx = {{ window: {{}} }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet)}, ctx);
+        vm.runInContext({json.dumps(display_source)}, ctx);
+        vm.runInContext({json.dumps(file_helpers_source)}, ctx);
+        vm.runInContext({json.dumps(snippet_with_helpers)}, ctx);
         function slices(text, ranges) {{ return ranges.map(([start, end]) => text.slice(start, end)); }}
         const turkishText = "İfoo.py";
         const emojiText = "a😀-b.txt";

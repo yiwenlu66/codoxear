@@ -23,7 +23,7 @@ def eval_video_preview_failure_path() -> dict:
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
-        const moduleCtx = {{ window: {{ CodoxearDisplay: {{ fmtBytes(value) {{ return String(value); }} }} }} }};
+        const moduleCtx = {{ window: {{ CodoxearDisplay: {{ fmtBytes(value) {{ return String(value); }}, baseName(path) {{ return String(path || "").split("/").filter(Boolean).pop() || String(path || ""); }} }} }} }};
         vm.createContext(moduleCtx);
         vm.runInContext({json.dumps(file_helpers_source)}, moduleCtx);
         const ctx = {{

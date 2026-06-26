@@ -46,6 +46,31 @@ def eval_file_helpers_real_order() -> dict:
           videoErrorString: helpers.fileVideoPreviewErrorText(" transcode failed \\n"),
           videoErrorBlank: helpers.fileVideoPreviewErrorText(new Error("   ")),
           videoErrorNull: helpers.fileVideoPreviewErrorText(null),
+          fileScoreNoQuery: helpers.fileSearchScore("/tmp/project", "   "),
+          fileScoreExact: helpers.fileSearchScore("/tmp/project", " /TMP/PROJECT "),
+          fileScoreBaseExact: helpers.fileSearchScore("/tmp/project", "project"),
+          fileScoreBoundaryToken: helpers.fileSearchScore("/tmp/project-alpha", "project"),
+          fileScoreMultiToken: helpers.fileSearchScore("/work/foo-bar", "foo bar"),
+          fileScoreSubsequence: helpers.fileSearchScore("abc", "ac"),
+          fileScoreNoMatch: helpers.fileSearchScore("abc", "az"),
+          normalizedDotSlash: helpers.normalizeDraftFilePath("./foo.py"),
+          normalizedBackslash: helpers.normalizeDraftFilePath("foo" + "\\\\" + "bar.py"),
+          normalizedParent: helpers.normalizeDraftFilePath("../foo.py"),
+          normalizedAbs: helpers.normalizeDraftFilePath("/tmp/foo.py"),
+          normalizedTrailing: helpers.normalizeDraftFilePath("foo/"),
+          normalizedNul: helpers.normalizeDraftFilePath("foo" + String.fromCharCode(0) + "bar"),
+          rangeExact: helpers.filePickerMatchRangesForQuery("src/foo_bar.py", "foo"),
+          rangeFuzzy: helpers.filePickerMatchRangesForQuery("src/foo_bar.py", "fb"),
+          rangeNormalized: helpers.filePickerMatchRangesForQuery("foo.py", "./foo.py"),
+          rangeNone: helpers.filePickerMatchRangesForQuery("src/foo.py", "zz"),
+          rangeMerged: helpers.filePickerMatchRangesForQuery("src/foo.py", "src foo"),
+          turkishSlices: helpers.filePickerMatchRangesForQuery("İfoo.py", "foo").map(([start, end]) => "İfoo.py".slice(start, end)),
+          emojiSlices: helpers.filePickerMatchRangesForQuery("a😀-b.txt", "😀b").map(([start, end]) => "a😀-b.txt".slice(start, end)),
+          candidateNormalizedScore: helpers.filePickerCandidateScore("foo.py", "./foo.py"),
+          compareScore: helpers.compareFilePickerEntries({{ path: "b", score: 1 }}, {{ path: "a", score: 2 }}),
+          comparePath: helpers.compareFilePickerEntries({{ path: "a", score: 1 }}, {{ path: "b", score: 1 }}),
+          compareGitPath: helpers.compareFilePickerEntries({{ path: "a", gitPath: false }}, {{ path: "a", gitPath: true }}),
+          compareChanged: helpers.compareFilePickerEntries({{ path: "a", changed: true }}, {{ path: "a", changed: false }}),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -74,15 +99,32 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "blockedFileMessage",
             "formatPriorityOffset",
             "fileVideoPreviewErrorText",
+            "fileSearchScore",
+            "normalizeDraftFilePath",
+            "filePickerFoldedSearchText",
+            "filePickerOriginalRangeForFolded",
+            "filePickerMatchRanges",
+            "filePickerMatchRangesForQuery",
+            "filePickerCandidateScore",
+            "compareFilePickerEntries",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
         self.assertIn("window.CodoxearFileHelpers = Object.freeze({", helper_source)
         self.assertIn('throw new Error("Codoxear display helpers failed to load")', helper_source)
+        self.assertIn('typeof codoxearDisplay.baseName !== "function"', helper_source)
         self.assertIn("return codoxearFileHelpers.fileVideoPreviewErrorText(err);", source)
+        self.assertIn("return codoxearFileHelpers.filePickerMatchRangesForQuery(text, query);", source)
+        self.assertIn("return codoxearFileHelpers.filePickerCandidateScore(path, query);", source)
+        file_search_region_start = source.index("function collectMessageFileRefs()")
+        file_search_region_end = source.index("function appendHighlightedFileMenuPath(parent, text, query)", file_search_region_start)
+        file_search_region = source[file_search_region_start:file_search_region_end]
         self.assertNotIn("const raw = String(rawPath ?? \"\");", source)
         self.assertNotIn("const out = [];\n        for (const v of val)", source)
         self.assertNotIn("const raw = err && err.message ? String(err.message)", source)
+        self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', file_search_region)
+        self.assertNotIn("function filePickerFoldedSearchText(text)", file_search_region)
+        self.assertNotIn("function filePickerCandidateScore(path, query)", file_search_region)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
         result = eval_file_helpers_real_order()
@@ -107,6 +149,31 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["videoErrorString"], "transcode failed")
         self.assertEqual(result["videoErrorBlank"], "compatible video preview failed")
         self.assertEqual(result["videoErrorNull"], "compatible video preview failed")
+        self.assertEqual(result["fileScoreNoQuery"], 0)
+        self.assertEqual(result["fileScoreExact"], 12000)
+        self.assertEqual(result["fileScoreBaseExact"], 10000)
+        self.assertEqual(result["fileScoreBoundaryToken"], 298)
+        self.assertEqual(result["fileScoreMultiToken"], 580)
+        self.assertEqual(result["fileScoreSubsequence"], 124)
+        self.assertEqual(result["fileScoreNoMatch"], -1)
+        self.assertEqual(result["normalizedDotSlash"], "foo.py")
+        self.assertEqual(result["normalizedBackslash"], "foo/bar.py")
+        self.assertEqual(result["normalizedParent"], "")
+        self.assertEqual(result["normalizedAbs"], "")
+        self.assertEqual(result["normalizedTrailing"], "")
+        self.assertEqual(result["normalizedNul"], "")
+        self.assertEqual(result["rangeExact"], [[4, 7]])
+        self.assertEqual(result["rangeFuzzy"], [[4, 5], [8, 9]])
+        self.assertEqual(result["rangeNormalized"], [[0, 6]])
+        self.assertEqual(result["rangeNone"], [])
+        self.assertEqual(result["rangeMerged"], [[0, 3], [4, 7]])
+        self.assertEqual(result["turkishSlices"], ["foo"])
+        self.assertEqual(result["emojiSlices"], ["😀", "b"])
+        self.assertEqual(result["candidateNormalizedScore"], 12000)
+        self.assertGreater(result["compareScore"], 0)
+        self.assertLess(result["comparePath"], 0)
+        self.assertLess(result["compareGitPath"], 0)
+        self.assertLess(result["compareChanged"], 0)
         self.assertTrue(result["frozen"])
 
 

@@ -193,7 +193,15 @@
         typeof codoxearFileHelpers.isDiffableFileKind !== "function" ||
         typeof codoxearFileHelpers.blockedFileMessage !== "function" ||
         typeof codoxearFileHelpers.formatPriorityOffset !== "function" ||
-        typeof codoxearFileHelpers.fileVideoPreviewErrorText !== "function"
+        typeof codoxearFileHelpers.fileVideoPreviewErrorText !== "function" ||
+        typeof codoxearFileHelpers.fileSearchScore !== "function" ||
+        typeof codoxearFileHelpers.normalizeDraftFilePath !== "function" ||
+        typeof codoxearFileHelpers.filePickerFoldedSearchText !== "function" ||
+        typeof codoxearFileHelpers.filePickerOriginalRangeForFolded !== "function" ||
+        typeof codoxearFileHelpers.filePickerMatchRanges !== "function" ||
+        typeof codoxearFileHelpers.filePickerMatchRangesForQuery !== "function" ||
+        typeof codoxearFileHelpers.filePickerCandidateScore !== "function" ||
+        typeof codoxearFileHelpers.compareFilePickerEntries !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -421,6 +429,38 @@
 
       function formatPriorityOffset(value) {
         return codoxearFileHelpers.formatPriorityOffset(value);
+      }
+
+      function fileSearchScore(candidate, query) {
+        return codoxearFileHelpers.fileSearchScore(candidate, query);
+      }
+
+      function normalizeDraftFilePath(raw) {
+        return codoxearFileHelpers.normalizeDraftFilePath(raw);
+      }
+
+      function filePickerFoldedSearchText(text) {
+        return codoxearFileHelpers.filePickerFoldedSearchText(text);
+      }
+
+      function filePickerOriginalRangeForFolded(mapped, start, end) {
+        return codoxearFileHelpers.filePickerOriginalRangeForFolded(mapped, start, end);
+      }
+
+      function filePickerMatchRanges(text, query) {
+        return codoxearFileHelpers.filePickerMatchRanges(text, query);
+      }
+
+      function filePickerMatchRangesForQuery(text, query) {
+        return codoxearFileHelpers.filePickerMatchRangesForQuery(text, query);
+      }
+
+      function filePickerCandidateScore(path, query) {
+        return codoxearFileHelpers.filePickerCandidateScore(path, query);
+      }
+
+      function compareFilePickerEntries(a, b) {
+        return codoxearFileHelpers.compareFilePickerEntries(a, b);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;
@@ -8977,43 +9017,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           return out;
         }
 
-        function fileSearchScore(candidate, query) {
-          const text = String(candidate || "");
-          const raw = String(query || "").trim().toLowerCase();
-          if (!raw) return 0;
-          const lower = text.toLowerCase();
-          if (lower === raw) return 12000;
-          const base = baseName(text).toLowerCase();
-          if (base === raw) return 10000;
-          let total = 0;
-          for (const token of raw.split(/\s+/).filter(Boolean)) {
-            const exactIdx = lower.indexOf(token);
-            if (exactIdx >= 0) {
-              const prev = exactIdx > 0 ? lower[exactIdx - 1] : "";
-              const boundaryBonus = !prev || "/._-".includes(prev) ? 24 : 0;
-              const baseIdx = base.indexOf(token);
-              total += 240 - exactIdx * 2 + boundaryBonus + (baseIdx >= 0 ? 44 - baseIdx : 0);
-              continue;
-            }
-            let pos = -1;
-            let first = -1;
-            let last = -1;
-            let consecutive = 0;
-            let boundaries = 0;
-            for (const ch of token) {
-              pos = lower.indexOf(ch, pos + 1);
-              if (pos < 0) return -1;
-              if (first < 0) first = pos;
-              if (last >= 0 && pos === last + 1) consecutive += 1;
-              if (pos === 0 || "/._-".includes(lower[pos - 1] || "")) boundaries += 1;
-              last = pos;
-            }
-            const span = last - first + 1;
-            total += 120 - first - Math.max(0, span - token.length) * 4 + consecutive * 10 + boundaries * 8;
-          }
-          return total;
-        }
-
         function pickerEntryForKey(key, { score = 0 } = {}) {
           const entry = cloneFileCandidateEntry(fileEntryMap.get(key));
           return entry ? { ...entry, added: true, score } : null;
@@ -9030,18 +9033,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           };
         }
 
-        function normalizeDraftFilePath(raw) {
-          let path = String(raw || "").trim().replace(/\\/g, "/");
-          path = path.replace(/^(?:\.\/)+/, "");
-          if (!path || path === "." || path.startsWith("/") || path.endsWith("/") || path.includes("\x00")) return "";
-          const parts = path.split("/");
-          if (!parts.length) return "";
-          for (const part of parts) {
-            if (!part || part === "." || part === "..") return "";
-          }
-          return parts.join("/");
-        }
-
         function draftFileEntry(path) {
           return {
             path,
@@ -9052,79 +9043,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
             score: 0,
             createNew: true,
           };
-        }
-
-        function filePickerFoldedSearchText(text) {
-          const value = String(text || "");
-          let folded = "";
-          const startMap = [];
-          const endMap = [];
-          for (let idx = 0; idx < value.length; ) {
-            const codePoint = value.codePointAt(idx);
-            const raw = String.fromCodePoint(codePoint);
-            const nextIdx = idx + raw.length;
-            const lower = raw.toLowerCase();
-            for (let lowerIdx = 0; lowerIdx < lower.length; lowerIdx += 1) {
-              startMap.push(idx);
-              endMap.push(nextIdx);
-            }
-            folded += lower;
-            idx = nextIdx;
-          }
-          return { folded, startMap, endMap };
-        }
-
-        function filePickerOriginalRangeForFolded(mapped, start, end) {
-          const foldedStart = Math.max(0, Math.floor(Number(start) || 0));
-          const foldedEnd = Math.max(foldedStart, Math.floor(Number(end) || 0));
-          if (!mapped || foldedEnd <= foldedStart || foldedStart >= mapped.startMap.length) return null;
-          const last = Math.min(mapped.endMap.length - 1, foldedEnd - 1);
-          const originalStart = mapped.startMap[foldedStart];
-          const originalEnd = mapped.endMap[last];
-          if (!Number.isFinite(originalStart) || !Number.isFinite(originalEnd) || originalEnd <= originalStart) return null;
-          return [originalStart, originalEnd];
-        }
-
-        function filePickerMatchRanges(text, query) {
-          const mapped = filePickerFoldedSearchText(text);
-          const folded = mapped.folded;
-          const raw = filePickerFoldedSearchText(String(query || "").trim()).folded;
-          if (!raw || !folded) return [];
-          const ranges = [];
-          for (const token of raw.split(/\s+/).filter(Boolean)) {
-            const exactIdx = folded.indexOf(token);
-            if (exactIdx >= 0) {
-              const range = filePickerOriginalRangeForFolded(mapped, exactIdx, exactIdx + token.length);
-              if (range) ranges.push(range);
-              continue;
-            }
-            let pos = -1;
-            const positions = [];
-            for (const ch of token) {
-              pos = folded.indexOf(ch, pos + 1);
-              if (pos < 0) return [];
-              positions.push([pos, pos + ch.length]);
-            }
-            for (const [start, end] of positions) {
-              const range = filePickerOriginalRangeForFolded(mapped, start, end);
-              if (range) ranges.push(range);
-            }
-          }
-          ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-          const merged = [];
-          for (const [start, end] of ranges) {
-            if (!merged.length || start > merged[merged.length - 1][1]) merged.push([start, end]);
-            else merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
-          }
-          return merged;
-        }
-
-        function filePickerMatchRangesForQuery(text, query) {
-          const rawRanges = filePickerMatchRanges(text, query);
-          if (rawRanges.length) return rawRanges;
-          const normalized = normalizeDraftFilePath(query);
-          if (!normalized || normalized === String(query || "").trim()) return [];
-          return filePickerMatchRanges(text, normalized);
         }
 
         function appendHighlightedFileMenuPath(parent, text, query) {
@@ -9270,23 +9188,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
                 applyFileMenuState();
               });
           }, 120);
-        }
-
-        function filePickerCandidateScore(path, query) {
-          const rawScore = fileSearchScore(path, query);
-          const normalized = normalizeDraftFilePath(query);
-          if (!normalized || normalized === String(query || "")) return rawScore;
-          return Math.max(rawScore, fileSearchScore(path, normalized));
-        }
-
-        function compareFilePickerEntries(a, b) {
-          const scoreDiff = Number(b.score || 0) - Number(a.score || 0);
-          if (scoreDiff) return scoreDiff;
-          const pathDiff = String(a.path || "").localeCompare(String(b.path || ""));
-          if (pathDiff) return pathDiff;
-          const gitPathDiff = Number(Boolean(a.gitPath)) - Number(Boolean(b.gitPath));
-          if (gitPathDiff) return gitPathDiff;
-          return Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added);
         }
 
         function normalizeSamePathFilePickerScores(entries) {
