@@ -3406,3 +3406,10 @@
 - Direct unknown send state remains manager-owned; `_queue_has_recovery_items_locked` still combines manager direct-unknown evidence with `QueueStore.has_recovery_items`.
 - The commit preserved the old commit-unknown error response behavior by returning `dict(item)` from the queue store preservation helper, including incidental item fields, rather than sanitizing through `copy_queue_item`.
 - Focused development sanity: queue-store/server queue/sweep/route group returned `106 passed, 22 subtests`. This was used as a mistake detector after moving the item-state mechanics.
+
+## 2026-06-26T21:45:00Z Unattended sweep policy checkpoint
+- Functional commit `1a51a9a Move unattended sweep policy helpers`: moved unattended scheduler policy decisions into `codoxear/unattended.py`.
+- Actual architecture moved: unattended config normalization for sweep decisions, scope-key selection, cooldown blocking, final-assistant tail eligibility, exhausted-budget disabling, live prompt decision, and post-send remaining-injection decrement now live with the unattended subsystem.
+- What intentionally did not move: `SessionManager._unattended_sweep` still owns session discovery/prune freshness, session snapshot collection, broker state reads, local queue-length checks, transcript-tail reads, input locking, `send()` invocation, last-injected bookkeeping, persistence calls, and per-session error isolation/logging.
+- Source sentinel update: unattended session-list field source checks now point to `session_listing.py`, reflecting the earlier active-listing snapshot extraction where list-row fields moved out of `server.py`.
+- Focused development sanity: py-compile of changed files passed; unattended store/sweep/mode/input group returned `27 passed`. This was used to catch handoff errors; the architecture claim is the ownership move above.
