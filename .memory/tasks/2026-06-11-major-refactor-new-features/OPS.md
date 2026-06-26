@@ -3439,3 +3439,9 @@
 - Failure mechanism: `tests/test_file_upload_module_source.py` still expected pending-attachment and commit-unknown row projection literals in `server.py`, but that row projection now lives in `session_listing.py` after the earlier active-listing snapshot extraction. This was a stale ownership sentinel, not a runtime behavior failure.
 - Test-only commit `1c52713 Update file upload listing source sentinel`: updated the file-upload source sentinel to check `session_listing.py` for `pending_attachment=bool(s.pending_attachment)` and the current `commit_unknown_send` projection expression.
 - Re-run evidence: `pytest -q tests/test_file_upload_module_source.py` returned `3 passed`; full `pytest -q` returned `1134 passed, 107 subtests`.
+
+## 2026-06-26T23:15:00Z Session readiness preconditions checkpoint
+- Functional commit `4813bdb Move session readiness preconditions`: moved direct-send and queue-promotion blocker predicates from `SessionManager` into `codoxear/session_runtime.py`.
+- Actual architecture moved: `session_runtime.session_allows_direct_send` now owns the direct-send semantics for direct commit-unknown state and pending attachment allowance; `session_runtime.session_allows_queue_promotion` now owns queue-promotion blocking by direct commit-unknown and pending attachment state.
+- What intentionally remains in `SessionManager`: metadata refresh before probing, log-path change handling, broker state calls, confirmed-send boundary consumption, idle/log readiness resolution, send invocation, exception messages, and lock boundaries.
+- Focused development sanity: py-compile of runtime/server/runtime tests passed; runtime, send ack, server queue persistence, queue sweep idle guard, file-upload source sentinel, and pending-log idle tests returned `149 passed, 26 subtests`.
