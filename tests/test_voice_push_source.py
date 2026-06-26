@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VOICE_PUSH = ROOT / "codoxear" / "voice_push.py"
+VOICE_ROUTES = ROOT / "codoxear" / "voice_routes.py"
 SERVICE_WORKER = ROOT / "codoxear" / "static" / "service-worker.js"
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 
@@ -111,7 +112,7 @@ class TestVoicePushSource(unittest.TestCase):
 
     def test_voice_settings_redact_api_key_and_preserve_blank_save(self) -> None:
         voice_source = VOICE_PUSH.read_text(encoding="utf-8")
-        server_source = (ROOT / "codoxear" / "server.py").read_text(encoding="utf-8")
+        voice_route_source = VOICE_ROUTES.read_text(encoding="utf-8")
         app_source = APP_JS.read_text(encoding="utf-8")
         self.assertIn("def _chmod_private_file(path: Path) -> None:", voice_source)
         self.assertIn("os.chmod(path, 0o600)", voice_source)
@@ -122,8 +123,8 @@ class TestVoicePushSource(unittest.TestCase):
         self.assertIn('settings["has_tts_api_key"] = has_tts_api_key', voice_source)
         self.assertIn("preserve_blank_api_key: bool = False", voice_source)
         self.assertIn('obj["tts_api_key"] = str(self._voice_settings.get("tts_api_key") or "")', voice_source)
-        self.assertIn("settings_snapshot(redact_secrets=True)", server_source)
-        self.assertIn("set_settings(obj, preserve_blank_api_key=True, redact_response=True)", server_source)
+        self.assertIn("settings_snapshot(redact_secrets=True)", voice_route_source)
+        self.assertIn("set_settings(obj, preserve_blank_api_key=True, redact_response=True)", voice_route_source)
         self.assertIn('has_tts_api_key: false', app_source)
         self.assertIn('id: "voiceClearApiKeyToggle"', app_source)
         self.assertIn("function voiceSettingsDialogOpen()", app_source)

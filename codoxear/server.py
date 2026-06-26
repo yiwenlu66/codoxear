@@ -199,6 +199,9 @@ from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_c
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
 from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
 from .voice_push import VoicePushCoordinator
+from .voice_routes import VoiceRouteDeps
+from .voice_routes import handle_voice_get_route as _handle_voice_get_route
+from .voice_routes import handle_voice_post_route as _handle_voice_post_route
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -5310,6 +5313,14 @@ def _session_route_deps() -> SessionRouteDeps:
     )
 
 
+def _voice_route_deps() -> VoiceRouteDeps:
+    return VoiceRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+    )
+
+
 def _file_get_route_deps() -> FileGetRouteDeps:
     return FileGetRouteDeps(
         require_auth=_require_auth,
@@ -5474,88 +5485,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return False
 
     def _handle_voice_get(self, path: str, query: str) -> bool:
-        if path == "/api/settings/voice":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            _json_response(self, 200, {"ok": True, **MANAGER._voice_push.settings_snapshot(redact_secrets=True)})
-            return True
-
-        if path == "/api/notifications/subscription":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            _json_response(self, 200, {"ok": True, **MANAGER._voice_push.subscriptions_snapshot()})
-            return True
-
-        if path == "/api/notifications/message":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            qs = urllib.parse.parse_qs(query)
-            message_id = (qs.get("message_id") or [""])[0].strip()
-            if not message_id:
-                _json_response(self, 400, {"error": "message_id required"})
-                return True
-            state = MANAGER._voice_push.notification_state_for_message(message_id)
-            if state is None:
-                _json_response(self, 404, {"error": "unknown message"})
-                return True
-            _json_response(self, 200, {"ok": True, **state})
-            return True
-
-        if path == "/api/notifications/feed":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            qs = urllib.parse.parse_qs(query)
-            since_raw = (qs.get("since") or ["0"])[0].strip()
-            try:
-                since_ts = float(since_raw or "0")
-            except ValueError:
-                _json_response(self, 400, {"error": "invalid since"})
-                return True
-            items = MANAGER._voice_push.notification_feed_since(since_ts)
-            _json_response(self, 200, {"ok": True, "items": items})
-            return True
-
-        if path == "/api/audio/live.m3u8":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            body = MANAGER._voice_push.playlist_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
-            self.end_headers()
-            self.wfile.write(body)
-            return True
-
-        if path.startswith("/api/audio/segments/"):
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            segment_name = path.split("/api/audio/segments/", 1)[1]
-            try:
-                segment_path = MANAGER._voice_push.segment_path(segment_name)
-            except FileNotFoundError:
-                self.send_error(404)
-                return True
-            raw = segment_path.read_bytes()
-            self.send_response(200)
-            self.send_header("Content-Type", "video/mp2t")
-            self.send_header("Content-Length", str(len(raw)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Pragma", "no-cache")
-            self.send_header("Expires", "0")
-            self.end_headers()
-            self.wfile.write(raw)
-            return True
-
-        return False
+        return _handle_voice_get_route(
+            self,
+            path=path,
+            query=query,
+            voice_push=getattr(MANAGER, "_voice_push", None),
+            deps=_voice_route_deps(),
+        )
 
     def _read_json_body(self, *, limit: int = 2 * 1024 * 1024, too_large_error: str | None = None) -> dict[str, Any]:
         try:
@@ -5579,79 +5515,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return obj
 
     def _handle_voice_post(self, path: str) -> bool:
-        if path == "/api/settings/voice":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            obj = self._read_json_body()
-            try:
-                payload = MANAGER._voice_push.set_settings(obj, preserve_blank_api_key=True, redact_response=True)
-            except ValueError as e:
-                _json_response(self, 400, {"error": str(e)})
-                return True
-            _json_response(self, 200, {"ok": True, **payload})
-            return True
-
-        if path == "/api/notifications/subscription":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            obj = self._read_json_body()
-            try:
-                payload = MANAGER._voice_push.upsert_subscription(
-                    subscription=obj.get("subscription"),
-                    user_agent=str(obj.get("user_agent") or ""),
-                    device_label=str(obj.get("device_label") or ""),
-                    device_class=str(obj.get("device_class") or ""),
-                )
-            except ValueError as e:
-                _json_response(self, 400, {"error": str(e)})
-                return True
-            _json_response(self, 200, {"ok": True, **payload})
-            return True
-
-        if path == "/api/notifications/subscription/toggle":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            obj = self._read_json_body()
-            endpoint = obj.get("endpoint")
-            enabled = obj.get("enabled")
-            if not isinstance(endpoint, str) or not endpoint.strip():
-                _json_response(self, 400, {"error": "endpoint required"})
-                return True
-            if not isinstance(enabled, bool):
-                _json_response(self, 400, {"error": "enabled must be a boolean"})
-                return True
-            try:
-                payload = MANAGER._voice_push.toggle_subscription(endpoint=endpoint, enabled=enabled)
-            except KeyError:
-                _json_response(self, 404, {"error": "unknown subscription"})
-                return True
-            except ValueError as e:
-                _json_response(self, 400, {"error": str(e)})
-                return True
-            _json_response(self, 200, {"ok": True, **payload})
-            return True
-
-        if path == "/api/audio/listener":
-            if not _require_auth(self):
-                self._unauthorized()
-                return True
-            obj = self._read_json_body()
-            client_id = obj.get("client_id")
-            enabled = obj.get("enabled")
-            if not isinstance(client_id, str) or not client_id.strip():
-                _json_response(self, 400, {"error": "client_id required"})
-                return True
-            if not isinstance(enabled, bool):
-                _json_response(self, 400, {"error": "enabled must be a boolean"})
-                return True
-            payload = MANAGER._voice_push.listener_heartbeat(client_id=client_id, enabled=enabled)
-            _json_response(self, 200, {"ok": True, **payload})
-            return True
-
-        return False
+        return _handle_voice_post_route(
+            self,
+            path=path,
+            voice_push=getattr(MANAGER, "_voice_push", None),
+            deps=_voice_route_deps(),
+        )
 
     def do_GET(self) -> None:
         try:
