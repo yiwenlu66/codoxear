@@ -52,9 +52,11 @@ from .diagnostics_routes import handle_diagnostics_get_route as _handle_diagnost
 from .file_response import send_attachment_file_response as _send_attachment_file_response
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
+from .file_routes import FileGetRouteDeps
 from .file_routes import FileRouteError as _FileRouteError
+from .file_routes import handle_absolute_file_preview_route as _handle_absolute_file_preview_route
+from .file_routes import handle_file_get_route as _handle_file_get_route
 from .file_routes import parse_session_file_write_request as _parse_session_file_write_request
-from .file_routes import session_file_read_payload as _session_file_read_payload
 from .file_routes import session_file_write_response as _session_file_write_response
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
@@ -5294,6 +5296,29 @@ def _diagnostics_route_deps() -> DiagnosticsRouteDeps:
     )
 
 
+def _file_get_route_deps() -> FileGetRouteDeps:
+    return FileGetRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        resolve_session_cwd=_resolve_session_cwd,
+        resolve_existing_session_file=_resolve_existing_session_file,
+        resolve_session_path=_resolve_session_path,
+        resolve_git_client_file_view=_resolve_git_client_file_view,
+        resolve_git_existing_regular_file=_resolve_git_existing_regular_file,
+        resolve_existing_absolute_file=_resolve_existing_absolute_file,
+        read_client_file_view=_read_client_file_view,
+        search_session_relative_files=_search_session_relative_files,
+        list_session_relative_files=_list_session_relative_files,
+        file_kind=_file_kind,
+        ensure_video_preview=_ensure_video_preview,
+        inspect_downloadable_file=_inspect_downloadable_file,
+        download_disposition=_download_disposition,
+        send_inline_file_response=_send_inline_file_response,
+        send_attachment_file_response=_send_attachment_file_response,
+        file_search_limit=FILE_SEARCH_LIMIT,
+    )
+
+
 def _git_route_deps() -> GitRouteDeps:
     return GitRouteDeps(
         require_auth=_require_auth,
@@ -5688,374 +5713,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ):
                 return
 
-            session_id = _match_session_route(path, "file", "read")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                git_path = _query_flag(qs, "git_path")
-                try:
-                    if git_path:
-                        p, rel, view = _resolve_git_client_file_view(session_id=session_id, raw_path=rel)
-                    else:
-                        base = _resolve_session_cwd(s.cwd)
-                        p = _resolve_existing_session_file(base, rel)
-                        view = _read_client_file_view(p)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    MANAGER.files_add(session_id, str(p))
-                except KeyError:
-                    pass
-                _json_response(
-                    self,
-                    200,
-                    _session_file_read_payload(
-                        session_id=session_id,
-                        path_obj=p,
-                        rel=str(rel),
-                        view=view,
-                        git_path=git_path,
-                    ),
-                )
-                return
-
-            session_id = _match_session_route(path, "file", "search")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                query_raw = qs.get("q")
-                if not query_raw or not query_raw[0].strip():
-                    _json_response(self, 400, {"error": "q required"})
-                    return
-                limit_raw = qs.get("limit", [str(FILE_SEARCH_LIMIT)])[0]
-                try:
-                    limit = int(str(limit_raw).strip() or str(FILE_SEARCH_LIMIT))
-                except ValueError:
-                    _json_response(self, 400, {"error": "limit must be an integer"})
-                    return
-                if limit < 1:
-                    _json_response(self, 400, {"error": "limit must be >= 1"})
-                    return
-                try:
-                    base = _resolve_session_cwd(s.cwd)
-                    result = _search_session_relative_files(base, query=query_raw[0], limit=limit)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except (RuntimeError, ValueError) as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "ok": True,
-                        "cwd": str(base),
-                        "query": result["query"],
-                        "mode": result["mode"],
-                        "matches": result["matches"],
-                        "scanned": result["scanned"],
-                        "truncated": result["truncated"],
-                    },
-                )
-                return
-
-            session_id = _match_session_route(path, "file", "list")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                try:
-                    base = _resolve_session_cwd(s.cwd)
-                    files = _list_session_relative_files(base)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                _json_response(self, 200, {"ok": True, "cwd": str(base), "files": files})
-                return
-
-            session_id = _match_session_route(path, "file", "blob")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                git_path = _query_flag(qs, "git_path")
-                try:
-                    if git_path:
-                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
-                    else:
-                        base = _resolve_session_cwd(s.cwd)
-                        p = _resolve_existing_session_file(base, rel)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    with p.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, ctype = _file_kind(p, prefix)
-                if _kind == "video":
-                    _send_inline_file_response(self, p, ctype or "application/octet-stream")
-                    return
-                if _kind not in {"image", "pdf"} or ctype is None:
-                    _json_response(self, 400, {"error": "file is not previewable inline"})
-                    return
-                _send_inline_file_response(self, p, ctype)
-                return
-
-            session_id = _match_session_route(path, "file", "video_preview")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                git_path = _query_flag(qs, "git_path")
-                try:
-                    if git_path:
-                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
-                    else:
-                        base = _resolve_session_cwd(s.cwd)
-                        p = _resolve_existing_session_file(base, rel)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                try:
-                    with p.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, _ctype = _file_kind(p, prefix)
-                if _kind != "video":
-                    _json_response(self, 400, {"error": "file is not a video"})
-                    return
-                try:
-                    preview = _ensure_video_preview(p)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                    return
-                _send_inline_file_response(self, preview, "video/mp4")
-                return
-
-            if path == "/api/files/blob":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                try:
-                    path_obj = _resolve_existing_absolute_file(path_q[0])
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    with path_obj.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, ctype = _file_kind(path_obj, prefix)
-                if _kind == "video":
-                    _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
-                    return
-                if _kind not in {"image", "pdf"} or ctype is None:
-                    _json_response(self, 400, {"error": "file is not previewable inline"})
-                    return
-                _send_inline_file_response(self, path_obj, ctype)
-                return
-
-            if path == "/api/files/video_preview":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                try:
-                    path_obj = _resolve_existing_absolute_file(path_q[0])
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    with path_obj.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, _ctype = _file_kind(path_obj, prefix)
-                if _kind != "video":
-                    _json_response(self, 400, {"error": "file is not a video"})
-                    return
-                try:
-                    preview = _ensure_video_preview(path_obj)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                    return
-                _send_inline_file_response(self, preview, "video/mp4")
-                return
-
-            session_id = _match_session_route(path, "file", "download")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                rel = path_q[0]
-                git_path = _query_flag(qs, "git_path")
-                try:
-                    if git_path:
-                        p, rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=rel)
-                    else:
-                        base = _resolve_session_cwd(s.cwd)
-                        p = _resolve_session_path(base, rel)
-                    size = _inspect_downloadable_file(p)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                _send_attachment_file_response(self, p, size=size, content_disposition=_download_disposition(p))
+            if _handle_file_get_route(
+                self,
+                path=path,
+                query=u.query,
+                manager=MANAGER,
+                deps=_file_get_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             if _handle_git_get_route(
@@ -6361,90 +6026,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 )
                 return
 
-            if path == "/api/files/blob":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                try:
-                    path_obj = _resolve_existing_absolute_file(path_q[0])
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    with path_obj.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, ctype = _file_kind(path_obj, prefix)
-                if _kind == "video":
-                    _send_inline_file_response(self, path_obj, ctype or "application/octet-stream")
-                    return
-                if _kind not in {"image", "pdf"} or ctype is None:
-                    _json_response(self, 400, {"error": "file is not previewable inline"})
-                    return
-                _send_inline_file_response(self, path_obj, ctype)
-                return
-
-            if path == "/api/files/video_preview":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                qs = urllib.parse.parse_qs(u.query)
-                path_q = qs.get("path")
-                if not path_q or not path_q[0]:
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                try:
-                    path_obj = _resolve_existing_absolute_file(path_q[0])
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                try:
-                    with path_obj.open("rb") as f:
-                        prefix = f.read(4096)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                _kind, _ctype = _file_kind(path_obj, prefix)
-                if _kind != "video":
-                    _json_response(self, 400, {"error": "file is not a video"})
-                    return
-                try:
-                    preview = _ensure_video_preview(path_obj)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 500, {"error": f"video preview failed: {e}"})
-                    return
-                _send_inline_file_response(self, preview, "video/mp4")
+            if _handle_absolute_file_preview_route(
+                self,
+                path=path,
+                query=u.query,
+                deps=_file_get_route_deps(),
+            ):
                 return
 
             session_id = _match_session_route(path, "file", "write")
