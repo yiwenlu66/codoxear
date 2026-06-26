@@ -8,14 +8,17 @@ FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
 SESSIOND_PY = ROOT / "codoxear" / "sessiond.py"
+SESSION_LAUNCHER_PY = ROOT / "codoxear" / "session_launcher.py"
 
 
 class TestFileUploadModuleSource(unittest.TestCase):
     def test_upload_helpers_live_outside_server_with_server_state_injection(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")
         module_source = FILE_UPLOAD_PY.read_text(encoding="utf-8")
+        launcher_source = SESSION_LAUNCHER_PY.read_text(encoding="utf-8")
 
-        self.assertIn("from .file_upload import safe_filename as _safe_filename", server_source)
+        self.assertNotIn("safe_filename as _safe_filename", server_source)
+        self.assertIn("from .file_upload import safe_filename", launcher_source)
         self.assertIn("from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl", server_source)
         self.assertIn("from .file_upload import attachment_inject_text as _attachment_inject_text", server_source)
         self.assertIn("upload_dir=UPLOAD_DIR", server_source)

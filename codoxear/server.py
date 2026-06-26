@@ -15,7 +15,6 @@ import posixpath
 import re
 import secrets
 import signal
-import shlex
 import shutil
 import socket
 import socketserver
@@ -34,8 +33,6 @@ from .agent_backend import normalize_agent_backend
 from .backend_launch import apply_backend_environment as _apply_backend_environment
 from .backend_launch import build_backend_args as _build_backend_args
 from .backend_launch import build_backend_resume_args as _build_backend_resume_args
-from .backend_launch import build_tmux_inline_env as _build_tmux_inline_env
-from .backend_launch import tmux_unset_vars as _tmux_unset_vars
 from .auth import CookieAuthSettings
 from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
 from .auth import parse_cookies as _parse_cookies_impl
@@ -69,7 +66,6 @@ from .file_text import FILE_READ_MAX_BYTES
 from .file_text import read_text_file_strict as _read_text_file_strict
 from .file_types import file_kind as _file_kind
 from .file_upload import attachment_inject_text as _attachment_inject_text
-from .file_upload import safe_filename as _safe_filename
 from .file_upload import stage_uploaded_file as _stage_uploaded_file_impl
 from . import git_ops as _git_ops
 from .git_routes import GitRouteDeps
@@ -159,6 +155,10 @@ from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
 from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
+from .session_launcher import LaunchProcessDeps
+from .session_launcher import LaunchProcessFailure
+from .session_launcher import LaunchProcessRequest
+from .session_launcher import launch_broker_process as _launch_broker_process
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -4531,168 +4531,36 @@ class SessionManager:
             stderr=sys.stderr,
         )
 
-        launch_recorder.record("starting", transport="tmux" if create_in_tmux else "direct")
-
-        def fail_launch(stage: str, error: BaseException | str, **extra: Any) -> None:
-            raise SessionLaunchError(launch_recorder.failure_record(stage, error, **extra))
-
-        def tmux_launch_fields(snapshot: dict[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
-            out = dict(snapshot or {})
-            out.update(fields)
-            return out
-
-        if create_in_tmux:
-            tmux_bin = shutil.which("tmux")
-            if tmux_bin is None:
-                raise ValueError("tmux is unavailable on this host")
-            tmux_window = _safe_filename(f"{Path(spawn_cwd).name or 'session'}-{spawn_nonce[:6]}", default="session")
-            env["CODEX_WEB_TRANSPORT"] = "tmux"
-            env["CODEX_WEB_TMUX_SESSION"] = TMUX_SESSION_NAME
-            env["CODEX_WEB_TMUX_WINDOW"] = tmux_window
-            backend_bin_env_var = get_agent_backend(backend_name).bin_env_var
-            inline_env = _build_tmux_inline_env(
-                env,
-                agent_backend=backend_name,
-                tmux_session=TMUX_SESSION_NAME,
-                tmux_window=tmux_window,
-                launch_id=launch_id,
-                spawn_nonce=spawn_nonce,
-                resume_session_id=resume_session_id,
-                model_provider=model_provider,
-                preferred_auth_method=preferred_auth_method,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                service_tier=service_tier,
-                inherited_backend_bin=_clean_optional_text(os.environ.get(backend_bin_env_var)),
-            )
-            repo_root = Path(__file__).resolve().parent.parent
-            tmux_unset_vars = _tmux_unset_vars()
-            inline_argv = ["env", *[f"{key}={value}" for key, value in inline_env.items()], *argv]
-            shell_cmd = f"cd {shlex.quote(str(repo_root))} && unset {shlex.join(tmux_unset_vars)} && exec {shlex.join(inline_argv)}"
-            new_window_argv = [tmux_bin, "new-window", "-d", "-P", "-F", "#{pane_id}", "-t", f"{TMUX_SESSION_NAME}:", "-n", tmux_window, shell_cmd]
-            new_session_argv = [tmux_bin, "new-session", "-d", "-P", "-F", "#{pane_id}", "-s", TMUX_SESSION_NAME, "-n", tmux_window, shell_cmd]
-
-            def tmux_run(argv2: list[str]) -> subprocess.CompletedProcess[str]:
-                return subprocess.run(argv2, capture_output=True, text=True, env=env, check=False)
-
-            def tmux_detail(proc2: subprocess.CompletedProcess[str]) -> str:
-                return (proc2.stderr or proc2.stdout or f"exit status {proc2.returncode}").strip()
-
-            def tmux_missing_session(detail2: str) -> bool:
-                low = detail2.lower()
-                return "can't find session" in low or "no server running" in low or "error connecting to" in low
-
-            def tmux_duplicate_session(detail2: str) -> bool:
-                return "duplicate session" in detail2.lower()
-
-            attempts: list[dict[str, Any]] = []
-            tmux_proc = tmux_run(new_window_argv)
-            attempts.append({"cmd": "new-window", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
-            if tmux_proc.returncode != 0 and tmux_missing_session(tmux_detail(tmux_proc)):
-                tmux_proc = tmux_run(new_session_argv)
-                attempts.append({"cmd": "new-session", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
-                if tmux_proc.returncode != 0 and tmux_duplicate_session(tmux_detail(tmux_proc)):
-                    tmux_proc = tmux_run(new_window_argv)
-                    attempts.append({"cmd": "new-window-after-duplicate", "returncode": tmux_proc.returncode, "stderr": (tmux_proc.stderr or "").strip(), "stdout": (tmux_proc.stdout or "").strip()})
-            tmux_pane_id = _clean_optional_text(tmux_proc.stdout)
-            if tmux_proc.returncode != 0:
-                detail = tmux_detail(tmux_proc)
-                fail_launch(
-                    "tmux_launch",
-                    f"tmux launch failed: {detail}",
-                    transport="tmux",
-                    tmux_session=TMUX_SESSION_NAME,
-                    tmux_window=tmux_window,
-                    spawn_nonce=spawn_nonce,
-                    tmux_exit_status=tmux_proc.returncode,
-                    tmux_stdout=(tmux_proc.stdout or "").strip(),
-                    tmux_stderr=(tmux_proc.stderr or "").strip(),
-                    tmux_attempts=attempts,
-                )
-            snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window)
-            launch_recorder.record(
-                "tmux_pane_created",
-                **tmux_launch_fields(
-                    snapshot,
-                    transport="tmux",
-                    tmux_session=TMUX_SESSION_NAME,
-                    tmux_window=tmux_window,
-                    tmux_attempts=attempts,
-                ),
-            )
-            try:
-                meta = _wait_for_spawned_broker_meta(spawn_nonce)
-            except Exception as e:
-                if tmux_pane_id is not None and not snapshot.get("tmux_inspect_error") and str(snapshot.get("tmux_pane_dead") or "0") != "1":
-                    launch_recorder.record(
-                        "tmux_pane_created",
-                        **tmux_launch_fields(
-                            snapshot,
-                            stage="broker_metadata_pending",
-                            error=str(e),
-                            transport="tmux",
-                            tmux_session=TMUX_SESSION_NAME,
-                            tmux_window=tmux_window,
-                        ),
-                    )
-                    return {"launch_id": launch_id, "pending": True, "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
-                fail_launch(
-                    "broker_metadata",
-                    e,
-                    **tmux_launch_fields(
-                        _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window),
-                        transport="tmux",
-                        tmux_session=TMUX_SESSION_NAME,
-                        tmux_window=tmux_window,
-                        tmux_pane_id=tmux_pane_id,
-                        spawn_nonce=spawn_nonce,
-                    ),
-                )
-            broker_pid = meta.get("broker_pid")
-            if not isinstance(broker_pid, int):
-                fail_launch(
-                    "broker_metadata",
-                    "tmux launch metadata is missing broker_pid",
-                    transport="tmux",
-                    tmux_session=TMUX_SESSION_NAME,
-                    tmux_window=tmux_window,
-                    tmux_pane_id=tmux_pane_id,
-                    spawn_nonce=spawn_nonce,
-                    metadata=meta,
-                )
-            launch_recorder.record(
-                "broker_meta_bound",
-                transport="tmux",
-                tmux_session=TMUX_SESSION_NAME,
-                tmux_window=tmux_window,
-                tmux_pane_id=tmux_pane_id,
-                broker_pid=int(broker_pid),
-            )
-            return {"broker_pid": int(broker_pid), "tmux_session": TMUX_SESSION_NAME, "tmux_window": tmux_window}
-
+        process_request = LaunchProcessRequest(
+            argv=argv,
+            env=env,
+            agent_backend=backend_name,
+            spawn_cwd=spawn_cwd,
+            launch_id=launch_id,
+            spawn_nonce=spawn_nonce,
+            create_in_tmux=create_in_tmux,
+            tmux_session_name=TMUX_SESSION_NAME,
+            repo_root=Path(__file__).resolve().parent.parent,
+            resume_session_id=resume_session_id,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+        )
+        process_deps = LaunchProcessDeps(
+            which_tmux=shutil.which,
+            run=subprocess.run,
+            popen=subprocess.Popen,
+            wait_or_raise=_wait_or_raise,
+            wait_for_spawned_broker_meta=_wait_for_spawned_broker_meta,
+            tmux_pane_snapshot=_tmux_pane_snapshot,
+            drain_stream=_drain_stream,
+        )
         try:
-            proc = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                env=env,
-                start_new_session=True,
-            )
-        except Exception as e:
-            fail_launch("broker_spawn", f"spawn failed: {e}", transport="direct")
-
-        try:
-            _wait_or_raise(proc, label="broker", timeout_s=1.5)
-        except Exception as e:
-            fail_launch("broker_early_exit", e, transport="direct", broker_pid=int(proc.pid))
-        launch_recorder.record("broker_spawned", transport="direct", broker_pid=int(proc.pid))
-        if proc.stderr is not None:
-            threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
-
-        # Prevent zombies when the broker exits.
-        threading.Thread(target=proc.wait, daemon=True).start()
-        return {"broker_pid": int(proc.pid)}
+            return _launch_broker_process(process_request, recorder=launch_recorder, deps=process_deps)
+        except LaunchProcessFailure as e:
+            raise SessionLaunchError(e.record) from e
 
     def delete_session(self, session_id: str) -> bool:
         with self._lock:
