@@ -41,6 +41,7 @@ def eval_file_picker_search_helpers(state: dict) -> dict:
         "filePickerMatchRangesForQuery",
         "filePickerCandidateScore",
         "compareFilePickerEntries",
+        "normalizeFileCandidateSource",
     ]
     snippet = "\n".join(js_function(source, name) for name in wrapper_names) + "\n" + source[start:end]
     snippet_with_helpers = "const codoxearFileHelpers = window.CodoxearFileHelpers;\n" + snippet + "\nglobalThis.__test_file_picker_search = { applyFileCandidateEntries, visibleFilePickerEntries, localFilePickerSearchEntries };\n"
@@ -1003,11 +1004,14 @@ class TestFilePickerSearchSource(unittest.TestCase):
 
     def test_file_picker_candidate_sections_and_cache_are_present(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        helper_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
         css = (APP_JS.parent / "app.css").read_text(encoding="utf-8")
         self.assertIn("function filePickerSectionLabel(source)", source)
-        self.assertIn('return "Changed files";', source)
-        self.assertIn('return "Mentioned in chat";', source)
-        self.assertIn('return "Recently opened";', source)
+        self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
+        self.assertIn('return "Changed files";', helper_source)
+        self.assertIn('return "Mentioned in chat";', helper_source)
+        self.assertIn('return "Recently opened";', helper_source)
+        self.assertNotIn('return "Changed files";', source)
         self.assertIn("const fileCandidateCache = new Map();", source)
         self.assertIn("const FILE_CANDIDATE_CACHE_TTL_MS = 15000;", source)
         self.assertIn("fileCandidateCache.set(sid, { key, ts: Date.now(), entries: currentFileCandidateEntries() });", source)

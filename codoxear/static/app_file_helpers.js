@@ -193,6 +193,18 @@
     return Number(b.changed) - Number(a.changed) || Number(b.added) - Number(a.added);
   }
 
+  function normalizeFileCandidateSource(source) {
+    const value = String(source || "").trim();
+    return ["changed", "mentioned", "recent"].includes(value) ? value : "";
+  }
+
+  function filePickerSectionLabel(source) {
+    if (source === "changed") return "Changed files";
+    if (source === "mentioned") return "Mentioned in chat";
+    if (source === "recent") return "Recently opened";
+    return "";
+  }
+
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
     stripPathLocationSuffix,
@@ -209,5 +221,7 @@
     filePickerMatchRangesForQuery,
     filePickerCandidateScore,
     compareFilePickerEntries,
+    normalizeFileCandidateSource,
+    filePickerSectionLabel,
   });
 })();

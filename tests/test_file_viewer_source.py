@@ -458,7 +458,7 @@ class TestFileViewerSource(unittest.TestCase):
         draft_guard_block = source[draft_guard_start:draft_guard_end]
         self.assertGreaterEqual(draft_guard_block.count("if (blockUnavailableFileAction()) return false;"), 4)
         draft_start = source.index("async function openDraftFilePath(path")
-        draft_end = source.index("function normalizeFileCandidateSource", draft_start)
+        draft_end = source.index("function cloneFileCandidateEntry", draft_start)
         draft_block = source[draft_start:draft_end]
         self.assertIn("if (blockUnavailableFileAction()) return;", draft_block)
         self.assertIn("if (blockUnavailableFileAction()) return;", source)

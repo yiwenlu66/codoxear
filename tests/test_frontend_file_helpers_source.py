@@ -71,6 +71,15 @@ def eval_file_helpers_real_order() -> dict:
           comparePath: helpers.compareFilePickerEntries({{ path: "a", score: 1 }}, {{ path: "b", score: 1 }}),
           compareGitPath: helpers.compareFilePickerEntries({{ path: "a", gitPath: false }}, {{ path: "a", gitPath: true }}),
           compareChanged: helpers.compareFilePickerEntries({{ path: "a", changed: true }}, {{ path: "a", changed: false }}),
+          sourceChangedTrimmed: helpers.normalizeFileCandidateSource(" changed "),
+          sourceMentioned: helpers.normalizeFileCandidateSource("mentioned"),
+          sourceRecent: helpers.normalizeFileCandidateSource("recent"),
+          sourceUnknown: helpers.normalizeFileCandidateSource("other"),
+          sourceBlank: helpers.normalizeFileCandidateSource("   "),
+          sectionChanged: helpers.filePickerSectionLabel("changed"),
+          sectionMentioned: helpers.filePickerSectionLabel("mentioned"),
+          sectionRecent: helpers.filePickerSectionLabel("recent"),
+          sectionUnknown: helpers.filePickerSectionLabel("other"),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -107,6 +116,8 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "filePickerMatchRangesForQuery",
             "filePickerCandidateScore",
             "compareFilePickerEntries",
+            "normalizeFileCandidateSource",
+            "filePickerSectionLabel",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
@@ -116,6 +127,10 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertIn("return codoxearFileHelpers.fileVideoPreviewErrorText(err);", source)
         self.assertIn("return codoxearFileHelpers.filePickerMatchRangesForQuery(text, query);", source)
         self.assertIn("return codoxearFileHelpers.filePickerCandidateScore(path, query);", source)
+        self.assertIn("return codoxearFileHelpers.normalizeFileCandidateSource(source);", source)
+        self.assertIn("return codoxearFileHelpers.filePickerSectionLabel(source);", source)
+        self.assertIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', helper_source)
+        self.assertIn('if (source === "changed") return "Changed files";', helper_source)
         file_search_region_start = source.index("function collectMessageFileRefs()")
         file_search_region_end = source.index("function appendHighlightedFileMenuPath(parent, text, query)", file_search_region_start)
         file_search_region = source[file_search_region_start:file_search_region_end]
@@ -125,6 +140,8 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertNotIn('const raw = String(query || "").trim().toLowerCase();', file_search_region)
         self.assertNotIn("function filePickerFoldedSearchText(text)", file_search_region)
         self.assertNotIn("function filePickerCandidateScore(path, query)", file_search_region)
+        self.assertNotIn('return ["changed", "mentioned", "recent"].includes(value) ? value : "";', source)
+        self.assertNotIn('if (source === "changed") return "Changed files";', source)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
         result = eval_file_helpers_real_order()
@@ -174,6 +191,15 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertLess(result["comparePath"], 0)
         self.assertLess(result["compareGitPath"], 0)
         self.assertLess(result["compareChanged"], 0)
+        self.assertEqual(result["sourceChangedTrimmed"], "changed")
+        self.assertEqual(result["sourceMentioned"], "mentioned")
+        self.assertEqual(result["sourceRecent"], "recent")
+        self.assertEqual(result["sourceUnknown"], "")
+        self.assertEqual(result["sourceBlank"], "")
+        self.assertEqual(result["sectionChanged"], "Changed files")
+        self.assertEqual(result["sectionMentioned"], "Mentioned in chat")
+        self.assertEqual(result["sectionRecent"], "Recently opened")
+        self.assertEqual(result["sectionUnknown"], "")
         self.assertTrue(result["frozen"])
 
 

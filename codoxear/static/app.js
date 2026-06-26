@@ -203,7 +203,9 @@
         typeof codoxearFileHelpers.filePickerMatchRanges !== "function" ||
         typeof codoxearFileHelpers.filePickerMatchRangesForQuery !== "function" ||
         typeof codoxearFileHelpers.filePickerCandidateScore !== "function" ||
-        typeof codoxearFileHelpers.compareFilePickerEntries !== "function"
+        typeof codoxearFileHelpers.compareFilePickerEntries !== "function" ||
+        typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
+        typeof codoxearFileHelpers.filePickerSectionLabel !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -463,6 +465,14 @@
 
       function compareFilePickerEntries(a, b) {
         return codoxearFileHelpers.compareFilePickerEntries(a, b);
+      }
+
+      function normalizeFileCandidateSource(source) {
+        return codoxearFileHelpers.normalizeFileCandidateSource(source);
+      }
+
+      function filePickerSectionLabel(source) {
+        return codoxearFileHelpers.filePickerSectionLabel(source);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;
@@ -8892,11 +8902,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           }
         }
 
-        function normalizeFileCandidateSource(source) {
-          const value = String(source || "").trim();
-          return ["changed", "mentioned", "recent"].includes(value) ? value : "";
-        }
-
         function cloneFileCandidateEntry(entry) {
           if (!entry || typeof entry.path !== "string" || entry.path === "") return null;
           const source = normalizeFileCandidateSource(entry.source);
@@ -9334,13 +9339,6 @@ importScripts(${JSON.stringify(base + "/base/worker/workerMain.js")});
           const resolved = await task;
           fileRefCandidateCache.set(sid, resolved);
           return resolved;
-        }
-
-        function filePickerSectionLabel(source) {
-          if (source === "changed") return "Changed files";
-          if (source === "mentioned") return "Mentioned in chat";
-          if (source === "recent") return "Recently opened";
-          return "";
         }
 
         function appendFilePickerSection(label) {
