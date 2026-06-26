@@ -173,6 +173,8 @@ from .session_listing import build_orphan_recovery_rows as _build_orphan_recover
 from .session_listing import build_public_session_row as _build_public_session_row
 from .session_listing import sort_session_rows as _sort_session_rows
 from .session_model import Session
+from .session_runtime import apply_history_backfill as _runtime_apply_history_backfill
+from .session_runtime import apply_run_settings_backfill as _runtime_apply_run_settings_backfill
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -3834,11 +3836,13 @@ class SessionManager:
                     conv_ts = None
                 with self._lock:
                     s_cur = self._sessions.get(sid)
-                    if s_cur is not None and s_cur.log_path == log_path_obj and not s_cur.last_chat_history_scanned:
-                        s_cur.last_chat_history_scanned = True
-                        if isinstance(conv_ts, (int, float)):
-                            s_cur.last_chat_ts = float(conv_ts)
-                        updated_ts = float(s_cur.last_chat_ts) if isinstance(s_cur.last_chat_ts, (int, float)) else float(s_cur.start_ts)
+                    history_update = _runtime_apply_history_backfill(
+                        s_cur,
+                        expected_log_path=log_path_obj,
+                        conversation_ts=conv_ts,
+                    )
+                    if history_update is not None and s_cur is not None:
+                        updated_ts = history_update.updated_ts
                         it["updated_ts"] = updated_ts
                         recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s_cur.cwd, updated_ts)
                         priority = _listing_priority(
@@ -3860,20 +3864,21 @@ class SessionManager:
                     log_provider = log_model = log_effort = None
                 with self._lock:
                     s_cur = self._sessions.get(sid)
-                    if s_cur is not None and s_cur.log_path == log_path_obj:
-                        if s_cur.model_provider is None:
-                            s_cur.model_provider = log_provider
-                        if s_cur.model is None:
-                            s_cur.model = log_model
-                        if s_cur.reasoning_effort is None:
-                            s_cur.reasoning_effort = log_effort
-                        it["model_provider"] = s_cur.model_provider
-                        it["preferred_auth_method"] = s_cur.preferred_auth_method
-                        it["model"] = s_cur.model
-                        it["reasoning_effort"] = s_cur.reasoning_effort
+                    run_settings_update = _runtime_apply_run_settings_backfill(
+                        s_cur,
+                        expected_log_path=log_path_obj,
+                        log_provider=log_provider,
+                        log_model=log_model,
+                        log_effort=log_effort,
+                    )
+                    if run_settings_update is not None:
+                        it["model_provider"] = run_settings_update.model_provider
+                        it["preferred_auth_method"] = run_settings_update.preferred_auth_method
+                        it["model"] = run_settings_update.model
+                        it["reasoning_effort"] = run_settings_update.reasoning_effort
                         it["provider_choice"] = _provider_choice_for_settings(
-                            model_provider=s_cur.model_provider,
-                            preferred_auth_method=s_cur.preferred_auth_method,
+                            model_provider=run_settings_update.model_provider,
+                            preferred_auth_method=run_settings_update.preferred_auth_method,
                         )
             log_path_for_boundary = log_path_obj if isinstance(log_path_obj, Path) else None
             log_size = self._log_size_or_none(log_path_for_boundary)

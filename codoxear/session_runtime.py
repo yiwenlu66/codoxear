@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
+
+from .session_model import Session
 
 
 @dataclass(frozen=True)
@@ -16,6 +19,19 @@ class BrokerRuntimeState:
 
 
 @dataclass(frozen=True)
+class HistoryBackfillUpdate:
+    updated_ts: float
+
+
+@dataclass(frozen=True)
+class RunSettingsUpdate:
+    model_provider: str | None
+    preferred_auth_method: str | None
+    model: str | None
+    reasoning_effort: str | None
+
+
+@dataclass(frozen=True)
 class RuntimeStatus:
     broker: BrokerRuntimeState
     log_exists: bool
@@ -23,6 +39,45 @@ class RuntimeStatus:
     send_boundary_unresolved: bool
     busy: bool
     remote_ready: bool
+
+
+def apply_history_backfill(
+    session: Session | None,
+    *,
+    expected_log_path: Path,
+    conversation_ts: float | None,
+) -> HistoryBackfillUpdate | None:
+    if session is None or session.log_path != expected_log_path or session.last_chat_history_scanned:
+        return None
+    session.last_chat_history_scanned = True
+    if isinstance(conversation_ts, (int, float)):
+        session.last_chat_ts = float(conversation_ts)
+    updated_ts = float(session.last_chat_ts) if isinstance(session.last_chat_ts, (int, float)) else float(session.start_ts)
+    return HistoryBackfillUpdate(updated_ts=updated_ts)
+
+
+def apply_run_settings_backfill(
+    session: Session | None,
+    *,
+    expected_log_path: Path,
+    log_provider: str | None,
+    log_model: str | None,
+    log_effort: str | None,
+) -> RunSettingsUpdate | None:
+    if session is None or session.log_path != expected_log_path:
+        return None
+    if session.model_provider is None:
+        session.model_provider = log_provider
+    if session.model is None:
+        session.model = log_model
+    if session.reasoning_effort is None:
+        session.reasoning_effort = log_effort
+    return RunSettingsUpdate(
+        model_provider=session.model_provider,
+        preferred_auth_method=session.preferred_auth_method,
+        model=session.model,
+        reasoning_effort=session.reasoning_effort,
+    )
 
 
 def broker_runtime_state(state: Mapping[str, Any]) -> BrokerRuntimeState:
