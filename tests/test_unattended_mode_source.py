@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 SERVER_PY = ROOT / "codoxear" / "server.py"
+SESSION_LISTING_PY = ROOT / "codoxear" / "session_listing.py"
 UNATTENDED_PY = ROOT / "codoxear" / "unattended.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 SESSION_ROUTES_PY = ROOT / "codoxear" / "session_routes.py"
@@ -132,19 +133,25 @@ class TestUnattendedModeSource(unittest.TestCase):
 
     def test_server_exposes_unattended_route_and_fields_without_harness_alias(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
+        listing_source = SESSION_LISTING_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         session_route_source = SESSION_ROUTES_PY.read_text(encoding="utf-8")
-        combined_route_source = source + route_source + session_route_source
+        combined_route_source = source + listing_source + route_source + session_route_source
         self.assertIn('match_session_route(path, "unattended")', combined_route_source)
         self.assertIn('("unattended", None, _handle_unattended)', route_source)
         self.assertNotIn('path.endswith("/harness") or path.endswith("/unattended")', combined_route_source)
-        self.assertIn('"unattended_enabled": unattended_enabled', source)
         self.assertIn('unattended_enabled = bool(cfg0.get("enabled")) and unattended_remaining_injections > 0', source)
+        self.assertIn('unattended_enabled=unattended_enabled', source)
         self.assertIn('elif isinstance(enabled_raw, bool):', route_source)
         self.assertIn('"enabled must be a boolean"', route_source)
-        self.assertIn('"unattended_cooldown_minutes": unattended_cooldown_minutes', source)
-        self.assertIn('"unattended_remaining_injections": unattended_remaining_injections', source)
-        self.assertIn('"unattended_enabled": False', source)
+        self.assertIn('unattended_cooldown_minutes=unattended_cooldown_minutes', source)
+        self.assertIn('unattended_remaining_injections=unattended_remaining_injections', source)
+        self.assertIn('"unattended_enabled": facts.unattended_enabled', listing_source)
+        self.assertIn('"unattended_cooldown_minutes": facts.unattended_cooldown_minutes', listing_source)
+        self.assertIn('"unattended_remaining_injections": facts.unattended_remaining_injections', listing_source)
+        self.assertIn('"unattended_enabled": False', listing_source)
+        self.assertIn('"unattended_cooldown_minutes": unattended_default_idle_minutes', listing_source)
+        self.assertIn('"unattended_remaining_injections": unattended_default_max_injections', listing_source)
         self.assertNotIn('"harness_enabled": h_enabled', combined_route_source)
         self.assertNotIn('"harness_cooldown_minutes": h_cooldown_minutes', combined_route_source)
         self.assertNotIn('"harness_remaining_injections": h_remaining_injections', combined_route_source)

@@ -161,6 +161,11 @@ from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
+from .session_listing import ActiveSessionRowFacts as _ActiveSessionRowFacts
+from .session_listing import build_active_session_row as _build_active_session_row
+from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
+from .session_listing import build_public_session_row as _build_public_session_row
+from .session_listing import sort_session_rows as _sort_session_rows
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -3815,66 +3820,65 @@ class SessionManager:
                 except ValueError:
                     cwd_path = None
                 items.append(
-                    {
-                        "session_id": s.session_id,
-                        "thread_id": s.thread_id,
-                        "pid": s.codex_pid,
-                        "broker_pid": s.broker_pid,
-                        "agent_backend": s.agent_backend,
-                        "owned": s.owned,
-                        "transport": s.transport,
-                        "cwd": s.cwd,
-                        "start_ts": s.start_ts,
-                        "updated_ts": updated_ts,
-                        "log_path": (str(s.log_path) if s.log_path is not None else None),
-                        "_log_path_obj": s.log_path,
-                        "log_exists": log_exists,
-                        "needs_run_settings": needs_run_settings,
-                        "needs_history_scan": needs_history_scan,
-                        "state_busy": bool(s.busy),
-                        "interrupted_idle": bool(s.interrupted_idle),
-                        "broker_queue_len": int(s.queue_len),
-                        "last_send_boundary_active": bool(s.last_send_boundary_active),
-                        "last_send_log_path": s.last_send_log_path,
-                        "last_send_log_size": s.last_send_log_size,
-                        "queue_len": int(queue_len),
-                        "queue_recovery": bool(queue_recovery),
-                        "pending_attachment": bool(s.pending_attachment),
-                        "commit_unknown_send": bool(s.commit_unknown_send),
-                        "commit_unknown_send_text": (str(s.commit_unknown_send.get("text")) if isinstance(s.commit_unknown_send, dict) and isinstance(s.commit_unknown_send.get("text"), str) else None),
-                        "commit_unknown_send_ts": (float(s.commit_unknown_send.get("created_ts")) if isinstance(s.commit_unknown_send, dict) and isinstance(s.commit_unknown_send.get("created_ts"), (int, float)) else None),
-                        "token": s.token,
-                        "thinking": int(s.meta_thinking),
-                        "tools": int(s.meta_tools),
-                        "system": int(s.meta_system),
-                        "unattended_enabled": unattended_enabled,
-                        "unattended_cooldown_minutes": unattended_cooldown_minutes,
-                        "unattended_remaining_injections": unattended_remaining_injections,
-                        "alias": alias,
-                        "files": list(files),
-                        "_cwd_path_obj": cwd_path,
-                        "model_provider": s.model_provider,
-                        "preferred_auth_method": s.preferred_auth_method,
-                        "provider_choice": _provider_choice_for_settings(
+                    _build_active_session_row(
+                        _ActiveSessionRowFacts(
+                            session_id=s.session_id,
+                            thread_id=s.thread_id,
+                            pid=s.codex_pid,
+                            broker_pid=s.broker_pid,
+                            agent_backend=s.agent_backend,
+                            owned=s.owned,
+                            transport=s.transport,
+                            cwd=s.cwd,
+                            start_ts=s.start_ts,
+                            updated_ts=updated_ts,
+                            log_path=s.log_path,
+                            log_exists=log_exists,
+                            needs_run_settings=needs_run_settings,
+                            needs_history_scan=needs_history_scan,
+                            state_busy=bool(s.busy),
+                            interrupted_idle=bool(s.interrupted_idle),
+                            broker_queue_len=int(s.queue_len),
+                            last_send_boundary_active=bool(s.last_send_boundary_active),
+                            last_send_log_path=s.last_send_log_path,
+                            last_send_log_size=s.last_send_log_size,
+                            queue_len=int(queue_len),
+                            queue_recovery=bool(queue_recovery),
+                            pending_attachment=bool(s.pending_attachment),
+                            commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None,
+                            token=s.token,
+                            thinking=int(s.meta_thinking),
+                            tools=int(s.meta_tools),
+                            system=int(s.meta_system),
+                            unattended_enabled=unattended_enabled,
+                            unattended_cooldown_minutes=unattended_cooldown_minutes,
+                            unattended_remaining_injections=unattended_remaining_injections,
+                            alias=alias,
+                            files=list(files),
+                            cwd_path=cwd_path,
                             model_provider=s.model_provider,
                             preferred_auth_method=s.preferred_auth_method,
-                        ),
-                        "model": s.model,
-                        "reasoning_effort": s.reasoning_effort,
-                        "service_tier": s.service_tier,
-                        "tmux_session": s.tmux_session,
-                        "tmux_window": s.tmux_window,
-                        "launch_id": s.launch_id,
-                        "spawn_nonce": s.spawn_nonce,
-                        "priority_offset": priority_offset,
-                        "snooze_until": snooze_until,
-                        "dependency_session_id": dependency_session_id,
-                        "time_priority": time_priority,
-                        "base_priority": base_priority,
-                        "final_priority": final_priority,
-                        "blocked": blocked,
-                        "snoozed": snoozed,
-                    }
+                            provider_choice=_provider_choice_for_settings(
+                                model_provider=s.model_provider,
+                                preferred_auth_method=s.preferred_auth_method,
+                            ),
+                            model=s.model,
+                            reasoning_effort=s.reasoning_effort,
+                            service_tier=s.service_tier,
+                            tmux_session=s.tmux_session,
+                            tmux_window=s.tmux_window,
+                            launch_id=s.launch_id,
+                            spawn_nonce=s.spawn_nonce,
+                            priority_offset=priority_offset,
+                            snooze_until=snooze_until,
+                            dependency_session_id=dependency_session_id,
+                            time_priority=time_priority,
+                            base_priority=base_priority,
+                            final_priority=final_priority,
+                            blocked=blocked,
+                            snoozed=snoozed,
+                        )
+                    )
                 )
 
         out: list[dict[str, Any]] = []
@@ -3958,21 +3962,7 @@ class SessionManager:
                 busy_out = False
             cwd_path_obj = it.get("_cwd_path_obj")
             git_branch = _current_git_branch(cwd_path_obj) if isinstance(cwd_path_obj, Path) else None
-            it2 = dict(it)
-            it2.pop("_log_path_obj", None)
-            it2.pop("_cwd_path_obj", None)
-            it2.pop("log_exists", None)
-            it2.pop("needs_run_settings", None)
-            it2.pop("needs_history_scan", None)
-            it2.pop("state_busy", None)
-            it2.pop("interrupted_idle", None)
-            it2.pop("broker_queue_len", None)
-            it2.pop("last_send_boundary_active", None)
-            it2.pop("last_send_log_path", None)
-            it2.pop("last_send_log_size", None)
-            it2["git_branch"] = git_branch
-            it2["busy"] = bool(busy_out)
-            out.append(it2)
+            out.append(_build_public_session_row(it, git_branch=git_branch, busy=bool(busy_out)))
         if bool(getattr(self, "_include_launch_attempts", False)):
             with self._lock:
                 hidden_failure_ids = set(getattr(self, "_hidden_sessions", set()))
@@ -4001,104 +3991,33 @@ class SessionManager:
                 out.append(row)
         with self._lock:
             active_ids = set(self._sessions.keys())
-            direct_unknowns = {
-                str(sid): dict(record)
+            commit_unknown_snapshot = {
+                str(sid): dict(record) if isinstance(record, dict) else record
                 for sid, record in getattr(self, "_commit_unknown_sends", {}).items()
-                if str(sid) not in active_ids and isinstance(record, dict)
             }
-            orphan_queues = {
-                str(sid): list(queue)
+            queue_snapshot = {
+                str(sid): list(queue) if isinstance(queue, list) else queue
                 for sid, queue in getattr(self, "_queues", {}).items()
-                if str(sid) not in active_ids
-                and isinstance(queue, list)
-                and (
-                    str(sid) in direct_unknowns
-                    or any(
-                        isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                        for item in queue
-                    )
-                )
             }
         existing_out_ids = {str(item.get("session_id")) for item in out if isinstance(item, dict)}
-        for sid in sorted(set(direct_unknowns) | set(orphan_queues)):
-            if sid in existing_out_ids:
-                continue
-            direct_record = direct_unknowns.get(sid) or {}
-            queue = orphan_queues.get(sid) or []
-            ts_candidates: list[float] = []
-            if isinstance(direct_record.get("created_ts"), (int, float)):
-                ts_candidates.append(float(direct_record.get("created_ts")))
-            for item in queue:
-                if isinstance(item, dict) and isinstance(item.get("commit_unknown_ts"), (int, float)):
-                    ts_candidates.append(float(item.get("commit_unknown_ts")))
-                elif isinstance(item, dict) and isinstance(item.get("created_ts"), (int, float)):
-                    ts_candidates.append(float(item.get("created_ts")))
-            ts = max([t for t in ts_candidates if math.isfinite(t) and t > 0], default=now_ts)
-            out.append(
-                {
-                    "session_id": sid,
-                    "thread_id": sid,
-                    "pid": 0,
-                    "broker_pid": 0,
-                    "agent_backend": "codex",
-                    "owned": False,
-                    "transport": None,
-                    "cwd": "recovery needed",
-                    "start_ts": ts,
-                    "updated_ts": ts,
-                    "log_path": None,
-                    "queue_len": len(queue),
-                    "pending_attachment": False,
-                    "commit_unknown_send": bool(direct_record),
-                    "commit_unknown_send_text": (str(direct_record.get("text")) if isinstance(direct_record.get("text"), str) else None),
-                    "commit_unknown_send_ts": (float(direct_record.get("created_ts")) if isinstance(direct_record.get("created_ts"), (int, float)) else None),
-                    "token": None,
-                    "thinking": 0,
-                    "tools": 0,
-                    "system": 0,
-                    "unattended_enabled": False,
-                    "unattended_cooldown_minutes": UNATTENDED_DEFAULT_IDLE_MINUTES,
-                    "unattended_remaining_injections": UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                    "alias": "Recovery needed",
-                    "files": [],
-                    "model_provider": None,
-                    "preferred_auth_method": None,
-                    "provider_choice": "openai-api",
-                    "model": None,
-                    "reasoning_effort": None,
-                    "service_tier": None,
-                    "tmux_session": None,
-                    "tmux_window": None,
-                    "launch_id": None,
-                    "spawn_nonce": None,
-                    "priority_offset": 0.0,
-                    "snooze_until": None,
-                    "dependency_session_id": None,
-                    "time_priority": 1.0,
-                    "base_priority": 1.0,
-                    "final_priority": 1.0,
-                    "blocked": False,
-                    "snoozed": False,
-                    "busy": False,
-                    "git_branch": None,
-                    "orphan_recovery": True,
-                    "transcript_state": "failed",
-                }
+        out.extend(
+            _build_orphan_recovery_rows(
+                active_session_ids=active_ids,
+                commit_unknown_sends=commit_unknown_snapshot,
+                queues=queue_snapshot,
+                existing_session_ids=existing_out_ids,
+                now_ts=now_ts,
+                unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+                unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
             )
+        )
         if files_dirty:
             self._save_files()
         if sidebar_dirty:
             self._save_sidebar_meta()
         if recent_cwd_dirty:
             self._save_recent_cwds()
-        out.sort(
-            key=lambda item: (
-                -float(item.get("final_priority", 0.0)),
-                -float(item.get("updated_ts", item.get("start_ts", 0.0))),
-                -float(item.get("start_ts", 0.0)),
-                str(item.get("session_id", "")),
-            )
-        )
+        _sort_session_rows(out)
         return out
 
     def get_session(self, session_id: str) -> Session | None:
