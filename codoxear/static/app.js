@@ -205,7 +205,8 @@
         typeof codoxearFileHelpers.filePickerCandidateScore !== "function" ||
         typeof codoxearFileHelpers.compareFilePickerEntries !== "function" ||
         typeof codoxearFileHelpers.normalizeFileCandidateSource !== "function" ||
-        typeof codoxearFileHelpers.filePickerSectionLabel !== "function"
+        typeof codoxearFileHelpers.filePickerSectionLabel !== "function" ||
+        typeof codoxearFileHelpers.positionAfterInsertedText !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -473,6 +474,10 @@
 
       function filePickerSectionLabel(source) {
         return codoxearFileHelpers.filePickerSectionLabel(source);
+      }
+
+      function positionAfterInsertedText(start, text) {
+        return codoxearFileHelpers.positionAfterInsertedText(start, text);
       }
 
       const codoxearMarkdown = window.CodoxearMarkdown;
@@ -7879,16 +7884,6 @@
             setToast(`paste error: ${e && e.message ? e.message : "clipboard denied"}`);
           }
           focusActiveFileCodeEditor();
-        }
-
-        function positionAfterInsertedText(start, text) {
-          const value = String(text || "");
-          if (!value) return { lineNumber: start.lineNumber, column: start.column };
-          const parts = value.replace(/\r\n?/g, "\n").split("\n");
-          if (parts.length === 1) {
-            return { lineNumber: start.lineNumber, column: start.column + parts[0].length };
-          }
-          return { lineNumber: start.lineNumber + parts.length - 1, column: parts[parts.length - 1].length + 1 };
         }
 
         function insertIntoActiveFileEditor(text) {

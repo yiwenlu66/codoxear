@@ -205,6 +205,16 @@
     return "";
   }
 
+  function positionAfterInsertedText(start, text) {
+    const value = String(text || "");
+    if (!value) return { lineNumber: start.lineNumber, column: start.column };
+    const parts = value.replace(/\r\n?/g, "\n").split("\n");
+    if (parts.length === 1) {
+      return { lineNumber: start.lineNumber, column: start.column + parts[0].length };
+    }
+    return { lineNumber: start.lineNumber + parts.length - 1, column: parts[parts.length - 1].length + 1 };
+  }
+
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
     stripPathLocationSuffix,
@@ -223,5 +233,6 @@
     compareFilePickerEntries,
     normalizeFileCandidateSource,
     filePickerSectionLabel,
+    positionAfterInsertedText,
   });
 })();
