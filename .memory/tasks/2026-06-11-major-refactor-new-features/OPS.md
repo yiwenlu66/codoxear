@@ -3199,3 +3199,28 @@
 - Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18904 scripts/codoxear-docker-sandbox test tests/test_diagnostics_source.py tests/test_frontend_session_helpers_source.py tests/test_static_assets.py -q` -> `19 passed`.
 - Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18905 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Clean-room delegate review `87b32795-9336-49a9-b2d0-170748b2a68e` saved to `/tmp/codoxear-diagnostics-helper-review.md` returned `NO BLOCKERS`; it confirmed semantic equivalence, alias normalization preservation, fail-loud guard coverage, app-owned diagnostics state/API/DOM/clipboard/auth-error boundaries, load-order sufficiency, export wiring, and test coverage.
+
+
+## 2026-06-26T12:31:31Z Queue normalization helper extraction checkpoint
+- Functional commit created: `35be96c extract queue normalization helper`.
+- Extracted pure queue API-payload normalizer into `codoxear/static/app_session_helpers.js`: `normalizeQueueItems(data)`.
+- `app.js` now requires `window.CodoxearSessionHelpers.normalizeQueueItems` fail-loudly through the existing `Codoxear session helpers failed to load` guard and keeps a local wrapper for the existing `refreshQueueViewer()` call site.
+- Modern payload semantics preserved: `items` arrays win over legacy `queue`, non-object items are ignored, string `id`/`text` only are retained, `sending`/`commit_unknown`/`orphan_recovery` are booleanized to `sending`/`commitUnknown`/`orphanRecovery`, and missing-id or blank-text records are filtered without trimming output text.
+- Legacy payload semantics preserved: `queue` string arrays filter non-string/blank text first, then assign post-filter `legacy-${idx}` IDs with `sending`, `commitUnknown`, and `orphanRecovery` false.
+- Side-effect/state boundary: `refreshQueueViewer`, queue API fetch, auth-loss/error handling, `queueDraftTexts` merge/preservation, `queueViewerItems` assignment, queue empty text, `renderQueueList`, queue mutation locks, move barriers, delete/update/move/send/enqueue call sites, DOM, focus, timers, recovery/security behavior remain app-owned in `app.js`.
+- No static asset registration changed because `app_session_helpers.js` was already loaded before `app.js`, included in `FRONTEND_ASSET_FILES`, top-level static routing, asset versioning, and wheel packaging.
+- Guard/equivalence tests updated: real session-helper VM tests cover modern item normalization, filtering of missing id/blank text/non-object/bad-id rows, commit-unknown/recovery flag preservation, legacy queue normalization and post-filter `legacy-*` IDs, null input, frozen exports, and fail-loud app wrapper/source boundaries; queue source tests confirm app-owned queue UI/barrier behavior remains in `app.js` and snake_case payload processing moved to the helper.
+- Local diagnostic validation: `node --check codoxear/static/app_session_helpers.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_session_helpers_source.py tests/test_queue_button_source.py tests/test_static_assets.py` -> `17 passed`.
+- Deterministic equivalence check against pre-extraction `app.js` inline body passed for 9 cases covering null/undefined/empty input, invalid `items`, modern item filtering, flag booleanization, legacy string filtering, post-filter legacy IDs, `items`-over-`queue` priority, and empty items; helper side-effect probe found no DOM/API/queue state/timer/focus/storage references.
+- Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18906 scripts/codoxear-docker-sandbox test tests/test_frontend_session_helpers_source.py tests/test_queue_button_source.py tests/test_static_assets.py -q` -> `17 passed`.
+- Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18907 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `890a40d4-1092-4540-8337-f74167c972de` saved to `/tmp/codoxear-queue-normalizer-review.md` returned `NO BLOCKERS`; it confirmed helper placement/export, fail-loud guard coverage, wrapper/call-site preservation, modern and legacy semantic equivalence, `items` priority, app-owned queue state/API/DOM/focus/timer/recovery/security boundaries, load-order sufficiency, syntax validity, test coverage, and minimality.
+- Advisory future-target scout `83934278-8784-4af1-9179-580e7df91d74` was running at checkpoint time and is not a commit gate.
+
+
+## 2026-06-26T12:32:18Z Post-queue pure-helper scout conclusion
+- Advisory future-target scout `83934278-8784-4af1-9179-580e7df91d74` saved to `/tmp/codoxear-next-pure-helper-scout-after-queue.md` completed after the queue normalizer functional commit.
+- Scout conclusion: no remaining safe pure-helper extraction candidates meet the current bar after `normalizeQueueItems(data)` moved.
+- Parked non-candidates: `redactedLaunchErrorText`/`sessionLaunchLabel` are mechanically pure but intentionally pinned out of `app_session_helpers.js` by source tests and include security-sensitive redaction/label composition; `launchPresetProviderChoice` is mechanically pure but pinned in `app.js` by the new-session model-options source-slicing tests and launch-dialog orchestration context.
+- Other apparent helpers are wrappers, state readers, unused/dead code, DOM-dependent, browser-side-effect code, or render/orchestration functions inside `renderApp()`.
+- Decision: do not force another helper-extraction tranche under the current constraints. Further work requires broader design/ownership decisions or product-gap work rather than mechanical pure-helper extraction.

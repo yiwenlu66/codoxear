@@ -2558,3 +2558,19 @@ Observation: Deterministic equivalence testing matched the previous inline helpe
 Observation: Clean-room delegate review `/tmp/codoxear-diagnostics-helper-review.md` returned `NO BLOCKERS` and independently confirmed semantics, alias normalization preservation, app-owned boundaries, static wiring sufficiency, and test coverage.
 Interpretation: The tranche changes helper ownership only. `app_session_helpers.js` formats explicit diagnostics inputs; `app.js` remains the composition point that supplies normalized backend identity and owns diagnostics modal behavior. Absence or mismatch of either helper export remains intentionally fail-loud.
 Scoped claim: diagnostics helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new diagnostics UI behavior, launch backend normalization changes, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
+
+
+## Queue normalization helper extraction evidence
+Observation: `app_session_helpers.js` now owns deterministic queue API-payload normalization; `app.js` delegates through a fail-loud wrapper while retaining queue refresh, API fetch, auth/error handling, draft preservation, viewer item assignment, empty text, rendering, mutation locks, move barriers, send/enqueue/delete/update/move behavior, DOM, focus, timers, and recovery/security behavior.
+Observation: Docker focused validation passed with 17 tests, and the full Docker suite passed with 994 passed, 1 skipped, 107 subtests on the final tree before commit `35be96c`.
+Observation: Deterministic equivalence testing matched the previous inline helper body for 9 payload cases, including modern item filtering/flag mapping, legacy queue filtering/post-filter IDs, empty/null input, and `items`-over-`queue` priority; a helper-body probe found no DOM/API/queue state/timer/focus/storage references.
+Observation: Clean-room delegate review `/tmp/codoxear-queue-normalizer-review.md` returned `NO BLOCKERS` and independently confirmed semantics, app-owned boundaries, static wiring sufficiency, and test coverage.
+Interpretation: The tranche changes helper ownership only. The helper converts explicit API payloads into queue viewer item records; all mechanisms that fetch, mutate, preserve drafts, enforce barriers, render, or surface queue errors remain in `app.js`. Absence or mismatch of the helper export remains intentionally fail-loud.
+Scoped claim: queue normalizer helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new queue UX behavior, send/enqueue semantics, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
+
+
+## Post-queue pure-helper scout evidence
+Observation: Advisory scout `/tmp/codoxear-next-pure-helper-scout-after-queue.md` found no remaining safe pure-helper extraction candidates after the queue normalizer tranche.
+Observation: The closest mechanically pure functions are parked, not actionable: `redactedLaunchErrorText`/`sessionLaunchLabel` are explicitly pinned out of `app_session_helpers.js` and include security-sensitive redaction/label composition; `launchPresetProviderChoice` is pinned in `app.js` by source-slicing launch-dialog tests.
+Interpretation: The bounded pure-helper extraction wave has reached a natural stop under the current invariants. Continuing would require changing ownership semantics or tests for security/launch orchestration code, or moving into broader UI/product design rather than a mechanical extraction.
+Scoped claim: no further helper-extraction tranche is justified without a new user-approved scope or a newly identified candidate that clears the existing deterministic/no-state/no-DOM/no-dead-code bar.

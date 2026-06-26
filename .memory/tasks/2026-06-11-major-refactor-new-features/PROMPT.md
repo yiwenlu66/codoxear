@@ -2,11 +2,11 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: diagnostics provider display/copy formatting now lives in `codoxear/static/app_session_helpers.js` at functional commit `dd57f14 extract diagnostics session helpers`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: `normalizeQueueItems(data)` only if re-inspection confirms it remains deterministic API-payload normalization and tests preserve modern/legacy queue item shape.
-3. Do not move queue viewer refresh, API fetch, auth-loss handling, queue draft preservation, mutation locks, render loop, queue barrier movement, send/enqueue rules, DOM/focus/timers/recovery/security behavior, or dead code.
-4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
-5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
+1. Completed tranche: queue API-payload normalization now lives in `codoxear/static/app_session_helpers.js` at functional commit `35be96c extract queue normalization helper`; checkpoint docs are recorded separately from the functional change.
+2. Advisory scout `/tmp/codoxear-next-pure-helper-scout-after-queue.md` found no remaining safe pure-helper extraction candidates under the current constraints.
+3. Parked non-candidates: `redactedLaunchErrorText`/`sessionLaunchLabel` are pinned/security-sensitive; `launchPresetProviderChoice` is pinned by launch-dialog source-slicing tests; other remaining inline functions are wrappers, state readers, unused/dead code, DOM/browser-side-effect code, or orchestration/render logic.
+4. Do not force another tranche without explicit broader ownership/design approval or a newly identified deterministic argument-only candidate with an obvious helper-module home and validation path.
+5. If work resumes, re-anchor on a clean tree, preserve the Docker-only acceptance rule, and run focused Docker, full Docker, clean diff review, and exactly one clean-room review before any functional commit.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.
