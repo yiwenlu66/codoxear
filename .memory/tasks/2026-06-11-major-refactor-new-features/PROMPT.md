@@ -2,10 +2,10 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Select the next bounded refactor from `recon/refactor-entry-checkpoint.md` or fresh scout evidence; no promotion/merge planning unless explicitly requested.
-2. Before editing, state the subsystem invariant, source of truth, and Docker validation path; preserve fail-loud helper boundaries and no silent fallbacks.
-3. For each tranche, run focused Docker tests, full Docker suite, static prefix smoke when assets change, clean diff review, and clean-room critic review.
-4. Commit functional changes and memory/checkpoint docs separately, then refresh this workbench to the next short action list.
+1. Next tranche: extract stateless polling-delay policy only; keep timers, mutable counters, auth/error handling, and session/transcript side effects in `app.js`.
+2. Add fail-loud `app_polling.js` wiring, wrapper-preserving call sites, real-module VM/equivalence tests, and static asset coverage.
+3. Run focused Docker tests, static prefix smoke, full Docker suite, clean diff review, and clean-room review.
+4. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
 ## Context
 - Active checkout: `/home/yiwen/codex-web-product-recovery`.

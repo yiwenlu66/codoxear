@@ -2,7 +2,7 @@
 
 Date: 2026-06-15
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `342aa52 extract frontend session helpers`
+Latest functional code checkpoint: `a6fc32a extract frontend viewport helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -61,10 +61,11 @@ Recent committed recovery checkpoints include:
   - API request/ETag/perf-sampling wrapper moved from `app.js` into `codoxear/static/app_api.js`;
   - file/viewer helper logic moved from `app.js` into `codoxear/static/app_file_helpers.js`;
   - session/sidebar render-state helper logic moved from `app.js` into `codoxear/static/app_session_helpers.js`;
+  - viewport/media-query helper logic moved from `app.js` into `codoxear/static/app_viewport.js`;
   - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
   - launch/backend/default/provider/model-memory helpers moved from `app.js` into `codoxear/static/app_launch.js`;
   - display/formatting/icon helpers moved from `app.js` into `codoxear/static/app_display.js`;
-  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_api.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, `app_file_helpers.js`, `app_session_helpers.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
+  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_api.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, `app_file_helpers.js`, `app_session_helpers.js`, `app_viewport.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
   - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
@@ -73,6 +74,7 @@ Recent committed recovery checkpoints include:
   - API extraction preserves URL-prefix resolution, sessions ETag/304 reuse, private not-modified marker identity, JSON parse/error behavior, API timing sample names, and cleanup-time cache clearing through `window.CodoxearApi`;
   - file-helper extraction preserves literal file-list paths, location-suffix stripping behavior, text/diff kind decisions, blocked-file messages, and priority offset formatting through `window.CodoxearFileHelpers`;
   - session-helper extraction preserves failed/pending launch selectability, review/waiting/later grouping, sidebar entry/signature semantics, and fast-session detection through `window.CodoxearSessionHelpers`;
+  - viewport-helper extraction preserves mobile width, reduced-motion, desktop-action, and touch-control media query semantics through `window.CodoxearViewport`, including the pre-existing `isMobile()` undefined/falsy return when `matchMedia` is absent;
   - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
   - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`.
@@ -147,6 +149,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Session helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_session_helpers.js?v=test -> 200`; `/codoxear/ -> 200`, and the served helper contained immutable `SESSION_SIDEBAR_GROUPS`.
 - Session helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18857 scripts/codoxear-docker-sandbox test` -> `979 passed, 1 skipped, 107 subtests passed`.
 - Clean-room critic `a02bb3b9-2860-486d-a79d-0448cc5be833` returned `NO BLOCKERS` for contract drift, failed/pending launch selectability, review/waiting/later grouping, sidebar render-signature semantics, app-owned redaction/label boundary, load order, static/version/package coverage, and runtime dependency/fallback issues. Its non-blocking suggestions for redaction-boundary assertions and immutable exported group metadata were applied before commit.
+- Viewport helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18865 scripts/codoxear-docker-sandbox test tests/test_frontend_viewport_module_source.py tests/test_file_viewer_source.py tests/test_sidebar_touch_mode.py tests/test_chat_navigation_source.py tests/test_overlay_accessibility_source.py tests/test_static_assets.py -q` -> `63 passed`.
+- Viewport helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/app_viewport.js?v=test -> 200`; `/codoxear/static/app_viewport.js?v=test -> 200`; `/codoxear/ -> 200`, and the served helper contained `window.CodoxearViewport` plus the preserved `isMobile()` expression.
+- Viewport helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18867 scripts/codoxear-docker-sandbox test` -> `985 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `da503187-4b55-415a-88fe-e41c33d4b3e6` returned `NO BLOCKERS` for exact media-query strings, absent-`matchMedia` behavior, touch OR semantics, desktop combined query, reduced-motion call-site behavior, fail-loud guard, wrapper/call-site names, static asset/version/package wiring, and real-module test coverage.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 

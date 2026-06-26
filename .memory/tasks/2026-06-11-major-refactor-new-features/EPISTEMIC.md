@@ -2444,3 +2444,12 @@ Observation: Clean-room critic returned `NO BLOCKERS`. Its two non-blocking conc
 Intervention: Added tests asserting `app_session_helpers.js` does not contain `redactedLaunchErrorText` or `sessionLaunchLabel`, and changed `SESSION_SIDEBAR_GROUPS` plus group objects to frozen exported metadata.
 Interpretation: The tranche changed ownership/load order for pure render-state helpers only. Failed launches remain selectable transcripts because `sessionSelectable()` is still `!!(s && !sessionLaunchPending(s))`; pending launch rows remain unselectable because any non-empty non-failed `launch_state` is pending. Review/waiting/later grouping and signature-based sidebar rebuild semantics are unchanged.
 Scoped claim: session-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new live backend behavior, real mobile-device, assistive-tech, slow-network, huge-transcript, or browser UX evidence beyond source/VM/static route validation.
+
+
+## 2026-06-26T09:45:00 Viewport helper extraction evidence
+Observation: `app_viewport.js` now owns read-only viewport/media-query decisions for mobile width, reduced motion, desktop sidebar actions, and touch file-editor controls; `app.js` delegates through fail-loud wrappers.
+Observation: Docker focused validation passed with 63 tests, Docker prefix smoke served both top-level and `/static/` viewport helper routes under `/codoxear/`, and the full Docker suite passed with 985 passed, 1 skipped, 107 subtests on the final tree.
+Observation: Deterministic equivalence testing caught and repaired a subtle pre-commit drift: `isMobile()` must return `undefined`/falsy when `window.matchMedia` is absent, not boolean `false`. The final helper preserves that exact pre-extraction contract.
+Observation: Clean-room delegate review returned `NO BLOCKERS`. Its non-blocking concerns were future maintainability notes rather than behavior failures.
+Interpretation: The tranche changed helper ownership and static load ordering only. Reduced-motion scroll behavior, mobile/sidebar/file-touch call sites, and no-`matchMedia` fallback behavior are unchanged. The absent/malformed helper contract remains intentionally fail-loud rather than silently recomputing media queries in `app.js`.
+Scoped claim: viewport-helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new real mobile-device, assistive-tech, slow-network, huge-transcript, live backend lifecycle, or browser UX evidence beyond source/VM/static route validation.
