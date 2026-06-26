@@ -133,6 +133,7 @@ def eval_new_session_launch_preset(session_info: dict, *, backend: str = "pi", p
 
 def eval_pi_recent_providerless_selection() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     start = source.index("function newSessionModelOption(model")
     end = source.index("function renderNewSessionModelMenu()", start)
     snippet = source[start:end]
@@ -140,6 +141,10 @@ def eval_pi_recent_providerless_selection() -> dict:
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
+            CodoxearStorage: {{ getItem: () => null, setItem: () => true, removeItem: () => true }},
+          }},
           newSessionBackend: "pi",
           newSessionProvider: "openrouter",
           newSessionModelInput: {{ value: "", focus() {{}}, setSelectionRange() {{}} }},
@@ -167,7 +172,8 @@ def eval_pi_recent_providerless_selection() -> dict:
           applyDialogMenus: () => {{ ctx.appliedMenus = true; }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test = { sessionModelOptions, selectNewSessionModel };\n")}, ctx);
+        vm.runInContext({json.dumps(launch_source)}, ctx);
+        vm.runInContext({json.dumps("const codoxearLaunch = window.CodoxearLaunch;\nfunction modelOptionMatches(option, query) { return codoxearLaunch.modelOptionMatches(option, query); }\n" + snippet + "\nglobalThis.__test = { sessionModelOptions, selectNewSessionModel };\n")}, ctx);
         const options = ctx.__test.sessionModelOptions();
         ctx.__test.selectNewSessionModel(options[0]);
         process.stdout.write(JSON.stringify({{
@@ -186,6 +192,7 @@ def eval_pi_recent_providerless_selection() -> dict:
 
 def eval_new_session_model_options(query: str = "") -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    launch_source = APP_LAUNCH_JS.read_text(encoding="utf-8")
     start = source.index("function newSessionModelOption(model")
     end = source.index("function setNewSessionReasoningEffort(value) {", start)
     snippet = source[start:end]
@@ -193,6 +200,10 @@ def eval_new_session_model_options(query: str = "") -> dict:
         f"""
         const vm = require("vm");
         const ctx = {{
+          window: {{
+            CodoxearUrls: {{ resolveAppUrl: (path) => String(path || "") }},
+            CodoxearStorage: {{ getItem: () => null, setItem: () => true, removeItem: () => true }},
+          }},
           newSessionBackend: "codex",
           newSessionModelInput: {{ value: {json.dumps(query)} }},
           latestSessions: [
@@ -209,7 +220,8 @@ def eval_new_session_model_options(query: str = "") -> dict:
           sessionProviderChoice: (item) => item.model_provider === "openai" && item.preferred_auth_method === "chatgpt" ? "chatgpt" : item.model_provider,
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_model_options = { sessionModelOptions, filteredNewSessionModelOptions };\n")}, ctx);
+        vm.runInContext({json.dumps(launch_source)}, ctx);
+        vm.runInContext({json.dumps("const codoxearLaunch = window.CodoxearLaunch;\nfunction modelOptionMatches(option, query) { return codoxearLaunch.modelOptionMatches(option, query); }\n" + snippet + "\nglobalThis.__test_model_options = { sessionModelOptions, filteredNewSessionModelOptions };\n")}, ctx);
         process.stdout.write(JSON.stringify({{
           options: ctx.__test_model_options.sessionModelOptions(),
           filtered: ctx.__test_model_options.filteredNewSessionModelOptions(),

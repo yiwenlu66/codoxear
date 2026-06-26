@@ -45,6 +45,12 @@ def eval_provider_choice_to_settings() -> dict:
           piAbsentSessionProvider: launch.sessionProviderChoice(piAbsent),
           piActualSessionProvider: launch.sessionProviderChoice(piActual),
           piAbsentProviderSettings: launch.providerChoiceToSettings(launch.sessionProviderChoice(piAbsent), "pi"),
+          modelMatchEmpty: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, ""),
+          modelMatchExact: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "crs/gpt-5.4 gpt-5.4"),
+          modelMatchPrefix: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "crs/gpt"),
+          modelMatchContains: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "gpt-5"),
+          modelMatchFallbackModel: launch.modelOptionMatches({{ model: "o4-mini" }}, "o4"),
+          modelMatchNoMatch: launch.modelOptionMatches({{ searchText: "crs/gpt-5.4 gpt-5.4" }}, "claude"),
         }}));
         """
     )
@@ -102,6 +108,11 @@ def test_app_js_requires_launch_module_without_fallback() -> None:
     assert "return codoxearLaunch.defaultsForAgentBackend(backend, newSessionDefaults);" in source
     assert "function providerChoiceToSettings(choice, agentBackend = \"codex\")" in source
     assert "return codoxearLaunch.providerChoiceToSettings(choice, agentBackend);" in source
+    assert 'typeof codoxearLaunch.modelOptionMatches !== "function"' in source
+    assert "function modelOptionMatches(option, query)" in source
+    assert "return codoxearLaunch.modelOptionMatches(option, query);" in source
+    assert 'const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();' not in source
+    assert 'const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();' in launch_source
     assert "const LAST_BACKEND_KEY" not in source
     assert "const LAST_BACKEND_KEY" in launch_source
     assert "window.CodoxearLaunch = Object.freeze({" in launch_source
@@ -152,3 +163,9 @@ def test_provider_choice_mapping_is_backend_specific() -> None:
     assert result["piAbsentSessionProvider"] == ""
     assert result["piActualSessionProvider"] == "anthropic"
     assert result["piAbsentProviderSettings"] == {"model_provider": None, "preferred_auth_method": None}
+    assert result["modelMatchEmpty"] is True
+    assert result["modelMatchExact"] is True
+    assert result["modelMatchPrefix"] is True
+    assert result["modelMatchContains"] is True
+    assert result["modelMatchFallbackModel"] is True
+    assert result["modelMatchNoMatch"] is False

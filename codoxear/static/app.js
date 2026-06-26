@@ -135,7 +135,8 @@
         typeof codoxearLaunch.reasoningChoicesForBackend !== "function" ||
         typeof codoxearLaunch.backendSupportsFast !== "function" ||
         typeof codoxearLaunch.providerChoiceToSettings !== "function" ||
-        typeof codoxearLaunch.sessionProviderChoice !== "function"
+        typeof codoxearLaunch.sessionProviderChoice !== "function" ||
+        typeof codoxearLaunch.modelOptionMatches !== "function"
       )
         throw new Error("Codoxear launch helpers failed to load");
       function lastProviderKey(backend) {
@@ -403,6 +404,9 @@
       }
       function sessionProviderChoice(session) {
         return codoxearLaunch.sessionProviderChoice(session);
+      }
+      function modelOptionMatches(option, query) {
+        return codoxearLaunch.modelOptionMatches(option, query);
       }
 
 	      function fmtIdleAge(seconds) {
@@ -6435,12 +6439,6 @@
           }
           if (!out.length) addNewSessionModelOption(out, seen, "default", { providerChoice: activeProvider, configured: true });
           return out;
-        }
-
-        function modelOptionMatches(option, query) {
-          const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();
-          if (!query) return true;
-          return text === query || text.startsWith(query) || text.includes(query);
         }
 
         function filteredNewSessionModelOptions() {

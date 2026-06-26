@@ -234,6 +234,12 @@
     return provider || "chatgpt";
   }
 
+  function modelOptionMatches(option, query) {
+    const text = String(option && option.searchText ? option.searchText : option && option.model ? option.model : "").toLowerCase();
+    if (!query) return true;
+    return text === query || text.startsWith(query) || text.includes(query);
+  }
+
   window.CodoxearLaunch = Object.freeze({
     lastProviderKey,
     lastProviderModelKey,
@@ -257,5 +263,6 @@
     backendSupportsFast,
     providerChoiceToSettings,
     sessionProviderChoice,
+    modelOptionMatches,
   });
 })();
