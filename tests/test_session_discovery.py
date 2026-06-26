@@ -210,3 +210,59 @@ def test_discover_live_unresponsive_socket_is_excluded_without_cleanup(tmp_path:
     assert result.registrations == []
     assert [(recent.cwd, recent.ts) for recent in result.recent_cwds] == [(str(tmp_path), 456.0)]
     assert result.stale_actions == []
+
+
+def test_discover_hidden_dead_session_emits_unhide_unlink_action(tmp_path: Path) -> None:
+    sock_dir = tmp_path / "socks"
+    sock_dir.mkdir()
+    sock = sock_dir / "hidden-dead.sock"
+    sock.touch()
+    log_path = tmp_path / "hidden-dead.jsonl"
+    log_path.write_text("{}\n", encoding="utf-8")
+    _write_sidecar(sock, root=tmp_path, log_path=log_path)
+
+    result = discover_sessions(
+        sock_dir,
+        proc_root=tmp_path / "proc",
+        hidden_sessions={"hidden-dead"},
+        deps=_deps(live_pids=set(), meta_payload={"id": "hidden-dead"}),
+    )
+
+    assert result.registrations == []
+    assert result.recent_cwds == []
+    assert len(result.stale_actions) == 1
+    action = result.stale_actions[0]
+    assert action.session_id == "hidden-dead"
+    assert action.sock_path == sock
+    assert action.meta_path == sock.with_suffix(".json")
+    assert action.clear_session_state is False
+    assert action.unhide_session is True
+    assert action.failure_record is None
+
+
+def test_discover_stale_dead_socket_emits_unlink_only_action(tmp_path: Path) -> None:
+    sock_dir = tmp_path / "socks"
+    sock_dir.mkdir()
+    sock = sock_dir / "dead-socket.sock"
+    sock.touch()
+    log_path = tmp_path / "dead-socket.jsonl"
+    log_path.write_text("{}\n", encoding="utf-8")
+    _write_sidecar(sock, root=tmp_path, log_path=log_path, owner="terminal")
+
+    result = discover_sessions(
+        sock_dir,
+        proc_root=tmp_path / "proc",
+        hidden_sessions=set(),
+        deps=_deps(live_pids=set(), sock_error=FileNotFoundError("stale socket"), meta_payload={"id": "dead-socket"}),
+    )
+
+    assert result.registrations == []
+    assert [(recent.cwd, recent.ts) for recent in result.recent_cwds] == [(str(tmp_path), 456.0)]
+    assert len(result.stale_actions) == 1
+    action = result.stale_actions[0]
+    assert action.session_id == "dead-socket"
+    assert action.sock_path == sock
+    assert action.meta_path == sock.with_suffix(".json")
+    assert action.clear_session_state is False
+    assert action.unhide_session is False
+    assert action.failure_record is None
