@@ -156,9 +156,11 @@ from .session_discovery import discover_sessions as _discover_sessions
 from .session_launcher import LaunchContextRequest
 from .session_launcher import LaunchProcessDeps
 from .session_launcher import LaunchProcessFailure
+from .session_launcher import drain_stream as _drain_stream_impl
 from .session_launcher import launch_broker_process as _launch_broker_process
 from .session_launcher import prepare_launch_process_context as _prepare_launch_process_context
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
+from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -522,25 +524,11 @@ def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
 
 
 def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: float = 1.5) -> None:
-    deadline = time.time() + float(timeout_s)
-    while time.time() < deadline:
-        rc = proc.poll()
-        if rc is None:
-            time.sleep(0.05)
-            continue
-        _out, err = proc.communicate(timeout=0.5)
-        err2 = err if isinstance(err, (bytes, bytearray)) else b""
-        msg = bytes(err2).decode("utf-8", errors="replace").strip()
-        msg = msg[-4000:] if msg else ""
-        raise RuntimeError(f"{label} exited early (rc={rc}): {msg}")
+    return _wait_or_raise_impl(proc, label=label, timeout_s=timeout_s)
 
 
 def _drain_stream(f: Any) -> None:
-    while True:
-        b = f.read(65536)
-        if not b:
-            break
-    f.close()
+    return _drain_stream_impl(f)
 
 
 def _tmux_available() -> bool:

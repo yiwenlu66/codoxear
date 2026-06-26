@@ -15,9 +15,11 @@ from codoxear.session_launcher import LaunchContextRequest
 from codoxear.session_launcher import LaunchProcessDeps
 from codoxear.session_launcher import LaunchProcessFailure
 from codoxear.session_launcher import LaunchProcessRequest
+from codoxear.session_launcher import drain_stream
 from codoxear.session_launcher import launch_broker_process
 from codoxear.session_launcher import prepare_launch_process_context
 from codoxear.session_launcher import wait_for_spawned_broker_meta
+from codoxear.session_launcher import wait_or_raise
 
 
 def _request(*, create_in_tmux: bool = False) -> LaunchProcessRequest:
@@ -187,6 +189,80 @@ def test_session_launcher_import_does_not_load_server() -> None:
         capture_output=True,
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
+
+
+def test_wait_or_raise_reports_early_exit_with_decoded_stderr() -> None:
+    communicate_calls: list[float] = []
+
+    class Proc:
+        def poll(self) -> int:
+            return 7
+
+        def communicate(self, *, timeout: float):
+            communicate_calls.append(timeout)
+            return b"", "ignored text stderr"
+
+    with pytest.raises(RuntimeError) as err:
+        wait_or_raise(Proc(), label="broker", timeout_s=1.0, now=iter([0.0, 0.0]).__next__)
+
+    assert str(err.value) == "broker exited early (rc=7): "
+    assert communicate_calls == [0.5]
+
+
+def test_wait_or_raise_decodes_byte_stderr_and_bounds_message() -> None:
+    message = b"x" * 4100
+
+    class Proc:
+        def poll(self) -> int:
+            return 2
+
+        def communicate(self, *, timeout: float):
+            return b"", message
+
+    with pytest.raises(RuntimeError) as err:
+        wait_or_raise(Proc(), label="agent", timeout_s=1.0, now=iter([0.0, 0.0]).__next__)
+
+    assert str(err.value) == f"agent exited early (rc=2): {'x' * 4000}"
+
+
+def test_wait_or_raise_sleeps_until_timeout_when_process_stays_running() -> None:
+    sleeps: list[float] = []
+    polls: list[str] = []
+
+    class Proc:
+        def poll(self):
+            polls.append("poll")
+            return None
+
+    wait_or_raise(
+        Proc(),
+        label="broker",
+        timeout_s=0.5,
+        now=iter([0.0, 0.0, 0.5]).__next__,
+        sleep=lambda seconds: sleeps.append(seconds),
+    )
+
+    assert polls == ["poll"]
+    assert sleeps == [0.05]
+
+
+def test_drain_stream_reads_until_eof_and_closes() -> None:
+    reads: list[int] = []
+    closed: list[bool] = []
+    chunks = iter([b"abc", b"def", b""])
+
+    class Stream:
+        def read(self, size: int) -> bytes:
+            reads.append(size)
+            return next(chunks)
+
+        def close(self) -> None:
+            closed.append(True)
+
+    drain_stream(Stream())
+
+    assert reads == [65536, 65536, 65536]
+    assert closed == [True]
 
 
 def test_launch_broker_process_direct_records_spawn_and_starts_wait_thread() -> None:

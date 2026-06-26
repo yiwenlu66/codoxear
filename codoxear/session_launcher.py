@@ -145,6 +145,37 @@ def prepare_launch_process_context(
     return LaunchProcessContext(request=request, recorder=recorder)
 
 
+def wait_or_raise(
+    proc: Any,
+    *,
+    label: str,
+    timeout_s: float = 1.5,
+    now: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> None:
+    now_fn = now or time.time
+    sleep_fn = sleep or time.sleep
+    deadline = now_fn() + float(timeout_s)
+    while now_fn() < deadline:
+        rc = proc.poll()
+        if rc is None:
+            sleep_fn(0.05)
+            continue
+        _out, err = proc.communicate(timeout=0.5)
+        err2 = err if isinstance(err, (bytes, bytearray)) else b""
+        msg = bytes(err2).decode("utf-8", errors="replace").strip()
+        msg = msg[-4000:] if msg else ""
+        raise RuntimeError(f"{label} exited early (rc={rc}): {msg}")
+
+
+def drain_stream(stream: Any) -> None:
+    while True:
+        chunk = stream.read(65536)
+        if not chunk:
+            break
+    stream.close()
+
+
 def wait_for_spawned_broker_meta(
     spawn_nonce: str,
     *,
