@@ -3069,3 +3069,18 @@
 - Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18882 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` -> 40 passed.
 - Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18883 scripts/codoxear-docker-sandbox test` -> 994 passed, 1 skipped, 107 subtests passed.
 - Clean-room delegate review `729062d7-003f-4282-8d8e-96dbe8ba2eac` returned `NO BLOCKERS`; it confirmed semantic equivalence, fail-loud guard, wrapper/call-site preservation, side-effect ownership in `app.js`, real-helper VM coverage, and no static asset wiring requirement. Its only note: `new Error("")` still formats as `"Error"`, which is pre-existing behavior, not a regression.
+
+
+## 2026-06-26T10:50:00 Recovery prompt preview helper extraction checkpoint
+- Functional commit created: `57d70db extract recovery prompt preview helper`.
+- Extracted pure recovery prompt preview formatting into the existing `codoxear/static/app_display.js` helper boundary: `recoveryPromptPreview(text, maxLen = 320)` preserves `String(text || "").replace(/\s+/g, " ").trim()`, empty-string return, and `raw.slice(0, maxLen) + "…"` truncation behavior.
+- `app.js` now requires `window.CodoxearDisplay.recoveryPromptPreview` fail-loudly through the existing `Codoxear display helpers failed to load` guard and keeps the local `recoveryPromptPreview()` wrapper for existing recovery call sites.
+- Side-effect/security boundary: `redactedLaunchErrorText()`, `recoverySessionInfo()`, `recoveryDetailsText()`, recovery panel DOM/actions, copy-to-clipboard, launch preset/session state, and API mutations remain app-owned in `app.js`.
+- No static asset registration changed because `app_display.js` was already loaded before `app.js`, included in `FRONTEND_ASSET_FILES`, top-level static routing, asset versioning, and wheel packaging.
+- Guard/equivalence tests updated: direct real-module VM tests cover whitespace collapse, truncation, exact max length, falsy text, default max length, frozen export metadata, `app.js` fail-loud/source wrapper coverage, and the launch-recovery VM now loads the real `app_display.js` module before executing the app wrapper snippet.
+- Local diagnostic validation: `node --check codoxear/static/app_display.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_display_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py` -> `42 passed`.
+- Deterministic equivalence check against the pre-extraction `codoxear/static/app.js` formatter body passed for 10 representative cases, including whitespace-only, multiline whitespace, truncation, exact length, zero max length, `0`, `false`, and default-limit inputs.
+- Helper body side-effect probe found no redaction, session, DOM, API, fetch, clipboard, toast, or window references inside the extracted formatter body.
+- Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18884 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` -> `42 passed`.
+- Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18885 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `ba7cbeaf-14d0-49d6-a5c1-3f412201d830` saved to `/tmp/codoxear-recovery-preview-helper-review.md` returned `NO BLOCKERS`; it confirmed semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, side-effect ownership in `app.js`, real-helper VM coverage, and no static asset wiring requirement.

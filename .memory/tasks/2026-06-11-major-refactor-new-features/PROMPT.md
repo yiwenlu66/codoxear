@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: video-preview error text formatting now lives in `codoxear/static/app_file_helpers.js` at functional commit `6caa995 extract video preview error formatter`; checkpoint docs are being recorded separately.
-2. Next tranche: extract only pure recovery prompt preview formatting from `app.js`; keep launch-error redaction, recovery details, session state, recovery panel DOM/actions, copy-to-clipboard, and API mutations in `app.js`.
-3. Prefer extending an existing helper module only if the boundary is semantically narrow; add fail-loud helper wiring, wrapper-preserving call sites, real-module VM tests for whitespace collapse, truncation, falsy text, custom max length, and static/source coverage.
+1. Completed tranche: recovery prompt preview formatting now lives in `codoxear/static/app_display.js` at functional commit `57d70db extract recovery prompt preview helper`; checkpoint docs are being recorded separately.
+2. Next bounded candidate: extract only pure recent-cwd fuzzy scoring (`fuzzyRecentCwdScore`) if the ownership boundary remains narrow. Keep `recentCwds`, `renderRecentCwdOptions()`, `filteredRecentCwdOptions()`, `newSessionCwdInput`, menu focus/selection, DOM rendering, cwd validation, and dialog actions in `app.js`.
+3. Prefer extending an existing helper module only if the boundary is semantically narrow; add fail-loud helper wiring, wrapper-preserving call sites, real-module VM tests for exact/base/token/subsequence scoring, no-query behavior, no-match behavior, and source/boundary coverage.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
@@ -13,7 +13,7 @@ Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-produ
 - Protected live checkout: `/home/yiwen/codex-web` on `main`; do not edit, merge, restart, or promote it.
 - Task memory: `.memory/tasks/2026-06-11-major-refactor-new-features/`.
 - Current checkpoint: `recon/refactor-entry-checkpoint.md`.
-- Closed work includes Pi busy-after-interrupt repair, Codex live web-send binding, Claude Code closed-log binding/API-error idle path, markdown code/table containment, video preview/transcoding, and bounded frontend helper/static-registry refactors through video-preview error formatting.
+- Closed work includes Pi busy-after-interrupt repair, Codex live web-send binding, Claude Code closed-log binding/API-error idle path, markdown code/table containment, video preview/transcoding, and bounded frontend helper/static-registry refactors through recovery prompt preview formatting.
 - Remaining parked limits include successful live Claude model-text response, real mobile-device/assistive-tech evidence, slow-network/huge-transcript evidence, smooth Jump to latest, non-UTF-8 Git filename byte-literal behavior, and atomic symlink containment.
 
 ## Task specifications

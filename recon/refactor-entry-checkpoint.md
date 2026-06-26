@@ -170,6 +170,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Video-preview error formatter focused Docker validation: `CODOXEAR_DOCKER_PORT=18882 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` -> `40 passed`.
 - Video-preview error formatter full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18883 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Clean-room delegate review `729062d7-003f-4282-8d8e-96dbe8ba2eac` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, side-effect ownership in `app.js`, real-helper VM coverage, and no static asset wiring requirement.
+- Recovery prompt preview helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18884 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` -> `42 passed`.
+- Recovery prompt preview helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18885 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline formatter passed for 10 representative edge cases, and a helper-body side-effect probe found no redaction/session/DOM/API references.
+- Clean-room delegate review `ba7cbeaf-14d0-49d6-a5c1-3f412201d830` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, app-owned recovery/security side effects, real-helper VM coverage, and no static asset wiring requirement.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -250,4 +254,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: extract only pure recovery prompt preview formatting, keep redaction/session recovery/DOM/API side effects in `app.js`, keep source/VM/static guards green, run focused and full Docker validation, and use clean-room review before commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: a current candidate is extracting only pure recent-cwd fuzzy scoring while keeping recent-cwd state, input/menu DOM, focus/selection, cwd validation, and dialog actions in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.

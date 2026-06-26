@@ -2477,3 +2477,12 @@ Observation: Clean-room delegate review returned `NO BLOCKERS`, confirming the h
 Interpretation: The tranche changes helper ownership only. Video preview route error surfacing remains the same because the app-owned failure path still throws the route detail and formats it through the same trimming/fallback logic.
 Residual risk: `new Error("")` still formats as `"Error"` because the pre-existing expression falls back from falsy `.message` to `String(err)`; this is preserved, not newly introduced.
 Scoped claim: video-preview error formatter extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new video transcoding behavior, browser media behavior, live backend lifecycle evidence, or real mobile/assistive-tech/slow-network coverage.
+
+
+## 2026-06-26T10:50:00 Recovery prompt preview helper extraction evidence
+Observation: `app_display.js` now owns the deterministic recovery prompt preview formatter; `app.js` delegates through a fail-loud wrapper while retaining launch-error redaction, recovery session lookup, recovery details text, recovery panel DOM/actions, copy-to-clipboard, launch preset/session state, and API mutation behavior.
+Observation: Docker focused validation passed with 42 tests, and the full Docker suite passed with 994 passed, 1 skipped, 107 subtests on the final tree.
+Observation: Deterministic equivalence testing matched the previous inline formatter across 10 edge cases, and a helper-body probe found no redaction/session/DOM/API side-effect references.
+Observation: Clean-room delegate review returned `NO BLOCKERS`, confirming byte-identical formatter semantics, fail-loud guard coverage, real-helper VM coverage, and app-owned recovery/security side effects.
+Interpretation: The tranche changes helper ownership only. Recovery-panel behavior and secret redaction remain governed by the existing app-owned mechanisms; absence or mismatch of the display helper remains intentionally fail-loud rather than hidden by an inline fallback.
+Scoped claim: recovery prompt preview helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new recovery UX behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
