@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `22f4465 extract frontend conversation copy helper`
+Latest functional code checkpoint: `6caa995 extract video preview error formatter`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -64,6 +64,7 @@ Recent committed recovery checkpoints include:
   - viewport/media-query helper logic moved from `app.js` into `codoxear/static/app_viewport.js`;
   - polling-delay policy moved from `app.js` into `codoxear/static/app_polling.js`;
   - conversation-copy formatting moved from `app.js` into `codoxear/static/app_conversation_copy.js`;
+  - video-preview error text formatting moved from `app.js` into `codoxear/static/app_file_helpers.js`;
   - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
   - launch/backend/default/provider/model-memory helpers moved from `app.js` into `codoxear/static/app_launch.js`;
   - display/formatting/icon helpers moved from `app.js` into `codoxear/static/app_display.js`;
@@ -79,6 +80,7 @@ Recent committed recovery checkpoints include:
   - viewport-helper extraction preserves mobile width, reduced-motion, desktop-action, and touch-control media query semantics through `window.CodoxearViewport`, including the pre-existing `isMobile()` undefined/falsy return when `matchMedia` is absent;
   - polling-helper extraction preserves session/secondary visibility delays, message poll fast/running/idle/hidden/offline/error-backoff branch order, and kick-delay normalization through `window.CodoxearPolling`, while timers and mutable polling counters remain in `app.js`;
   - conversation-copy extraction preserves role filtering, falsy-text coercion, trailing-whitespace trim, locale timestamp labels, section headers, and separator formatting through `window.CodoxearConversationCopy`, while API/clipboard/button/toast side effects remain in `app.js`;
+  - video-preview error formatter extraction preserves message/string trimming and fallback text through `window.CodoxearFileHelpers`, while preview fetch/auth/video-state/DOM side effects remain in `app.js`;
   - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
   - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`.
@@ -165,6 +167,9 @@ Latest Docker-only evidence after frontend helper extractions:
 - Conversation-copy helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/ -> 200`; `/codoxear/app_conversation_copy.js?v=test -> 200`; `/codoxear/static/app_conversation_copy.js?v=test -> 200`.
 - Conversation-copy helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18881 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Clean-room delegate review `4a1b533a-5dee-4b1a-8a82-c7556f7b39b9` returned `NO BLOCKERS` for side-effect ownership, fail-loud guard behavior, formatter semantic equivalence, load order, static asset/version/package wiring, and test coverage. Earlier review attempts failed before findings due subagent model-configuration errors.
+- Video-preview error formatter focused Docker validation: `CODOXEAR_DOCKER_PORT=18882 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` -> `40 passed`.
+- Video-preview error formatter full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18883 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `729062d7-003f-4282-8d8e-96dbe8ba2eac` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, side-effect ownership in `app.js`, real-helper VM coverage, and no static asset wiring requirement.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -245,4 +250,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: extract only pure video-preview error text formatting, keep fetch/auth/video-state/DOM side effects in `app.js`, keep source/VM/static guards green, run focused and full Docker validation, and use clean-room review before commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: extract only pure recovery prompt preview formatting, keep redaction/session recovery/DOM/API side effects in `app.js`, keep source/VM/static guards green, run focused and full Docker validation, and use clean-room review before commit.
