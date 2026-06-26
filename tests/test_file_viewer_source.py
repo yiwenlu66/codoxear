@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_FILE_HELPERS_JS = ROOT / "codoxear" / "static" / "app_file_helpers.js"
 APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
@@ -15,13 +16,18 @@ SERVER_PY = ROOT / "codoxear" / "server.py"
 
 def eval_video_preview_failure_path() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    file_helpers_source = APP_FILE_HELPERS_JS.read_text(encoding="utf-8")
     start = source.index("function fileVideoPreviewErrorText(err) {")
     end = source.index("function clearFileVideo() {", start)
     snippet = source[start:end]
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
+        const moduleCtx = {{ window: {{ CodoxearDisplay: {{ fmtBytes(value) {{ return String(value); }} }} }} }};
+        vm.createContext(moduleCtx);
+        vm.runInContext({json.dumps(file_helpers_source)}, moduleCtx);
         const ctx = {{
+          codoxearFileHelpers: moduleCtx.window.CodoxearFileHelpers,
           activeVideoFallback: {{ token: "video-1", previewUrl: "/preview.mp4", used: false, preparing: false, rel: "clip.mkv" }},
           activeFilePath: "clip.mkv",
           applyCount: 0,

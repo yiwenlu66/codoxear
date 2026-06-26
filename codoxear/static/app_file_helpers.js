@@ -49,6 +49,11 @@
     return `${n >= 0 ? "+" : ""}${n.toFixed(2)}`;
   }
 
+  function fileVideoPreviewErrorText(err) {
+    const raw = err && err.message ? String(err.message) : String(err || "");
+    return raw.trim() || "compatible video preview failed";
+  }
+
   window.CodoxearFileHelpers = Object.freeze({
     listFromFilesField,
     stripPathLocationSuffix,
@@ -56,5 +61,6 @@
     isDiffableFileKind,
     blockedFileMessage,
     formatPriorityOffset,
+    fileVideoPreviewErrorText,
   });
 })();

@@ -190,7 +190,8 @@
         typeof codoxearFileHelpers.isTextFileKind !== "function" ||
         typeof codoxearFileHelpers.isDiffableFileKind !== "function" ||
         typeof codoxearFileHelpers.blockedFileMessage !== "function" ||
-        typeof codoxearFileHelpers.formatPriorityOffset !== "function"
+        typeof codoxearFileHelpers.formatPriorityOffset !== "function" ||
+        typeof codoxearFileHelpers.fileVideoPreviewErrorText !== "function"
       )
         throw new Error("Codoxear file helpers failed to load");
       function listFromFilesField(val) {
@@ -7356,8 +7357,7 @@
         }
 
         function fileVideoPreviewErrorText(err) {
-          const raw = err && err.message ? String(err.message) : String(err || "");
-          return raw.trim() || "compatible video preview failed";
+          return codoxearFileHelpers.fileVideoPreviewErrorText(err);
         }
 
         async function prepareCompatibleVideoPreview(previewUrl) {

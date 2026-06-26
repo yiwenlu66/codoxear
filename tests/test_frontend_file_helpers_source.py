@@ -42,6 +42,10 @@ def eval_file_helpers_real_order() -> dict:
           priorityPositive: helpers.formatPriorityOffset(1.234),
           priorityNegative: helpers.formatPriorityOffset(-0.5),
           priorityInvalid: helpers.formatPriorityOffset(Number.NaN),
+          videoErrorMessage: helpers.fileVideoPreviewErrorText(new Error(" bad codec ")),
+          videoErrorString: helpers.fileVideoPreviewErrorText(" transcode failed \\n"),
+          videoErrorBlank: helpers.fileVideoPreviewErrorText(new Error("   ")),
+          videoErrorNull: helpers.fileVideoPreviewErrorText(null),
           frozen: Object.isFrozen(helpers),
         }}));
         """
@@ -69,13 +73,16 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
             "isDiffableFileKind",
             "blockedFileMessage",
             "formatPriorityOffset",
+            "fileVideoPreviewErrorText",
         ]:
             self.assertIn(f"typeof codoxearFileHelpers.{helper} !== \"function\"", source)
             self.assertIn(f"function {helper}", source)
         self.assertIn("window.CodoxearFileHelpers = Object.freeze({", helper_source)
         self.assertIn('throw new Error("Codoxear display helpers failed to load")', helper_source)
+        self.assertIn("return codoxearFileHelpers.fileVideoPreviewErrorText(err);", source)
         self.assertNotIn("const raw = String(rawPath ?? \"\");", source)
         self.assertNotIn("const out = [];\n        for (const v of val)", source)
+        self.assertNotIn("const raw = err && err.message ? String(err.message)", source)
 
     def test_file_helpers_preserve_literal_and_formatting_contracts(self) -> None:
         result = eval_file_helpers_real_order()
@@ -96,6 +103,10 @@ class TestFrontendFileHelpersSource(unittest.TestCase):
         self.assertEqual(result["priorityPositive"], "+1.23")
         self.assertEqual(result["priorityNegative"], "-0.50")
         self.assertEqual(result["priorityInvalid"], "0.00")
+        self.assertEqual(result["videoErrorMessage"], "bad codec")
+        self.assertEqual(result["videoErrorString"], "transcode failed")
+        self.assertEqual(result["videoErrorBlank"], "compatible video preview failed")
+        self.assertEqual(result["videoErrorNull"], "compatible video preview failed")
         self.assertTrue(result["frozen"])
 
 
