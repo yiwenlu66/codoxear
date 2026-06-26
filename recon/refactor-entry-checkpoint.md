@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `6506f21 extract frontend polling helper`
+Latest functional code checkpoint: `22f4465 extract frontend conversation copy helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -63,10 +63,11 @@ Recent committed recovery checkpoints include:
   - session/sidebar render-state helper logic moved from `app.js` into `codoxear/static/app_session_helpers.js`;
   - viewport/media-query helper logic moved from `app.js` into `codoxear/static/app_viewport.js`;
   - polling-delay policy moved from `app.js` into `codoxear/static/app_polling.js`;
+  - conversation-copy formatting moved from `app.js` into `codoxear/static/app_conversation_copy.js`;
   - markdown rendering, markdown cache, markdown preview image routing, and local file-reference parsing moved from `app.js` into `codoxear/static/app_markdown.js`;
   - launch/backend/default/provider/model-memory helpers moved from `app.js` into `codoxear/static/app_launch.js`;
   - display/formatting/icon helpers moved from `app.js` into `codoxear/static/app_display.js`;
-  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_api.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, `app_file_helpers.js`, `app_session_helpers.js`, `app_viewport.js`, `app_polling.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
+  - `index.html` loads `app_url.js`, `app_storage.js`, `app_perf.js`, `app_api.js`, `app_markdown.js`, `app_launch.js`, `app_display.js`, `app_file_helpers.js`, `app_session_helpers.js`, `app_viewport.js`, `app_polling.js`, `app_conversation_copy.js`, then `app.js`; `app.js` fails loudly if any helper is missing;
   - all helper scripts participate in static asset versioning, top-level static routing, and wheel packaging;
   - frontend static asset registration now has a single server-side manifest for version-hashed frontend files and exact top-level static routes;
   - URL-prefix behavior remains the same algorithm (`/static/index.html`, `/static/`, otherwise current directory) with root-like app paths resolved under the computed app base;
@@ -77,6 +78,7 @@ Recent committed recovery checkpoints include:
   - session-helper extraction preserves failed/pending launch selectability, review/waiting/later grouping, sidebar entry/signature semantics, and fast-session detection through `window.CodoxearSessionHelpers`;
   - viewport-helper extraction preserves mobile width, reduced-motion, desktop-action, and touch-control media query semantics through `window.CodoxearViewport`, including the pre-existing `isMobile()` undefined/falsy return when `matchMedia` is absent;
   - polling-helper extraction preserves session/secondary visibility delays, message poll fast/running/idle/hidden/offline/error-backoff branch order, and kick-delay normalization through `window.CodoxearPolling`, while timers and mutable polling counters remain in `app.js`;
+  - conversation-copy extraction preserves role filtering, falsy-text coercion, trailing-whitespace trim, locale timestamp labels, section headers, and separator formatting through `window.CodoxearConversationCopy`, while API/clipboard/button/toast side effects remain in `app.js`;
   - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
   - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`.
@@ -159,6 +161,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Polling helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/ -> 200`; `/codoxear/app_polling.js -> 200`; `/codoxear/static/app_polling.js -> 200`.
 - Polling helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18874 scripts/codoxear-docker-sandbox test` -> `989 passed, 1 skipped, 107 subtests passed`.
 - Clean-room delegate review `927f869e-57ea-4c7d-9b8e-b44397727336` returned `NO BLOCKERS` for delay equivalence, app-owned mutable state, fail-loud guard behavior, static asset/version/package wiring, and module encapsulation. Its positive requested kick-delay test suggestion was applied before commit; remaining notes are maintenance risks, not behavior regressions.
+- Conversation-copy helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18880 scripts/codoxear-docker-sandbox test tests/test_frontend_conversation_copy_source.py tests/test_frontend_polling_module_source.py tests/test_transcript_export.py tests/test_static_assets.py -q` -> passed.
+- Conversation-copy helper Docker runtime route check under `CODEX_WEB_URL_PREFIX=/codoxear`: `/codoxear/api/me -> 401`; `/codoxear/ -> 200`; `/codoxear/app_conversation_copy.js?v=test -> 200`; `/codoxear/static/app_conversation_copy.js?v=test -> 200`.
+- Conversation-copy helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18881 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `4a1b533a-5dee-4b1a-8a82-c7556f7b39b9` returned `NO BLOCKERS` for side-effect ownership, fail-loud guard behavior, formatter semantic equivalence, load order, static asset/version/package wiring, and test coverage. Earlier review attempts failed before findings due subagent model-configuration errors.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -239,4 +245,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: extract only pure conversation-copy formatting, keep API/clipboard/button/toast side effects in `app.js`, keep source/VM/static guards green, run focused and full Docker validation, and use clean-room review before commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: extract only pure video-preview error text formatting, keep fetch/auth/video-state/DOM side effects in `app.js`, keep source/VM/static guards green, run focused and full Docker validation, and use clean-room review before commit.
