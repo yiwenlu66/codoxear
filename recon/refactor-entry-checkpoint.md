@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `be7eeb3 extract session runtime and route controllers`
+Latest functional code checkpoint: `62dd4f2 Extract auth route controller`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -103,6 +103,9 @@ Recent committed recovery checkpoints include:
   - session control POST validation/status mapping for delete/edit/rename/send/unattended/interrupt/attachment injection/pending-clear/commit-unknown-clear now lives in `codoxear/control_routes.py`, while manager methods remain the control-plane mutation boundary;
   - diagnostics GET composition now lives in `codoxear/diagnostics_routes.py`, sharing `session_runtime.py` for busy/ready/token state and keeping provider/sidebar/git details as explicit dependencies;
   - Git changed-files, diff, and file-version API semantics now live in `codoxear/git_routes.py`, with `git_ops.py` remaining the subprocess/path/pathspec authority and server providing dependency seams.
+  - session list/defaults/resume-candidate/metrics/tail/unattended GET composition and web-owned session creation POST composition now live in `codoxear/session_routes.py`, while `SessionManager` remains the runtime owner for listing, aliases, tails, unattended config, and spawn behavior;
+  - voice settings, push notification subscription/feed/message routes, audio playlist/segment streaming, and audio listener POST HTTP validation/status/header mapping now live in `codoxear/voice_routes.py`, while `VoicePushCoordinator` remains state/audio/subscription authority and `Handler` keeps only thin wrapper seams for existing tests;
+  - auth `/api/me`, `/api/login`, and `/api/logout` HTTP response/cookie route composition now lives in `codoxear/auth_routes.py`, while cookie signing/verification/HMAC secret authority remains in `auth.py`/server helpers and JSON body parsing remains injected from `Handler._read_json_body`.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -126,6 +129,12 @@ Latest code-validation evidence after the Codex and Claude Code live binding rep
 - Clean-room critic subagent `05290a8a-033a-46c1-ab02-c0d8f52d3254` found two CC fallback blockers: post-fork known-log snapshotting could skip a fast-created CC log forever, and relative `--cwd` could fail absolute CC cwd matching. Both were fixed by prelaunch snapshotting, absolute broker cwd expansion, and focused regressions.
 - Clean-room critic subagent `62c6924a-cbdf-4535-b3d8-d6886680fd2a` confirmed those fixes, then found a large-first-row blocker in the bounded CC header scan. The cap now bounds row start offsets, so a valid first CC row larger than 512 KiB remains discoverable while rows starting after the window remain ignored.
 - Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the committed CC fallback/header repair (`c1280cb fix Claude Code closed-log binding`).
+
+Latest Docker-only evidence after voice/auth route ownership:
+
+- Voice route functional commit: `1950ffd Extract voice route controller`; focused Docker on port 18934 passed and full Docker on port 18935 returned `1046 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-voice-routes-review.md` returned `NO BLOCKERS`.
+- Auth route functional commit: `62dd4f2 Extract auth route controller`; focused Docker on port 18936 passed and full Docker on port 18937 returned `1051 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-auth-routes-review.md` returned `NO BLOCKERS`.
+- Scoped claim: `server.py` now delegates file, session, voice, and auth HTTP controller ownership to route modules while preserving injected runtime/state/security authorities. This does not yet claim static/index/asset route extraction, hook route extraction, live backend lifecycle expansion, or new mobile/device evidence.
 
 Latest Docker-only evidence after backend/server architecture tranche:
 
