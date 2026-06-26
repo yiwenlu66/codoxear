@@ -1,4 +1,6 @@
 from pathlib import Path
+import threading
+from typing import Any
 
 import pytest
 
@@ -8,7 +10,9 @@ from codoxear.session_runtime import apply_run_settings_backfill
 from codoxear.session_runtime import broker_allows_interrupted_idle_override
 from codoxear.session_runtime import broker_busy_queue
 from codoxear.session_runtime import broker_interrupted_idle
+from codoxear.session_runtime import ListingRuntimeProbes
 from codoxear.session_runtime import broker_runtime_state
+from codoxear.session_runtime import build_runtime_enriched_session_rows
 from codoxear.session_runtime import resolve_runtime_status
 from codoxear.session_runtime import select_runtime_token
 
@@ -182,3 +186,113 @@ def test_runtime_token_prefers_live_log_state_over_stale_broker_token() -> None:
             token_update=None,
             log_available=False,
         )
+
+
+class _RecentCwdStore:
+    def __init__(self, *, dirty: bool = True) -> None:
+        self.dirty = dirty
+        self.calls: list[tuple[str, float]] = []
+
+    def note_recent_cwd(self, cwd: str, updated_ts: float) -> bool:
+        self.calls.append((cwd, updated_ts))
+        return self.dirty
+
+
+def _staged_listing_row(log_path: Path) -> dict[str, Any]:
+    return {
+        "session_id": "s1",
+        "agent_backend": "codex",
+        "updated_ts": 10.0,
+        "start_ts": 10.0,
+        "priority_offset": 0.0,
+        "blocked": False,
+        "snoozed": False,
+        "log_exists": True,
+        "needs_history_scan": True,
+        "needs_run_settings": True,
+        "state_busy": True,
+        "broker_queue_len": 0,
+        "interrupted_idle": False,
+        "_log_path_obj": log_path,
+        "_cwd_path_obj": Path("/repo"),
+        "model_provider": None,
+        "preferred_auth_method": None,
+        "model": None,
+        "reasoning_effort": None,
+        "provider_choice": "default",
+    }
+
+
+def test_build_runtime_enriched_session_rows_applies_backfills_and_public_projection() -> None:
+    log_path = Path("/tmp/log.jsonl")
+    session = _session(log_path)
+    store = _RecentCwdStore()
+
+    result = build_runtime_enriched_session_rows(
+        staged_rows=[_staged_listing_row(log_path)],
+        sessions={"s1": session},
+        lock=threading.Lock(),
+        store=store,  # type: ignore[arg-type]
+        probes=ListingRuntimeProbes(
+            last_conversation_ts_from_tail=lambda path: 25.0,
+            read_run_settings_from_log=lambda path, agent_backend: ("provider", "log-model", "high"),
+            log_size_or_none=lambda path: 100,
+            send_boundary_unresolved=lambda sid, path, size: False,
+            idle_from_log_path=lambda sid, path: True,
+            current_git_branch=lambda path: "main",
+        ),
+        now_ts=30.0,
+        provider_choice_for_settings=lambda model_provider, preferred_auth_method: f"choice:{model_provider}:{preferred_auth_method}",
+        priority_half_life_seconds=60.0,
+        priority_bucket_seconds=1.0,
+    )
+
+    assert result.recent_cwd_dirty is True
+    assert store.calls == [("/repo", 25.0)]
+    assert session.last_chat_history_scanned is True
+    assert session.last_chat_ts == 25.0
+    assert session.model_provider == "provider"
+    assert session.model == "log-model"
+    assert session.reasoning_effort == "high"
+    assert len(result.rows) == 1
+    row = result.rows[0]
+    assert row["updated_ts"] == 25.0
+    assert row["busy"] is False
+    assert row["git_branch"] == "main"
+    assert row["model_provider"] == "provider"
+    assert row["provider_choice"] == "choice:provider:None"
+    assert "_log_path_obj" not in row
+    assert "_cwd_path_obj" not in row
+
+
+def test_build_runtime_enriched_session_rows_keeps_busy_when_send_boundary_unresolved() -> None:
+    log_path = Path("/tmp/log.jsonl")
+    session = _session(log_path)
+    idle_calls = 0
+
+    def idle_from_log_path(sid: str, path: Path) -> bool:
+        nonlocal idle_calls
+        idle_calls += 1
+        return True
+
+    result = build_runtime_enriched_session_rows(
+        staged_rows=[{**_staged_listing_row(log_path), "needs_history_scan": False, "needs_run_settings": False, "state_busy": False}],
+        sessions={"s1": session},
+        lock=threading.Lock(),
+        store=_RecentCwdStore(),  # type: ignore[arg-type]
+        probes=ListingRuntimeProbes(
+            last_conversation_ts_from_tail=lambda path: None,
+            read_run_settings_from_log=lambda path, agent_backend: (None, None, None),
+            log_size_or_none=lambda path: 100,
+            send_boundary_unresolved=lambda sid, path, size: True,
+            idle_from_log_path=idle_from_log_path,
+            current_git_branch=lambda path: None,
+        ),
+        now_ts=30.0,
+        provider_choice_for_settings=lambda model_provider, preferred_auth_method: "default",
+        priority_half_life_seconds=60.0,
+        priority_bucket_seconds=1.0,
+    )
+
+    assert result.rows[0]["busy"] is True
+    assert idle_calls == 0

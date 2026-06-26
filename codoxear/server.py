@@ -166,18 +166,16 @@ from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_listing import clip01 as _listing_clip01
-from .session_listing import listing_priority as _listing_priority
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_listing import build_active_session_rows_snapshot as _build_active_session_rows_snapshot
 from .session_listing import build_launch_attempt_rows as _build_launch_attempt_rows
 from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
-from .session_listing import build_public_session_row as _build_public_session_row
 from .session_listing import sort_session_rows as _sort_session_rows
 from .session_model import Session
-from .session_runtime import apply_history_backfill as _runtime_apply_history_backfill
-from .session_runtime import apply_run_settings_backfill as _runtime_apply_run_settings_backfill
+from .session_runtime import ListingRuntimeProbes
+from .session_runtime import build_runtime_enriched_session_rows as _build_runtime_enriched_session_rows
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -3698,87 +3696,29 @@ class SessionManager:
             sidebar_dirty = sidebar_dirty or snapshot.sidebar_dirty
             recent_cwd_dirty = recent_cwd_dirty or snapshot.recent_cwd_dirty
 
-        out: list[dict[str, Any]] = []
-        for it in items:
-            sid = str(it["session_id"])
-            log_exists = bool(it.get("log_exists"))
-            log_path_obj = it.get("_log_path_obj")
-            if bool(it.get("needs_history_scan")) and isinstance(log_path_obj, Path):
-                # Discovery seeds offsets at EOF, so recover preexisting chat history once.
-                conv_ts: float | None
-                try:
-                    conv_ts = _last_conversation_ts_from_tail(log_path_obj)
-                except FileNotFoundError:
-                    conv_ts = None
-                with self._lock:
-                    s_cur = self._sessions.get(sid)
-                    history_update = _runtime_apply_history_backfill(
-                        s_cur,
-                        expected_log_path=log_path_obj,
-                        conversation_ts=conv_ts,
-                    )
-                    if history_update is not None and s_cur is not None:
-                        updated_ts = history_update.updated_ts
-                        it["updated_ts"] = updated_ts
-                        recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s_cur.cwd, updated_ts)
-                        priority = _listing_priority(
-                            now_ts=now_ts,
-                            updated_ts=updated_ts,
-                            priority_offset=float(it.get("priority_offset", 0.0)),
-                            blocked=bool(it.get("blocked")),
-                            snoozed=bool(it.get("snoozed")),
-                            half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
-                            bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
-                        )
-                        it["time_priority"] = priority.time_priority
-                        it["base_priority"] = priority.base_priority
-                        it["final_priority"] = priority.final_priority
-            if bool(it.get("needs_run_settings")) and isinstance(log_path_obj, Path):
-                try:
-                    log_provider, log_model, log_effort = _read_run_settings_from_log(log_path_obj, agent_backend=str(it.get("agent_backend") or "codex"))
-                except (FileNotFoundError, ValueError):
-                    log_provider = log_model = log_effort = None
-                with self._lock:
-                    s_cur = self._sessions.get(sid)
-                    run_settings_update = _runtime_apply_run_settings_backfill(
-                        s_cur,
-                        expected_log_path=log_path_obj,
-                        log_provider=log_provider,
-                        log_model=log_model,
-                        log_effort=log_effort,
-                    )
-                    if run_settings_update is not None:
-                        it["model_provider"] = run_settings_update.model_provider
-                        it["preferred_auth_method"] = run_settings_update.preferred_auth_method
-                        it["model"] = run_settings_update.model
-                        it["reasoning_effort"] = run_settings_update.reasoning_effort
-                        it["provider_choice"] = _provider_choice_for_settings(
-                            model_provider=run_settings_update.model_provider,
-                            preferred_auth_method=run_settings_update.preferred_auth_method,
-                        )
-            log_path_for_boundary = log_path_obj if isinstance(log_path_obj, Path) else None
-            log_size = self._log_size_or_none(log_path_for_boundary)
-            boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(sid, log_path_for_boundary, log_size)
-            broker_runtime = _runtime_broker_state(
-                {
-                    "busy": bool(it.get("state_busy")),
-                    "queue_len": int(it.get("broker_queue_len", 0)),
-                    "interrupted_idle": bool(it.get("interrupted_idle")),
-                }
-            )
-            try:
-                log_idle = bool(self.idle_from_log_path(sid, log_path_obj)) if log_exists and isinstance(log_path_obj, Path) and not boundary_unresolved else None
-                busy_out = _resolve_runtime_status(
-                    broker=broker_runtime,
-                    log_exists=log_exists and isinstance(log_path_obj, Path),
-                    log_idle=log_idle,
-                    send_boundary_unresolved=boundary_unresolved,
-                ).busy
-            except FileNotFoundError:
-                busy_out = False
-            cwd_path_obj = it.get("_cwd_path_obj")
-            git_branch = _current_git_branch(cwd_path_obj) if isinstance(cwd_path_obj, Path) else None
-            out.append(_build_public_session_row(it, git_branch=git_branch, busy=bool(busy_out)))
+        runtime_result = _build_runtime_enriched_session_rows(
+            staged_rows=items,
+            sessions=self._sessions,
+            lock=self._lock,
+            store=self._session_store_for_manager(),
+            probes=ListingRuntimeProbes(
+                last_conversation_ts_from_tail=lambda path: _last_conversation_ts_from_tail(path),
+                read_run_settings_from_log=lambda path, agent_backend: _read_run_settings_from_log(path, agent_backend=agent_backend),
+                log_size_or_none=self._log_size_or_none,
+                send_boundary_unresolved=self._confirmed_send_boundary_unresolved_for_session,
+                idle_from_log_path=self.idle_from_log_path,
+                current_git_branch=_current_git_branch,
+            ),
+            now_ts=now_ts,
+            provider_choice_for_settings=lambda model_provider, preferred_auth_method: _provider_choice_for_settings(
+                model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
+            ),
+            priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+            priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+        )
+        out = runtime_result.rows
+        recent_cwd_dirty = recent_cwd_dirty or runtime_result.recent_cwd_dirty
         if bool(getattr(self, "_include_launch_attempts", False)):
             with self._lock:
                 hidden_failure_ids = set(getattr(self, "_hidden_sessions", set()))
