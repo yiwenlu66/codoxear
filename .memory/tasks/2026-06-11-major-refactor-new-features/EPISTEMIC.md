@@ -2486,3 +2486,12 @@ Observation: Deterministic equivalence testing matched the previous inline forma
 Observation: Clean-room delegate review returned `NO BLOCKERS`, confirming byte-identical formatter semantics, fail-loud guard coverage, real-helper VM coverage, and app-owned recovery/security side effects.
 Interpretation: The tranche changes helper ownership only. Recovery-panel behavior and secret redaction remain governed by the existing app-owned mechanisms; absence or mismatch of the display helper remains intentionally fail-loud rather than hidden by an inline fallback.
 Scoped claim: recovery prompt preview helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new recovery UX behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
+
+
+## 2026-06-26T11:00:00 Recent-cwd score helper extraction evidence
+Observation: `app_display.js` now owns the deterministic recent-cwd fuzzy scorer; `app.js` delegates through a fail-loud wrapper while retaining recent-cwd storage, option de-duplication, query reading, menu DOM/rendering/focus/selection, cwd validation, and new-session dialog actions.
+Observation: Docker focused validation passed with 16 tests, and the full Docker suite passed with 994 passed, 1 skipped, 107 subtests on the final tree.
+Observation: Deterministic equivalence testing matched the previous inline scorer across 11 branch-covering cases, and a helper-body probe found no recent-cwd state/DOM/API side-effect references.
+Observation: Clean-room delegate review returned `NO BLOCKERS`, confirming exact scoring semantics, fail-loud guard coverage, wrapper/call-site preservation, real-helper VM coverage, and app-owned recent-cwd UI state.
+Interpretation: The tranche changes helper ownership only. Recent-cwd menu behavior remains governed by `app.js`; absence or mismatch of the display helper remains intentionally fail-loud rather than hidden by an inline fallback.
+Scoped claim: recent-cwd score helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new new-session UX behavior, cwd validation behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.

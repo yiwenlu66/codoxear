@@ -174,6 +174,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Recovery prompt preview helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18885 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline formatter passed for 10 representative edge cases, and a helper-body side-effect probe found no redaction/session/DOM/API references.
 - Clean-room delegate review `ba7cbeaf-14d0-49d6-a5c1-3f412201d830` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, app-owned recovery/security side effects, real-helper VM coverage, and no static asset wiring requirement.
+- Recent-cwd score helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18886 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_static_assets.py -q` -> `16 passed`.
+- Recent-cwd score helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18887 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline scorer passed for 11 representative cases, and a helper-body side-effect probe found no recent-cwd state/DOM/API references.
+- Clean-room delegate review `79326319-1d34-4be7-b352-12aa500d5d11` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, app-owned recent-cwd UI/state boundary, real-helper VM coverage, and no static asset wiring requirement.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -254,4 +258,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. The next tranche should stay bounded and evidence-preserving: a current candidate is extracting only pure recent-cwd fuzzy scoring while keeping recent-cwd state, input/menu DOM, focus/selection, cwd validation, and dialog actions in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. A current candidate is extracting only pure file-picker matching/scoring helpers while keeping file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, and validation caches in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.

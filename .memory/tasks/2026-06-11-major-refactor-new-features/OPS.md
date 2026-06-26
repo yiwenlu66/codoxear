@@ -3084,3 +3084,18 @@
 - Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18884 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_chat_scrollback_source.py tests/test_static_assets.py -q` -> `42 passed`.
 - Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18885 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Clean-room delegate review `ba7cbeaf-14d0-49d6-a5c1-3f412201d830` saved to `/tmp/codoxear-recovery-preview-helper-review.md` returned `NO BLOCKERS`; it confirmed semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, side-effect ownership in `app.js`, real-helper VM coverage, and no static asset wiring requirement.
+
+
+## 2026-06-26T11:00:00 Recent-cwd score helper extraction checkpoint
+- Functional commit created: `596ff7d extract recent cwd score helper`.
+- Extracted pure recent-cwd fuzzy scoring into the existing `codoxear/static/app_display.js` helper boundary: `fuzzyRecentCwdScore(candidate, query)` preserves string coercion, trimmed/lower query handling, exact-path score `10000`, basename-exact score `9000`, exact-token boundary/base bonuses, subsequence scoring, and `-1` no-match behavior.
+- `app.js` now requires `window.CodoxearDisplay.fuzzyRecentCwdScore` fail-loudly through the existing `Codoxear display helpers failed to load` guard and keeps the local `fuzzyRecentCwdScore()` wrapper for `filteredRecentCwdOptions()`.
+- Side-effect/state boundary: `recentCwds`, `renderRecentCwdOptions()`, `filteredRecentCwdOptions()`, `newSessionCwdInput`, menu DOM/rendering/focus/selection, cwd validation, and new-session dialog actions remain app-owned in `app.js`.
+- No static asset registration changed because `app_display.js` was already loaded before `app.js`, included in `FRONTEND_ASSET_FILES`, top-level static routing, asset versioning, and wheel packaging.
+- Guard/equivalence tests updated: direct real-module VM tests cover no-query, exact full path, basename exact, boundary-token, multi-token, subsequence, no-match, frozen export metadata, `app.js` fail-loud/source wrapper coverage, and a precise source assertion that the nested recent-cwd scorer body left the `renderRecentCwdOptions()`/`filteredRecentCwdOptions()` region.
+- Local diagnostic validation: `node --check codoxear/static/app_display.js`, `node --check codoxear/static/app.js`, and `python3 -m pytest -q tests/test_frontend_display_module_source.py tests/test_static_assets.py` -> `16 passed`.
+- Deterministic equivalence check against the pre-extraction `codoxear/static/app.js` scorer body passed for 11 representative cases, including whitespace query, case-insensitive full path, basename exact, token boundary/base bonus, multi-token, subsequence, no-match, null candidate, and normalized project-name variants.
+- Helper body side-effect probe found no `recentCwds`, `newSessionCwdInput`, render/filter function, DOM, API, fetch, toast, focus, `classList`, or `window` references inside the extracted scorer body.
+- Docker focused acceptance: `CODOXEAR_DOCKER_PORT=18886 scripts/codoxear-docker-sandbox test tests/test_frontend_display_module_source.py tests/test_static_assets.py -q` -> `16 passed`.
+- Full Docker acceptance: `CODOXEAR_DOCKER_PORT=18887 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Clean-room delegate review `79326319-1d34-4be7-b352-12aa500d5d11` saved to `/tmp/codoxear-cwd-score-helper-review.md` returned `NO BLOCKERS`; it confirmed semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, app-owned recent-cwd UI/state boundary, real-helper VM coverage, and no static asset wiring requirement.
