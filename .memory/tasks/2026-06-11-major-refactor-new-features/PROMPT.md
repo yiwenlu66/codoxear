@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: file-editor delete-key command mapping now lives in `codoxear/static/app_file_helpers.js` at functional commit `f761f05 extract file editor delete key helper`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: re-inspect remaining short pure helpers on a clean tree before choosing. A possible candidate is `modelOptionMatches(option, query)` only if its ownership home and tests stay narrowly about deterministic model-search text matching; do not move launch dialog state, provider/model selection, rendering, memory, focus, or API behavior.
-3. Do not force a tranche if the next candidate touches DOM, API calls, mutable session/file/chat state, focus, timers, recovery/security behavior, browser/time globals, or dead code.
+1. Completed tranche: model-option text matching now lives in `codoxear/static/app_launch.js` at functional commit `fcdc01b extract model option match helper`; checkpoint docs are recorded separately from the functional change.
+2. Next bounded candidate: wait for/read `/tmp/codoxear-next-pure-helper-scout-after-model.md` from replacement scout `3695ddb6-9f15-4943-a0a8-1dc48ca582f3`, then re-inspect any suggested target on a clean tree before choosing.
+3. Do not force a tranche if the next candidate is only a wrapper/state reader, touches DOM/API/mutable session/file/chat state/focus/timers/recovery/security/browser-time globals, or is dead code. If no safe target remains, report that the bounded helper-extraction series has reached a natural stop without broader design work.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 

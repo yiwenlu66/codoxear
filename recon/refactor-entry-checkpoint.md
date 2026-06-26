@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `f761f05 extract file editor delete key helper`
+Latest functional code checkpoint: `fcdc01b extract model option match helper`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -89,7 +89,8 @@ Recent committed recovery checkpoints include:
   - chat-search display extraction preserves snippet compaction and all-transcript hint role labeling through `window.CodoxearDisplay`, while row text extraction, rendered-row matching, search timers, transcript-search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions remain app-owned;
   - file-picker source/label extraction preserves candidate-source normalization and source-section label text through `window.CodoxearFileHelpers`, while file identity keys, clone/merge semantics, candidate maps/cache, changed-file API calls, DOM section insertion/rendering/highlighting, active file/open behavior, file-viewer state, focus/timers, and recovery/security behavior remain app-owned;
   - file-editor cursor-helper extraction preserves inserted-text cursor arithmetic through `window.CodoxearFileHelpers`, while Monaco/editor access, paste execution, file dirty state, touch-selection reset, selection application, focus, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned;
-  - file-editor delete-key helper extraction preserves key-to-Monaco-delete-command mapping through `window.CodoxearFileHelpers`, while event filtering/lowercasing, native delete suppression, Monaco/editor access, `editor.trigger`, touch-selection reset, focus, toast/error behavior, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned.
+  - file-editor delete-key helper extraction preserves key-to-Monaco-delete-command mapping through `window.CodoxearFileHelpers`, while event filtering/lowercasing, native delete suppression, Monaco/editor access, `editor.trigger`, touch-selection reset, focus, toast/error behavior, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned;
+  - model-option match helper extraction preserves deterministic model-search text matching through `window.CodoxearLaunch`, while model-option construction, exact/prefix/contains ordering, result slicing, provider/model selection, rendering, local/session state, memory persistence, focus/menu behavior, APIs, DOM, timers, recovery/security behavior, and launch-dialog state remain app-owned.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -204,6 +205,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - File-editor delete-key helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18901 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline body passed for 10 key inputs including `undefined`, `null`, blank, lowercase `backspace`/`delete`, uppercase variants, unknown, `0`, and `false`; helper side-effect probe found no DOM/API/editor/file-state/timer/focus/storage references.
 - Clean-room delegate review `cc8e023e-2ba7-492f-a3b8-e3b1714948f7` saved to `/tmp/codoxear-delete-key-helper-review.md` returned `NO BLOCKERS` for pure helper ownership, fail-loud guard coverage, wrapper/call-site preservation, app-owned event filtering/lowercasing/native suppression/Monaco trigger/touch reset/focus/toast behavior, static wiring sufficiency, and test coverage.
+- Model-option match helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18902 scripts/codoxear-docker-sandbox test tests/test_launch_ui_source.py tests/test_new_session_model_options_source.py tests/test_static_assets.py -q` -> `39 passed`.
+- Model-option match helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18903 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline body passed for 10 cases covering empty query, exact/prefix/contains, case-insensitive search text, fallback model field, blank search text with model fallback, null option, and no-match; helper side-effect probe found no DOM/API/session/dialog-state/timer/focus/storage references.
+- Clean-room delegate review `5992087b-7600-48de-a9ab-6c0a060861a7` saved to `/tmp/codoxear-model-option-match-review.md` returned `NO BLOCKERS` for pure helper ownership, semantic equivalence, fail-loud guard coverage, wrapper/call-site preservation, app-owned filtering order/sessionModelOptions/rendering/provider-selection/memory/focus/menu behavior, static wiring sufficiency, and test coverage.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -284,4 +289,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. Re-anchor on a clean tree and inspect remaining short pure helpers before choosing another tranche. A possible candidate is `modelOptionMatches(option, query)` only if its ownership home and tests remain narrowly about deterministic model-search text matching; do not move launch dialog state, provider/model selection, rendering, memory, focus, API behavior, or dead code. Keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. Read the replacement pure-helper scout `/tmp/codoxear-next-pure-helper-scout-after-model.md`, re-anchor on a clean tree, and choose another tranche only if the target is deterministic argument-only logic with an obvious helper-module home and validation path. Do not force extraction of wrappers, state readers, dead code, or logic touching DOM/API/mutable session/file/chat state/focus/timers/recovery/security/browser-time globals. Keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
