@@ -29,9 +29,6 @@ from typing import Any, Iterator, Mapping
 
 from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
-from .backend_launch import apply_backend_environment as _apply_backend_environment
-from .backend_launch import build_backend_args as _build_backend_args
-from .backend_launch import build_backend_resume_args as _build_backend_resume_args
 from .auth import CookieAuthSettings
 from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
 from .auth import parse_cookies as _parse_cookies_impl
@@ -161,6 +158,9 @@ from .session_launcher import launch_broker_process as _launch_broker_process
 from .session_launcher import prepare_launch_process_context as _prepare_launch_process_context
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
+from .session_launch_plan import LaunchPlanDeps
+from .session_launch_plan import LaunchPlanRequest
+from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -4381,83 +4381,11 @@ class SessionManager:
         service_tier: str | None = None,
         create_in_tmux: bool = False,
     ) -> dict[str, Any]:
-        backend_name = normalize_agent_backend(agent_backend)
-        cwd_path = _resolve_dir_target(cwd, field_name="cwd")
-        if not cwd_path.exists():
-            try:
-                cwd_path.mkdir(parents=True, exist_ok=True)
-            except OSError as e:
-                detail = e.strerror or str(e)
-                raise ValueError(f"cwd could not be created: {cwd_path}: {detail}") from e
-        if not cwd_path.is_dir():
-            raise ValueError(f"cwd is not a directory: {cwd_path}")
-        cwd3 = str(cwd_path)
-        if resume_session_id is not None and worktree_branch is not None:
-            raise ValueError("worktree_branch cannot be used when resuming a session")
-        spawn_cwd = cwd_path
-        if worktree_branch is not None:
-            spawn_cwd = _create_git_worktree(cwd_path, worktree_branch)
-
-        argv = [sys.executable, "-m", "codoxear.broker", "--cwd", str(spawn_cwd), "--"]
-        backend_args = _build_backend_args(
-            agent_backend=backend_name,
-            spawn_cwd=spawn_cwd,
-            codex_trust_override=_codex_trust_override_for_path(spawn_cwd),
-            model_provider=model_provider,
-            preferred_auth_method=preferred_auth_method,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            service_tier=service_tier,
-        )
-        resume_row: dict[str, Any] | None = None
-        if resume_session_id is not None:
-            resume_id = str(resume_session_id).strip()
-            if not resume_id:
-                raise ValueError("resume_session_id must be a non-empty string")
-            found = False
-            for row in _list_resume_candidates_for_cwd(cwd3, agent_backend=backend_name, limit=1000):
-                if row.get("session_id") == resume_id:
-                    found = True
-                    resume_row = row
-                    break
-            if not found:
-                raise ValueError(f"resume session not found for cwd: {resume_id}")
-            live_target = self._live_session_for_resume_target(resume_id, resume_row)
-            if live_target is not None:
-                raise ValueError(
-                    "resume target is already live as "
-                    f"{live_target.session_id}; select that session instead of creating another session bound to the same transcript"
-                )
-            backend_args.extend(_build_backend_resume_args(agent_backend=backend_name, resume_id=resume_id, resume_row=resume_row))
-        backend_args.extend(args or [])
-        argv.extend(backend_args)
-
-        env = dict(os.environ)
-        if _DOTENV.exists():
-            for k, v in _load_env_file(_DOTENV).items():
-                env.setdefault(k, v)
-        _apply_backend_environment(
-            env,
-            agent_backend=backend_name,
-            homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
-            model_provider=model_provider,
-            preferred_auth_method=preferred_auth_method,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            service_tier=service_tier,
-            resume_session_id=resume_session_id,
-        )
-
-        launch_context = _prepare_launch_process_context(
-            LaunchContextRequest(
-                argv=argv,
-                env=env,
-                agent_backend=backend_name,
-                spawn_cwd=spawn_cwd,
-                requested_cwd=cwd3,
-                create_in_tmux=create_in_tmux,
-                tmux_session_name=TMUX_SESSION_NAME,
-                repo_root=Path(__file__).resolve().parent.parent,
+        launch_plan = _prepare_launch_plan(
+            LaunchPlanRequest(
+                cwd=cwd,
+                args=args,
+                agent_backend=agent_backend,
                 resume_session_id=resume_session_id,
                 worktree_branch=worktree_branch,
                 model_provider=model_provider,
@@ -4465,6 +4393,39 @@ class SessionManager:
                 model=model,
                 reasoning_effort=reasoning_effort,
                 service_tier=service_tier,
+                create_in_tmux=create_in_tmux,
+            ),
+            deps=LaunchPlanDeps(
+                resolve_dir_target=_resolve_dir_target,
+                create_git_worktree=_create_git_worktree,
+                codex_trust_override_for_path=_codex_trust_override_for_path,
+                list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
+                live_session_for_resume_target=self._live_session_for_resume_target,
+                load_env_file=_load_env_file,
+                environ=os.environ,
+                dotenv_path=_DOTENV,
+                homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
+                python_executable=sys.executable,
+            ),
+        )
+
+        launch_context = _prepare_launch_process_context(
+            LaunchContextRequest(
+                argv=launch_plan.argv,
+                env=launch_plan.env,
+                agent_backend=launch_plan.backend_name,
+                spawn_cwd=launch_plan.spawn_cwd,
+                requested_cwd=launch_plan.requested_cwd,
+                create_in_tmux=launch_plan.create_in_tmux,
+                tmux_session_name=TMUX_SESSION_NAME,
+                repo_root=Path(__file__).resolve().parent.parent,
+                resume_session_id=launch_plan.resume_session_id,
+                worktree_branch=launch_plan.worktree_branch,
+                model_provider=launch_plan.model_provider,
+                preferred_auth_method=launch_plan.preferred_auth_method,
+                model=launch_plan.model,
+                reasoning_effort=launch_plan.reasoning_effort,
+                service_tier=launch_plan.service_tier,
             ),
             record_launch_attempt=_record_launch_attempt,
             now=time.time,
