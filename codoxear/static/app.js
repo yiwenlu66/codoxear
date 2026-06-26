@@ -293,6 +293,16 @@
         return codoxearSessionHelpers.sessionSelectable(s);
       }
 
+      const codoxearViewport = window.CodoxearViewport;
+      if (
+        !codoxearViewport ||
+        typeof codoxearViewport.isMobile !== "function" ||
+        typeof codoxearViewport.prefersReducedMotion !== "function" ||
+        typeof codoxearViewport.useDesktopSessionActions !== "function" ||
+        typeof codoxearViewport.useTouchFileEditorControls !== "function"
+      )
+        throw new Error("Codoxear viewport helpers failed to load");
+
       function normalizeAgentBackendName(value) {
         return codoxearLaunch.normalizeAgentBackendName(value);
       }
@@ -2136,7 +2146,7 @@
         }
 
         function prefersReducedMotion() {
-          return Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+          return codoxearViewport.prefersReducedMotion();
         }
 
         function pulseNavigatedRow(row) {
@@ -3249,19 +3259,15 @@
         }
 
         function isMobile() {
-          return window.matchMedia && window.matchMedia("(max-width: 880px)").matches;
+          return codoxearViewport.isMobile();
         }
 
         function useDesktopSessionActions() {
-          return Boolean(
-            window.matchMedia &&
-              window.matchMedia("(hover: hover) and (pointer: fine) and (min-width: 881px)").matches
-          );
+          return codoxearViewport.useDesktopSessionActions();
         }
 
         function useTouchFileEditorControls() {
-          if (!window.matchMedia) return false;
-          return Boolean(window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(hover: none)").matches);
+          return codoxearViewport.useTouchFileEditorControls();
         }
 
         function setSidebarOpen(open) {

@@ -5,14 +5,13 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 
 
 def eval_use_desktop_session_actions(query_matches: dict[str, bool]) -> bool:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function useDesktopSessionActions() {")
-    end = source.index("function setSidebarOpen(open) {", start)
-    snippet = source[start:end]
+    viewport_source = APP_VIEWPORT_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -23,8 +22,8 @@ def eval_use_desktop_session_actions(query_matches: dict[str, bool]) -> bool:
           }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_useDesktopSessionActions = useDesktopSessionActions;\n")}, ctx);
-        process.stdout.write(JSON.stringify(ctx.__test_useDesktopSessionActions()));
+        vm.runInContext({json.dumps(viewport_source)}, ctx);
+        process.stdout.write(JSON.stringify(ctx.window.CodoxearViewport.useDesktopSessionActions()));
         """
     )
     proc = subprocess.run(

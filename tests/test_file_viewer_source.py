@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 APP_JS = ROOT / "codoxear" / "static" / "app.js"
 APP_MARKDOWN_JS = ROOT / "codoxear" / "static" / "app_markdown.js"
+APP_VIEWPORT_JS = ROOT / "codoxear" / "static" / "app_viewport.js"
 APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 SERVER_PY = ROOT / "codoxear" / "server.py"
 
@@ -59,10 +60,7 @@ def eval_video_preview_failure_path() -> dict:
 
 
 def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
-    source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("function useTouchFileEditorControls() {")
-    end = source.index("function setSidebarOpen(open) {", start)
-    snippet = source[start:end]
+    viewport_source = APP_VIEWPORT_JS.read_text(encoding="utf-8")
     js = textwrap.dedent(
         f"""
         const vm = require("vm");
@@ -73,8 +71,8 @@ def eval_use_touch_file_editor_controls(query_matches: dict[str, bool]) -> bool:
           }},
         }};
         vm.createContext(ctx);
-        vm.runInContext({json.dumps(snippet + "\nglobalThis.__test_useTouchFileEditorControls = useTouchFileEditorControls;\n")}, ctx);
-        process.stdout.write(JSON.stringify(ctx.__test_useTouchFileEditorControls()));
+        vm.runInContext({json.dumps(viewport_source)}, ctx);
+        process.stdout.write(JSON.stringify(ctx.window.CodoxearViewport.useTouchFileEditorControls()));
         """
     )
     proc = subprocess.run(
