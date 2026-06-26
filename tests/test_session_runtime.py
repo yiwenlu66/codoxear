@@ -15,6 +15,8 @@ from codoxear.session_runtime import ListingRuntimeProbes
 from codoxear.session_runtime import broker_runtime_state
 from codoxear.session_runtime import build_runtime_enriched_session_rows
 from codoxear.session_runtime import log_path_size_or_none
+from codoxear.session_runtime import session_allows_direct_send
+from codoxear.session_runtime import session_allows_queue_promotion
 from codoxear.session_runtime import resolve_runtime_status
 from codoxear.session_runtime import select_runtime_token
 
@@ -325,3 +327,18 @@ def test_consume_session_confirmed_send_boundary_clears_after_log_advances() -> 
     assert session.last_send_boundary_active is False
     assert session.last_send_log_path is None
     assert session.last_send_log_size is None
+
+
+def test_session_runtime_readiness_preconditions_block_unknown_and_pending_attachment() -> None:
+    session = _session()
+    assert session_allows_direct_send(session, allow_pending_attachment=False) is True
+    assert session_allows_queue_promotion(session) is True
+
+    session.pending_attachment = True
+    assert session_allows_direct_send(session, allow_pending_attachment=False) is False
+    assert session_allows_direct_send(session, allow_pending_attachment=True) is True
+    assert session_allows_queue_promotion(session) is False
+
+    session.commit_unknown_send = {"text": "unknown"}
+    assert session_allows_direct_send(session, allow_pending_attachment=True) is False
+    assert session_allows_queue_promotion(session) is False

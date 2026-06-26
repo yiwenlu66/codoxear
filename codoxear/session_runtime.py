@@ -175,6 +175,22 @@ def consume_session_confirmed_send_boundary(session: Session | None, log_path: P
     return unresolved
 
 
+def session_allows_direct_send(session: Session, *, allow_pending_attachment: bool) -> bool:
+    if session.commit_unknown_send:
+        return False
+    if session.pending_attachment and not allow_pending_attachment:
+        return False
+    return True
+
+
+def session_allows_queue_promotion(session: Session) -> bool:
+    if session.commit_unknown_send:
+        return False
+    if session.pending_attachment:
+        return False
+    return True
+
+
 def apply_history_backfill(
     session: Session | None,
     *,

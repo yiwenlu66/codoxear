@@ -179,6 +179,8 @@ from .session_runtime import build_runtime_enriched_session_rows as _build_runti
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
+from .session_runtime import session_allows_direct_send as _session_allows_direct_send
+from .session_runtime import session_allows_queue_promotion as _session_allows_queue_promotion
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -2744,9 +2746,7 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            if s.commit_unknown_send:
-                return False
-            if s.pending_attachment and not allow_pending_attachment:
+            if not _session_allows_direct_send(s, allow_pending_attachment=allow_pending_attachment):
                 return False
             log_path_before_state = s.log_path
         state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
@@ -2758,9 +2758,7 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            if s.commit_unknown_send:
-                return False
-            if s.pending_attachment:
+            if not _session_allows_queue_promotion(s):
                 return False
             log_path_before_state = s.log_path
         state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
@@ -2768,9 +2766,7 @@ class SessionManager:
             s = self._sessions.get(session_id)
             if not s:
                 raise KeyError("unknown session")
-            if s.commit_unknown_send:
-                return False
-            if s.pending_attachment:
+            if not _session_allows_queue_promotion(s):
                 return False
         return self._remote_ready_from_state_and_log(session_id, state, log_path)
 
