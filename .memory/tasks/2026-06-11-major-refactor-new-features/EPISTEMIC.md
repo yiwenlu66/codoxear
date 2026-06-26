@@ -2580,3 +2580,12 @@ Scoped claim: no further helper-extraction tranche is justified without a new us
 Observation: The user rejected the agent's narrow/bounded stopping posture and requested thorough, aggressive work.
 Interpretation: Pure-helper extraction exhaustion is not a completion condition for the overall recovery effort. It only rules out one class of low-risk mechanical refactor. The next justified action is to identify and attack a high-value implementable product/reliability gap with direct validation.
 Commitment: Continue on the recovery branch with stronger product-gap/reliability orientation while preserving safety constraints around protected checkout mutation, live sessions, secrets, no silent fallbacks, Docker acceptance evidence, and separate functional/docs commits.
+
+
+## Server runtime/routes architecture evidence
+Observation: `be7eeb3` preserved the server architecture tranche after Docker acceptance (`1028 passed, 1 skipped, 107 subtests passed`) and fresh clean-room review (`/tmp/codoxear-architecture-runtime-routes-review.md`) returned `NO BLOCKERS`.
+Observation: runtime state interpretation is no longer duplicated across callers: `session_runtime.py` centralizes broker busy/queue/interrupted-idle state, confirmed-send boundary gating, remote readiness, and token fallback selection.
+Observation: persistent in-memory maps are now owned by `SessionStore`; `SessionManager` remains the runtime/control coordinator and keeps compatibility properties for existing call sites/tests.
+Observation: message, file-write/read-payload, launch-ledger, queue, control, diagnostics, and git API semantics now have explicit route/ledger modules with behavior tests, while lower-level subprocess/path/file/text primitives remain in existing utility modules.
+Interpretation: this is a semantic ownership/source-of-truth improvement rather than a helper-count refactor; the mechanism is clearer because runtime readiness, persistence maps, and HTTP validation/status mapping now have named authorities.
+Scoped claim: the current branch has a validated backend/server architecture checkpoint. Remaining live mechanisms still worth attacking include the inline file GET/blob/video/download route family and smaller tail/unattended GET seams; those should be treated as separate tranches, not as defects in `be7eeb3`.

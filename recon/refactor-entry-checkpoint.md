@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `35be96c extract queue normalization helper`
+Latest functional code checkpoint: `be7eeb3 extract session runtime and route controllers`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -93,6 +93,16 @@ Recent committed recovery checkpoints include:
   - model-option match helper extraction preserves deterministic model-search text matching through `window.CodoxearLaunch`, while model-option construction, exact/prefix/contains ordering, result slicing, provider/model selection, rendering, local/session state, memory persistence, focus/menu behavior, APIs, DOM, timers, recovery/security behavior, and launch-dialog state remain app-owned;
   - diagnostics helper extraction preserves provider-display formatting and copy-text row formatting through `window.CodoxearSessionHelpers`, while backend normalization remains `app_launch.js`/app-owned and diagnostics API fetch, row construction, mutable copy state, clipboard, DOM/buttons/backdrop, focus, auth-loss handling, error recovery, timers, and recovery/security behavior remain app-owned;
   - queue normalizer extraction preserves modern/legacy queue API-payload normalization through `window.CodoxearSessionHelpers`, while queue refresh, API fetch, auth/error handling, draft preservation, viewer item assignment, empty text, rendering, mutation locks, move barriers, send/enqueue/delete/update/move behavior, DOM, focus, timers, and recovery/security behavior remain app-owned.
+- Backend/server architecture tranche:
+  - `codoxear/session_runtime.py` is the shared runtime authority for broker busy state, queue length, interrupted-idle override, confirmed-send boundary gating, remote readiness, and token fallback selection; message polling, diagnostics, queue promotion, direct send readiness, attachment readiness, and sidebar/list-session busy display now call through that mechanism instead of each recomputing partial busy/ready policy;
+  - `codoxear/session_store.py` owns persistent session maps for unattended config, aliases, sidebar metadata, hidden sessions, file history, queues, pending attachment IDs, commit-unknown sends, and recent cwd records, while `SessionManager` keeps compatibility properties and runtime/control behavior;
+  - message/tail/live/history/search/export controller behavior now lives in `codoxear/message_routes.py`, with cursor HMAC encode/decode injected from the server secret boundary and cursor mismatches still surfacing as conflict responses;
+  - session file read/write payload parsing, optimistic version checks, create/update behavior, and symlink-parent escape coverage now live in `codoxear/file_routes.py`, while lower-level path, file-kind, and response primitives remain in their existing modules;
+  - failed-launch ledger/redaction/transcript fallback behavior now lives in `codoxear/launch_ledger.py`;
+  - queue/enqueue HTTP validation, status mapping, and legacy `queue` response compatibility now live in `codoxear/queue_routes.py`, while queue mutation and recovery barriers remain manager-owned;
+  - session control POST validation/status mapping for delete/edit/rename/send/unattended/interrupt/attachment injection/pending-clear/commit-unknown-clear now lives in `codoxear/control_routes.py`, while manager methods remain the control-plane mutation boundary;
+  - diagnostics GET composition now lives in `codoxear/diagnostics_routes.py`, sharing `session_runtime.py` for busy/ready/token state and keeping provider/sidebar/git details as explicit dependencies;
+  - Git changed-files, diff, and file-version API semantics now live in `codoxear/git_routes.py`, with `git_ops.py` remaining the subprocess/path/pathspec authority and server providing dependency seams.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -116,6 +126,13 @@ Latest code-validation evidence after the Codex and Claude Code live binding rep
 - Clean-room critic subagent `05290a8a-033a-46c1-ab02-c0d8f52d3254` found two CC fallback blockers: post-fork known-log snapshotting could skip a fast-created CC log forever, and relative `--cwd` could fail absolute CC cwd matching. Both were fixed by prelaunch snapshotting, absolute broker cwd expansion, and focused regressions.
 - Clean-room critic subagent `62c6924a-cbdf-4535-b3d8-d6886680fd2a` confirmed those fixes, then found a large-first-row blocker in the bounded CC header scan. The cap now bounds row start offsets, so a valid first CC row larger than 512 KiB remains discoverable while rows starting after the window remain ignored.
 - Final narrow critic subagent `6f5dbf25-e41e-4467-8760-66e781c6809e` returned `NO BLOCKERS` for the committed CC fallback/header repair (`c1280cb fix Claude Code closed-log binding`).
+
+Latest Docker-only evidence after backend/server architecture tranche:
+
+- Runtime/controller architecture focused validation: `python3 -m pytest -q tests/test_file_inspect.py tests/test_git_ops.py tests/test_file_picker_search_source.py tests/test_session_resume.py` -> `130 passed, 52 subtests passed`; earlier focused route/runtime/store/controller validation after diagnostics extraction -> `54 passed, 4 subtests passed`.
+- Full Docker sandbox suite after the stable server architecture diff: `CODOXEAR_DOCKER_PORT=18920 scripts/codoxear-docker-sandbox test` -> `1028 passed, 1 skipped, 107 subtests passed`.
+- Fresh clean-room architecture review `04337c97-39f1-4aff-9221-8bb90c030a3e`, saved to `/tmp/codoxear-architecture-runtime-routes-review.md`, returned `NO BLOCKERS` for runtime busy/ready/token semantics, broker-queue log-parse short-circuiting, `SessionManager.__new__` compatibility, persistence path rebinding, queue/control/diagnostics/git route error mappings, file write security, message cursor/HMAC behavior, and launch redaction/recovery.
+- Functional architecture commit created: `be7eeb3 extract session runtime and route controllers`. This evidence does not claim real mobile/device behavior, live backend lifecycle expansion, or completion of the remaining inline file/tail/unattended route seams.
 
 Latest Docker-only evidence after frontend helper extractions:
 
