@@ -2495,3 +2495,12 @@ Observation: Deterministic equivalence testing matched the previous inline score
 Observation: Clean-room delegate review returned `NO BLOCKERS`, confirming exact scoring semantics, fail-loud guard coverage, wrapper/call-site preservation, real-helper VM coverage, and app-owned recent-cwd UI state.
 Interpretation: The tranche changes helper ownership only. Recent-cwd menu behavior remains governed by `app.js`; absence or mismatch of the display helper remains intentionally fail-loud rather than hidden by an inline fallback.
 Scoped claim: recent-cwd score helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new new-session UX behavior, cwd validation behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.
+
+
+## File-picker matching/scoring helper extraction evidence
+Observation: `app_file_helpers.js` now owns deterministic file-picker scoring, draft path normalization, folded Unicode match-range mapping, normalized candidate scoring, and picker entry comparator tie-breaks; `app.js` delegates through fail-loud wrappers.
+Observation: Docker focused validation passed with 63 tests, and the full Docker suite passed with 994 passed, 1 skipped, 107 subtests on the final staged tree before commit `4288221`.
+Observation: Deterministic equivalence testing matched the previous inline helper bodies for scoring, normalization, Unicode folded/range mapping, normalized scoring, and comparator behavior; the helper-body probe found no file state, DOM, or API references.
+Observation: Clean-room delegate review `/tmp/codoxear-file-picker-helper-review.md` returned `NO BLOCKERS` and independently confirmed the app-owned boundary and real-helper module tests.
+Interpretation: The tranche changes helper ownership only. File-search lifecycle, candidate maps, API fetching, DOM highlighting/rendering, open/create actions, validation caches, and file-viewer state remain governed by `app.js`; absence or mismatch of required helper exports remains intentionally fail-loud.
+Scoped claim: file-picker helper extraction is accepted as a bounded frontend refactor checkpoint. It does not claim new file-picker UX behavior, live backend lifecycle evidence, real mobile/assistive-tech/slow-network coverage, or broader structural refactor completion.

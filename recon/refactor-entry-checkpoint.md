@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `6caa995 extract video preview error formatter`
+Latest functional code checkpoint: `4288221 extract file picker helpers`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -83,7 +83,9 @@ Recent committed recovery checkpoints include:
   - video-preview error formatter extraction preserves message/string trimming and fallback text through `window.CodoxearFileHelpers`, while preview fetch/auth/video-state/DOM side effects remain in `app.js`;
   - markdown extraction preserves chat/file-preview wrappers, session-scoped image blob routing, local file-reference parsing, and non-literal `openFileReference()` parser behavior through the exported `window.CodoxearMarkdown` boundary;
   - launch-helper extraction preserves Pi/Codex/Claude backend normalization, default launch settings, provider/model memory, model-specific reasoning choices, providerless Pi model memory, Claude provider ignoring, URL-prefixed logo paths, and app-owned failed-launch redaction;
-  - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`.
+  - display-helper extraction preserves tooltip fallback priority, byte/time/relative-age formatting, session display labels, short session IDs, and SVG icon markup through `window.CodoxearDisplay`;
+  - recovery prompt preview and recent-cwd fuzzy scoring now live in the display-helper boundary while recovery security/session state and recent-cwd UI state remain app-owned;
+  - file-picker matching/scoring extraction preserves exact/basename/token/subsequence scoring, draft path normalization, Unicode folded match ranges, normalized candidate scoring, and comparator tie-breaks through `window.CodoxearFileHelpers`, while file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, validation caches, and file-viewer state remain app-owned.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -178,6 +180,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Recent-cwd score helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18887 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline scorer passed for 11 representative cases, and a helper-body side-effect probe found no recent-cwd state/DOM/API references.
 - Clean-room delegate review `79326319-1d34-4be7-b352-12aa500d5d11` returned `NO BLOCKERS` for semantic equivalence, fail-loud guard behavior, wrapper/call-site preservation, app-owned recent-cwd UI/state boundary, real-helper VM coverage, and no static asset wiring requirement.
+- File-picker helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18890 scripts/codoxear-docker-sandbox test tests/test_frontend_file_helpers_source.py tests/test_file_picker_search_source.py tests/test_file_viewer_source.py tests/test_static_assets.py -q` -> `63 passed`.
+- File-picker helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18891 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against the pre-extraction inline bodies passed for file-search scoring, draft path normalization, Unicode folded/range mapping, normalized candidate scoring, and entry comparator tie-breaks; helper side-effect probe found no file state/DOM/API references.
+- Clean-room delegate review `d52041b0-0f7b-4cb7-986b-99ffccd2c32d` saved to `/tmp/codoxear-file-picker-helper-review.md` returned `NO BLOCKERS` for scoring/path/range/comparator equivalence, fail-loud guard coverage, wrapper preservation, `CodoxearDisplay.baseName` dependency, app-owned file state/API/DOM boundaries, real-helper test loading, and no static wiring requirement.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -258,4 +264,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. A current candidate is extracting only pure file-picker matching/scoring helpers while keeping file-search state, candidate maps, API calls, DOM highlighting, picker rendering, file-open actions, and validation caches in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. A current candidate is extracting only pure chat-search display formatting helpers (`compactChatSearchSnippet` and `chatSearchTranscriptHint`) while keeping `rowSearchText()`, rendered-row matching, transcript-search API calls, loaded/all count state, DOM status updates, focus/navigation, and load-older actions in `app.js`; keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
