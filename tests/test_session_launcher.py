@@ -166,3 +166,154 @@ def test_launch_broker_process_tmux_metadata_delay_returns_pending_and_records_c
     assert "CODEX_WEB_TRANSPORT=tmux" in shell_cmd
     assert "CODEX_WEB_LAUNCH_ID=launch-test" in shell_cmd
     assert "unset CODEX_HOME PI_HOME CLAUDE_CONFIG_DIR" in shell_cmd
+
+
+def test_launch_broker_process_direct_spawn_failure_raises_record() -> None:
+    records: list[dict] = []
+
+    def popen(*args, **kwargs):
+        raise OSError("no broker")
+
+    with pytest.raises(LaunchProcessFailure) as err:
+        launch_broker_process(_request(), recorder=_recorder(records), deps=_deps(popen=popen))
+
+    assert [record["state"] for record in records] == ["starting", "failed"]
+    assert err.value.record["stage"] == "broker_spawn"
+    assert err.value.record["transport"] == "direct"
+    assert err.value.record["error"] == "spawn failed: no broker"
+
+
+def test_launch_broker_process_direct_stderr_starts_drain_before_wait_thread() -> None:
+    records: list[dict] = []
+    stderr_stream = object()
+    thread_targets: list[object] = []
+    thread_args: list[tuple] = []
+
+    class Proc:
+        pid = 2470
+
+        def __init__(self) -> None:
+            self.stderr = stderr_stream
+
+        def wait(self) -> int:
+            return 0
+
+    def drain_stream(stream: object) -> None:
+        assert stream is stderr_stream
+
+    def start_thread(self) -> None:
+        thread_targets.append(getattr(self, "_target", None))
+        thread_args.append(getattr(self, "_args", ()))
+
+    with patch.object(threading.Thread, "start", start_thread):
+        result = launch_broker_process(
+            _request(),
+            recorder=_recorder(records),
+            deps=_deps(popen=lambda *args, **kwargs: Proc(), drain_stream=drain_stream),
+        )
+
+    assert result == {"broker_pid": 2470}
+    assert [record["state"] for record in records] == ["starting", "broker_spawned"]
+    assert thread_targets[0] is drain_stream
+    assert getattr(thread_targets[1], "__name__", "") == "wait"
+    assert thread_args[0] == (stderr_stream,)
+    assert thread_args[1] == ()
+
+
+def test_launch_broker_process_tmux_success_records_broker_meta_bound() -> None:
+    records: list[dict] = []
+    result = launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=_deps())
+
+    assert result == {"broker_pid": 5678, "tmux_session": "codoxear-test", "tmux_window": "work-nonce1"}
+    assert [record["state"] for record in records] == ["starting", "tmux_pane_created", "broker_meta_bound"]
+    assert records[1]["tmux_attempts"] == [{"cmd": "new-window", "returncode": 0, "stderr": "", "stdout": "%8"}]
+    assert records[2]["transport"] == "tmux"
+    assert records[2]["tmux_pane_id"] == "%8"
+    assert records[2]["broker_pid"] == 5678
+
+
+def test_launch_broker_process_tmux_missing_session_duplicate_retry_then_success() -> None:
+    records: list[dict] = []
+    run_results = iter(
+        [
+            subprocess.CompletedProcess(["tmux", "new-window"], 1, stdout="", stderr="can't find session: codoxear-test"),
+            subprocess.CompletedProcess(["tmux", "new-session"], 1, stdout="", stderr="duplicate session: codoxear-test"),
+            subprocess.CompletedProcess(["tmux", "new-window"], 0, stdout="%9\n", stderr=""),
+        ]
+    )
+    run_cmds: list[str] = []
+
+    def run(argv: list[str], **kwargs):
+        run_cmds.append(argv[1])
+        return next(run_results)
+
+    result = launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=_deps(run=run))
+
+    assert result["broker_pid"] == 5678
+    assert run_cmds == ["new-window", "new-session", "new-window"]
+    assert records[1]["tmux_attempts"] == [
+        {"cmd": "new-window", "returncode": 1, "stderr": "can't find session: codoxear-test", "stdout": ""},
+        {"cmd": "new-session", "returncode": 1, "stderr": "duplicate session: codoxear-test", "stdout": ""},
+        {"cmd": "new-window-after-duplicate", "returncode": 0, "stderr": "", "stdout": "%9"},
+    ]
+
+
+def test_launch_broker_process_tmux_launch_failure_raises_record() -> None:
+    records: list[dict] = []
+
+    def run(argv: list[str], **kwargs):
+        return subprocess.CompletedProcess(argv, 2, stdout="", stderr="tmux refused")
+
+    with pytest.raises(LaunchProcessFailure) as err:
+        launch_broker_process(_request(create_in_tmux=True), recorder=_recorder(records), deps=_deps(run=run))
+
+    assert [record["state"] for record in records] == ["starting", "failed"]
+    assert err.value.record["stage"] == "tmux_launch"
+    assert err.value.record["transport"] == "tmux"
+    assert err.value.record["tmux_exit_status"] == 2
+    assert err.value.record["tmux_stderr"] == "tmux refused"
+    assert err.value.record["tmux_attempts"] == [{"cmd": "new-window", "returncode": 2, "stderr": "tmux refused", "stdout": ""}]
+
+
+def test_launch_broker_process_tmux_missing_broker_pid_raises_record() -> None:
+    records: list[dict] = []
+
+    with pytest.raises(LaunchProcessFailure) as err:
+        launch_broker_process(
+            _request(create_in_tmux=True),
+            recorder=_recorder(records),
+            deps=_deps(wait_for_spawned_broker_meta=lambda _nonce: {"broker_pid": "5678"}),
+        )
+
+    assert [record["state"] for record in records] == ["starting", "tmux_pane_created", "failed"]
+    assert err.value.record["stage"] == "broker_metadata"
+    assert err.value.record["transport"] == "tmux"
+    assert err.value.record["metadata"] == {"broker_pid": "5678"}
+
+
+def test_launch_broker_process_tmux_dead_pane_metadata_failure_raises_with_fresh_snapshot() -> None:
+    records: list[dict] = []
+    snapshots = iter(
+        [
+            {"tmux_pane_id": "%8", "tmux_pane_dead": "1", "tmux_window": "work-nonce"},
+            {"tmux_pane_id": "%8", "tmux_pane_dead": "1", "tmux_pane_dead_status": "42", "tmux_window": "work-nonce"},
+        ]
+    )
+    snapshot_calls: list[dict] = []
+
+    def snapshot(*args, **kwargs):
+        snapshot_calls.append(kwargs)
+        return next(snapshots)
+
+    with pytest.raises(LaunchProcessFailure) as err:
+        launch_broker_process(
+            _request(create_in_tmux=True),
+            recorder=_recorder(records),
+            deps=_deps(tmux_pane_snapshot=snapshot, wait_for_spawned_broker_meta=lambda _nonce: (_ for _ in ()).throw(TimeoutError("metadata not ready"))),
+        )
+
+    assert [record["state"] for record in records] == ["starting", "tmux_pane_created", "failed"]
+    assert len(snapshot_calls) == 2
+    assert err.value.record["stage"] == "broker_metadata"
+    assert err.value.record["tmux_pane_dead_status"] == "42"
+    assert err.value.record["error"] == "metadata not ready"
