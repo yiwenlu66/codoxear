@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER_PY = ROOT / "codoxear" / "server.py"
+AUTH_ROUTES_PY = ROOT / "codoxear" / "auth_routes.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 
 
@@ -15,6 +16,7 @@ class TestJsonBodySource(unittest.TestCase):
         post_start = source.index("    def do_POST(self) -> None:")
         post_block = source[post_start:]
         helper_block = source[helper_start:helper_end]
+        auth_source = AUTH_ROUTES_PY.read_text(encoding="utf-8")
         control_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
 
         self.assertIn("raise BadRequestError(\"invalid json body\")", helper_block)
@@ -22,8 +24,8 @@ class TestJsonBodySource(unittest.TestCase):
         self.assertIn("except RequestPayloadTooLargeError as e:", helper_block)
         self.assertNotIn("body_text = body.decode(\"utf-8\")", post_block)
         self.assertNotIn("json.loads(body_text)", post_block)
-        self.assertIn("obj = self._read_json_body()", post_block)
         self.assertIn("read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs)", source)
+        self.assertIn("obj = deps.read_json_body(handler)", auth_source)
         self.assertIn("too_large_error=f\"file too large (max {deps.attach_upload_max_bytes} bytes)\"", control_source)
 
     def test_500_responses_omit_trace_without_debug_flag(self) -> None:

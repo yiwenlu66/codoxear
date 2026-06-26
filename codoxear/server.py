@@ -44,6 +44,9 @@ from .auth import require_auth as _require_auth_impl
 from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
+from .auth_routes import AuthRouteDeps
+from .auth_routes import handle_auth_get_route as _handle_auth_get_route
+from .auth_routes import handle_auth_post_route as _handle_auth_post_route
 from . import rollout_log as _rollout_log
 from .control_routes import ControlRouteDeps
 from .control_routes import handle_control_post_route as _handle_control_post_route
@@ -5288,6 +5291,18 @@ def _diagnostics_route_deps() -> DiagnosticsRouteDeps:
     )
 
 
+def _auth_route_deps() -> AuthRouteDeps:
+    return AuthRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+        is_same_password=_is_same_password,
+        set_auth_cookie=_set_auth_cookie,
+        cookie_name=COOKIE_NAME,
+        cookie_path=COOKIE_PATH,
+    )
+
+
 def _session_route_deps() -> SessionRouteDeps:
     return SessionRouteDeps(
         require_auth=_require_auth,
@@ -5531,11 +5546,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self._handle_static_get(path):
                 return
 
-            if path == "/api/me":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                _json_response(self, 200, {"ok": True})
+            if _handle_auth_get_route(
+                self,
+                path=path,
+                deps=_auth_route_deps(),
+            ):
                 return
 
             if self._handle_voice_get(path, u.query):
@@ -5612,31 +5627,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
             u, path = parsed
 
-            if path == "/api/login":
-                obj = self._read_json_body()
-                pw = obj.get("password")
-                if not isinstance(pw, str) or not _is_same_password(pw):
-                    _json_response(self, 403, {"error": "bad password"})
-                    return
-                self.send_response(200)
-                _set_auth_cookie(self)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(b'{"ok":true}')
-                return
-
-            if path == "/api/logout":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                self.send_response(200)
-                self.send_header(
-                    "Set-Cookie",
-                    f"{COOKIE_NAME}=deleted; Path={COOKIE_PATH}; Max-Age=0; HttpOnly; SameSite=Strict",
-                )
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(b'{"ok":true}')
+            if _handle_auth_post_route(
+                self,
+                path=path,
+                deps=_auth_route_deps(),
+            ):
                 return
 
             if self._handle_voice_post(path):
