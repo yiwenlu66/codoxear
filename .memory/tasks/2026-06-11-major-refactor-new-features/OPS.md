@@ -3413,3 +3413,9 @@
 - What intentionally did not move: `SessionManager._unattended_sweep` still owns session discovery/prune freshness, session snapshot collection, broker state reads, local queue-length checks, transcript-tail reads, input locking, `send()` invocation, last-injected bookkeeping, persistence calls, and per-session error isolation/logging.
 - Source sentinel update: unattended session-list field source checks now point to `session_listing.py`, reflecting the earlier active-listing snapshot extraction where list-row fields moved out of `server.py`.
 - Focused development sanity: py-compile of changed files passed; unattended store/sweep/mode/input group returned `27 passed`. This was used to catch handoff errors; the architecture claim is the ownership move above.
+
+## 2026-06-26T22:00:00Z Queue promotion runtime flags checkpoint
+- Functional commit `8b50af4 Extract queue promotion runtime flags`: introduced `codoxear/queue_runtime.py` for session-level queue promotion flags.
+- Actual architecture moved: `queue_runtime.py` now owns `queue_idle_since` reset/idle-grace progression, queue promotion start, and queue promotion clear semantics for `Session.queue_sending_item_id` and `Session.queue_idle_since`.
+- Current queue layering: `QueueStore` owns queue item state and commit-unknown markers; `queue_runtime.py` owns session queue promotion flags; `SessionManager._promote_queue_head_if_sendable` still owns remote readiness checks, idle-grace branch timing, `send()` invocation, queue persistence calls, and error-branch orchestration.
+- Focused development sanity: py-compile of queue runtime/server/tests passed; queue runtime/store/server queue/sweep/route group returned `109 passed, 22 subtests`.
