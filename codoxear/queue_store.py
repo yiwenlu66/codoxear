@@ -4,12 +4,19 @@ import math
 import secrets
 import time
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Iterable
 
 from .util import atomic_write_json
 from .util import load_json_file
 
 QueueMap = dict[str, list[dict[str, Any]]]
+
+
+@dataclass(frozen=True)
+class QueuePromotionHead:
+    item_id: str
+    text: str
 
 
 def new_queue_item_id() -> str:
@@ -243,6 +250,58 @@ class QueueStore:
         item = q.pop(idx)
         q.insert(target, item)
         return len(q)
+
+    def has_recovery_items(self, queues: QueueMap, session_id: str) -> bool:
+        q = queues.get(session_id)
+        if not isinstance(q, list):
+            return False
+        return any(isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery"))) for item in q)
+
+    def promotion_head(self, queues: QueueMap, session_id: str, *, expected_item_id: str | None = None) -> QueuePromotionHead | None:
+        q = queues.get(session_id)
+        if not isinstance(q, list) or not q:
+            return None
+        if self.has_recovery_items(queues, session_id):
+            return None
+        head = q[0]
+        item_id = str(head.get("id") or "")
+        if expected_item_id is not None and item_id != expected_item_id:
+            return None
+        return QueuePromotionHead(item_id=item_id, text=str(head.get("text") or ""))
+
+    def mark_promotion_commit_unknown(self, queues: QueueMap, session_id: str, item_id: str, *, ts: float) -> str | None:
+        q = queues.get(session_id)
+        if not isinstance(q, list):
+            return None
+        for item in q:
+            if str(item.get("id") or "") == item_id:
+                item["commit_unknown"] = True
+                item["commit_unknown_ts"] = float(ts)
+                return str(item.get("text") or "")
+        return None
+
+    def clear_commit_unknown_marker(self, queues: QueueMap, session_id: str, item_id: str) -> None:
+        q = queues.get(session_id)
+        if not isinstance(q, list):
+            return
+        for item in q:
+            if str(item.get("id") or "") == item_id:
+                item.pop("commit_unknown", None)
+                item.pop("commit_unknown_ts", None)
+                return
+
+    def preserve_commit_unknown_marker(self, queues: QueueMap, session_id: str, item_id: str, *, ts: float) -> tuple[dict[str, Any] | None, int]:
+        q = queues.get(session_id)
+        if not isinstance(q, list):
+            return None, 0
+        unknown_item: dict[str, Any] | None = None
+        for item in q:
+            if str(item.get("id") or "") == item_id:
+                item["commit_unknown"] = True
+                item["commit_unknown_ts"] = float(ts)
+                unknown_item = dict(item)
+                break
+        return unknown_item, len(q)
 
     def pop_sent(self, queues: QueueMap, session_id: str, item_id: str) -> None:
         q = queues.get(session_id)

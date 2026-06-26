@@ -32,6 +32,31 @@ class TestQueueStore(unittest.TestCase):
         self.assertEqual([item["id"] for item in queues["s1"]], ["b"])
         self.assertEqual([item["text"] for item in queues["s1"]], ["dup"])
 
+    def test_promotion_helpers_manage_commit_unknown_markers(self) -> None:
+        store = QueueStore(Path("/tmp/unused.json"))
+        queues = {"s1": [{"id": "a", "text": "send me", "created_ts": 1, "extra": "kept"}, {"id": "b", "text": "later", "created_ts": 2}]}
+
+        head = store.promotion_head(queues, "s1")
+        self.assertIsNotNone(head)
+        self.assertEqual(head.item_id, "a")
+        self.assertEqual(head.text, "send me")
+        self.assertIsNone(store.promotion_head(queues, "s1", expected_item_id="b"))
+
+        self.assertEqual(store.mark_promotion_commit_unknown(queues, "s1", "a", ts=3.0), "send me")
+        self.assertTrue(store.has_recovery_items(queues, "s1"))
+        self.assertIsNone(store.promotion_head(queues, "s1"))
+        unknown_item, queue_len = store.preserve_commit_unknown_marker(queues, "s1", "a", ts=4.0)
+        self.assertEqual(queue_len, 2)
+        self.assertIsNotNone(unknown_item)
+        self.assertTrue(unknown_item["commit_unknown"])
+        self.assertEqual(unknown_item["commit_unknown_ts"], 4.0)
+        self.assertEqual(unknown_item["extra"], "kept")
+
+        store.clear_commit_unknown_marker(queues, "s1", "a")
+        self.assertFalse(store.has_recovery_items(queues, "s1"))
+        self.assertNotIn("commit_unknown", queues["s1"][0])
+        self.assertNotIn("commit_unknown_ts", queues["s1"][0])
+
     def test_commit_unknown_state_survives_load_list_and_save(self) -> None:
         with TemporaryDirectory() as td:
             path = Path(td) / "queues.json"

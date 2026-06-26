@@ -2684,15 +2684,8 @@ class SessionManager:
         qmap = getattr(self, "_queues", None)
         if not isinstance(qmap, dict):
             return False
-        q = qmap.get(session_id)
         has_direct_unknown = session_id in getattr(self, "_commit_unknown_sends", {})
-        return isinstance(q, list) and bool(q) and (
-            has_direct_unknown
-            or any(
-                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                for item in q
-            )
-        )
+        return has_direct_unknown or self._queue_store_for_manager().has_recovery_items(qmap, session_id)
 
     def _queue_list_local(self, session_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -2897,21 +2890,19 @@ class SessionManager:
             s0 = self._sessions.get(session_id)
             if not s0:
                 return None
-            q = self._queues.get(session_id)
-            if not isinstance(q, list) or not q:
+            queue_store = self._queue_store_for_manager()
+            if queue_store.queue_len(self._queues, session_id) <= 0:
                 s0.queue_idle_since = None
                 return None
             if s0.queue_sending_item_id is not None:
                 return None
-            if any(
-                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                for item in q
-            ):
+            if queue_store.has_recovery_items(self._queues, session_id):
                 s0.queue_idle_since = None
                 return None
-            head_id = str(q[0].get("id") or "")
-            if expected_item_id is not None and head_id != expected_item_id:
+            head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
+            if head is None:
                 return None
+            head_id = head.item_id
         try:
             ready = self._queue_remote_ready(session_id, log_path=log_path)
         except Exception:
@@ -2924,22 +2915,19 @@ class SessionManager:
             s0 = self._sessions.get(session_id)
             if not s0:
                 return None
-            q = self._queues.get(session_id)
-            if not isinstance(q, list) or not q:
+            queue_store = self._queue_store_for_manager()
+            if queue_store.queue_len(self._queues, session_id) <= 0:
                 s0.queue_idle_since = None
                 return None
             if s0.queue_sending_item_id is not None:
                 return None
-            if any(
-                isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                for item in q
-            ):
+            if queue_store.has_recovery_items(self._queues, session_id):
                 s0.queue_idle_since = None
                 return None
-            head = q[0]
-            head_id = str(head.get("id") or "")
-            if expected_item_id is not None and head_id != expected_item_id:
+            head = queue_store.promotion_head(self._queues, session_id, expected_item_id=expected_item_id)
+            if head is None:
                 return None
+            head_id = head.item_id
             if not ready:
                 s0.queue_idle_since = None
                 return None
@@ -2952,9 +2940,15 @@ class SessionManager:
                     return None
             s0.queue_idle_since = None
             s0.queue_sending_item_id = head_id
-            head["commit_unknown"] = True
-            head["commit_unknown_ts"] = time.time()
-            text = str(head.get("text") or "")
+            text = queue_store.mark_promotion_commit_unknown(
+                self._queues,
+                session_id,
+                head_id,
+                ts=time.time(),
+            )
+            if text is None:
+                s0.queue_sending_item_id = None
+                return None
         self._save_queues()
         try:
             resp = self.send(session_id, text, queue_item_id=head_id)
@@ -2964,13 +2958,7 @@ class SessionManager:
                 if s0 and s0.queue_sending_item_id == head_id:
                     s0.queue_sending_item_id = None
                     s0.queue_idle_since = None
-                q = self._queues.get(session_id)
-                if isinstance(q, list):
-                    for item in q:
-                        if str(item.get("id") or "") == head_id:
-                            item.pop("commit_unknown", None)
-                            item.pop("commit_unknown_ts", None)
-                            break
+                self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
             self._save_queues()
             return None
         except SessionCommitUnknownError:
@@ -2981,15 +2969,12 @@ class SessionManager:
                 if s0 and s0.queue_sending_item_id == head_id:
                     s0.queue_sending_item_id = None
                     s0.queue_idle_since = None
-                q = self._queues.get(session_id)
-                if isinstance(q, list):
-                    queue_len = len(q)
-                    for item in q:
-                        if str(item.get("id") or "") == head_id:
-                            item["commit_unknown"] = True
-                            item["commit_unknown_ts"] = time.time()
-                            unknown_item = dict(item)
-                            break
+                unknown_item, queue_len = self._queue_store_for_manager().preserve_commit_unknown_marker(
+                    self._queues,
+                    session_id,
+                    head_id,
+                    ts=time.time(),
+                )
             self._save_queues()
             return {"queued": True, "queue_len": int(queue_len), "item": unknown_item, "commit_unknown": True}
         except Exception:
@@ -2998,13 +2983,7 @@ class SessionManager:
                 if s0 and s0.queue_sending_item_id == head_id:
                     s0.queue_sending_item_id = None
                     s0.queue_idle_since = None
-                q = self._queues.get(session_id)
-                if isinstance(q, list):
-                    for item in q:
-                        if str(item.get("id") or "") == head_id:
-                            item.pop("commit_unknown", None)
-                            item.pop("commit_unknown_ts", None)
-                            break
+                self._queue_store_for_manager().clear_commit_unknown_marker(self._queues, session_id, head_id)
             self._save_queues()
             return None
         with self._lock:
