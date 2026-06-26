@@ -182,6 +182,7 @@ from .static_routes import handle_static_get_route as _handle_static_get_route
 from .static_routes import read_static_bytes as _read_static_bytes_impl
 from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
+from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
 from .queue_store import copy_queue_item as _queue_store_copy_item
 from .queue_store import new_queue_item as _queue_store_new_item
 from .queue_store import new_queue_item_id as _queue_store_new_item_id
@@ -551,37 +552,13 @@ def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_M
 
 
 def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: str | None = None) -> dict[str, Any]:
-    target = _clean_optional_text(pane_id)
-    if target is None and _clean_optional_text(window) is not None:
-        target = f"{TMUX_SESSION_NAME}:{window}"
-    if target is None:
-        return {}
-    fmt = "#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{pane_dead_status}\t#{pane_current_command}\t#{window_name}"
-    proc = subprocess.run(
-        [tmux_bin, "display-message", "-p", "-t", target, fmt],
-        capture_output=True,
-        text=True,
-        check=False,
+    return _tmux_pane_snapshot_impl(
+        tmux_bin,
+        tmux_session_name=TMUX_SESSION_NAME,
+        pane_id=pane_id,
+        window=window,
+        run=subprocess.run,
     )
-    out: dict[str, Any] = {"tmux_target": target}
-    if proc.returncode != 0:
-        out["tmux_inspect_error"] = (proc.stderr or proc.stdout or f"exit status {proc.returncode}").strip()
-        return out
-    parts = (proc.stdout or "").strip().split("\t")
-    keys = ("tmux_pane_id", "tmux_pane_pid", "tmux_pane_dead", "tmux_pane_dead_status", "tmux_pane_command", "tmux_window")
-    for key, value in zip(keys, parts):
-        out[key] = value
-    cap = subprocess.run(
-        [tmux_bin, "capture-pane", "-p", "-t", target, "-S", "-80"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if cap.returncode == 0:
-        out["tmux_pane_tail"] = (cap.stdout or "")[-4000:]
-    else:
-        out["tmux_capture_error"] = (cap.stderr or cap.stdout or f"exit status {cap.returncode}").strip()
-    return out
 
 
 def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
