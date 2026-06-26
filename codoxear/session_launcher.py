@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, NoReturn
@@ -13,6 +14,8 @@ from .backend_launch import build_tmux_inline_env
 from .backend_launch import tmux_unset_vars
 from .file_upload import safe_filename
 from .launch_ledger import LaunchAttemptRecorder
+from .sidecar_metadata import read_metadata as _read_sidecar_metadata
+from .sidecar_metadata import required_live_pid as _metadata_required_live_pid
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,37 @@ def _clean_optional_text(value: Any) -> str | None:
         return None
     out = value.strip()
     return out or None
+
+
+def wait_for_spawned_broker_meta(
+    spawn_nonce: str,
+    *,
+    sock_dir: Path,
+    timeout_s: float,
+    now: Callable[[], float] | None = None,
+    sleep: Callable[[float], None] | None = None,
+    read_metadata: Callable[..., dict[str, Any]] = _read_sidecar_metadata,
+    required_live_pid: Callable[..., int] = _metadata_required_live_pid,
+) -> dict[str, Any]:
+    now_fn = now or time.time
+    sleep_fn = sleep or time.sleep
+    deadline = now_fn() + max(timeout_s, 0.0)
+    while now_fn() <= deadline:
+        for meta_path in sorted(sock_dir.glob("*.json")):
+            sock = meta_path.with_suffix(".sock")
+            try:
+                meta = read_metadata(meta_path, sock=sock)
+            except ValueError:
+                continue
+            if _clean_optional_text(meta.get("spawn_nonce")) != spawn_nonce:
+                continue
+            try:
+                required_live_pid(meta, "broker_pid", sock=sock)
+            except ValueError:
+                continue
+            return meta
+        sleep_fn(0.05)
+    raise RuntimeError(f"tmux launch did not publish broker metadata within {timeout_s:.1f}s")
 
 
 def _tmux_detail(proc: subprocess.CompletedProcess[str]) -> str:

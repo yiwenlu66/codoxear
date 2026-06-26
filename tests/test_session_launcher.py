@@ -4,6 +4,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from codoxear.session_launcher import LaunchProcessDeps
 from codoxear.session_launcher import LaunchProcessFailure
 from codoxear.session_launcher import LaunchProcessRequest
 from codoxear.session_launcher import launch_broker_process
+from codoxear.session_launcher import wait_for_spawned_broker_meta
 
 
 def _request(*, create_in_tmux: bool = False) -> LaunchProcessRequest:
@@ -317,3 +319,60 @@ def test_launch_broker_process_tmux_dead_pane_metadata_failure_raises_with_fresh
     assert err.value.record["stage"] == "broker_metadata"
     assert err.value.record["tmux_pane_dead_status"] == "42"
     assert err.value.record["error"] == "metadata not ready"
+
+
+def test_wait_for_spawned_broker_meta_skips_invalid_metadata_until_live_match() -> None:
+    with TemporaryDirectory() as td:
+        sock_dir = Path(td)
+        for name in ["a-bad-json", "b-other-nonce", "c-dead-pid", "d-good"]:
+            (sock_dir / f"{name}.json").write_text("{}", encoding="utf-8")
+        metas = {
+            "b-other-nonce.json": {"spawn_nonce": "other", "broker_pid": 111},
+            "c-dead-pid.json": {"spawn_nonce": "target", "broker_pid": 0},
+            "d-good.json": {"spawn_nonce": "target", "broker_pid": 222},
+        }
+        read_paths: list[str] = []
+        live_checks: list[tuple[int, str]] = []
+
+        def read_metadata(path: Path, *, sock: Path) -> dict:
+            read_paths.append(path.name)
+            if path.name == "a-bad-json.json":
+                raise ValueError("bad json")
+            return dict(metas[path.name])
+
+        def required_live_pid(meta: dict, key: str, *, sock: Path) -> int:
+            pid = meta[key]
+            live_checks.append((pid, sock.name))
+            if pid <= 0:
+                raise ValueError("dead pid")
+            return int(pid)
+
+        meta = wait_for_spawned_broker_meta(
+            "target",
+            sock_dir=sock_dir,
+            timeout_s=0.0,
+            now=lambda: 0.0,
+            read_metadata=read_metadata,
+            required_live_pid=required_live_pid,
+            sleep=lambda _seconds: None,
+        )
+
+    assert meta == {"spawn_nonce": "target", "broker_pid": 222}
+    assert read_paths == ["a-bad-json.json", "b-other-nonce.json", "c-dead-pid.json", "d-good.json"]
+    assert live_checks == [(0, "c-dead-pid.sock"), (222, "d-good.sock")]
+
+
+def test_wait_for_spawned_broker_meta_timeout_uses_bounded_poll_loop() -> None:
+    now_values = iter([0.0, 0.0, 0.1])
+    sleeps: list[float] = []
+    with TemporaryDirectory() as td:
+        with pytest.raises(RuntimeError, match="tmux launch did not publish broker metadata within 0.0s"):
+            wait_for_spawned_broker_meta(
+                "missing",
+                sock_dir=Path(td),
+                timeout_s=0.0,
+                now=lambda: next(now_values),
+                sleep=lambda seconds: sleeps.append(seconds),
+            )
+
+    assert sleeps == [0.05]

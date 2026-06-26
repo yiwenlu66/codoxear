@@ -159,6 +159,7 @@ from .session_launcher import LaunchProcessDeps
 from .session_launcher import LaunchProcessFailure
 from .session_launcher import LaunchProcessRequest
 from .session_launcher import launch_broker_process as _launch_broker_process
+from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -200,7 +201,6 @@ from .sidecar_metadata import log_invalid as _log_invalid_sidecar_metadata
 from .sidecar_metadata import log_path as _metadata_log_path
 from .sidecar_metadata import read_metadata as _read_sidecar_metadata
 from .sidecar_metadata import required_int as _metadata_required_int
-from .sidecar_metadata import required_live_pid as _metadata_required_live_pid
 from .sidecar_metadata import required_text as _metadata_required_text
 from .sidecar_metadata import start_ts as _metadata_start_ts
 from .sidecar_metadata import sync_send_supported as _metadata_sync_send_supported
@@ -560,23 +560,7 @@ def _tmux_available() -> bool:
 
 
 def _wait_for_spawned_broker_meta(spawn_nonce: str, *, timeout_s: float = TMUX_META_WAIT_SECONDS) -> dict[str, Any]:
-    deadline = time.time() + max(timeout_s, 0.0)
-    while time.time() <= deadline:
-        for meta_path in sorted(SOCK_DIR.glob("*.json")):
-            sock = meta_path.with_suffix(".sock")
-            try:
-                meta = _read_sidecar_metadata(meta_path, sock=sock)
-            except ValueError:
-                continue
-            if _clean_optional_text(meta.get("spawn_nonce")) != spawn_nonce:
-                continue
-            try:
-                _metadata_required_live_pid(meta, "broker_pid", sock=sock)
-            except ValueError:
-                continue
-            return meta
-        time.sleep(0.05)
-    raise RuntimeError(f"tmux launch did not publish broker metadata within {timeout_s:.1f}s")
+    return _wait_for_spawned_broker_meta_impl(spawn_nonce, sock_dir=SOCK_DIR, timeout_s=timeout_s)
 
 
 def _tmux_pane_snapshot(tmux_bin: str, *, pane_id: str | None = None, window: str | None = None) -> dict[str, Any]:
