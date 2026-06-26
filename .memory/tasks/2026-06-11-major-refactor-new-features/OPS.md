@@ -3433,3 +3433,9 @@
 - What intentionally remains in `SessionManager`: `_log_size_or_none` and `_confirmed_send_boundary_unresolved_for_session` wrappers still provide manager locking/compatibility around the runtime helpers; higher-level readiness/list/message snapshot code still decides when to call them.
 - Preservation note: the moved parser loop was restored to the original `server.py` cursor semantics after a first edit rewrote the loop shape; focused tests passed after the restoration.
 - Focused development sanity: py-compile of runtime/server/runtime tests passed; runtime, pending-log idle, server queue persistence, diagnostics routes, message route source, and session routes returned `140 passed, 26 subtests`.
+
+## 2026-06-26T23:00:00Z Full local pytest after runtime probe slice
+- Full local mistake-detector run after commits through `5c3c199` initially returned `1133 passed, 1 failed, 107 subtests`.
+- Failure mechanism: `tests/test_file_upload_module_source.py` still expected pending-attachment and commit-unknown row projection literals in `server.py`, but that row projection now lives in `session_listing.py` after the earlier active-listing snapshot extraction. This was a stale ownership sentinel, not a runtime behavior failure.
+- Test-only commit `1c52713 Update file upload listing source sentinel`: updated the file-upload source sentinel to check `session_listing.py` for `pending_attachment=bool(s.pending_attachment)` and the current `commit_unknown_send` projection expression.
+- Re-run evidence: `pytest -q tests/test_file_upload_module_source.py` returned `3 passed`; full `pytest -q` returned `1134 passed, 107 subtests`.
