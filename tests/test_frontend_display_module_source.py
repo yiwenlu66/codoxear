@@ -20,7 +20,7 @@ def run_node_json(js: str) -> dict:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env={**os.environ, "TZ": "UTC"},
+        env={"PATH": os.environ.get("PATH", ""), "TZ": "UTC"},
     )
     return json.loads(proc.stdout)
 
@@ -74,6 +74,18 @@ def eval_display_module() -> dict:
           cwdScoreMultiToken: display.fuzzyRecentCwdScore("/work/foo-bar", "foo bar"),
           cwdScoreSubsequence: display.fuzzyRecentCwdScore("abc", "ac"),
           cwdScoreNoMatch: display.fuzzyRecentCwdScore("abc", "az"),
+          chatSnippetWhitespace: display.compactChatSearchSnippet("  hello\\n\\tworld  ", ""),
+          chatSnippetEmpty: display.compactChatSearchSnippet("   ", "needle"),
+          chatSnippetShort: display.compactChatSearchSnippet("short text", "text"),
+          chatSnippetMinLimit: display.compactChatSearchSnippet("abcdefghijklmnopqrstuvwxyz0123456789", "", 5),
+          chatSnippetCentered: display.compactChatSearchSnippet("a".repeat(40) + "needle" + "b".repeat(80), "needle", 40),
+          chatSnippetNoNeedle: display.compactChatSearchSnippet("x".repeat(80), "missing", 30),
+          chatSnippetDefaultLimitLength: display.compactChatSearchSnippet("x".repeat(110), "", Number.NaN).length,
+          chatHintNull: display.chatSearchTranscriptHint(null, "x"),
+          chatHintUser: display.chatSearchTranscriptHint({{ role: "user", text: "  hi  " }}, "hi"),
+          chatHintAssistant: display.chatSearchTranscriptHint({{ role: "assistant", text: "answer" }}, "ans"),
+          chatHintOther: display.chatSearchTranscriptHint({{ role: "system", text: "note" }}, "note"),
+          chatHintBlank: display.chatSearchTranscriptHint({{ role: "assistant", text: "   " }}, "x"),
           iconKnown: display.iconSvg("send").includes("<svg"),
           iconUnknown: display.iconSvg("missing"),
           frozen: Object.isFrozen(display),
@@ -122,6 +134,14 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertIn('typeof codoxearDisplay.fuzzyRecentCwdScore !== "function"', source)
         self.assertIn("function fuzzyRecentCwdScore(candidate, query)", source)
         self.assertIn("return codoxearDisplay.fuzzyRecentCwdScore(candidate, query);", source)
+        self.assertIn('typeof codoxearDisplay.compactChatSearchSnippet !== "function"', source)
+        self.assertIn('typeof codoxearDisplay.chatSearchTranscriptHint !== "function"', source)
+        self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", source)
+        self.assertIn("return codoxearDisplay.compactChatSearchSnippet(text, query, limit);", source)
+        self.assertIn("function chatSearchTranscriptHint(match, query)", source)
+        self.assertIn("return codoxearDisplay.chatSearchTranscriptHint(match, query);", source)
+        self.assertIn("function compactChatSearchSnippet(text, query, limit = 96)", display_source)
+        self.assertIn("function chatSearchTranscriptHint(match, query)", display_source)
         self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
         recent_cwd_start = source.index("function renderRecentCwdOptions()")
         recent_cwd_end = source.index("function filteredRecentCwdOptions()", recent_cwd_start)
@@ -173,6 +193,18 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertEqual(result["cwdScoreMultiToken"], 612)
         self.assertEqual(result["cwdScoreSubsequence"], 124)
         self.assertEqual(result["cwdScoreNoMatch"], -1)
+        self.assertEqual(result["chatSnippetWhitespace"], "hello world")
+        self.assertEqual(result["chatSnippetEmpty"], "")
+        self.assertEqual(result["chatSnippetShort"], "short text")
+        self.assertEqual(result["chatSnippetMinLimit"], "abcdefghijklmnopqrstuvwx…")
+        self.assertEqual(result["chatSnippetCentered"], "…aaaaaaaaaaaaaaaaaaaaaaaaneedlebbbbbbbbb…")
+        self.assertEqual(result["chatSnippetNoNeedle"], "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…")
+        self.assertEqual(result["chatSnippetDefaultLimitLength"], 97)
+        self.assertEqual(result["chatHintNull"], "")
+        self.assertEqual(result["chatHintUser"], "user: hi")
+        self.assertEqual(result["chatHintAssistant"], "assistant: answer")
+        self.assertEqual(result["chatHintOther"], "match: note")
+        self.assertEqual(result["chatHintBlank"], "")
         self.assertTrue(result["iconKnown"])
         self.assertEqual(result["iconUnknown"], "")
         self.assertTrue(result["frozen"])

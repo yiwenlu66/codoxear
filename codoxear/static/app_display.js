@@ -131,6 +131,31 @@
     return total;
   }
 
+  function compactChatSearchSnippet(text, query, limit = 96) {
+    const clean = String(text || "").replace(/\s+/g, " ").trim();
+    const maxLen = Math.max(24, Number(limit) || 96);
+    if (!clean) return "";
+    if (clean.length <= maxLen) return clean;
+    const needle = String(query || "").trim().toLowerCase();
+    let start = 0;
+    if (needle) {
+      const idx = clean.toLowerCase().indexOf(needle);
+      if (idx > 24) start = Math.max(0, idx - 24);
+    }
+    const prefix = start > 0 ? "…" : "";
+    const remaining = maxLen - prefix.length;
+    const body = clean.slice(start, start + remaining);
+    const suffix = start + remaining < clean.length ? "…" : "";
+    return `${prefix}${body}${suffix}`;
+  }
+
+  function chatSearchTranscriptHint(match, query) {
+    if (!match || typeof match !== "object") return "";
+    const role = match.role === "user" ? "user" : match.role === "assistant" ? "assistant" : "match";
+    const snippet = compactChatSearchSnippet(match.text, query);
+    return snippet ? `${role}: ${snippet}` : "";
+  }
+
   function iconSvg(name) {
     if (name === "menu")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
@@ -221,6 +246,8 @@
     sessionTitleWithId,
     recoveryPromptPreview,
     fuzzyRecentCwdScore,
+    compactChatSearchSnippet,
+    chatSearchTranscriptHint,
     iconSvg,
   });
 })();

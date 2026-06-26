@@ -4,6 +4,7 @@ from pathlib import Path
 
 APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
 APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+APP_DISPLAY_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app_display.js"
 
 
 class TestChatNavigationSource(unittest.TestCase):
@@ -80,6 +81,7 @@ class TestChatNavigationSource(unittest.TestCase):
 
     def test_loaded_chat_search_is_rendered_row_scoped_with_all_transcript_count(self) -> None:
         source = APP_JS.read_text(encoding="utf-8")
+        display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
         self.assertIn('id: "chatSearchBtn"', source)
         self.assertIn('title: "Search loaded messages"', source)
         self.assertIn('placeholder: "Search loaded chat"', source)
@@ -106,8 +108,12 @@ class TestChatNavigationSource(unittest.TestCase):
         self.assertIn('let chatSearchAllHint = "";', source)
         self.assertNotIn('let chatSearchAllLoadCursor = "";', source)
         self.assertIn('function compactChatSearchSnippet(text, query, limit = 96)', source)
-        self.assertIn('if (clean.length <= maxLen) return clean;', source)
+        self.assertIn('return codoxearDisplay.compactChatSearchSnippet(text, query, limit);', source)
+        self.assertIn('function compactChatSearchSnippet(text, query, limit = 96)', display_source)
+        self.assertIn('if (clean.length <= maxLen) return clean;', display_source)
         self.assertIn('function chatSearchTranscriptHint(match, query)', source)
+        self.assertIn('return codoxearDisplay.chatSearchTranscriptHint(match, query);', source)
+        self.assertIn('function chatSearchTranscriptHint(match, query)', display_source)
         self.assertIn('chatSearchAllHint = chatSearchTranscriptHint(firstMatch, cleanQuery);', source)
         self.assertIn('chatSearchAllHintEl.textContent = showAllHint ? `all: ${chatSearchAllHint}` : "";', source)
         self.assertIn('void stepChatSearch(1);', source)

@@ -44,6 +44,8 @@
         typeof codoxearDisplay.sessionTitleWithId !== "function" ||
         typeof codoxearDisplay.recoveryPromptPreview !== "function" ||
         typeof codoxearDisplay.fuzzyRecentCwdScore !== "function" ||
+        typeof codoxearDisplay.compactChatSearchSnippet !== "function" ||
+        typeof codoxearDisplay.chatSearchTranscriptHint !== "function" ||
         typeof codoxearDisplay.iconSvg !== "function"
       )
         throw new Error("Codoxear display helpers failed to load");
@@ -2300,28 +2302,11 @@
         }
 
         function compactChatSearchSnippet(text, query, limit = 96) {
-          const clean = String(text || "").replace(/\s+/g, " ").trim();
-          const maxLen = Math.max(24, Number(limit) || 96);
-          if (!clean) return "";
-          if (clean.length <= maxLen) return clean;
-          const needle = String(query || "").trim().toLowerCase();
-          let start = 0;
-          if (needle) {
-            const idx = clean.toLowerCase().indexOf(needle);
-            if (idx > 24) start = Math.max(0, idx - 24);
-          }
-          const prefix = start > 0 ? "…" : "";
-          const remaining = maxLen - prefix.length;
-          const body = clean.slice(start, start + remaining);
-          const suffix = start + remaining < clean.length ? "…" : "";
-          return `${prefix}${body}${suffix}`;
+          return codoxearDisplay.compactChatSearchSnippet(text, query, limit);
         }
 
         function chatSearchTranscriptHint(match, query) {
-          if (!match || typeof match !== "object") return "";
-          const role = match.role === "user" ? "user" : match.role === "assistant" ? "assistant" : "match";
-          const snippet = compactChatSearchSnippet(match.text, query);
-          return snippet ? `${role}: ${snippet}` : "";
+          return codoxearDisplay.chatSearchTranscriptHint(match, query);
         }
 
         function syncChatSearchStatus() {
