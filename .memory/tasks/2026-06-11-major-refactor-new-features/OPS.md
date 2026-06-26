@@ -3426,3 +3426,10 @@
 - Explicit remaining manager responsibilities: `list_sessions()` still owns discovery/prune/meta-counter prelude, active snapshot construction, manager-owned runtime probes (`idle_from_log_path`, confirmed-send boundary wrapper, log-size wrapper, run-settings/log-tail/git wrappers), failed-launch overlay composition, orphan recovery overlay composition, dirty saves, sort, and return.
 - Regression found and fixed during the move: the initial insertion accidentally removed the `broker_runtime_state` definition header in `session_runtime.py`; focused tests failed during import, then the missing header was restored.
 - Focused development sanity: py-compile of `session_runtime.py`, `server.py`, and `test_session_runtime.py` passed; runtime/listing/pending-log/sidebar/discovery/session-routes group returned `86 passed, 4 subtests`.
+
+## 2026-06-26T22:45:00Z Runtime boundary/log-size probes checkpoint
+- Functional commit `5c3c199 Move confirmed send runtime probes`: moved parseable log-size probing and confirmed-send boundary mechanics from `server.py` into `codoxear/session_runtime.py`.
+- Actual architecture moved: `session_runtime.py` now owns complete-JSONL offset discovery, last parseable JSON object offset, safe log size projection, confirmed-send boundary unresolved checks, boundary clearing, and consume-and-clear semantics on `Session`.
+- What intentionally remains in `SessionManager`: `_log_size_or_none` and `_confirmed_send_boundary_unresolved_for_session` wrappers still provide manager locking/compatibility around the runtime helpers; higher-level readiness/list/message snapshot code still decides when to call them.
+- Preservation note: the moved parser loop was restored to the original `server.py` cursor semantics after a first edit rewrote the loop shape; focused tests passed after the restoration.
+- Focused development sanity: py-compile of runtime/server/runtime tests passed; runtime, pending-log idle, server queue persistence, diagnostics routes, message route source, and session routes returned `140 passed, 26 subtests`.
