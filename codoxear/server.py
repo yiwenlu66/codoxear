@@ -13,7 +13,6 @@ import math
 import os
 import posixpath
 import re
-import secrets
 import signal
 import shutil
 import socket
@@ -103,7 +102,6 @@ from .launch_config import read_codex_launch_defaults as _launch_read_codex_laun
 from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
 from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
 from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
-from .launch_ledger import LaunchAttemptRecorder
 from .launch_ledger import launch_attempt_id as _launch_attempt_id_impl
 from .launch_ledger import launch_attempt_row as _launch_attempt_row_impl
 from .launch_ledger import launch_attempt_transcript_for_session_id as _launch_attempt_transcript_for_session_id_impl
@@ -155,10 +153,11 @@ from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
 from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
+from .session_launcher import LaunchContextRequest
 from .session_launcher import LaunchProcessDeps
 from .session_launcher import LaunchProcessFailure
-from .session_launcher import LaunchProcessRequest
 from .session_launcher import launch_broker_process as _launch_broker_process
+from .session_launcher import prepare_launch_process_context as _prepare_launch_process_context
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
@@ -4484,54 +4483,29 @@ class SessionManager:
             resume_session_id=resume_session_id,
         )
 
-        launch_started_ts = time.time()
-        launch_id = f"launch-{int(launch_started_ts * 1000)}-{secrets.token_hex(4)}"
-        spawn_nonce = secrets.token_hex(8)
-        env["CODEX_WEB_LAUNCH_ID"] = launch_id
-        env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
-
-        base_launch_record: dict[str, Any] = {
-            "launch_id": launch_id,
-            "state": "starting",
-            "agent_backend": backend_name,
-            "cwd": str(spawn_cwd),
-            "requested_cwd": cwd3,
-            "created_ts": launch_started_ts,
-            "updated_ts": launch_started_ts,
-            "spawn_nonce": spawn_nonce,
-            "model_provider": model_provider,
-            "preferred_auth_method": preferred_auth_method,
-            "model": model,
-            "reasoning_effort": reasoning_effort,
-            "service_tier": service_tier,
-            "resume_session_id": resume_session_id,
-            "worktree_branch": worktree_branch,
-        }
-
-        launch_recorder = LaunchAttemptRecorder(
-            base_launch_record,
+        launch_context = _prepare_launch_process_context(
+            LaunchContextRequest(
+                argv=argv,
+                env=env,
+                agent_backend=backend_name,
+                spawn_cwd=spawn_cwd,
+                requested_cwd=cwd3,
+                create_in_tmux=create_in_tmux,
+                tmux_session_name=TMUX_SESSION_NAME,
+                repo_root=Path(__file__).resolve().parent.parent,
+                resume_session_id=resume_session_id,
+                worktree_branch=worktree_branch,
+                model_provider=model_provider,
+                preferred_auth_method=preferred_auth_method,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                service_tier=service_tier,
+            ),
             record_launch_attempt=_record_launch_attempt,
             now=time.time,
             stderr=sys.stderr,
         )
 
-        process_request = LaunchProcessRequest(
-            argv=argv,
-            env=env,
-            agent_backend=backend_name,
-            spawn_cwd=spawn_cwd,
-            launch_id=launch_id,
-            spawn_nonce=spawn_nonce,
-            create_in_tmux=create_in_tmux,
-            tmux_session_name=TMUX_SESSION_NAME,
-            repo_root=Path(__file__).resolve().parent.parent,
-            resume_session_id=resume_session_id,
-            model_provider=model_provider,
-            preferred_auth_method=preferred_auth_method,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            service_tier=service_tier,
-        )
         process_deps = LaunchProcessDeps(
             which_tmux=shutil.which,
             run=subprocess.run,
@@ -4542,7 +4516,7 @@ class SessionManager:
             drain_stream=_drain_stream,
         )
         try:
-            return _launch_broker_process(process_request, recorder=launch_recorder, deps=process_deps)
+            return _launch_broker_process(launch_context.request, recorder=launch_context.recorder, deps=process_deps)
         except LaunchProcessFailure as e:
             raise SessionLaunchError(e.record) from e
 

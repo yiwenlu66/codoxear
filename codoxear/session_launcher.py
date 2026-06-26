@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import shlex
 import subprocess
 import threading
@@ -48,6 +49,31 @@ class LaunchProcessDeps:
     drain_stream: Callable[[Any], None]
 
 
+@dataclass(frozen=True)
+class LaunchContextRequest:
+    argv: list[str]
+    env: dict[str, str]
+    agent_backend: str
+    spawn_cwd: Path
+    requested_cwd: str
+    create_in_tmux: bool
+    tmux_session_name: str
+    repo_root: Path
+    resume_session_id: str | None = None
+    worktree_branch: str | None = None
+    model_provider: str | None = None
+    preferred_auth_method: str | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
+    service_tier: str | None = None
+
+
+@dataclass(frozen=True)
+class LaunchProcessContext:
+    request: LaunchProcessRequest
+    recorder: LaunchAttemptRecorder
+
+
 class LaunchProcessFailure(RuntimeError):
     def __init__(self, record: dict[str, Any]):
         super().__init__(str(record.get("error") or record.get("stage") or "session launch failed"))
@@ -59,6 +85,64 @@ def _clean_optional_text(value: Any) -> str | None:
         return None
     out = value.strip()
     return out or None
+
+
+def prepare_launch_process_context(
+    context: LaunchContextRequest,
+    *,
+    record_launch_attempt: Callable[[dict[str, Any]], dict[str, Any]],
+    now: Callable[[], float] | None = None,
+    token_hex: Callable[[int], str] | None = None,
+    stderr: Any | None = None,
+) -> LaunchProcessContext:
+    now_fn = now or time.time
+    token_fn = token_hex or secrets.token_hex
+    launch_started_ts = now_fn()
+    launch_id = f"launch-{int(launch_started_ts * 1000)}-{token_fn(4)}"
+    spawn_nonce = token_fn(8)
+    context.env["CODEX_WEB_LAUNCH_ID"] = launch_id
+    context.env["CODEX_WEB_SPAWN_NONCE"] = spawn_nonce
+    base_launch_record: dict[str, Any] = {
+        "launch_id": launch_id,
+        "state": "starting",
+        "agent_backend": context.agent_backend,
+        "cwd": str(context.spawn_cwd),
+        "requested_cwd": context.requested_cwd,
+        "created_ts": launch_started_ts,
+        "updated_ts": launch_started_ts,
+        "spawn_nonce": spawn_nonce,
+        "model_provider": context.model_provider,
+        "preferred_auth_method": context.preferred_auth_method,
+        "model": context.model,
+        "reasoning_effort": context.reasoning_effort,
+        "service_tier": context.service_tier,
+        "resume_session_id": context.resume_session_id,
+        "worktree_branch": context.worktree_branch,
+    }
+    recorder = LaunchAttemptRecorder(
+        base_launch_record,
+        record_launch_attempt=record_launch_attempt,
+        now=now_fn,
+        stderr=stderr,
+    )
+    request = LaunchProcessRequest(
+        argv=context.argv,
+        env=context.env,
+        agent_backend=context.agent_backend,
+        spawn_cwd=context.spawn_cwd,
+        launch_id=launch_id,
+        spawn_nonce=spawn_nonce,
+        create_in_tmux=context.create_in_tmux,
+        tmux_session_name=context.tmux_session_name,
+        repo_root=context.repo_root,
+        resume_session_id=context.resume_session_id,
+        model_provider=context.model_provider,
+        preferred_auth_method=context.preferred_auth_method,
+        model=context.model,
+        reasoning_effort=context.reasoning_effort,
+        service_tier=context.service_tier,
+    )
+    return LaunchProcessContext(request=request, recorder=recorder)
 
 
 def wait_for_spawned_broker_meta(

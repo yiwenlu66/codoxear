@@ -11,10 +11,12 @@ from unittest.mock import patch
 import pytest
 
 from codoxear.launch_ledger import LaunchAttemptRecorder
+from codoxear.session_launcher import LaunchContextRequest
 from codoxear.session_launcher import LaunchProcessDeps
 from codoxear.session_launcher import LaunchProcessFailure
 from codoxear.session_launcher import LaunchProcessRequest
 from codoxear.session_launcher import launch_broker_process
+from codoxear.session_launcher import prepare_launch_process_context
 from codoxear.session_launcher import wait_for_spawned_broker_meta
 
 
@@ -64,6 +66,117 @@ def _deps(**overrides) -> LaunchProcessDeps:
     }
     values.update(overrides)
     return LaunchProcessDeps(**values)
+
+
+def test_prepare_launch_process_context_sets_env_record_and_request() -> None:
+    records: list[dict] = []
+    env = {"CODEX_WEB_AGENT_BACKEND": "codex"}
+    token_calls: list[int] = []
+
+    def token_hex(nbytes: int) -> str:
+        token_calls.append(nbytes)
+        return {4: "abcd1234", 8: "nonce9876543210"}[nbytes]
+
+    context = prepare_launch_process_context(
+        LaunchContextRequest(
+            argv=["python", "-m", "codoxear.broker", "--cwd", "/tmp/work", "--"],
+            env=env,
+            agent_backend="codex",
+            spawn_cwd=Path("/tmp/work"),
+            requested_cwd="/tmp/requested",
+            create_in_tmux=True,
+            tmux_session_name="codoxear-test",
+            repo_root=Path("/repo"),
+            resume_session_id="resume-a",
+            worktree_branch="feature/refactor",
+            model_provider="provider-a",
+            preferred_auth_method="apikey",
+            model="gpt-test",
+            reasoning_effort="low",
+            service_tier="fast",
+        ),
+        record_launch_attempt=lambda record: records.append(dict(record)) or dict(record),
+        now=lambda: 123.456,
+        token_hex=token_hex,
+        stderr=None,
+    )
+
+    assert token_calls == [4, 8]
+    assert env["CODEX_WEB_LAUNCH_ID"] == "launch-123456-abcd1234"
+    assert env["CODEX_WEB_SPAWN_NONCE"] == "nonce9876543210"
+    assert context.request.argv == ["python", "-m", "codoxear.broker", "--cwd", "/tmp/work", "--"]
+    assert context.request.env is env
+    assert context.request.launch_id == "launch-123456-abcd1234"
+    assert context.request.spawn_nonce == "nonce9876543210"
+    assert context.request.create_in_tmux is True
+    assert context.request.tmux_session_name == "codoxear-test"
+    assert context.request.resume_session_id == "resume-a"
+    assert context.request.model_provider == "provider-a"
+    assert context.request.service_tier == "fast"
+
+    persisted = context.recorder.record("starting", transport="tmux")
+    assert persisted == {
+        "launch_id": "launch-123456-abcd1234",
+        "state": "starting",
+        "agent_backend": "codex",
+        "cwd": "/tmp/work",
+        "requested_cwd": "/tmp/requested",
+        "created_ts": 123.456,
+        "updated_ts": 123.456,
+        "spawn_nonce": "nonce9876543210",
+        "model_provider": "provider-a",
+        "preferred_auth_method": "apikey",
+        "model": "gpt-test",
+        "reasoning_effort": "low",
+        "service_tier": "fast",
+        "resume_session_id": "resume-a",
+        "worktree_branch": "feature/refactor",
+        "transport": "tmux",
+    }
+    assert records == [persisted]
+
+
+def test_prepare_launch_process_context_uses_fresh_base_copy_for_records() -> None:
+    persisted_records: list[dict] = []
+    now_values = iter([1.25, 2.5, 3.75])
+
+    def persist(record: dict) -> dict:
+        persisted_records.append(record)
+        return record
+
+    context = prepare_launch_process_context(
+        LaunchContextRequest(
+            argv=["broker"],
+            env={},
+            agent_backend="pi",
+            spawn_cwd=Path("/tmp/spawn"),
+            requested_cwd="/tmp/requested",
+            create_in_tmux=False,
+            tmux_session_name="codoxear",
+            repo_root=Path("/repo"),
+        ),
+        record_launch_attempt=persist,
+        now=lambda: next(now_values),
+        token_hex=lambda nbytes: "aaaa" if nbytes == 4 else "bbbbbbbb",
+    )
+
+    first = context.recorder.record("broker_spawned", transport="direct", broker_pid=123)
+    first["agent_backend"] = "mutated-output-copy"
+    second = context.recorder.record("broker_ready", transport="direct", broker_pid=123)
+    assert persisted_records[0]["state"] == "broker_spawned"
+    assert persisted_records[0]["agent_backend"] == "mutated-output-copy"
+    assert persisted_records[0]["cwd"] == "/tmp/spawn"
+    assert persisted_records[0]["requested_cwd"] == "/tmp/requested"
+    assert persisted_records[0]["created_ts"] == 1.25
+    assert persisted_records[0]["updated_ts"] == 2.5
+    assert persisted_records[0]["launch_id"] == "launch-1250-aaaa"
+    assert persisted_records[0]["spawn_nonce"] == "bbbbbbbb"
+    assert persisted_records[0]["transport"] == "direct"
+    assert persisted_records[0]["broker_pid"] == 123
+    assert second["state"] == "broker_ready"
+    assert second["agent_backend"] == "pi"
+    assert second["created_ts"] == 1.25
+    assert second["updated_ts"] == 3.75
 
 
 def test_session_launcher_import_does_not_load_server() -> None:
