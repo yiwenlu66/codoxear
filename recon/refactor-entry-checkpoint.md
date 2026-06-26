@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `fcdc01b extract model option match helper`
+Latest functional code checkpoint: `dd57f14 extract diagnostics session helpers`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -90,7 +90,8 @@ Recent committed recovery checkpoints include:
   - file-picker source/label extraction preserves candidate-source normalization and source-section label text through `window.CodoxearFileHelpers`, while file identity keys, clone/merge semantics, candidate maps/cache, changed-file API calls, DOM section insertion/rendering/highlighting, active file/open behavior, file-viewer state, focus/timers, and recovery/security behavior remain app-owned;
   - file-editor cursor-helper extraction preserves inserted-text cursor arithmetic through `window.CodoxearFileHelpers`, while Monaco/editor access, paste execution, file dirty state, touch-selection reset, selection application, focus, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned;
   - file-editor delete-key helper extraction preserves key-to-Monaco-delete-command mapping through `window.CodoxearFileHelpers`, while event filtering/lowercasing, native delete suppression, Monaco/editor access, `editor.trigger`, touch-selection reset, focus, toast/error behavior, DOM, file-viewer availability, save/edit behavior, timers, APIs, and recovery/security behavior remain app-owned;
-  - model-option match helper extraction preserves deterministic model-search text matching through `window.CodoxearLaunch`, while model-option construction, exact/prefix/contains ordering, result slicing, provider/model selection, rendering, local/session state, memory persistence, focus/menu behavior, APIs, DOM, timers, recovery/security behavior, and launch-dialog state remain app-owned.
+  - model-option match helper extraction preserves deterministic model-search text matching through `window.CodoxearLaunch`, while model-option construction, exact/prefix/contains ordering, result slicing, provider/model selection, rendering, local/session state, memory persistence, focus/menu behavior, APIs, DOM, timers, recovery/security behavior, and launch-dialog state remain app-owned;
+  - diagnostics helper extraction preserves provider-display formatting and copy-text row formatting through `window.CodoxearSessionHelpers`, while backend normalization remains `app_launch.js`/app-owned and diagnostics API fetch, row construction, mutable copy state, clipboard, DOM/buttons/backdrop, focus, auth-loss handling, error recovery, timers, and recovery/security behavior remain app-owned.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -209,6 +210,10 @@ Latest Docker-only evidence after frontend helper extractions:
 - Model-option match helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18903 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
 - Deterministic equivalence check against the pre-extraction inline body passed for 10 cases covering empty query, exact/prefix/contains, case-insensitive search text, fallback model field, blank search text with model fallback, null option, and no-match; helper side-effect probe found no DOM/API/session/dialog-state/timer/focus/storage references.
 - Clean-room delegate review `5992087b-7600-48de-a9ab-6c0a060861a7` saved to `/tmp/codoxear-model-option-match-review.md` returned `NO BLOCKERS` for pure helper ownership, semantic equivalence, fail-loud guard coverage, wrapper/call-site preservation, app-owned filtering order/sessionModelOptions/rendering/provider-selection/memory/focus/menu behavior, static wiring sufficiency, and test coverage.
+- Diagnostics helper focused Docker validation: `CODOXEAR_DOCKER_PORT=18904 scripts/codoxear-docker-sandbox test tests/test_diagnostics_source.py tests/test_frontend_session_helpers_source.py tests/test_static_assets.py -q` -> `19 passed`.
+- Diagnostics helper full Docker sandbox suite: `CODOXEAR_DOCKER_PORT=18905 scripts/codoxear-docker-sandbox test` -> `994 passed, 1 skipped, 107 subtests passed`.
+- Deterministic equivalence check against pre-extraction `app.js` inline bodies passed for 11 provider cases and 5 copy-text cases, including `claude`/`claude-code` alias normalization through the app wrapper; refined helper side-effect probe found no DOM/API/session/modal/timer/focus/storage references.
+- Clean-room delegate review `87b32795-9336-49a9-b2d0-170748b2a68e` saved to `/tmp/codoxear-diagnostics-helper-review.md` returned `NO BLOCKERS` for semantic equivalence, alias normalization preservation, fail-loud guard coverage, app-owned diagnostics state/API/DOM/clipboard/auth-error boundaries, load-order sufficiency, export wiring, and test coverage.
 
 Prior Pi busy-after-interrupt evidence remains valid:
 
@@ -289,4 +294,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-Continue broad refactor from this branch only by treating the invariants above as contract tests. Read the replacement pure-helper scout `/tmp/codoxear-next-pure-helper-scout-after-model.md`, re-anchor on a clean tree, and choose another tranche only if the target is deterministic argument-only logic with an obvious helper-module home and validation path. Do not force extraction of wrappers, state readers, dead code, or logic touching DOM/API/mutable session/file/chat state/focus/timers/recovery/security/browser-time globals. Keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.
+Continue broad refactor from this branch only by treating the invariants above as contract tests. The only pre-scouted remaining narrow candidate is `normalizeQueueItems(data)`, and it should be attempted only if it stays limited to deterministic API-payload normalization with modern/legacy queue item shape tests. Do not move queue viewer refresh, API fetch, auth-loss handling, queue draft preservation, mutation locks, render loop, barrier movement, send/enqueue rules, DOM/focus/timers/recovery/security behavior, wrappers/state readers, or dead code. Keep source/VM/static guards green, run focused and full Docker validation, and use exactly one clean-room review before any functional commit.

@@ -2,9 +2,9 @@
 Continue bounded structural/frontend refactoring on `/home/yiwen/codex-web-product-recovery`, branch `recovery/product-gaps`, while preserving the product-gap fixes already validated in `recon/refactor-entry-checkpoint.md`. Do not merge or promote it to `/home/yiwen/codex-web` or `main` without explicit user approval.
 
 ## Workbench
-1. Completed tranche: model-option text matching now lives in `codoxear/static/app_launch.js` at functional commit `fcdc01b extract model option match helper`; checkpoint docs are recorded separately from the functional change.
-2. Next bounded candidate: wait for/read `/tmp/codoxear-next-pure-helper-scout-after-model.md` from replacement scout `3695ddb6-9f15-4943-a0a8-1dc48ca582f3`, then re-inspect any suggested target on a clean tree before choosing.
-3. Do not force a tranche if the next candidate is only a wrapper/state reader, touches DOM/API/mutable session/file/chat state/focus/timers/recovery/security/browser-time globals, or is dead code. If no safe target remains, report that the bounded helper-extraction series has reached a natural stop without broader design work.
+1. Completed tranche: diagnostics provider display/copy formatting now lives in `codoxear/static/app_session_helpers.js` at functional commit `dd57f14 extract diagnostics session helpers`; checkpoint docs are recorded separately from the functional change.
+2. Next bounded candidate: `normalizeQueueItems(data)` only if re-inspection confirms it remains deterministic API-payload normalization and tests preserve modern/legacy queue item shape.
+3. Do not move queue viewer refresh, API fetch, auth-loss handling, queue draft preservation, mutation locks, render loop, queue barrier movement, send/enqueue rules, DOM/focus/timers/recovery/security behavior, or dead code.
 4. Run focused Docker tests, full Docker suite, clean diff review, and exactly one clean-room review before any functional commit.
 5. Commit functional changes and memory/checkpoint docs separately, then refresh this list for the next tranche.
 
