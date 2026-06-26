@@ -42,6 +42,7 @@
         typeof codoxearDisplay.fmtIdleAge !== "function" ||
         typeof codoxearDisplay.fmtRelativeAge !== "function" ||
         typeof codoxearDisplay.sessionTitleWithId !== "function" ||
+        typeof codoxearDisplay.recoveryPromptPreview !== "function" ||
         typeof codoxearDisplay.iconSvg !== "function"
       )
         throw new Error("Codoxear display helpers failed to load");
@@ -4031,9 +4032,7 @@
         }
 
         function recoveryPromptPreview(text, maxLen = 320) {
-          const raw = String(text || "").replace(/\s+/g, " ").trim();
-          if (!raw) return "";
-          return raw.length > maxLen ? `${raw.slice(0, maxLen)}…` : raw;
+          return codoxearDisplay.recoveryPromptPreview(text, maxLen);
         }
 
         function launchPresetFromSessionInfo(s) {

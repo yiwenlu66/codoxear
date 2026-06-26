@@ -62,6 +62,11 @@ def eval_display_module() -> dict:
           relativeMinutes: display.fmtRelativeAge(125),
           relativeHour: display.fmtRelativeAge(3600),
           titleEmpty: display.sessionTitleWithId(null),
+          recoveryPreviewWhitespace: display.recoveryPromptPreview("  hello\\n\\tworld  "),
+          recoveryPreviewTruncated: display.recoveryPromptPreview("abcdef", 3),
+          recoveryPreviewExact: display.recoveryPromptPreview("abc", 3),
+          recoveryPreviewFalsy: display.recoveryPromptPreview(0),
+          recoveryPreviewDefaultLimit: display.recoveryPromptPreview("x".repeat(321)).length,
           iconKnown: display.iconSvg("send").includes("<svg"),
           iconUnknown: display.iconSvg("missing"),
           frozen: Object.isFrozen(display),
@@ -104,8 +109,12 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertIn("return codoxearDisplay.fmtBytes(n);", source)
         self.assertIn("function iconSvg(name) {", source)
         self.assertIn("return codoxearDisplay.iconSvg(name);", source)
+        self.assertIn('typeof codoxearDisplay.recoveryPromptPreview !== "function"', source)
+        self.assertIn("function recoveryPromptPreview(text, maxLen = 320)", source)
+        self.assertIn("return codoxearDisplay.recoveryPromptPreview(text, maxLen);", source)
         self.assertIn("window.CodoxearDisplay = Object.freeze({", display_source)
         self.assertNotIn("function fmtBytes(n) {\n        const v = Number(n);", source)
+        self.assertNotIn('const raw = String(text || "").replace(/\\s+/g, " ").trim();', source)
         self.assertNotIn("function iconSvg(name) {\n    if (name ===", source)
 
     def test_display_module_preserves_presentation_helpers(self) -> None:
@@ -137,6 +146,11 @@ class TestFrontendDisplayModuleSource(unittest.TestCase):
         self.assertEqual(result["relativeMinutes"], "2m ago")
         self.assertEqual(result["relativeHour"], "1h ago")
         self.assertEqual(result["titleEmpty"], "No session selected")
+        self.assertEqual(result["recoveryPreviewWhitespace"], "hello world")
+        self.assertEqual(result["recoveryPreviewTruncated"], "abc…")
+        self.assertEqual(result["recoveryPreviewExact"], "abc")
+        self.assertEqual(result["recoveryPreviewFalsy"], "")
+        self.assertEqual(result["recoveryPreviewDefaultLimit"], 321)
         self.assertTrue(result["iconKnown"])
         self.assertEqual(result["iconUnknown"], "")
         self.assertTrue(result["frozen"])

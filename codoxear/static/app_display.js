@@ -88,6 +88,12 @@
     return name || "No session selected";
   }
 
+  function recoveryPromptPreview(text, maxLen = 320) {
+    const raw = String(text || "").replace(/\s+/g, " ").trim();
+    if (!raw) return "";
+    return raw.length > maxLen ? `${raw.slice(0, maxLen)}…` : raw;
+  }
+
   function iconSvg(name) {
     if (name === "menu")
       return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>`;
@@ -176,6 +182,7 @@
     fmtIdleAge,
     fmtRelativeAge,
     sessionTitleWithId,
+    recoveryPromptPreview,
     iconSvg,
   });
 })();

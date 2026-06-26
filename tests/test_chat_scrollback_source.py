@@ -5,12 +5,15 @@ import unittest
 from pathlib import Path
 
 
-APP_JS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.js"
-APP_CSS = Path(__file__).resolve().parents[1] / "codoxear" / "static" / "app.css"
+ROOT = Path(__file__).resolve().parents[1]
+APP_JS = ROOT / "codoxear" / "static" / "app.js"
+APP_DISPLAY_JS = ROOT / "codoxear" / "static" / "app_display.js"
+APP_CSS = ROOT / "codoxear" / "static" / "app.css"
 
 
 def eval_launch_recovery_helpers() -> dict:
     source = APP_JS.read_text(encoding="utf-8")
+    display_source = APP_DISPLAY_JS.read_text(encoding="utf-8")
     redactor_start = source.index("function redactedLaunchErrorText(value) {")
     redactor_end = source.index("function sessionLaunchLabel(s)", redactor_start)
     start = source.index("function recoverySessionInfo(sessionId) {")
@@ -37,7 +40,11 @@ def eval_launch_recovery_helpers() -> dict:
           tmux_window: "work-abc123",
           submitted_user_message_count: 2,
         }};
+        const moduleCtx = {{ window: {{}} }};
+        vm.createContext(moduleCtx);
+        vm.runInContext({json.dumps(display_source)}, moduleCtx);
         const ctx = {{
+          codoxearDisplay: moduleCtx.window.CodoxearDisplay,
           sessionIndex: new Map([["launch-dead", launchRow]]),
           selected: "launch-dead",
           sessionLaunchFailed: (s) => Boolean(s && String(s.launch_state || "").toLowerCase() === "failed"),
