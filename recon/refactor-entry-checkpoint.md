@@ -303,12 +303,14 @@ Validated ownership moves after the original refactor-entry checkpoint:
 - Runtime readiness and token interpretation live in `codoxear/session_runtime.py`; persistent session maps live behind `SessionStore`; sidecar metadata schema helpers live in `sidecar_metadata.py`.
 - `Session` now lives in `codoxear/session_model.py` and is re-exported from `server.py`, which allows non-server modules to share the runtime session shape without importing the god module.
 - Sidecar/socket/log discovery evidence collection now lives in `codoxear/session_discovery.py`. It reads sidecar metadata, performs proc-open rollout discovery, handles hidden-session exclusion, probes broker socket state, chooses log vs broker token evidence, and returns typed registration/stale/recent-cwd records. `SessionManager` remains the registry/cache authority that applies those records, preserves pending-attachment and commit-unknown overlays, resets log caches, persists recent cwd state, clears deleted-session state, and records launch failures.
+- Launch-attempt record composition for web-owned spawn state transitions now lives in `codoxear.launch_ledger.LaunchAttemptRecorder`. The recorder owns base-copy/state/updated_ts/extra-merge/failure/stderr fallback mechanics; `SessionManager.spawn_web_session` still owns base launch context, backend argv/env, tmux/direct process orchestration, metadata wait, pending response semantics, and `SessionLaunchError` raising.
 
-Acceptance evidence for the latest discovery tranche:
+Acceptance evidence for the latest discovery and launch-recording tranches:
 
 - `b718f24 Extract session model`: full Docker on port 18943 -> `1060 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-session-model-review.md` -> `NO BLOCKERS`.
 - `086120a Extract session discovery service`: local full -> `1068 passed, 107 subtests`; focused Docker on port 18946 passed; full Docker on port 18947 -> `1067 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-session-discovery-review.md` -> `NO BLOCKERS`.
 - `57a412e Cover discovery cleanup edge cases`: direct tests now isolate hidden-dead session unhide+unlink/no-clear-state and definitely-stale dead socket unlink-only behavior; focused Docker on port 18948 passed.
+- `d8c8ca9 Extract launch attempt recorder`: focused local launch group -> `49 passed, 12 subtests`; local full -> `1073 passed, 107 subtests`; focused Docker on port 18949 passed; full Docker on port 18950 -> `1072 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-launch-recorder-review.md` -> `NO BLOCKERS`.
 
 ## Invariants broad refactoring must preserve
 
@@ -350,4 +352,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-The pure-helper extraction wave and endpoint-controller extraction wave are closed. The active work is now semantic ownership cleanup of the remaining non-route `server.py` responsibilities. The next high-value seam is launch lifecycle, but it should be approached through a causal boundary rather than a wholesale move of `spawn_web_session`: first separate launch-attempt recording/context and dependency injection for tmux/direct subprocess orchestration, then move process creation and metadata-wait behavior once failure-recording invariants are explicit. Keep `SessionManager` as the session registry/cache authority unless a later tranche deliberately moves that ownership with focused tests, Docker acceptance, and a clean-room review.
+The pure-helper extraction wave and endpoint-controller extraction wave are closed. Launch-attempt record composition is now also separated from `spawn_web_session`. The active work is semantic ownership cleanup of the remaining non-route `server.py` responsibilities: next move launch context/dependency construction or tmux/direct process orchestration behind a causal boundary, then move metadata-wait/pending semantics once the process boundary is explicit. Keep `SessionManager` as the session registry/cache authority unless a later tranche deliberately moves that ownership with focused tests, Docker acceptance, and a clean-room review.
