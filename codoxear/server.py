@@ -162,6 +162,11 @@ from .session_launch_plan import LaunchPlanDeps
 from .session_launch_plan import LaunchPlanRequest
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_listing import ActiveSessionRowFacts as _ActiveSessionRowFacts
+from .session_listing import clip01 as _listing_clip01
+from .session_listing import listing_priority as _listing_priority
+from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
+from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
+from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_listing import build_active_session_row as _build_active_session_row
 from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
 from .session_listing import build_public_session_row as _build_public_session_row
@@ -377,7 +382,6 @@ ATTACH_UPLOAD_BODY_MAX_BYTES = int(
 SEND_COMMIT_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_SEND_COMMIT_TIMEOUT_SECONDS", "30"))
 COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS = float(os.environ.get("CODEX_WEB_COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS", str(7 * 24 * 3600)))
 SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
-SIDEBAR_PRIORITY_LAMBDA = math.log(2.0) / SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
 SIDEBAR_PRIORITY_BUCKET_SECONDS = float(os.environ.get("CODEX_WEB_SIDEBAR_PRIORITY_BUCKET_SECONDS", "10.0"))
 RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
 STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
@@ -1164,11 +1168,7 @@ def _clean_recent_cwd(value: Any) -> str | None:
 
 
 def _clip01(v: float) -> float:
-    if v <= 0.0:
-        return 0.0
-    if v >= 1.0:
-        return 1.0
-    return float(v)
+    return _listing_clip01(v)
 
 
 def _clean_priority_offset(value: Any) -> float:
@@ -1310,21 +1310,19 @@ def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_
     return _launch_provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method)
 
 def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
-    if elapsed_s <= 0:
-        return 1.0
-    return _clip01(math.exp(-SIDEBAR_PRIORITY_LAMBDA * float(elapsed_s)))
+    return _listing_priority_from_elapsed_seconds(elapsed_s, half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS)
 
 
 def _sidebar_priority_elapsed_seconds(elapsed_s: float) -> float:
-    elapsed = max(0.0, float(elapsed_s))
-    bucket = float(SIDEBAR_PRIORITY_BUCKET_SECONDS)
-    if bucket <= 0:
-        return elapsed
-    return math.floor(elapsed / bucket) * bucket
+    return _listing_sidebar_priority_elapsed_seconds(elapsed_s, bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS)
 
 
 def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
-    return _priority_from_elapsed_seconds(_sidebar_priority_elapsed_seconds(elapsed_s))
+    return _listing_sidebar_time_priority_from_elapsed_seconds(
+        elapsed_s,
+        half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+        bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+    )
 
 
 def _current_git_branch(cwd: Path) -> str | None:
@@ -3741,12 +3739,20 @@ class SessionManager:
                 snooze_until = sidebar_state.snooze_until
                 dependency_session_id = sidebar_state.dependency_session_id
                 sidebar_dirty = sidebar_dirty or sidebar_state.dirty
-                elapsed_s = max(0.0, now_ts - updated_ts)
-                time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
-                base_priority = _clip01(time_priority + priority_offset)
                 blocked = dependency_session_id is not None
                 snoozed = snooze_until is not None and snooze_until > now_ts
-                final_priority = 0.0 if (snoozed or blocked) else base_priority
+                priority = _listing_priority(
+                    now_ts=now_ts,
+                    updated_ts=updated_ts,
+                    priority_offset=priority_offset,
+                    blocked=blocked,
+                    snoozed=snoozed,
+                    half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+                    bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+                )
+                time_priority = priority.time_priority
+                base_priority = priority.base_priority
+                final_priority = priority.final_priority
                 try:
                     cwd_path: Path | None = _resolve_session_cwd(s.cwd)
                 except ValueError:
@@ -3834,13 +3840,18 @@ class SessionManager:
                         updated_ts = float(s_cur.last_chat_ts) if isinstance(s_cur.last_chat_ts, (int, float)) else float(s_cur.start_ts)
                         it["updated_ts"] = updated_ts
                         recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s_cur.cwd, updated_ts)
-                        elapsed_s = max(0.0, now_ts - updated_ts)
-                        time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
-                        base_priority = _clip01(time_priority + float(it.get("priority_offset", 0.0)))
-                        final_priority = 0.0 if (it.get("snoozed") or it.get("blocked")) else base_priority
-                        it["time_priority"] = time_priority
-                        it["base_priority"] = base_priority
-                        it["final_priority"] = final_priority
+                        priority = _listing_priority(
+                            now_ts=now_ts,
+                            updated_ts=updated_ts,
+                            priority_offset=float(it.get("priority_offset", 0.0)),
+                            blocked=bool(it.get("blocked")),
+                            snoozed=bool(it.get("snoozed")),
+                            half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+                            bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+                        )
+                        it["time_priority"] = priority.time_priority
+                        it["base_priority"] = priority.base_priority
+                        it["final_priority"] = priority.final_priority
             if bool(it.get("needs_run_settings")) and isinstance(log_path_obj, Path):
                 try:
                     log_provider, log_model, log_effort = _read_run_settings_from_log(log_path_obj, agent_backend=str(it.get("agent_backend") or "codex"))

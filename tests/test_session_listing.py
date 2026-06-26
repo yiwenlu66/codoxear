@@ -4,7 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_orphan_recovery_rows, build_public_session_row, sort_session_rows
+from codoxear.session_listing import ActiveSessionRowFacts, build_active_session_row, build_orphan_recovery_rows, build_public_session_row, listing_priority, sidebar_time_priority_from_elapsed_seconds, sort_session_rows
 
 
 def test_session_listing_import_does_not_load_server() -> None:
@@ -15,6 +15,33 @@ def test_session_listing_import_does_not_load_server() -> None:
         capture_output=True,
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
+
+
+def test_listing_priority_applies_bucket_offset_and_blocking() -> None:
+    priority = listing_priority(
+        now_ts=125.0,
+        updated_ts=100.0,
+        priority_offset=0.2,
+        blocked=False,
+        snoozed=False,
+        half_life_seconds=100.0,
+        bucket_seconds=10.0,
+    )
+
+    assert priority.time_priority == sidebar_time_priority_from_elapsed_seconds(25.0, half_life_seconds=100.0, bucket_seconds=10.0)
+    assert priority.base_priority == min(1.0, priority.time_priority + 0.2)
+    assert priority.final_priority == priority.base_priority
+
+    blocked = listing_priority(
+        now_ts=125.0,
+        updated_ts=100.0,
+        priority_offset=0.2,
+        blocked=True,
+        snoozed=False,
+        half_life_seconds=100.0,
+        bucket_seconds=10.0,
+    )
+    assert blocked.final_priority == 0.0
 
 
 def test_build_active_session_row_projects_public_and_staging_fields() -> None:

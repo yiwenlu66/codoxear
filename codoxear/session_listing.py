@@ -7,6 +7,13 @@ from typing import Any, Mapping, Sequence
 
 
 @dataclass(frozen=True)
+class ListingPriority:
+    time_priority: float
+    base_priority: float
+    final_priority: float
+
+
+@dataclass(frozen=True)
 class ActiveSessionRowFacts:
     session_id: str
     thread_id: str
@@ -60,6 +67,56 @@ class ActiveSessionRowFacts:
     final_priority: float
     blocked: bool
     snoozed: bool
+
+
+def clip01(value: float) -> float:
+    if value <= 0.0:
+        return 0.0
+    if value >= 1.0:
+        return 1.0
+    return float(value)
+
+
+def priority_from_elapsed_seconds(elapsed_s: float, *, half_life_seconds: float) -> float:
+    if elapsed_s <= 0:
+        return 1.0
+    return clip01(math.exp(-(math.log(2.0) / float(half_life_seconds)) * float(elapsed_s)))
+
+
+def sidebar_priority_elapsed_seconds(elapsed_s: float, *, bucket_seconds: float) -> float:
+    elapsed = max(0.0, float(elapsed_s))
+    bucket = float(bucket_seconds)
+    if bucket <= 0:
+        return elapsed
+    return math.floor(elapsed / bucket) * bucket
+
+
+def sidebar_time_priority_from_elapsed_seconds(elapsed_s: float, *, half_life_seconds: float, bucket_seconds: float) -> float:
+    return priority_from_elapsed_seconds(
+        sidebar_priority_elapsed_seconds(elapsed_s, bucket_seconds=bucket_seconds),
+        half_life_seconds=half_life_seconds,
+    )
+
+
+def listing_priority(
+    *,
+    now_ts: float,
+    updated_ts: float,
+    priority_offset: float,
+    blocked: bool,
+    snoozed: bool,
+    half_life_seconds: float,
+    bucket_seconds: float,
+) -> ListingPriority:
+    elapsed_s = max(0.0, now_ts - updated_ts)
+    time_priority = sidebar_time_priority_from_elapsed_seconds(
+        elapsed_s,
+        half_life_seconds=half_life_seconds,
+        bucket_seconds=bucket_seconds,
+    )
+    base_priority = clip01(time_priority + priority_offset)
+    final_priority = 0.0 if (snoozed or blocked) else base_priority
+    return ListingPriority(time_priority=time_priority, base_priority=base_priority, final_priority=final_priority)
 
 
 def _queue_has_recovery_item(queue: Sequence[Any]) -> bool:
