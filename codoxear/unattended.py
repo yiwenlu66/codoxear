@@ -1,10 +1,35 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .util import atomic_write_json
 from .util import load_json_file
+
+
+@dataclass(frozen=True)
+class UnattendedConfigState:
+    enabled: bool
+    request: str
+    cooldown_minutes: int
+    cooldown_seconds: float
+    remaining_injections: int
+
+
+@dataclass(frozen=True)
+class UnattendedPromptDecision:
+    prompt: str
+    cooldown_seconds: float
+    config: dict[str, Any]
+    disabled_exhausted: bool
+
+
+@dataclass(frozen=True)
+class UnattendedSuccessUpdate:
+    config: dict[str, Any]
+    remaining_injections: int
+    enabled: bool
 
 
 class UnattendedStore:
@@ -49,6 +74,121 @@ class UnattendedStore:
 
     def save(self, obj: dict[str, dict[str, Any]]) -> None:
         atomic_write_json(self.path, obj)
+
+
+def unattended_config_state(
+    config: dict[str, Any],
+    *,
+    default_idle_minutes: int,
+    default_max_injections: int,
+) -> UnattendedConfigState:
+    cooldown_minutes = clean_unattended_cooldown_minutes(config.get("cooldown_minutes"), default_idle_minutes=default_idle_minutes)
+    remaining_injections = clean_unattended_remaining_injections(
+        config.get("remaining_injections"),
+        default_max_injections=default_max_injections,
+        allow_zero=True,
+    )
+    request = config.get("request")
+    if not isinstance(request, str):
+        request = ""
+    return UnattendedConfigState(
+        enabled=bool(config.get("enabled")),
+        request=request,
+        cooldown_minutes=cooldown_minutes,
+        cooldown_seconds=float(cooldown_minutes * 60),
+        remaining_injections=remaining_injections,
+    )
+
+
+def unattended_scope_key(*, thread_id: str | None, log_path: Path) -> str:
+    return f"thread:{thread_id}" if thread_id else f"log:{str(log_path)}"
+
+
+def unattended_cooldown_blocked(*, now_ts: float, cooldown_seconds: float, session_last_ts: float, scope_last_ts: float) -> bool:
+    return bool(
+        (session_last_ts and (now_ts - session_last_ts) < cooldown_seconds)
+        or (scope_last_ts and (now_ts - scope_last_ts) < cooldown_seconds)
+    )
+
+
+def unattended_tail_allows_injection(last: tuple[str, float] | None, *, now_ts: float, cooldown_seconds: float) -> bool:
+    if not last:
+        return False
+    role, ts = last
+    if role != "assistant":
+        return False
+    return (now_ts - float(ts)) >= cooldown_seconds
+
+
+def disable_unattended_if_exhausted(
+    config: dict[str, Any],
+    *,
+    default_max_injections: int,
+) -> tuple[dict[str, Any], bool]:
+    cur = dict(config)
+    remaining_injections = clean_unattended_remaining_injections(
+        cur.get("remaining_injections"),
+        default_max_injections=default_max_injections,
+        allow_zero=True,
+    )
+    if remaining_injections > 0:
+        return cur, False
+    cur["enabled"] = False
+    cur["remaining_injections"] = 0
+    return cur, True
+
+
+def unattended_prompt_decision(
+    config: dict[str, Any],
+    *,
+    now_ts: float,
+    session_last_ts: float,
+    scope_last_ts: float,
+    prompt_prefix: str,
+    default_idle_minutes: int,
+    default_max_injections: int,
+) -> UnattendedPromptDecision:
+    cur = dict(config)
+    state = unattended_config_state(
+        cur,
+        default_idle_minutes=default_idle_minutes,
+        default_max_injections=default_max_injections,
+    )
+    if state.remaining_injections <= 0:
+        cur["enabled"] = False
+        cur["remaining_injections"] = 0
+        return UnattendedPromptDecision(prompt="", cooldown_seconds=state.cooldown_seconds, config=cur, disabled_exhausted=True)
+    if not state.enabled or unattended_cooldown_blocked(
+        now_ts=now_ts,
+        cooldown_seconds=state.cooldown_seconds,
+        session_last_ts=session_last_ts,
+        scope_last_ts=scope_last_ts,
+    ):
+        return UnattendedPromptDecision(prompt="", cooldown_seconds=state.cooldown_seconds, config=cur, disabled_exhausted=False)
+    return UnattendedPromptDecision(
+        prompt=render_unattended_prompt(state.request, prompt_prefix=prompt_prefix),
+        cooldown_seconds=state.cooldown_seconds,
+        config=cur,
+        disabled_exhausted=False,
+    )
+
+
+def record_unattended_success(
+    config: dict[str, Any],
+    *,
+    default_max_injections: int,
+) -> UnattendedSuccessUpdate:
+    cur = dict(config)
+    current_remaining = clean_unattended_remaining_injections(
+        cur.get("remaining_injections"),
+        default_max_injections=default_max_injections,
+        allow_zero=True,
+    )
+    next_remaining = max(0, current_remaining - 1)
+    cur["remaining_injections"] = next_remaining
+    if next_remaining <= 0:
+        cur["enabled"] = False
+    return UnattendedSuccessUpdate(config=cur, remaining_injections=next_remaining, enabled=bool(cur.get("enabled")))
 
 
 def render_unattended_prompt(request: str | None, *, prompt_prefix: str) -> str:

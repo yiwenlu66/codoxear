@@ -231,9 +231,16 @@ from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import session_id_from_rollout_path as _session_id_from_rollout_path
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .unattended import UnattendedStore
+from .unattended import disable_unattended_if_exhausted as _disable_unattended_if_exhausted
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
+from .unattended import record_unattended_success as _record_unattended_success
 from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
+from .unattended import unattended_config_state as _unattended_config_state
+from .unattended import unattended_cooldown_blocked as _unattended_cooldown_blocked
+from .unattended import unattended_prompt_decision as _unattended_prompt_decision
+from .unattended import unattended_scope_key as _unattended_scope_key
+from .unattended import unattended_tail_allows_injection as _unattended_tail_allows_injection
 from .voice_push import VoicePushCoordinator
 from .voice_routes import VoiceRouteDeps
 from .voice_routes import handle_voice_get_route as _handle_voice_get_route
@@ -3193,21 +3200,24 @@ class SessionManager:
             if not bool(cfg.get("enabled")):
                 continue
             try:
-                cooldown_minutes = _clean_unattended_cooldown_minutes(cfg.get("cooldown_minutes"))
-                cooldown_seconds = float(cooldown_minutes * 60)
-                remaining_injections = _clean_unattended_remaining_injections(cfg.get("remaining_injections"), allow_zero=True)
-                if remaining_injections <= 0:
+                state = _unattended_config_state(
+                    cfg,
+                    default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+                    default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                )
+                if state.remaining_injections <= 0:
                     input_lock = self._input_lock_for_session(sid)
                     save_zero_cleanup = False
                     with input_lock:
                         with self._lock:
                             cur0 = self._unattended.get(sid)
                             cur = dict(cur0) if isinstance(cur0, dict) else {}
-                            live_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-                            if live_remaining <= 0:
-                                cur["enabled"] = False
-                                cur["remaining_injections"] = 0
-                                self._unattended[sid] = cur
+                            disabled, did_disable = _disable_unattended_if_exhausted(
+                                cur,
+                                default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                            )
+                            if did_disable:
+                                self._unattended[sid] = disabled
                                 self._unattended_last_injected.pop(sid, None)
                                 save_zero_cleanup = True
                     if save_zero_cleanup:
@@ -3216,10 +3226,15 @@ class SessionManager:
                 lp = s.log_path
                 if lp is None or (not lp.exists()):
                     continue
-                scope_key = f"thread:{s.thread_id}" if s.thread_id else f"log:{str(lp)}"
+                scope_key = _unattended_scope_key(thread_id=s.thread_id, log_path=lp)
                 with self._lock:
                     scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                if (last_inj and (now - last_inj) < cooldown_seconds) or (scope_last and (now - scope_last) < cooldown_seconds):
+                if _unattended_cooldown_blocked(
+                    now_ts=now,
+                    cooldown_seconds=state.cooldown_seconds,
+                    session_last_ts=last_inj,
+                    scope_last_ts=scope_last,
+                ):
                     continue
                 st = self.get_state(sid)
                 if not isinstance(st, dict):
@@ -3228,57 +3243,48 @@ class SessionManager:
                 if busy or ql > 0 or self._queue_len(sid) > 0:
                     continue
                 last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
-                if not last:
-                    continue
-                role, ts = last
-                if role != "assistant":
-                    continue
-                if (now - float(ts)) < cooldown_seconds:
+                if not _unattended_tail_allows_injection(last, now_ts=now, cooldown_seconds=state.cooldown_seconds):
                     continue
                 with self._lock:
                     scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                if scope_last and (now - scope_last) < cooldown_seconds:
+                if _unattended_cooldown_blocked(
+                    now_ts=now,
+                    cooldown_seconds=state.cooldown_seconds,
+                    session_last_ts=0.0,
+                    scope_last_ts=scope_last,
+                ):
                     continue
                 input_lock = self._input_lock_for_session(sid)
                 save_after_disable = False
                 prompt = ""
+                live_cooldown_seconds = state.cooldown_seconds
                 with input_lock:
                     with self._lock:
                         cur0 = self._unattended.get(sid)
                         cur = dict(cur0) if isinstance(cur0, dict) else {}
-                        live_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-                        live_cooldown_minutes = _clean_unattended_cooldown_minutes(cur.get("cooldown_minutes"))
-                        live_cooldown_seconds = float(live_cooldown_minutes * 60)
                         live_last_inj = float(self._unattended_last_injected.get(sid, 0.0))
                         live_scope_last = float(self._unattended_last_injected_scope.get(scope_key, 0.0))
-                        if live_remaining <= 0:
-                            cur["enabled"] = False
-                            cur["remaining_injections"] = 0
-                            self._unattended[sid] = cur
+                        decision = _unattended_prompt_decision(
+                            cur,
+                            now_ts=now,
+                            session_last_ts=live_last_inj,
+                            scope_last_ts=live_scope_last,
+                            prompt_prefix=UNATTENDED_PROMPT_PREFIX,
+                            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+                            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                        )
+                        live_cooldown_seconds = decision.cooldown_seconds
+                        if decision.disabled_exhausted:
+                            self._unattended[sid] = decision.config
                             self._unattended_last_injected.pop(sid, None)
                             save_after_disable = True
-                            live_enabled = False
-                        else:
-                            live_enabled = bool(cur.get("enabled"))
-                        if (
-                            live_enabled
-                            and not ((live_last_inj and (now - live_last_inj) < live_cooldown_seconds) or (live_scope_last and (now - live_scope_last) < live_cooldown_seconds))
-                        ):
-                            live_request = cur.get("request")
-                            if not isinstance(live_request, str):
-                                live_request = ""
-                            prompt = _render_unattended_prompt(live_request)
+                        prompt = decision.prompt
                     if save_after_disable:
                         self._save_unattended()
                     if not prompt:
                         continue
                     live_last = _last_chat_role_ts_from_tail(lp, max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES, final_assistant_only=True)
-                    if not live_last:
-                        continue
-                    live_role, live_ts = live_last
-                    if live_role != "assistant":
-                        continue
-                    if (now - float(live_ts)) < live_cooldown_seconds:
+                    if not _unattended_tail_allows_injection(live_last, now_ts=now, cooldown_seconds=live_cooldown_seconds):
                         continue
                     self.send(sid, prompt)
                     with self._lock:
@@ -3286,13 +3292,13 @@ class SessionManager:
                         self._unattended_last_injected_scope[scope_key] = now
                         cur0 = self._unattended.get(sid)
                         cur = dict(cur0) if isinstance(cur0, dict) else {}
-                        current_remaining = _clean_unattended_remaining_injections(cur.get("remaining_injections"), allow_zero=True)
-                        next_remaining = max(0, current_remaining - 1)
-                        cur["remaining_injections"] = next_remaining
-                        if next_remaining <= 0:
-                            cur["enabled"] = False
+                        update = _record_unattended_success(
+                            cur,
+                            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+                        )
+                        if not update.enabled:
                             self._unattended_last_injected.pop(sid, None)
-                        self._unattended[sid] = cur
+                        self._unattended[sid] = update.config
                     self._save_unattended()
             except Exception as e:
                 sys.stderr.write(f"error: unattended session {sid} skipped: {type(e).__name__}: {e}\n")

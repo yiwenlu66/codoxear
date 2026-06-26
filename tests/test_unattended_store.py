@@ -4,9 +4,15 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 
 from codoxear.unattended import UnattendedStore
+from codoxear.unattended import disable_unattended_if_exhausted
 from codoxear.unattended import clean_unattended_cooldown_minutes
 from codoxear.unattended import clean_unattended_remaining_injections
+from codoxear.unattended import record_unattended_success
 from codoxear.unattended import render_unattended_prompt
+from codoxear.unattended import unattended_cooldown_blocked
+from codoxear.unattended import unattended_prompt_decision
+from codoxear.unattended import unattended_scope_key
+from codoxear.unattended import unattended_tail_allows_injection
 
 
 class TestUnattendedStore(unittest.TestCase):
@@ -52,6 +58,45 @@ class TestUnattendedStore(unittest.TestCase):
             store = UnattendedStore(path=path, default_idle_minutes=5, default_max_injections=10)
             with self.assertRaisesRegex(ValueError, "use 'request', not 'text'"):
                 store.load()
+
+    def test_unattended_policy_helpers_cover_sweep_decisions(self) -> None:
+        self.assertEqual(unattended_scope_key(thread_id="t1", log_path=Path("/tmp/log.jsonl")), "thread:t1")
+        self.assertEqual(unattended_scope_key(thread_id="", log_path=Path("/tmp/log.jsonl")), "log:/tmp/log.jsonl")
+        self.assertTrue(unattended_cooldown_blocked(now_ts=100.0, cooldown_seconds=60.0, session_last_ts=50.0, scope_last_ts=0.0))
+        self.assertTrue(unattended_cooldown_blocked(now_ts=100.0, cooldown_seconds=60.0, session_last_ts=0.0, scope_last_ts=50.0))
+        self.assertFalse(unattended_cooldown_blocked(now_ts=100.0, cooldown_seconds=60.0, session_last_ts=10.0, scope_last_ts=0.0))
+        self.assertTrue(unattended_tail_allows_injection(("assistant", 10.0), now_ts=100.0, cooldown_seconds=60.0))
+        self.assertFalse(unattended_tail_allows_injection(("user", 10.0), now_ts=100.0, cooldown_seconds=60.0))
+        self.assertFalse(unattended_tail_allows_injection(("assistant", 90.0), now_ts=100.0, cooldown_seconds=60.0))
+
+        disabled, changed = disable_unattended_if_exhausted(
+            {"enabled": True, "remaining_injections": 0},
+            default_max_injections=10,
+        )
+        self.assertTrue(changed)
+        self.assertEqual(disabled["enabled"], False)
+        self.assertEqual(disabled["remaining_injections"], 0)
+
+        decision = unattended_prompt_decision(
+            {"enabled": True, "request": "next", "cooldown_minutes": 1, "remaining_injections": 2},
+            now_ts=100.0,
+            session_last_ts=0.0,
+            scope_last_ts=0.0,
+            prompt_prefix="Base",
+            default_idle_minutes=5,
+            default_max_injections=10,
+        )
+        self.assertEqual(decision.prompt, "Base\n\n---\n\nAdditional request from user: next\n")
+        self.assertEqual(decision.cooldown_seconds, 60.0)
+        self.assertFalse(decision.disabled_exhausted)
+
+        update = record_unattended_success(
+            {"enabled": True, "remaining_injections": 1},
+            default_max_injections=10,
+        )
+        self.assertEqual(update.remaining_injections, 0)
+        self.assertFalse(update.enabled)
+        self.assertFalse(update.config["enabled"])
 
     def test_cleaners_and_prompt_match_server_contract(self) -> None:
         self.assertEqual(clean_unattended_cooldown_minutes(None, default_idle_minutes=5), 5)
