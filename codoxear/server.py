@@ -1124,6 +1124,26 @@ def _resolve_session_path(base: Path, raw_path: str) -> Path:
     return (resolved_base / p).resolve()
 
 
+def _resolve_session_write_update_path(base: Path, raw_path: str) -> Path:
+    if not isinstance(raw_path, str) or raw_path == "":
+        raise ValueError("path required")
+    if "\x00" in raw_path:
+        raise ValueError("invalid path")
+    p = Path(raw_path)
+    if p.is_absolute():
+        return _expanduser_path(p).resolve()
+    resolved_base = _expanduser_path(base)
+    if not resolved_base.is_absolute():
+        resolved_base = resolved_base.resolve()
+    resolved_base = resolved_base.resolve()
+    resolved = (resolved_base / p).resolve()
+    try:
+        resolved.relative_to(resolved_base)
+    except ValueError as e:
+        raise ValueError("path escapes session cwd") from e
+    return resolved
+
+
 def _require_existing_file(path: Path) -> Path:
     try:
         st = path.stat()
@@ -7317,7 +7337,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         if git_path:
                             p, _rel = _resolve_git_existing_regular_file(session_id=session_id, raw_path=path_raw)
                         else:
-                            p = _resolve_session_path(base, path_raw)
+                            p = _resolve_session_write_update_path(base, path_raw)
                     except FileNotFoundError as e:
                         _json_response(self, 404, {"error": str(e)})
                         return

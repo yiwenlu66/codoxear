@@ -1442,6 +1442,44 @@ class TestInspectOpenableFile(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "root cwd create\n")
             self.assertEqual(added, [str(target.resolve())])
 
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_file_write_update_rejects_relative_symlink_parent_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            outside = Path(outside_td)
+            target = outside / "note.py"
+            target.write_text("old outside\n", encoding="utf-8")
+            os.symlink(outside, base / "link")
+            version = hashlib.sha256(b"old outside\n").hexdigest()
+            added: list[str] = []
+
+            class FakeManager:
+                def refresh_session_meta(self, _session_id: str) -> None:
+                    return None
+
+                def get_session(self, _session_id: str) -> object:
+                    return SimpleNamespace(cwd=str(base))
+
+                def files_add(self, _session_id: str, path: str) -> None:
+                    added.append(path)
+
+            parsed = urllib.parse.urlparse("/api/sessions/s/file/write")
+            handler = server.Handler.__new__(server.Handler)
+            handler._parse_prefixed_request_path = lambda parsed=parsed: (parsed, parsed.path)  # type: ignore[attr-defined]
+            handler._handle_voice_post = lambda _path: False  # type: ignore[attr-defined]
+            handler._read_json_body = lambda **_kwargs: {"path": "link/note.py", "text": "new outside\n", "version": version}  # type: ignore[attr-defined]
+            responses = []
+            with patch.object(server, "MANAGER", FakeManager()), patch.object(server, "_require_auth", return_value=True), patch.object(
+                server, "_json_response", side_effect=lambda _handler, status, obj: responses.append((status, obj))
+            ):
+                server.Handler.do_POST(handler)
+            self.assertEqual(len(responses), 1)
+            status, payload = responses[0]
+            self.assertEqual(status, 400)
+            self.assertIn("escapes session cwd", str(payload.get("error", "")))
+            self.assertEqual(target.read_text(encoding="utf-8"), "old outside\n")
+            self.assertEqual(added, [])
+
     def test_git_branch_probe_tolerates_file_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             cwd_file = Path(td) / "not-a-directory"
@@ -1710,6 +1748,29 @@ class TestInspectOpenableFile(unittest.TestCase):
             path = Path(td) / "nested" / "note.py"
             with self.assertRaisesRegex(FileNotFoundError, "parent directory not found"):
                 _write_new_text_file_atomic(path, text="print('new')\n")
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_text_file_for_write_rejects_symlink_parent_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            outside = Path(outside_td)
+            target = outside / "note.py"
+            target.write_text("outside\n", encoding="utf-8")
+            os.symlink(outside, base / "link")
+            with self.assertRaisesRegex(ValueError, "symlink parent"):
+                _read_text_file_for_write(base / "link" / "note.py", max_bytes=1024)
+
+    @unittest.skipIf(not hasattr(os, "symlink"), "symlink required")
+    def test_write_text_file_atomic_rejects_symlink_parent_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as td, tempfile.TemporaryDirectory() as outside_td:
+            base = Path(td)
+            outside = Path(outside_td)
+            target = outside / "note.py"
+            target.write_text("outside\n", encoding="utf-8")
+            os.symlink(outside, base / "link")
+            with self.assertRaisesRegex(ValueError, "symlink parent"):
+                _write_text_file_atomic(base / "link" / "note.py", text="new\n")
+            self.assertEqual(target.read_text(encoding="utf-8"), "outside\n")
 
     def test_binary_download_inspection_returns_size_without_buffering(self) -> None:
         with tempfile.TemporaryDirectory() as td:

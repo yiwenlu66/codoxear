@@ -88,7 +88,25 @@ def read_text_file_for_client(path: Path, *, max_bytes: int) -> tuple[str, int, 
     return text, size, editable, file_content_version(data)
 
 
+def _raise_if_symlink_parent(path: Path) -> None:
+    for parent in path.parents:
+        if parent == parent.parent:
+            break
+        try:
+            if parent.is_symlink():
+                raise ValueError("symlink parent directory not supported")
+        except FileNotFoundError:
+            continue
+
+
+def _raise_if_symlink_write_path(path: Path) -> None:
+    if path.is_symlink():
+        raise ValueError("symlink file not supported")
+    _raise_if_symlink_parent(path)
+
+
 def read_text_file_for_write(path: Path, *, max_bytes: int) -> tuple[str, int, str]:
+    _raise_if_symlink_write_path(path)
     st = path.stat()
     size = int(st.st_size)
     if size > max_bytes:
@@ -106,8 +124,7 @@ def read_text_file_for_write(path: Path, *, max_bytes: int) -> tuple[str, int, s
 def write_text_file_atomic(path: Path, *, text: str, max_bytes: int = FILE_READ_MAX_BYTES) -> tuple[int, str]:
     if not isinstance(text, str):
         raise ValueError("text must be a string")
-    if path.is_symlink():
-        raise ValueError("symlink file not supported")
+    _raise_if_symlink_write_path(path)
     data = text.encode("utf-8")
     size = len(data)
     if size > max_bytes:
@@ -115,8 +132,10 @@ def write_text_file_atomic(path: Path, *, text: str, max_bytes: int = FILE_READ_
     st = path.stat()
     tmp = path.with_name(f".{path.name}.codoxear-tmp-{secrets.token_hex(6)}")
     try:
+        _raise_if_symlink_write_path(path)
         tmp.write_bytes(data)
         os.chmod(tmp, st.st_mode & 0o777)
+        _raise_if_symlink_write_path(path)
         os.replace(tmp, path)
     finally:
         try:
@@ -132,13 +151,12 @@ def write_new_text_file_atomic(path: Path, *, text: str, max_bytes: int = FILE_R
         raise ValueError("text must be a string")
     if path.is_symlink():
         raise ValueError("symlink file not supported")
+    _raise_if_symlink_parent(path)
     parent = path.parent
     if not parent.exists():
         raise FileNotFoundError("parent directory not found")
     if not parent.is_dir():
         raise ValueError("parent path is not a directory")
-    if parent.is_symlink():
-        raise ValueError("symlink parent directory not supported")
     if path.exists():
         raise FileExistsError("file already exists")
     data = text.encode("utf-8")
