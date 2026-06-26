@@ -1,5 +1,20 @@
 # Epistemic ledger
 
+## Current recovery model — route ownership tranche
+Observations:
+- File route ownership is now concentrated in `codoxear/file_routes.py` across session file GET/read/search/list/blob/video_preview/download, session file writes, absolute previews, and global `/api/files/read`/`/api/files/inspect` POST composition; see OPS 2026-06-26T15:25:00Z.
+- Session route ownership for `/api/sessions`, `/api/session_resume_candidates`, `/api/metrics`, `/api/sessions/{id}/tail`, `/api/sessions/{id}/unattended`, and POST `/api/sessions` now lives in `codoxear/session_routes.py`; `SessionManager` still owns runtime listing, aliases, tails, unattended config, and spawn behavior; see OPS 2026-06-26T15:25:00Z.
+- Docker acceptance for the latest session-route state is `1041 passed, 1 skipped, 107 subtests`; the correct-baseline critic found `NO BLOCKERS` and ruled out route-order collisions by exact suffix matching; see OPS 2026-06-26T15:25:00Z.
+
+Interpretation:
+- The server god-module cleanup has moved from helper extraction to semantic HTTP-controller ownership: file/session request validation, status mapping, response composition, and route-specific source sentinels now live with route modules, while runtime/state authorities remain injected.
+- Remaining high-value route ownership seams are not file/session semantics but `Handler`-local auth and voice/notification/audio routes. Voice routes are the stronger next seam because `Handler` still reaches into `MANAGER._voice_push` and owns both JSON validation and raw audio response headers.
+
+Commitments:
+- Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
+- Continue with voice-route extraction before smaller auth/hook cleanup unless evidence shows a narrower seam is required to preserve behavior.
+
+
 ## 2026-06-11 23:45
 Observations:
 - User requested a major refactoring/new-features task, not immediate implementation.
