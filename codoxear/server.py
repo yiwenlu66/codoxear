@@ -176,6 +176,9 @@ from .session_listing import sort_session_rows as _sort_session_rows
 from .session_model import Session
 from .session_runtime import ListingRuntimeProbes
 from .session_runtime import build_runtime_enriched_session_rows as _build_runtime_enriched_session_rows
+from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
+from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
+from .session_runtime import log_path_size_or_none as _log_path_size_or_none
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -1834,119 +1837,6 @@ def _broker_interrupted_idle_from_state(state: dict[str, Any]) -> bool:
 
 def _broker_allows_interrupted_idle_override(state: dict[str, Any]) -> bool:
     return _runtime_broker_allows_interrupted_idle_override(state)
-
-
-def _complete_jsonl_offset_before(path: Path, before: int) -> int:
-    before = max(0, int(before))
-    if before <= 0:
-        return 0
-    with path.open("rb") as f:
-        f.seek(0, os.SEEK_END)
-        size = f.tell()
-        end = max(0, min(before, size))
-        if end <= 0:
-            return 0
-        f.seek(end - 1)
-        if f.read(1) == b"\n":
-            return end
-        offset = end
-        while offset > 0:
-            read_size = min(64 * 1024, offset)
-            offset -= read_size
-            f.seek(offset)
-            chunk = f.read(read_size)
-            found = chunk.rfind(b"\n")
-            if found >= 0:
-                return offset + found + 1
-    return 0
-
-
-def _last_parseable_json_object_offset_before(path: Path, before: int) -> int:
-    before = _complete_jsonl_offset_before(path, before)
-    if before <= 0:
-        return 0
-
-    def prev_newline_before(f: Any, pos: int) -> int:
-        search_end = max(0, int(pos))
-        while search_end > 0:
-            start = max(0, search_end - 64 * 1024)
-            f.seek(start)
-            chunk = f.read(search_end - start)
-            found = chunk.rfind(b"\n")
-            if found >= 0:
-                return start + found
-            search_end = start
-        return -1
-
-    with path.open("rb") as f:
-        line_end = before
-        while line_end > 0:
-            prev_nl = prev_newline_before(f, line_end - 1)
-            line_start = prev_nl + 1
-            f.seek(line_start)
-            raw = f.read(line_end - line_start)
-            if raw.strip():
-                try:
-                    obj = json.loads(raw.decode("utf-8"))
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    obj = None
-                if isinstance(obj, dict):
-                    return line_end
-            line_end = line_start
-    return 0
-
-
-def _log_path_size_or_none(log_path: Path | None) -> int | None:
-    if not isinstance(log_path, Path):
-        return None
-    try:
-        return _last_parseable_json_object_offset_before(log_path, int(log_path.stat().st_size))
-    except OSError:
-        return None
-
-
-def _confirmed_send_boundary_unresolved(
-    *,
-    active: bool,
-    last_send_log_path: Path | None,
-    last_send_log_size: int | None,
-    log_path: Path | None,
-    log_size: int | None,
-) -> bool:
-    if not active:
-        return False
-    if last_send_log_path is None and last_send_log_size is None:
-        return log_path is None or log_size is None or log_size <= 0
-    if last_send_log_path != log_path:
-        return False
-    if last_send_log_size is None:
-        return log_size is None or log_size <= 0
-    return log_size is None or log_size <= last_send_log_size
-
-
-def _clear_session_confirmed_send_boundary(session: Session) -> None:
-    session.last_send_boundary_active = False
-    session.last_send_log_path = None
-    session.last_send_log_size = None
-
-
-def _session_confirmed_send_boundary_unresolved(session: Session | None, log_path: Path | None, log_size: int | None) -> bool:
-    if session is None:
-        return False
-    return _confirmed_send_boundary_unresolved(
-        active=bool(session.last_send_boundary_active),
-        last_send_log_path=session.last_send_log_path,
-        last_send_log_size=session.last_send_log_size,
-        log_path=log_path,
-        log_size=log_size,
-    )
-
-
-def _consume_session_confirmed_send_boundary(session: Session | None, log_path: Path | None, log_size: int | None) -> bool:
-    unresolved = _session_confirmed_send_boundary_unresolved(session, log_path, log_size)
-    if session is not None and session.last_send_boundary_active and not unresolved:
-        _clear_session_confirmed_send_boundary(session)
-    return unresolved
 
 
 def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:

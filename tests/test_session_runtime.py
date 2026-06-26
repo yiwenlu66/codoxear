@@ -7,12 +7,14 @@ import pytest
 from codoxear.session_model import Session
 from codoxear.session_runtime import apply_history_backfill
 from codoxear.session_runtime import apply_run_settings_backfill
+from codoxear.session_runtime import consume_session_confirmed_send_boundary
 from codoxear.session_runtime import broker_allows_interrupted_idle_override
 from codoxear.session_runtime import broker_busy_queue
 from codoxear.session_runtime import broker_interrupted_idle
 from codoxear.session_runtime import ListingRuntimeProbes
 from codoxear.session_runtime import broker_runtime_state
 from codoxear.session_runtime import build_runtime_enriched_session_rows
+from codoxear.session_runtime import log_path_size_or_none
 from codoxear.session_runtime import resolve_runtime_status
 from codoxear.session_runtime import select_runtime_token
 
@@ -296,3 +298,30 @@ def test_build_runtime_enriched_session_rows_keeps_busy_when_send_boundary_unres
 
     assert result.rows[0]["busy"] is True
     assert idle_calls == 0
+
+
+def test_log_path_size_or_none_uses_last_parseable_json_object(tmp_path: Path) -> None:
+    log_path = tmp_path / "session.jsonl"
+    first = b'{"ok": 1}\n'
+    second = b'{"ok": 2}\n'
+    log_path.write_bytes(first + second + b'{"partial"')
+
+    assert log_path_size_or_none(log_path) == len(first + second)
+    assert log_path_size_or_none(None) is None
+    assert log_path_size_or_none(tmp_path / "missing.jsonl") is None
+
+
+def test_consume_session_confirmed_send_boundary_clears_after_log_advances() -> None:
+    log_path = Path("/tmp/log.jsonl")
+    session = _session(log_path)
+    session.last_send_boundary_active = True
+    session.last_send_log_path = log_path
+    session.last_send_log_size = 10
+
+    assert consume_session_confirmed_send_boundary(session, log_path, 10) is True
+    assert session.last_send_boundary_active is True
+
+    assert consume_session_confirmed_send_boundary(session, log_path, 11) is False
+    assert session.last_send_boundary_active is False
+    assert session.last_send_log_path is None
+    assert session.last_send_log_size is None
