@@ -154,6 +154,10 @@ from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .session_routes import SessionRouteDeps
 from .session_routes import handle_session_get_route as _handle_session_get_route
 from .session_routes import handle_session_post_route as _handle_session_post_route
+from .session_discovery import DiscoveryDeps
+from .session_discovery import DiscoveryRegistration
+from .session_discovery import DiscoveryResult
+from .session_discovery import discover_sessions as _discover_sessions
 from .session_model import Session
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
@@ -3436,6 +3440,140 @@ class SessionManager:
             if self._maybe_drain_session_queue(sid):
                 break
 
+    def _discovery_deps(self) -> DiscoveryDeps:
+        return DiscoveryDeps(
+            pid_alive=_pid_alive,
+            proc_find_open_rollout_log=lambda proc_root, root_pid, agent_backend, cwd, ignored_paths: _proc_find_open_rollout_log(
+                proc_root=proc_root,
+                root_pid=root_pid,
+                agent_backend=agent_backend,
+                cwd=cwd,
+                ignored_paths=ignored_paths,
+            ),
+            read_session_meta_or_none=lambda log_path, agent_backend, context: _read_session_meta_or_none(
+                log_path,
+                agent_backend=agent_backend,
+                context=context,
+            ),
+            coerce_main_thread_log=lambda thread_id, log_path: _coerce_main_thread_log(thread_id=thread_id, log_path=log_path),
+            session_transport=lambda meta: self._session_transport(meta=meta),
+            session_run_settings=lambda meta, log_path, agent_backend: self._session_run_settings(
+                meta=meta,
+                log_path=log_path,
+                agent_backend=agent_backend,
+            ),
+            sock_call=lambda sock, req, timeout_s: self._sock_call(sock, req, timeout_s=timeout_s),
+            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
+            broker_interrupted_idle_from_state=_broker_interrupted_idle_from_state,
+            sock_error_definitely_stale=_sock_error_definitely_stale,
+            token_update_finder=_rollout_log._find_latest_token_update,
+        )
+
+    def _apply_discovery_result(self, result: DiscoveryResult) -> None:
+        recent_cwd_dirty = False
+        for action in result.stale_actions:
+            if action.failure_record is not None:
+                try:
+                    _record_launch_attempt(action.failure_record)
+                except Exception as e:
+                    sys.stderr.write(f"error: failed to record launch failure for {action.sock_path}: {type(e).__name__}: {e}\n")
+                    sys.stderr.flush()
+            if action.clear_session_state:
+                self._prune_stale_socket_without_metadata(action.session_id, action.sock_path)
+                continue
+            if action.unhide_session:
+                self._unhide_session(action.session_id)
+            _unlink_quiet(action.sock_path)
+            _unlink_quiet(action.meta_path)
+
+        for recent in result.recent_cwds:
+            if self._remember_recent_cwd(recent.cwd, ts=recent.ts):
+                recent_cwd_dirty = True
+
+        for registration in result.registrations:
+            self._upsert_discovery_registration(registration)
+
+        if recent_cwd_dirty:
+            self._save_recent_cwds()
+
+    def _upsert_discovery_registration(self, registration: DiscoveryRegistration) -> None:
+        s = Session(
+            session_id=registration.session_id,
+            thread_id=registration.thread_id,
+            broker_pid=registration.broker_pid,
+            codex_pid=registration.codex_pid,
+            agent_backend=registration.agent_backend,
+            owned=registration.owned,
+            transport=registration.transport,
+            start_ts=float(registration.start_ts),
+            cwd=str(registration.cwd),
+            log_path=registration.log_path,
+            sock_path=registration.sock_path,
+            busy=registration.busy,
+            queue_len=registration.queue_len,
+            token=registration.token,
+            meta_thinking=0,
+            meta_tools=0,
+            meta_system=0,
+            meta_log_off=registration.meta_log_off,
+            model_provider=registration.model_provider,
+            preferred_auth_method=registration.preferred_auth_method,
+            model=registration.model,
+            reasoning_effort=registration.reasoning_effort,
+            service_tier=registration.service_tier,
+            tmux_session=registration.tmux_session,
+            tmux_window=registration.tmux_window,
+            launch_id=registration.launch_id,
+            spawn_nonce=registration.spawn_nonce,
+            resume_session_id=registration.resume_session_id,
+            pending_attachment=registration.session_id in getattr(self, "_pending_attachment_ids", set()),
+            commit_unknown_send=dict(getattr(self, "_commit_unknown_sends", {}).get(registration.session_id) or {}) or None,
+            sync_send_supported=registration.sync_send_supported,
+            key_write_errors_supported=registration.key_write_errors_supported,
+            interrupted_idle=registration.interrupted_idle,
+        )
+        with self._lock:
+            prev = self._sessions.get(registration.session_id)
+            if not prev:
+                self._reset_log_caches(s, meta_log_off=registration.meta_log_off)
+                s.model_provider = registration.model_provider
+                s.preferred_auth_method = registration.preferred_auth_method
+                s.model = registration.model
+                s.reasoning_effort = registration.reasoning_effort
+                s.service_tier = registration.service_tier
+                self._sessions[registration.session_id] = s
+            else:
+                prev.sock_path = s.sock_path
+                prev.thread_id = s.thread_id
+                prev.broker_pid = s.broker_pid
+                prev.codex_pid = s.codex_pid
+                prev.agent_backend = s.agent_backend
+                prev.owned = s.owned
+                prev.transport = s.transport
+                prev.start_ts = s.start_ts
+                prev.cwd = s.cwd
+                prev.busy = s.busy
+                prev.queue_len = s.queue_len
+                prev.interrupted_idle = s.interrupted_idle
+                prev.token = s.token
+                if prev.log_path != s.log_path:
+                    prev.log_path = s.log_path
+                    self._reset_log_caches(prev, meta_log_off=registration.meta_log_off)
+                prev.model_provider = registration.model_provider
+                prev.preferred_auth_method = registration.preferred_auth_method
+                prev.model = registration.model
+                prev.reasoning_effort = registration.reasoning_effort
+                prev.service_tier = registration.service_tier
+                prev.tmux_session = registration.tmux_session
+                prev.tmux_window = registration.tmux_window
+                prev.launch_id = registration.launch_id
+                prev.spawn_nonce = registration.spawn_nonce
+                prev.resume_session_id = registration.resume_session_id
+                prev.pending_attachment = bool(prev.pending_attachment or registration.session_id in getattr(self, "_pending_attachment_ids", set()))
+                prev.commit_unknown_send = dict(getattr(self, "_commit_unknown_sends", {}).get(registration.session_id) or {}) or None
+                prev.sync_send_supported = registration.sync_send_supported
+                prev.key_write_errors_supported = registration.key_write_errors_supported
+
     def _discover_existing(self, *, force: bool = False) -> None:
         if not force:
             now = time.time()
@@ -3443,214 +3581,15 @@ class SessionManager:
                 last = float(self._last_discover_ts)
             if (now - last) < DISCOVER_MIN_INTERVAL_SECONDS:
                 return
-        SOCK_DIR.mkdir(parents=True, exist_ok=True)
-        recent_cwd_dirty = False
-        for sock in sorted(SOCK_DIR.glob("*.sock")):
-            session_id = sock.stem
-            # Prefer metadata file written by sessiond.
-            meta_path = sock.with_suffix(".json")
-            if not meta_path.exists():
-                self._prune_stale_socket_without_metadata(session_id, sock)
-                continue
-            try:
-                meta = _read_sidecar_metadata(meta_path, sock=sock)
-                codex_pid = _metadata_required_int(meta, "codex_pid", sock=sock)
-                broker_pid = _metadata_required_int(meta, "broker_pid", sock=sock)
-                cwd = _metadata_required_text(meta, "cwd", sock=sock)
-                log_path = _metadata_log_path(meta, sock=sock)
-                ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
-                start_ts = _metadata_start_ts(meta, sock=sock)
-            except ValueError as e:
-                _log_invalid_sidecar_metadata("discover", sock, e)
-                continue
-
-            thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else session_id
-            agent_backend = normalize_agent_backend(meta.get("agent_backend"), default="codex")
-            owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else False
-            transport, tmux_session, tmux_window = self._session_transport(meta=meta)
-            sync_send_supported = _metadata_sync_send_supported(meta)
-            key_write_errors_supported = _metadata_key_write_errors_supported(meta)
-            launch_id = _clean_optional_text(meta.get("launch_id"))
-            spawn_nonce = _clean_optional_text(meta.get("spawn_nonce"))
-            if log_path is not None and not log_path.exists():
-                log_path = None
-            if log_path is None and agent_backend in {"codex", "cc"} and _pid_alive(codex_pid):
-                discovered_log_path = _proc_find_open_rollout_log(
-                    proc_root=PROC_ROOT,
-                    root_pid=codex_pid,
-                    agent_backend=agent_backend,
-                    cwd=cwd,
-                    ignored_paths=ignored_rollout_paths,
-                )
-                if discovered_log_path is not None and discovered_log_path.exists():
-                    log_path = discovered_log_path
-            if log_path is not None and agent_backend == "codex":
-                session_meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="session discovery")
-                meta_session_id = session_meta.get("id") if session_meta else None
-                if isinstance(meta_session_id, str) and meta_session_id:
-                    thread_id = meta_session_id
-                thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
-
-            if (log_path is None) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
-                if owned:
-                    try:
-                        _record_launch_attempt(
-                            {
-                                "launch_id": launch_id,
-                                "state": "failed",
-                                "stage": "broker_exit_before_log_bind",
-                                "error": "broker exited before publishing a session log",
-                                "agent_backend": agent_backend,
-                                "cwd": meta.get("cwd"),
-                                "created_ts": meta.get("start_ts"),
-                                "broker_pid": broker_pid,
-                                "agent_pid": codex_pid,
-                                "transport": transport,
-                                "tmux_session": tmux_session,
-                                "tmux_window": tmux_window,
-                                "spawn_nonce": spawn_nonce,
-                                "model_provider": meta.get("model_provider"),
-                                "preferred_auth_method": meta.get("preferred_auth_method"),
-                                "model": meta.get("model"),
-                                "reasoning_effort": meta.get("reasoning_effort"),
-                                "service_tier": meta.get("service_tier"),
-                            }
-                        )
-                    except Exception as e:
-                        sys.stderr.write(f"error: failed to record launch failure for {sock}: {type(e).__name__}: {e}\n")
-                        sys.stderr.flush()
-                self._unhide_session(session_id)
-                _unlink_quiet(sock)
-                _unlink_quiet(meta_path)
-                continue
-            with self._lock:
-                hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
-            if session_id in hidden_sessions:
-                if (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
-                    self._unhide_session(session_id)
-                    _unlink_quiet(sock)
-                    _unlink_quiet(meta_path)
-                continue
-
-            if self._remember_recent_cwd(cwd, ts=meta.get("updated_ts", meta.get("start_ts"))):
-                recent_cwd_dirty = True
-
-            resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-            model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
-                meta=meta,
-                log_path=log_path,
-                agent_backend=agent_backend,
-            )
-            service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
-
-            # Validate socket is responsive.
-            try:
-                resp = self._sock_call(sock, {"cmd": "state"}, timeout_s=0.5)
-            except Exception as e:
-                # Socket discovery should not take down the sessions listing. Treat
-                # definitely-stale sockets as runtime artifacts and prune them, but
-                # avoid unlinking sockets for live processes (startup races).
-                sys.stderr.write(f"error: discover: sock state call failed for {sock}: {type(e).__name__}: {e}\n")
-                sys.stderr.flush()
-                if _sock_error_definitely_stale(e) and (not _pid_alive(codex_pid)) and (not _pid_alive(broker_pid)):
-                    _unlink_quiet(sock)
-                    _unlink_quiet(meta_path)
-                continue
-
-            if log_path is not None:
-                meta_log_off = int(log_path.stat().st_size)
-                token = _rollout_log._find_latest_token_update(log_path)
-            else:
-                meta_log_off = 0
-                token = None
-            try:
-                broker_busy, broker_queue_len = self._broker_busy_queue_from_state(resp)
-                broker_interrupted_idle = _broker_interrupted_idle_from_state(resp)
-            except ValueError as e:
-                sys.stderr.write(f"error: discover: invalid broker state for {sock}: {e}\n")
-                sys.stderr.flush()
-                continue
-            if token is None and log_path is None:
-                token = resp.get("token") if isinstance(resp.get("token"), (dict, type(None))) else None
-
-            s = Session(
-                session_id=session_id,
-                thread_id=thread_id,
-                broker_pid=broker_pid,
-                codex_pid=codex_pid,
-                agent_backend=agent_backend,
-                owned=owned,
-                transport=transport,
-                start_ts=float(start_ts),
-                cwd=str(cwd),
-                log_path=log_path,
-                sock_path=sock,
-                busy=broker_busy,
-                queue_len=broker_queue_len,
-                token=token,
-                meta_thinking=0,
-                meta_tools=0,
-                meta_system=0,
-                meta_log_off=meta_log_off,
-                model_provider=model_provider,
-                preferred_auth_method=preferred_auth_method,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                service_tier=service_tier,
-                tmux_session=tmux_session,
-                tmux_window=tmux_window,
-                launch_id=launch_id,
-                spawn_nonce=spawn_nonce,
-                resume_session_id=resume_session_id,
-                pending_attachment=session_id in getattr(self, "_pending_attachment_ids", set()),
-                commit_unknown_send=dict(getattr(self, "_commit_unknown_sends", {}).get(session_id) or {}) or None,
-                sync_send_supported=sync_send_supported,
-                key_write_errors_supported=key_write_errors_supported,
-                interrupted_idle=broker_interrupted_idle,
-            )
-            with self._lock:
-                prev = self._sessions.get(session_id)
-                if not prev:
-                    self._reset_log_caches(s, meta_log_off=meta_log_off)
-                    s.model_provider = model_provider
-                    s.preferred_auth_method = preferred_auth_method
-                    s.model = model
-                    s.reasoning_effort = reasoning_effort
-                    s.service_tier = service_tier
-                    self._sessions[session_id] = s
-                else:
-                    prev.sock_path = s.sock_path
-                    prev.thread_id = s.thread_id
-                    prev.broker_pid = s.broker_pid
-                    prev.codex_pid = s.codex_pid
-                    prev.agent_backend = s.agent_backend
-                    prev.owned = s.owned
-                    prev.transport = s.transport
-                    prev.start_ts = s.start_ts
-                    prev.cwd = s.cwd
-                    prev.busy = s.busy
-                    prev.queue_len = s.queue_len
-                    prev.interrupted_idle = s.interrupted_idle
-                    prev.token = s.token
-                    if prev.log_path != s.log_path:
-                        prev.log_path = s.log_path
-                        self._reset_log_caches(prev, meta_log_off=meta_log_off)
-                    prev.model_provider = model_provider
-                    prev.preferred_auth_method = preferred_auth_method
-                    prev.model = model
-                    prev.reasoning_effort = reasoning_effort
-                    prev.service_tier = service_tier
-                    prev.tmux_session = tmux_session
-                    prev.tmux_window = tmux_window
-                    prev.launch_id = launch_id
-                    prev.spawn_nonce = spawn_nonce
-                    prev.resume_session_id = resume_session_id
-                    prev.pending_attachment = bool(prev.pending_attachment or session_id in getattr(self, "_pending_attachment_ids", set()))
-                    prev.commit_unknown_send = dict(getattr(self, "_commit_unknown_sends", {}).get(session_id) or {}) or None
-                    prev.sync_send_supported = sync_send_supported
-                    prev.key_write_errors_supported = key_write_errors_supported
-        if recent_cwd_dirty:
-            self._save_recent_cwds()
+        with self._lock:
+            hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
+        result = _discover_sessions(
+            SOCK_DIR,
+            proc_root=PROC_ROOT,
+            hidden_sessions=hidden_sessions,
+            deps=self._discovery_deps(),
+        )
+        self._apply_discovery_result(result)
         with self._lock:
             self._last_discover_ts = time.time()
 
