@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .agent_backend import normalize_agent_backend
 from .launch_config import provider_choice_for_settings
@@ -33,6 +33,49 @@ def record_launch_attempt(record: dict[str, Any], *, path: Path, stderr: Any | N
         )
         stream.flush()
     return rec
+
+
+class LaunchAttemptRecorder:
+    """Compose and persist state transitions for one web-session launch."""
+
+    def __init__(
+        self,
+        base_record: Mapping[str, Any],
+        *,
+        record_launch_attempt: Callable[[dict[str, Any]], dict[str, Any]],
+        now: Callable[[], float] | None = None,
+        stderr: Any | None = None,
+    ) -> None:
+        self._base_record = dict(base_record)
+        self._record_launch_attempt = record_launch_attempt
+        self._now = now or time.time
+        self._stderr = stderr
+
+    def record(self, state: str, **extra: Any) -> dict[str, Any]:
+        rec = dict(self._base_record)
+        rec["state"] = state
+        rec["updated_ts"] = self._now()
+        rec.update(extra)
+        return self._record_launch_attempt(rec)
+
+    def failure_record(self, stage: str, error: BaseException | str, **extra: Any) -> dict[str, Any]:
+        rec = dict(self._base_record)
+        rec.update(
+            {
+                "state": "failed",
+                "stage": stage,
+                "error": str(error),
+                "updated_ts": self._now(),
+            }
+        )
+        rec.update(extra)
+        try:
+            return self._record_launch_attempt(rec)
+        except Exception as log_exc:
+            stream = self._stderr if self._stderr is not None else sys.stderr
+            stream.write(f"error: failed to write launch attempt record: {type(log_exc).__name__}: {log_exc}\n")
+            stream.flush()
+            return rec
 
 
 def launch_attempt_id(record: dict[str, Any]) -> str:

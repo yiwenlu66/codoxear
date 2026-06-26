@@ -107,6 +107,7 @@ from .launch_config import read_codex_launch_defaults as _launch_read_codex_laun
 from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
 from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
 from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
+from .launch_ledger import LaunchAttemptRecorder
 from .launch_ledger import launch_attempt_id as _launch_attempt_id_impl
 from .launch_ledger import launch_attempt_row as _launch_attempt_row_impl
 from .launch_ledger import launch_attempt_transcript_for_session_id as _launch_attempt_transcript_for_session_id_impl
@@ -4523,33 +4524,17 @@ class SessionManager:
             "worktree_branch": worktree_branch,
         }
 
-        def record_launch(state: str, **extra: Any) -> dict[str, Any]:
-            rec = dict(base_launch_record)
-            rec["state"] = state
-            rec["updated_ts"] = time.time()
-            rec.update(extra)
-            return _record_launch_attempt(rec)
+        launch_recorder = LaunchAttemptRecorder(
+            base_launch_record,
+            record_launch_attempt=_record_launch_attempt,
+            now=time.time,
+            stderr=sys.stderr,
+        )
 
-        record_launch("starting", transport="tmux" if create_in_tmux else "direct")
+        launch_recorder.record("starting", transport="tmux" if create_in_tmux else "direct")
 
         def fail_launch(stage: str, error: BaseException | str, **extra: Any) -> None:
-            msg = str(error)
-            rec: dict[str, Any] = dict(base_launch_record)
-            rec.update(
-                {
-                    "state": "failed",
-                    "stage": stage,
-                    "error": msg,
-                    "updated_ts": time.time(),
-                }
-            )
-            rec.update(extra)
-            try:
-                rec = _record_launch_attempt(rec)
-            except Exception as log_exc:
-                sys.stderr.write(f"error: failed to write launch attempt record: {type(log_exc).__name__}: {log_exc}\n")
-                sys.stderr.flush()
-            raise SessionLaunchError(rec)
+            raise SessionLaunchError(launch_recorder.failure_record(stage, error, **extra))
 
         def tmux_launch_fields(snapshot: dict[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
             out = dict(snapshot or {})
@@ -4625,7 +4610,7 @@ class SessionManager:
                     tmux_attempts=attempts,
                 )
             snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=tmux_pane_id, window=tmux_window)
-            record_launch(
+            launch_recorder.record(
                 "tmux_pane_created",
                 **tmux_launch_fields(
                     snapshot,
@@ -4639,7 +4624,7 @@ class SessionManager:
                 meta = _wait_for_spawned_broker_meta(spawn_nonce)
             except Exception as e:
                 if tmux_pane_id is not None and not snapshot.get("tmux_inspect_error") and str(snapshot.get("tmux_pane_dead") or "0") != "1":
-                    record_launch(
+                    launch_recorder.record(
                         "tmux_pane_created",
                         **tmux_launch_fields(
                             snapshot,
@@ -4675,7 +4660,7 @@ class SessionManager:
                     spawn_nonce=spawn_nonce,
                     metadata=meta,
                 )
-            record_launch(
+            launch_recorder.record(
                 "broker_meta_bound",
                 transport="tmux",
                 tmux_session=TMUX_SESSION_NAME,
@@ -4701,7 +4686,7 @@ class SessionManager:
             _wait_or_raise(proc, label="broker", timeout_s=1.5)
         except Exception as e:
             fail_launch("broker_early_exit", e, transport="direct", broker_pid=int(proc.pid))
-        record_launch("broker_spawned", transport="direct", broker_pid=int(proc.pid))
+        launch_recorder.record("broker_spawned", transport="direct", broker_pid=int(proc.pid))
         if proc.stderr is not None:
             threading.Thread(target=_drain_stream, args=(proc.stderr,), daemon=True).start()
 
