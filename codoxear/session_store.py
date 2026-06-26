@@ -17,6 +17,14 @@ CommitUnknownCleaner = Callable[[Any], dict[str, Any] | None]
 
 
 @dataclass(frozen=True)
+class SidebarSessionState:
+    priority_offset: float
+    snooze_until: float | None
+    dependency_session_id: str | None
+    dirty: bool
+
+
+@dataclass(frozen=True)
 class SessionStorePaths:
     aliases: Path
     sidebar_meta: Path
@@ -121,6 +129,29 @@ class SessionStore:
 
     def save_sidebar_meta(self, obj: dict[str, dict[str, Any]]) -> None:
         atomic_write_json(self.paths.sidebar_meta, dict(obj))
+
+    def sidebar_state_for_session(self, session_id: str, *, active_session_ids: set[str], now_ts: float) -> SidebarSessionState:
+        meta0 = self.sidebar_meta.get(session_id)
+        if not isinstance(meta0, dict):
+            meta0 = {}
+        priority_offset = self.clean_priority_offset(meta0.get("priority_offset"))
+        snooze_until = self.clean_snooze_until(meta0.get("snooze_until"))
+        dependency_session_id = self.clean_dependency_session_id(meta0.get("dependency_session_id"))
+        dirty = False
+        if dependency_session_id == session_id or (dependency_session_id is not None and dependency_session_id not in active_session_ids):
+            dependency_session_id = None
+            meta0.pop("dependency_session_id", None)
+            dirty = True
+        if snooze_until is not None and snooze_until <= now_ts:
+            snooze_until = None
+            meta0.pop("snooze_until", None)
+            dirty = True
+        return SidebarSessionState(
+            priority_offset=priority_offset,
+            snooze_until=snooze_until,
+            dependency_session_id=dependency_session_id,
+            dirty=dirty,
+        )
 
     def load_hidden_sessions(self) -> set[str]:
         obj = load_json_file(self.paths.hidden_sessions, default=None)
@@ -276,3 +307,13 @@ class SessionStore:
     def save_recent_cwds(self, source: dict[str, float]) -> None:
         items = sorted(source.items(), key=lambda item: (-float(item[1]), item[0]))[: self.recent_cwd_max]
         atomic_write_json(self.paths.recent_cwds, {cwd: ts for cwd, ts in items})
+
+    def note_recent_cwd(self, cwd_value: Any, updated_ts: float) -> bool:
+        cwd = self.clean_recent_cwd(cwd_value)
+        if cwd is None:
+            return False
+        prev_recent_ts = self.recent_cwds.get(cwd)
+        if prev_recent_ts is None or prev_recent_ts < updated_ts:
+            self.recent_cwds[cwd] = updated_ts
+            return True
+        return False

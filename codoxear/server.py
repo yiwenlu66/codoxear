@@ -3695,7 +3695,6 @@ class SessionManager:
         with self._lock:
             items: list[dict[str, Any]] = []
             qmap = getattr(self, "_queues", None)
-            meta_map = getattr(self, "_sidebar_meta", None)
             active_ids = set(self._sessions.keys())
             for s in self._sessions.values():
                 cfg0 = self._unattended.get(s.session_id)
@@ -3722,16 +3721,7 @@ class SessionManager:
                 needs_run_settings = bool(log_exists and s.log_path is not None and (s.model_provider is None or s.model is None or s.reasoning_effort is None))
                 needs_history_scan = bool(s.last_chat_ts is None and log_exists and s.log_path is not None and (not s.last_chat_history_scanned))
                 updated_ts = float(s.last_chat_ts) if isinstance(s.last_chat_ts, (int, float)) else float(s.start_ts)
-                cwd_recent = _clean_recent_cwd(s.cwd)
-                recent_map = getattr(self, "_recent_cwds", None)
-                if cwd_recent is not None:
-                    if not isinstance(recent_map, dict):
-                        self._recent_cwds = {}
-                        recent_map = self._recent_cwds
-                    prev_recent_ts = recent_map.get(cwd_recent)
-                    if prev_recent_ts is None or prev_recent_ts < updated_ts:
-                        recent_map[cwd_recent] = updated_ts
-                        recent_cwd_dirty = True
+                recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s.cwd, updated_ts)
                 queue_len = 0
                 queue_recovery = False
                 if isinstance(qmap, dict):
@@ -3742,22 +3732,15 @@ class SessionManager:
                             isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
                             for item in q0
                         )
-                meta0 = meta_map.get(s.session_id) if isinstance(meta_map, dict) else None
-                if not isinstance(meta0, dict):
-                    meta0 = {}
-                priority_offset = _clean_priority_offset(meta0.get("priority_offset"))
-                snooze_until = _clean_snooze_until(meta0.get("snooze_until"))
-                dependency_session_id = _clean_dependency_session_id(meta0.get("dependency_session_id"))
-                if dependency_session_id == s.session_id or (dependency_session_id is not None and dependency_session_id not in active_ids):
-                    dependency_session_id = None
-                    if isinstance(meta_map, dict) and isinstance(meta0, dict):
-                        meta0.pop("dependency_session_id", None)
-                        sidebar_dirty = True
-                if snooze_until is not None and snooze_until <= now_ts:
-                    snooze_until = None
-                    if isinstance(meta_map, dict) and isinstance(meta0, dict):
-                        meta0.pop("snooze_until", None)
-                        sidebar_dirty = True
+                sidebar_state = self._session_store_for_manager().sidebar_state_for_session(
+                    s.session_id,
+                    active_session_ids=active_ids,
+                    now_ts=now_ts,
+                )
+                priority_offset = sidebar_state.priority_offset
+                snooze_until = sidebar_state.snooze_until
+                dependency_session_id = sidebar_state.dependency_session_id
+                sidebar_dirty = sidebar_dirty or sidebar_state.dirty
                 elapsed_s = max(0.0, now_ts - updated_ts)
                 time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
                 base_priority = _clip01(time_priority + priority_offset)
@@ -3850,16 +3833,7 @@ class SessionManager:
                             s_cur.last_chat_ts = float(conv_ts)
                         updated_ts = float(s_cur.last_chat_ts) if isinstance(s_cur.last_chat_ts, (int, float)) else float(s_cur.start_ts)
                         it["updated_ts"] = updated_ts
-                        cwd_recent = _clean_recent_cwd(s_cur.cwd)
-                        recent_map = getattr(self, "_recent_cwds", None)
-                        if cwd_recent is not None:
-                            if not isinstance(recent_map, dict):
-                                self._recent_cwds = {}
-                                recent_map = self._recent_cwds
-                            prev_recent_ts = recent_map.get(cwd_recent)
-                            if prev_recent_ts is None or prev_recent_ts < updated_ts:
-                                recent_map[cwd_recent] = updated_ts
-                                recent_cwd_dirty = True
+                        recent_cwd_dirty = recent_cwd_dirty or self._session_store_for_manager().note_recent_cwd(s_cur.cwd, updated_ts)
                         elapsed_s = max(0.0, now_ts - updated_ts)
                         time_priority = _sidebar_time_priority_from_elapsed_seconds(elapsed_s)
                         base_priority = _clip01(time_priority + float(it.get("priority_offset", 0.0)))

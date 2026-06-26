@@ -64,6 +64,34 @@ def test_session_store_file_history_clear_removes_session_and_cwd_legacy_keys() 
     assert store.files == {"sid:other": ["keep.py"]}
 
 
+def test_session_store_sidebar_state_repairs_invalid_dependency_and_expired_snooze() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.sidebar_meta = {"s1": {"priority_offset": 0.25, "dependency_session_id": "missing", "snooze_until": 5.0}}
+
+    state = store.sidebar_state_for_session("s1", active_session_ids={"s1"}, now_ts=10.0)
+
+    assert state.priority_offset == 0.25
+    assert state.dependency_session_id is None
+    assert state.snooze_until is None
+    assert state.dirty is True
+    assert store.sidebar_meta == {"s1": {"priority_offset": 0.25}}
+
+
+def test_session_store_recent_cwd_records_newer_timestamps_only() -> None:
+    mgr = SessionManager.__new__(SessionManager)
+    mgr._lock = threading.Lock()
+    store = mgr._session_store_for_manager()
+    store.recent_cwds = {"/repo": 10.0}
+
+    assert store.note_recent_cwd("/repo", 9.0) is False
+    assert store.recent_cwds == {"/repo": 10.0}
+    assert store.note_recent_cwd("/repo", 11.0) is True
+    assert store.recent_cwds == {"/repo": 11.0}
+    assert store.note_recent_cwd("", 12.0) is False
+
+
 def test_session_store_rebinds_paths_without_losing_in_memory_state() -> None:
     mgr = SessionManager.__new__(SessionManager)
     mgr._lock = threading.Lock()
