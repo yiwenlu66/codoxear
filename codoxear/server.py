@@ -54,9 +54,11 @@ from .file_response import send_inline_file_response as _send_inline_file_respon
 from .file_response import single_byte_range as _single_byte_range
 from .file_routes import FileGetRouteDeps
 from .file_routes import FileWriteRouteDeps
+from .file_routes import GlobalFileRouteDeps
 from .file_routes import handle_absolute_file_preview_route as _handle_absolute_file_preview_route
 from .file_routes import handle_file_get_route as _handle_file_get_route
 from .file_routes import handle_file_write_post_route as _handle_file_write_post_route
+from .file_routes import handle_global_file_post_route as _handle_global_file_post_route
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
@@ -121,7 +123,6 @@ from .file_view import read_client_file_view as _read_client_file_view
 from .file_view import read_text_or_image as _read_text_or_image
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
 from .video_preview import video_preview_path as _video_preview_path_impl
-from .video_preview import video_response_payload as _video_response_payload
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
@@ -1367,20 +1368,6 @@ def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
 
 def _current_git_branch(cwd: Path) -> str | None:
     return _git_ops.current_git_branch(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
-
-def _query_flag(values: Mapping[str, list[str]], name: str) -> bool:
-    raw = values.get(name, [""])[0]
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _body_flag(obj: Mapping[str, Any], name: str) -> bool:
-    raw = obj.get(name)
-    if isinstance(raw, bool):
-        return raw
-    if isinstance(raw, str):
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
-    return False
-
 
 def _path_resolves_inside(path_obj: Path, root: Path) -> bool:
     try:
@@ -5330,6 +5317,17 @@ def _file_write_route_deps() -> FileWriteRouteDeps:
     )
 
 
+def _global_file_route_deps() -> GlobalFileRouteDeps:
+    return GlobalFileRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+        resolve_git_client_file_view=_resolve_git_client_file_view,
+        resolve_client_file_path=_resolve_client_file_path,
+        read_client_file_view=_read_client_file_view,
+    )
+
+
 def _git_route_deps() -> GitRouteDeps:
     return GitRouteDeps(
         require_auth=_require_auth,
@@ -5870,171 +5868,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 _json_response(self, 200, {"ok": True, **res})
                 return
 
-            if path == "/api/files/read":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or path_raw == "":
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                session_id_raw = obj.get("session_id")
-                if session_id_raw is not None and not isinstance(session_id_raw, str):
-                    _json_response(self, 400, {"error": "session_id must be a string"})
-                    return
-                session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
-                git_path = _body_flag(obj, "git_path")
-                rel_for_url = ""
-                try:
-                    if git_path:
-                        path_obj, rel_for_url, view = _resolve_git_client_file_view(session_id=session_id, raw_path=path_raw)
-                    else:
-                        path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                        view = _read_client_file_view(path_obj)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                if session_id:
-                    try:
-                        MANAGER.files_add(session_id, str(path_obj))
-                    except KeyError:
-                        pass
-                media_blob_url = (
-                    f"/api/sessions/{session_id}/file/blob?path={urllib.parse.quote(rel_for_url)}&git_path=1"
-                    if git_path and session_id and rel_for_url
-                    else f"/api/files/blob?path={urllib.parse.quote(str(path_obj))}"
-                )
-                media_preview_url = (
-                    f"/api/sessions/{session_id}/file/video_preview?path={urllib.parse.quote(rel_for_url)}&git_path=1"
-                    if git_path and session_id and rel_for_url
-                    else f"/api/files/video_preview?path={urllib.parse.quote(str(path_obj))}"
-                )
-                if view.kind == "image":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "image",
-                            "content_type": view.content_type,
-                            "path": str(path_obj),
-                            "size": int(view.size),
-                            "image_url": media_blob_url,
-                        },
-                    )
-                    return
-                if view.kind == "pdf":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "pdf",
-                            "content_type": view.content_type,
-                            "path": str(path_obj),
-                            "size": int(view.size),
-                            "pdf_url": media_blob_url,
-                        },
-                    )
-                    return
-                if view.kind == "video":
-                    _json_response(
-                        self,
-                        200,
-                        _video_response_payload(
-                            path_obj=path_obj,
-                            size=int(view.size),
-                            content_type=view.content_type,
-                            video_url=media_blob_url,
-                            preview_url=media_preview_url,
-                        ),
-                    )
-                    return
-                if view.kind == "download_only":
-                    _json_response(
-                        self,
-                        200,
-                        {
-                            "ok": True,
-                            "kind": "download_only",
-                            "path": str(path_obj),
-                            "size": int(view.size),
-                            "reason": view.blocked_reason,
-                            "viewer_max_bytes": view.viewer_max_bytes,
-                        },
-                    )
-                    return
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "ok": True,
-                        "kind": view.kind,
-                        "path": str(path_obj),
-                        "size": int(view.size),
-                        "text": view.text,
-                        "editable": bool(view.editable),
-                        "version": view.version,
-                    },
-                )
-                return
-
-            if path == "/api/files/inspect":
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                path_raw = obj.get("path")
-                if not isinstance(path_raw, str) or path_raw == "":
-                    _json_response(self, 400, {"error": "path required"})
-                    return
-                session_id_raw = obj.get("session_id")
-                if session_id_raw is not None and not isinstance(session_id_raw, str):
-                    _json_response(self, 400, {"error": "session_id must be a string"})
-                    return
-                session_id = session_id_raw if isinstance(session_id_raw, str) and session_id_raw else ""
-                git_path = _body_flag(obj, "git_path")
-                try:
-                    if git_path:
-                        path_obj, _rel, view = _resolve_git_client_file_view(session_id=session_id, raw_path=path_raw)
-                    else:
-                        path_obj = _resolve_client_file_path(session_id=session_id, raw_path=path_raw)
-                        view = _read_client_file_view(path_obj)
-                except FileNotFoundError as e:
-                    _json_response(self, 404, {"error": str(e)})
-                    return
-                except PermissionError as e:
-                    _json_response(self, 403, {"error": str(e)})
-                    return
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                except RuntimeError as e:
-                    _json_response(self, 409, {"error": str(e)})
-                    return
-                _json_response(
-                    self,
-                    200,
-                    {
-                        "ok": True,
-                        "path": str(path_obj),
-                        "kind": view.kind,
-                        "content_type": view.content_type,
-                        "size": int(view.size),
-                        "reason": view.blocked_reason,
-                        "viewer_max_bytes": view.viewer_max_bytes,
-                    },
-                )
+            if _handle_global_file_post_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_global_file_route_deps(),
+            ):
                 return
 
             if _handle_absolute_file_preview_route(

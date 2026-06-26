@@ -13,10 +13,14 @@ import pytest
 from codoxear.file_routes import FileGetRouteDeps
 from codoxear.file_routes import FileRouteResponse
 from codoxear.file_routes import FileWriteRouteDeps
+from codoxear.file_routes import GlobalFileRequest
+from codoxear.file_routes import GlobalFileRouteDeps
 from codoxear.file_routes import SessionFileWriteRequest
+from codoxear.file_routes import global_file_read_payload
 from codoxear.file_routes import handle_absolute_file_preview_route
 from codoxear.file_routes import handle_file_get_route
 from codoxear.file_routes import handle_file_write_post_route
+from codoxear.file_routes import handle_global_file_post_route
 from codoxear.file_routes import resolve_session_write_update_path
 from codoxear.file_routes import session_file_read_payload
 from codoxear.file_routes import session_file_write_response
@@ -359,3 +363,59 @@ def test_handle_file_write_post_route_creates_file_and_records_path() -> None:
         assert target.read_text(encoding="utf-8") == "hello\n"
         assert manager.refreshed == ["s"]
         assert manager.recorded == [("s", str(target))]
+
+
+def _global_file_deps(body, **overrides):
+    responses: list[tuple[int, dict[str, object]]] = []
+
+    def json_response(_handler, status: int, payload: dict[str, object]) -> None:
+        responses.append((status, payload))
+
+    deps = GlobalFileRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        read_json_body=lambda _handler, **_kwargs: body,
+        resolve_git_client_file_view=lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected git view")),
+        resolve_client_file_path=lambda *, session_id, raw_path: Path(raw_path),
+        read_client_file_view=lambda path: ClientFileView(kind="text", size=5, text="hello", editable=True, version="v1"),
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses
+
+
+def test_handle_global_file_post_route_rejects_non_string_session_id_before_resolution() -> None:
+    deps, responses = _global_file_deps(
+        {"path": "note.md", "session_id": 123},
+        resolve_client_file_path=lambda **_kwargs: (_ for _ in ()).throw(AssertionError("path resolution should not run")),
+    )
+    handled = handle_global_file_post_route(_FakeHandler(), path="/api/files/read", manager=_FakeManager("/tmp"), deps=deps)
+    assert handled is True
+    assert responses == [(400, {"error": "session_id must be a string"})]
+
+
+def test_handle_global_file_post_route_preserves_whitespace_only_path_and_records_read() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        space_file = base / " "
+        space_file.write_text("space\n", encoding="utf-8")
+        manager = _FakeManager(str(base))
+        deps, responses = _global_file_deps(
+            {"path": " ", "session_id": "s"},
+            resolve_client_file_path=lambda *, session_id, raw_path: space_file if session_id == "s" and raw_path == " " else (_ for _ in ()).throw(AssertionError()),
+            read_client_file_view=lambda path: ClientFileView(kind="text", size=6, text=path.read_text(encoding="utf-8"), editable=True, version="v2"),
+        )
+        handled = handle_global_file_post_route(_FakeHandler(), path="/api/files/read", manager=manager, deps=deps)
+        assert handled is True
+        assert responses == [(200, {"ok": True, "kind": "text", "path": str(space_file), "size": 6, "text": "space\n", "editable": True, "version": "v2"})]
+        assert manager.recorded == [("s", str(space_file))]
+
+
+def test_global_file_read_payload_keeps_git_path_media_urls_session_relative() -> None:
+    payload = global_file_read_payload(
+        request=GlobalFileRequest(path="assets/icon.svg", session_id="s", git_path=True),
+        path_obj=Path("/repo/assets/icon.svg"),
+        rel_for_url="assets/icon.svg",
+        view=ClientFileView(kind="image", size=12, content_type="image/svg+xml"),
+    )
+    assert payload["image_url"] == "/api/sessions/s/file/blob?path=assets/icon.svg&git_path=1"

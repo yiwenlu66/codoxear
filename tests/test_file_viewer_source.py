@@ -761,7 +761,7 @@ class TestFileViewerSource(unittest.TestCase):
         self.assertIn('VIDEO_PREVIEW_CACHE_MAX_BYTES = _positive_int_env("CODEX_WEB_VIDEO_PREVIEW_MAX_BYTES", 10 * 1024 * 1024 * 1024)', module_source)
         self.assertIn('def prune_video_preview_cache(', module_source)
         self.assertIn('prune_video_preview_cache(preview_dir, keep=out)', module_source)
-        self.assertIn("preview_url=media_preview_url", server_source)
+        self.assertIn("preview_url=media_preview_url", file_routes_source)
         self.assertIn('deps.send_inline_file_response(handler, path_obj, content_type or "application/octet-stream")', file_routes_source)
         self.assertIn('deps.send_inline_file_response(handler, preview, "video/mp4")', file_routes_source)
 
