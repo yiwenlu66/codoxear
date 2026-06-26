@@ -8,20 +8,20 @@ Observations:
 - `Session` is now a standalone stdlib-only model in `codoxear/session_model.py`, with `server.Session` remaining a compatibility re-export; clean-room review found field/default/order identity and no circular import risk; see OPS 2026-06-26T17:15:21Z.
 - Sidecar/socket/log discovery evidence collection now lives in `codoxear/session_discovery.py` via typed `DiscoveryResult`/`DiscoveryRegistration` records; `SessionManager` still owns `_sessions` mutation, pending-attachment and commit-unknown overlays, cache reset, recent-cwd persistence, stale-state deletion, and launch-failure recording; see OPS 2026-06-26T17:15:21Z.
 - Launch-attempt record composition for `spawn_web_session` now lives in `codoxear.launch_ledger.LaunchAttemptRecorder`; the manager still owns base launch context and server-specific `SessionLaunchError` raising; see OPS 2026-06-26T17:32:27Z.
-- Direct/tmux launch process orchestration now lives in `codoxear/session_launcher.py`; `SessionManager.spawn_web_session` assembles cwd/resume/worktree/backend context and injects metadata/snapshot/process dependencies; see OPS 2026-06-26T18:02:48Z.
-- Latest launch-runner Docker evidence is focused Docker on port 18953 passing and full Docker on port 18954 returning `1083 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-session-launcher-review.md` returned `NO BLOCKERS`; see OPS 2026-06-26T18:02:48Z.
+- Direct/tmux launch process orchestration and tmux launch metadata polling now live in `codoxear/session_launcher.py`; `SessionManager.spawn_web_session` assembles cwd/resume/worktree/backend context and injects process/snapshot dependencies; see OPS 2026-06-26T18:02:48Z and 2026-06-26T18:20:00Z.
+- Latest launch-lifecycle Docker evidence is focused Docker on port 18955 passing and full Docker on port 18956 returning `1085 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-metadata-wait-review.md` returned `NO BLOCKERS`; see OPS 2026-06-26T18:20:00Z.
 
 Interpretation:
 - Endpoint-specific HTTP-controller ownership has been extracted from `Handler`: file/session/message/queue/control/diagnostics/git/voice/auth/static/hook request validation, status mapping, response composition, and route-specific source sentinels now live with route modules, while runtime/state/security/static authorities remain injected.
 - The first non-route `SessionManager` source-of-truth boundary is explicit: sidecar files, control-socket state probes, proc-open rollout discovery, and log-token evidence are collected by `session_discovery.py`; the manager applies that evidence to its runtime cache and persistent overlays.
-- The launch lifecycle now has two explicit boundaries: launch-attempt state/failure record composition belongs to `launch_ledger.py`, and direct/tmux process orchestration belongs to `session_launcher.py`. The manager still owns launch context validation/construction, metadata wait helpers, and registry consequences.
-- The remaining server god-module problem is no longer endpoint branch ownership, discovery evidence collection, launch-attempt composition, or launch process sequencing. `server.py` still mixes central HTTP request mechanics, route dependency assembly, `SessionManager` listing/projection, launch context construction/metadata wait, queue/unattended schedulers, input protocol, backend/log helpers, and compatibility exports.
-- The next launch refactor should either move launch context construction into an explicit plan object or move metadata wait/pending reconciliation only after making sidecar/live-pid dependencies explicit.
+- The launch lifecycle now has three explicit boundaries: launch-attempt state/failure record composition belongs to `launch_ledger.py`, direct/tmux process orchestration belongs to `session_launcher.py`, and tmux launch metadata polling also belongs to `session_launcher.py` with sidecar/liveness dependencies explicit. The manager still owns launch context validation/construction and registry consequences.
+- The remaining server god-module problem is no longer endpoint branch ownership, discovery evidence collection, launch-attempt composition, launch process sequencing, or tmux metadata polling. `server.py` still mixes central HTTP request mechanics, route dependency assembly, `SessionManager` listing/projection, launch context construction, queue/unattended schedulers, input protocol, backend/log helpers, and compatibility exports.
+- The next launch refactor should move launch context construction into an explicit plan object while preserving `SessionManager` control over live-session resume checks and worktree creation unless those authorities are deliberately moved with tests.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
 - Keep `SessionManager` as runtime registry/cache authority unless a later tranche explicitly moves that authority with tests.
-- Preserve launch ledger ordering, redaction boundary, direct/tmux process sequencing, and existing monkeypatch seams while moving the next launch seam.
+- Preserve launch ledger ordering, redaction boundary, direct/tmux process sequencing, metadata wait semantics, and existing monkeypatch seams while moving the next launch seam.
 
 
 ## 2026-06-11 23:45
