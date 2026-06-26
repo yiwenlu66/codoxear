@@ -513,6 +513,62 @@ def _handle_session_file_download(handler: Any, *, session_id: str, query: str, 
     deps.send_attachment_file_response(handler, path_obj, size=size, content_disposition=deps.download_disposition(path_obj))
 
 
+@dataclass(frozen=True)
+class FileWriteRouteDeps:
+    require_auth: Callable[[Any], bool]
+    json_response: JsonResponse
+    read_json_body: Callable[..., Mapping[str, Any]]
+    resolve_session_cwd: Callable[[str], Path]
+    resolve_create_path: SessionPathResolver
+    resolve_git_existing_regular_file: Callable[..., tuple[Path, str]]
+    file_write_lock: FileWriteLock
+
+
+def handle_file_write_post_route(
+    handler: Any,
+    *,
+    path: str,
+    manager: Any,
+    deps: FileWriteRouteDeps,
+    match_session_route: RouteMatcher,
+) -> bool:
+    session_id = match_session_route(path, "file", "write")
+    if session_id is None:
+        return False
+    if not deps.require_auth(handler):
+        handler._unauthorized()
+        return True
+    body = deps.read_json_body(handler)
+    try:
+        request = parse_session_file_write_request(body)
+    except FileRouteError as e:
+        deps.json_response(handler, e.status, e.payload)
+        return True
+    manager.refresh_session_meta(session_id)
+    session = manager.get_session(session_id)
+    if not session:
+        deps.json_response(handler, 404, {"error": "unknown session"})
+        return True
+    try:
+        base = deps.resolve_session_cwd(session.cwd)
+    except ValueError as e:
+        deps.json_response(handler, 400, {"error": str(e)})
+        return True
+    response = session_file_write_response(
+        session_base=base,
+        request=request,
+        resolve_create_path=deps.resolve_create_path,
+        resolve_git_existing_regular_file=lambda raw_path: deps.resolve_git_existing_regular_file(
+            session_id=session_id,
+            raw_path=raw_path,
+        ),
+        file_write_lock=deps.file_write_lock,
+        record_file=lambda path_value: manager.files_add(session_id, path_value),
+    )
+    deps.json_response(handler, response.status, response.payload)
+    return True
+
+
 def parse_session_file_write_request(obj: Mapping[str, Any]) -> SessionFileWriteRequest:
     path_raw = obj.get("path")
     if not isinstance(path_raw, str) or path_raw == "":

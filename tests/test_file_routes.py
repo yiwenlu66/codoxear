@@ -12,9 +12,11 @@ import pytest
 
 from codoxear.file_routes import FileGetRouteDeps
 from codoxear.file_routes import FileRouteResponse
+from codoxear.file_routes import FileWriteRouteDeps
 from codoxear.file_routes import SessionFileWriteRequest
 from codoxear.file_routes import handle_absolute_file_preview_route
 from codoxear.file_routes import handle_file_get_route
+from codoxear.file_routes import handle_file_write_post_route
 from codoxear.file_routes import resolve_session_write_update_path
 from codoxear.file_routes import session_file_read_payload
 from codoxear.file_routes import session_file_write_response
@@ -294,3 +296,66 @@ def test_handle_absolute_file_preview_route_maps_video_preview_runtime_error() -
         assert handled is True
         assert responses == [(500, {"error": "video preview failed: ffmpeg failed"})]
         assert inline == []
+
+
+def _file_write_deps(body, **overrides):
+    responses: list[tuple[int, dict[str, object]]] = []
+
+    def json_response(_handler, status: int, payload: dict[str, object]) -> None:
+        responses.append((status, payload))
+
+    deps = FileWriteRouteDeps(
+        require_auth=lambda _handler: True,
+        json_response=json_response,
+        read_json_body=lambda _handler, **_kwargs: body,
+        resolve_session_cwd=lambda raw: Path(raw),
+        resolve_create_path=_resolve_create_path,
+        resolve_git_existing_regular_file=lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected git file")),
+        file_write_lock=_null_write_lock,
+    )
+    for name, value in overrides.items():
+        object.__setattr__(deps, name, value)
+    return deps, responses
+
+
+def test_handle_file_write_post_route_validates_body_before_session_lookup() -> None:
+    class FailingManager:
+        def refresh_session_meta(self, _session_id: str) -> None:
+            raise AssertionError("session metadata should not be refreshed for invalid bodies")
+
+        def get_session(self, _session_id: str) -> object:
+            raise AssertionError("session lookup should not run for invalid bodies")
+
+    deps, responses = _file_write_deps({"text": "new"})
+    handled = handle_file_write_post_route(
+        _FakeHandler(),
+        path="/api/sessions/s/file/write",
+        manager=FailingManager(),
+        deps=deps,
+        match_session_route=_match_session_route,
+    )
+    assert handled is True
+    assert responses == [(400, {"error": "path required"})]
+
+
+def test_handle_file_write_post_route_creates_file_and_records_path() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        base = Path(td)
+        (base / "notes").mkdir()
+        manager = _FakeManager(str(base))
+        deps, responses = _file_write_deps({"path": "notes/new.md", "text": "hello\n", "create": True})
+        handled = handle_file_write_post_route(
+            _FakeHandler(),
+            path="/api/sessions/s/file/write",
+            manager=manager,
+            deps=deps,
+            match_session_route=_match_session_route,
+        )
+        target = (base / "notes" / "new.md").resolve()
+        assert handled is True
+        assert responses[0][0] == 200
+        assert responses[0][1]["path"] == str(target)
+        assert responses[0][1]["rel"] == "notes/new.md"
+        assert target.read_text(encoding="utf-8") == "hello\n"
+        assert manager.refreshed == ["s"]
+        assert manager.recorded == [("s", str(target))]

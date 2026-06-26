@@ -53,11 +53,10 @@ from .file_response import send_attachment_file_response as _send_attachment_fil
 from .file_response import send_inline_file_response as _send_inline_file_response
 from .file_response import single_byte_range as _single_byte_range
 from .file_routes import FileGetRouteDeps
-from .file_routes import FileRouteError as _FileRouteError
+from .file_routes import FileWriteRouteDeps
 from .file_routes import handle_absolute_file_preview_route as _handle_absolute_file_preview_route
 from .file_routes import handle_file_get_route as _handle_file_get_route
-from .file_routes import parse_session_file_write_request as _parse_session_file_write_request
-from .file_routes import session_file_write_response as _session_file_write_response
+from .file_routes import handle_file_write_post_route as _handle_file_write_post_route
 from .file_search import FILE_LIST_IGNORED_DIRS
 from .file_search import FILE_SEARCH_LIMIT
 from .file_search import file_search_score as _file_search_score
@@ -5319,6 +5318,18 @@ def _file_get_route_deps() -> FileGetRouteDeps:
     )
 
 
+def _file_write_route_deps() -> FileWriteRouteDeps:
+    return FileWriteRouteDeps(
+        require_auth=_require_auth,
+        json_response=_json_response,
+        read_json_body=lambda handler, **kwargs: handler._read_json_body(**kwargs),
+        resolve_session_cwd=_resolve_session_cwd,
+        resolve_create_path=_resolve_under,
+        resolve_git_existing_regular_file=_resolve_git_existing_regular_file,
+        file_write_lock=_file_write_lock,
+    )
+
+
 def _git_route_deps() -> GitRouteDeps:
     return GitRouteDeps(
         require_auth=_require_auth,
@@ -6034,39 +6045,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             ):
                 return
 
-            session_id = _match_session_route(path, "file", "write")
-            if session_id is not None:
-                if not _require_auth(self):
-                    self._unauthorized()
-                    return
-                obj = self._read_json_body()
-                try:
-                    request = _parse_session_file_write_request(obj)
-                except _FileRouteError as e:
-                    _json_response(self, e.status, e.payload)
-                    return
-                MANAGER.refresh_session_meta(session_id)
-                s = MANAGER.get_session(session_id)
-                if not s:
-                    _json_response(self, 404, {"error": "unknown session"})
-                    return
-                try:
-                    base = _resolve_session_cwd(s.cwd)
-                except ValueError as e:
-                    _json_response(self, 400, {"error": str(e)})
-                    return
-                response = _session_file_write_response(
-                    session_base=base,
-                    request=request,
-                    resolve_create_path=_resolve_under,
-                    resolve_git_existing_regular_file=lambda raw_path: _resolve_git_existing_regular_file(
-                        session_id=session_id,
-                        raw_path=raw_path,
-                    ),
-                    file_write_lock=_file_write_lock,
-                    record_file=lambda path_value: MANAGER.files_add(session_id, path_value),
-                )
-                _json_response(self, response.status, response.payload)
+            if _handle_file_write_post_route(
+                self,
+                path=path,
+                manager=MANAGER,
+                deps=_file_write_route_deps(),
+                match_session_route=_match_session_route,
+            ):
                 return
 
             if _handle_control_post_route(
