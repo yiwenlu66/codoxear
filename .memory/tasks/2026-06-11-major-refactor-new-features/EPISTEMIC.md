@@ -1,19 +1,24 @@
 # Epistemic ledger
 
-## Current recovery model — post-route ownership tranche
+## Current recovery model — post-route and discovery ownership tranche
 Observations:
 - File route ownership is concentrated in `codoxear/file_routes.py` across session file GET/read/search/list/blob/video_preview/download, session file writes, absolute previews, and global `/api/files/read`/`/api/files/inspect` POST composition; see OPS 2026-06-26T15:25:00Z.
 - Session route ownership for `/api/sessions`, `/api/session_resume_candidates`, `/api/metrics`, `/api/sessions/{id}/tail`, `/api/sessions/{id}/unattended`, and POST `/api/sessions` lives in `codoxear/session_routes.py`; `SessionManager` still owns runtime listing, aliases, tails, unattended config, and spawn behavior; see OPS 2026-06-26T15:25:00Z.
 - Voice, auth, static, and hook route ownership now lives in `voice_routes.py`, `auth_routes.py`, `static_routes.py`, and `hook_routes.py`; corresponding runtime/security/static-config authorities remain injected from `VoicePushCoordinator`, `auth.py`/server auth helpers, server configuration, and `_read_body`; see OPS 2026-06-26T16:05:00Z and 2026-06-26T16:32:00Z.
-- Latest route-tranche Docker evidence is full Docker `1058 passed, 1 skipped, 107 subtests` after hook extraction on top of static, and clean-room reviews for static and hook returned `NO BLOCKERS`; see OPS 2026-06-26T16:32:00Z.
+- `Session` is now a standalone stdlib-only model in `codoxear/session_model.py`, with `server.Session` remaining a compatibility re-export; clean-room review found field/default/order identity and no circular import risk; see OPS 2026-06-26T17:15:21Z.
+- Sidecar/socket/log discovery evidence collection now lives in `codoxear/session_discovery.py` via typed `DiscoveryResult`/`DiscoveryRegistration` records; `SessionManager` still owns `_sessions` mutation, pending-attachment and commit-unknown overlays, cache reset, recent-cwd persistence, stale-state deletion, and launch-failure recording; see OPS 2026-06-26T17:15:21Z.
+- Latest discovery-tranche Docker evidence is final full Docker `1067 passed, 1 skipped, 107 subtests` after discovery extraction, plus focused Docker for discovery/session/route callers, and clean-room review `/tmp/codoxear-session-discovery-review.md` returned `NO BLOCKERS`; see OPS 2026-06-26T17:15:21Z.
 
 Interpretation:
 - Endpoint-specific HTTP-controller ownership has been extracted from `Handler`: file/session/message/queue/control/diagnostics/git/voice/auth/static/hook request validation, status mapping, response composition, and route-specific source sentinels now live with route modules, while runtime/state/security/static authorities remain injected.
-- The remaining server god-module problem is no longer endpoint branch ownership. `server.py` still mixes central HTTP request mechanics, route dependency assembly, `SessionManager` discovery/listing/spawn/runtime methods, backend/log helpers, and compatibility exports. The next high-value refactor must choose a real source-of-truth boundary in those clusters rather than moving another small branch.
+- The first non-route `SessionManager` source-of-truth boundary is now explicit: sidecar files, control-socket state probes, proc-open rollout discovery, and log-token evidence are collected by `session_discovery.py`; the manager applies that evidence to its runtime cache and persistent overlays.
+- The remaining server god-module problem is no longer endpoint branch ownership or discovery evidence collection. `server.py` still mixes central HTTP request mechanics, route dependency assembly, `SessionManager` listing/projection, web-session launch lifecycle, queue/unattended schedulers, input protocol, backend/log helpers, and compatibility exports.
+- Scout/architect evidence ranked launch lifecycle second after discovery, but the safer next launch step is likely to extract launch-attempt recording / launch context before moving the full `spawn_web_session` tmux/direct state machine.
 
 Commitments:
 - Do not weaken source sentinels to chase line count; update them only when ownership truly moves.
-- Use the next read-only scout/architect evidence to select the next semantic tranche, with a likely target among request mechanics/dependency assembly or a larger `SessionManager` responsibility.
+- Keep `SessionManager` as runtime registry/cache authority unless a later tranche explicitly moves that authority with tests.
+- Treat launch lifecycle as the next major semantic seam only after designing the failure-recording invariant and tmux/direct subprocess injection strategy; do not move `spawn_web_session` wholesale without that causal model.
 
 
 ## 2026-06-11 23:45

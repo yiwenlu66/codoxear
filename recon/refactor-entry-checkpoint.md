@@ -294,6 +294,22 @@ Recent isolated browser evidence:
 - Failed-launch fixture under isolated Docker app state verified redacted card/transcript/sidebar rendering for env, JSON, Authorization/Bearer, Auth/Basic, and tail secrets; send, queue, and attach were disabled; sidebar duplicate/rename were absent; New like this remained review-only.
 - Video preview fixture under isolated Docker app state verified that a generated non-browser-safe MKV transcodes through the server preview route to browser-loadable MP4 metadata after a range preflight.
 
+
+## Server ownership checkpoint after route and discovery extraction
+
+Validated ownership moves after the original refactor-entry checkpoint:
+
+- HTTP route/controller ownership moved out of `Handler` into route modules for file, session, message, queue, control, diagnostics, git, voice, auth, static, and hook routes. `Handler` now primarily owns URL-prefix dispatch, central error/body parsing wrappers, route-dependency assembly, and thin compatibility wrappers for static/voice seams.
+- Runtime readiness and token interpretation live in `codoxear/session_runtime.py`; persistent session maps live behind `SessionStore`; sidecar metadata schema helpers live in `sidecar_metadata.py`.
+- `Session` now lives in `codoxear/session_model.py` and is re-exported from `server.py`, which allows non-server modules to share the runtime session shape without importing the god module.
+- Sidecar/socket/log discovery evidence collection now lives in `codoxear/session_discovery.py`. It reads sidecar metadata, performs proc-open rollout discovery, handles hidden-session exclusion, probes broker socket state, chooses log vs broker token evidence, and returns typed registration/stale/recent-cwd records. `SessionManager` remains the registry/cache authority that applies those records, preserves pending-attachment and commit-unknown overlays, resets log caches, persists recent cwd state, clears deleted-session state, and records launch failures.
+
+Acceptance evidence for the latest discovery tranche:
+
+- `b718f24 Extract session model`: full Docker on port 18943 -> `1060 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-session-model-review.md` -> `NO BLOCKERS`.
+- `086120a Extract session discovery service`: local full -> `1068 passed, 107 subtests`; focused Docker on port 18946 passed; full Docker on port 18947 -> `1067 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-session-discovery-review.md` -> `NO BLOCKERS`.
+- `57a412e Cover discovery cleanup edge cases`: direct tests now isolate hidden-dead session unhide+unlink/no-clear-state and definitely-stale dead socket unlink-only behavior; focused Docker on port 18948 passed.
+
 ## Invariants broad refactoring must preserve
 
 Any broad frontend/server refactor must keep these product semantics explicit and mechanically preserved:
@@ -334,4 +350,4 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 ## Recommended next step
 
-The pure-helper extraction wave is closed; the active work is semantic ownership cleanup of `server.py`. Since the last checkpoint, route/controller ownership moved for runtime/status (`session_runtime.py`), persistent maps (`session_store.py`), queue/control/diagnostics/git/message controllers, file GET/write/global POST controllers, and session list/resume/metrics/tail/unattended/create composition. Continue with the next remaining `Handler`-local semantic seam rather than helper moves: extract voice/settings, notification subscription/feed/message, audio playlist/segment streaming, and audio listener POST handling into a `voice_routes.py` controller that owns HTTP validation/status/header mapping while `VoicePushCoordinator` remains the state/audio authority. Keep Docker focused + full acceptance and a fresh clean-room review before the functional commit.
+The pure-helper extraction wave and endpoint-controller extraction wave are closed. The active work is now semantic ownership cleanup of the remaining non-route `server.py` responsibilities. The next high-value seam is launch lifecycle, but it should be approached through a causal boundary rather than a wholesale move of `spawn_web_session`: first separate launch-attempt recording/context and dependency injection for tmux/direct subprocess orchestration, then move process creation and metadata-wait behavior once failure-recording invariants are explicit. Keep `SessionManager` as the session registry/cache authority unless a later tranche deliberately moves that ownership with focused tests, Docker acceptance, and a clean-room review.
