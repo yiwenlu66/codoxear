@@ -155,6 +155,7 @@ from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
 from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
+from .session_discovery_registry import SessionDiscoveryRegistryCoordinator
 from .session_files import SessionFilesCoordinator
 from .session_launcher import LaunchContextRequest
 from .session_launcher import LaunchProcessDeps
@@ -2486,109 +2487,10 @@ class SessionManager:
         )
 
     def _apply_discovery_result(self, result: DiscoveryResult) -> None:
-        recent_cwd_dirty = False
-        for action in result.stale_actions:
-            if action.failure_record is not None:
-                try:
-                    _record_launch_attempt(action.failure_record)
-                except Exception as e:
-                    sys.stderr.write(f"error: failed to record launch failure for {action.sock_path}: {type(e).__name__}: {e}\n")
-                    sys.stderr.flush()
-            if action.clear_session_state:
-                self._prune_stale_socket_without_metadata(action.session_id, action.sock_path)
-                continue
-            if action.unhide_session:
-                self._unhide_session(action.session_id)
-            _unlink_quiet(action.sock_path)
-            _unlink_quiet(action.meta_path)
-
-        for recent in result.recent_cwds:
-            if self._remember_recent_cwd(recent.cwd, ts=recent.ts):
-                recent_cwd_dirty = True
-
-        for registration in result.registrations:
-            self._upsert_discovery_registration(registration)
-
-        if recent_cwd_dirty:
-            self._save_recent_cwds()
+        return self._discovery_registry_for_manager().apply_result(result)
 
     def _upsert_discovery_registration(self, registration: DiscoveryRegistration) -> None:
-        s = Session(
-            session_id=registration.session_id,
-            thread_id=registration.thread_id,
-            broker_pid=registration.broker_pid,
-            codex_pid=registration.codex_pid,
-            agent_backend=registration.agent_backend,
-            owned=registration.owned,
-            transport=registration.transport,
-            start_ts=float(registration.start_ts),
-            cwd=str(registration.cwd),
-            log_path=registration.log_path,
-            sock_path=registration.sock_path,
-            busy=registration.busy,
-            queue_len=registration.queue_len,
-            token=registration.token,
-            meta_thinking=0,
-            meta_tools=0,
-            meta_system=0,
-            meta_log_off=registration.meta_log_off,
-            model_provider=registration.model_provider,
-            preferred_auth_method=registration.preferred_auth_method,
-            model=registration.model,
-            reasoning_effort=registration.reasoning_effort,
-            service_tier=registration.service_tier,
-            tmux_session=registration.tmux_session,
-            tmux_window=registration.tmux_window,
-            launch_id=registration.launch_id,
-            spawn_nonce=registration.spawn_nonce,
-            resume_session_id=registration.resume_session_id,
-            pending_attachment=registration.session_id in getattr(self, "_pending_attachment_ids", set()),
-            commit_unknown_send=dict(getattr(self, "_commit_unknown_sends", {}).get(registration.session_id) or {}) or None,
-            sync_send_supported=registration.sync_send_supported,
-            key_write_errors_supported=registration.key_write_errors_supported,
-            interrupted_idle=registration.interrupted_idle,
-        )
-        with self._lock:
-            prev = self._sessions.get(registration.session_id)
-            if not prev:
-                self._reset_log_caches(s, meta_log_off=registration.meta_log_off)
-                s.model_provider = registration.model_provider
-                s.preferred_auth_method = registration.preferred_auth_method
-                s.model = registration.model
-                s.reasoning_effort = registration.reasoning_effort
-                s.service_tier = registration.service_tier
-                self._sessions[registration.session_id] = s
-            else:
-                prev.sock_path = s.sock_path
-                prev.thread_id = s.thread_id
-                prev.broker_pid = s.broker_pid
-                prev.codex_pid = s.codex_pid
-                prev.agent_backend = s.agent_backend
-                prev.owned = s.owned
-                prev.transport = s.transport
-                prev.start_ts = s.start_ts
-                prev.cwd = s.cwd
-                prev.busy = s.busy
-                prev.queue_len = s.queue_len
-                prev.interrupted_idle = s.interrupted_idle
-                prev.token = s.token
-                if prev.log_path != s.log_path:
-                    prev.log_path = s.log_path
-                    self._reset_log_caches(prev, meta_log_off=registration.meta_log_off)
-                prev.model_provider = registration.model_provider
-                prev.preferred_auth_method = registration.preferred_auth_method
-                prev.model = registration.model
-                prev.reasoning_effort = registration.reasoning_effort
-                prev.service_tier = registration.service_tier
-                prev.tmux_session = registration.tmux_session
-                prev.tmux_window = registration.tmux_window
-                prev.launch_id = registration.launch_id
-                prev.spawn_nonce = registration.spawn_nonce
-                prev.resume_session_id = registration.resume_session_id
-                prev.pending_attachment = bool(prev.pending_attachment or registration.session_id in getattr(self, "_pending_attachment_ids", set()))
-                prev.commit_unknown_send = dict(getattr(self, "_commit_unknown_sends", {}).get(registration.session_id) or {}) or None
-                prev.sync_send_supported = registration.sync_send_supported
-                prev.key_write_errors_supported = registration.key_write_errors_supported
+        return self._discovery_registry_for_manager().upsert_registration(registration)
 
     def _discover_existing(self, *, force: bool = False) -> None:
         if not force:
@@ -3014,6 +2916,22 @@ class SessionManager:
             files_clear=self.files_clear,
             clean_optional_text=_clean_optional_text,
             kill_session_via_pids_fallback=self._kill_session_via_pids,
+        )
+
+    def _discovery_registry_for_manager(self) -> SessionDiscoveryRegistryCoordinator:
+        return SessionDiscoveryRegistryCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", set()),
+            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", {}),
+            reset_log_caches=lambda session, log_off: self._reset_log_caches(session, meta_log_off=log_off),
+            record_launch_attempt=_record_launch_attempt,
+            prune_stale_socket_without_metadata=self._prune_stale_socket_without_metadata,
+            unhide_session=self._unhide_session,
+            unlink_quiet=_unlink_quiet,
+            remember_recent_cwd=self._remember_recent_cwd,
+            save_recent_cwds=self._save_recent_cwds,
+            stderr=sys.stderr,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
