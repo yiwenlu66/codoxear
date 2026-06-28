@@ -3652,3 +3652,30 @@
   - Focused registry/factory/manager/resume/queue tests returned `129 passed, 22 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1171 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun.
+
+## 2026-06-28T23:13:00Z Voice push runtime module split
+- Functional commit `b51db3e Split voice push runtime modules` moved `codoxear/voice_push.py` from a 1461-line mixed runtime/state/delivery module to a 740-line coordinator/facade over explicit ownership modules:
+  - `voice_push_state.py`: voice settings/subscription/ledger cleaning helpers, text/hash helpers, default models/voices, and announcement dataclasses.
+  - `voice_openai_client.py`: OpenAI-compatible summary and TTS HTTP client, including final/narration prompt wording and response validation.
+  - `voice_hls.py`: `MergedHLSStream`, HLS constants, ffmpeg/ffprobe segment handling, keepalive silence, playlist rewrite/reset, and segment containment.
+  - `voice_webpush.py`: VAPID private-key/public-key handling, push payload construction, webpush delivery, and explicit delivery outcomes.
+  - `voice_persistence.py`: voice settings/subscriptions/delivery-ledger file load/save and private-file chmod repair.
+  - `voice_projection.py`: browser-facing settings/subscription/notification feed projections.
+  - `voice_task_queue.py`: deterministic announcement voice selection plus narration merge/replacement queue policy.
+  - `voice_ledger.py`: delivery-ledger mutation rules for replacement, errors, no-listener skips, field patches, and trimming.
+- Compatibility/patch seams preserved:
+  - `codoxear.voice_push` still re-exports `AnnouncementTask`, `GeneratedAnnouncement`, `ClassifiedAssistantMessage`, `OpenAICompatibleClient`, `MergedHLSStream`, `DEFAULT_VOICES`, and prior private helper aliases imported from `voice_push_state.py`.
+  - `tests/test_voice_push.py` still imports public classes/functions from `codoxear.voice_push`.
+  - The existing `patch("codoxear.voice_push.shutil.which")` / `patch("codoxear.voice_push.subprocess.run")` HLS test path still passed; `voice_push.py` keeps `shutil` as a module-level patch seam while HLS implementation lives in `voice_hls.py`.
+  - `rollout_log.py` now imports `ClassifiedAssistantMessage` from `voice_push_state.py` instead of heavyweight `voice_push.py`, so log normalization no longer depends on pywebpush/VAPID/HLS imports just to construct delivery message records.
+- Source sentinel updates:
+  - Voice summary prompt wording now targets `voice_openai_client.py`.
+  - HLS keepalive/`anullsrc` source checks now target `voice_hls.py`.
+  - voice pool/default checks now target `voice_push_state.py`.
+  - settings secret redaction checks now target `voice_projection.py`, private chmod handling targets `voice_push_state.py` plus `voice_persistence.py`/`voice_webpush.py`, and facade-boundary tests assert `voice_push.py` delegates to the extracted runtime modules while no longer importing `pywebpush.webpush` or `py_vapid.Vapid`.
+  - `tests/test_rollout_log_helpers_source.py` now pins the lightweight `voice_push_state` import.
+- Validation after `b51db3e`:
+  - Focused voice/log/idle/source group returned `88 passed`.
+  - Full local `python3 -m pytest -q` returned `1173 passed, 107 subtests passed`.
+  - `git diff --check` passed after removing one EOF whitespace issue in `voice_hls.py` before commit.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
