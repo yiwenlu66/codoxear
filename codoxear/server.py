@@ -249,16 +249,9 @@ def _load_env_file(path: Path) -> dict[str, str]:
     return _load_env_file_impl(path)
 
 
-def _normalize_url_prefix(raw: str | None) -> str:
-    return _normalize_url_prefix_impl(raw)
-
-
-def _match_session_route(path: str, *suffix: str) -> str | None:
-    return _match_session_route_impl(path, *suffix)
-
-
-def _strip_url_prefix(prefix: str, path: str) -> str | None:
-    return _strip_url_prefix_impl(prefix, path)
+_normalize_url_prefix = _normalize_url_prefix_impl
+_match_session_route = _match_session_route_impl
+_strip_url_prefix = _strip_url_prefix_impl
 
 
 _SERVER_CONFIG = _build_server_config()
@@ -456,16 +449,9 @@ def _latest_launch_attempt(launch_id: str) -> dict[str, Any] | None:
     return _latest_launch_attempt_impl(launch_id, path=LAUNCH_ATTEMPTS_PATH)
 
 
-def _submitted_user_messages(record: dict[str, Any] | None) -> list[dict[str, Any]]:
-    return _submitted_user_messages_impl(record)
-
-
-def _launch_failure_tail(record: dict[str, Any]) -> str:
-    return _launch_failure_tail_impl(record)
-
-
-def _launch_attempt_transcript_payload(record: dict[str, Any]) -> dict[str, Any]:
-    return _launch_attempt_transcript_payload_impl(record)
+_submitted_user_messages = _submitted_user_messages_impl
+_launch_failure_tail = _launch_failure_tail_impl
+_launch_attempt_transcript_payload = _launch_attempt_transcript_payload_impl
 
 
 def _launch_attempt_transcript_for_session_id(session_id: str) -> dict[str, Any] | None:
@@ -526,8 +512,7 @@ def _ensure_video_preview(path: Path) -> Path:
     return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
 
 
-def _is_client_disconnect(exc: BaseException) -> bool:
-    return _is_client_disconnect_impl(exc)
+_is_client_disconnect = _is_client_disconnect_impl
 
 
 def _handle_route_exception(handler: http.server.BaseHTTPRequestHandler, exc: BaseException) -> None:
@@ -542,8 +527,7 @@ def _json_response_with_etag(handler: http.server.BaseHTTPRequestHandler, obj: A
     return _json_response_with_etag_impl(handler, obj, sha256_hex=_sha256_hex, set_auth_cookie=_set_auth_cookie)
 
 
-def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
-    return _read_body_impl(handler, limit=limit)
+_read_body = _read_body_impl
 
 
 def _sha256_hex(data: bytes) -> str:
@@ -633,32 +617,13 @@ def _is_same_password(pw: str) -> bool:
     return hmac.compare_digest(_sha256_hex(pw.encode("utf-8")), _password_hash())
 
 
-def _resolve_under(base: Path, rel: str) -> Path:
-    return _resolve_under_impl(base, rel)
-
-
-def _expanduser_path(path: Path) -> Path:
-    return _expanduser_path_impl(path)
-
-
-def _resolve_session_cwd(raw_cwd: str) -> Path:
-    return _resolve_session_cwd_impl(raw_cwd)
-
-
-def _resolve_session_path(base: Path, raw_path: str) -> Path:
-    return _resolve_session_path_impl(base, raw_path)
-
-
-def _require_existing_file(path: Path) -> Path:
-    return _require_existing_file_impl(path)
-
-
-def _resolve_existing_session_file(base: Path, raw_path: str) -> Path:
-    return _resolve_existing_session_file_impl(base, raw_path)
-
-
-def _resolve_existing_absolute_file(raw_path: str) -> Path:
-    return _resolve_existing_absolute_file_impl(raw_path)
+_resolve_under = _resolve_under_impl
+_expanduser_path = _expanduser_path_impl
+_resolve_session_cwd = _resolve_session_cwd_impl
+_resolve_session_path = _resolve_session_path_impl
+_require_existing_file = _require_existing_file_impl
+_resolve_existing_session_file = _resolve_existing_session_file_impl
+_resolve_existing_absolute_file = _resolve_existing_absolute_file_impl
 
 
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
@@ -725,32 +690,13 @@ def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_byte
     )
 
 
-def _clean_alias(name: str) -> str:
-    return _clean_alias_impl(name)
-
-
-def _clean_recent_cwd(value: Any) -> str | None:
-    return _clean_recent_cwd_impl(value)
-
-
-def _clip01(v: float) -> float:
-    return _listing_clip01(v)
-
-
-def _clean_priority_offset(value: Any) -> float:
-    return _clean_priority_offset_impl(value)
-
-
-def _clean_snooze_until(value: Any) -> float | None:
-    return _clean_snooze_until_impl(value)
-
-
-def _clean_dependency_session_id(value: Any) -> str | None:
-    return _clean_dependency_session_id_impl(value)
-
-
-def _clean_optional_text(value: Any) -> str | None:
-    return _clean_optional_text_impl(value)
+_clean_alias = _clean_alias_impl
+_clean_recent_cwd = _clean_recent_cwd_impl
+_clip01 = _listing_clip01
+_clean_priority_offset = _clean_priority_offset_impl
+_clean_snooze_until = _clean_snooze_until_impl
+_clean_dependency_session_id = _clean_dependency_session_id_impl
+_clean_optional_text = _clean_optional_text_impl
 
 
 def _launch_config_paths() -> LaunchConfigPaths:
@@ -764,12 +710,8 @@ def _launch_config_paths() -> LaunchConfigPaths:
     )
 
 
-def _display_reasoning_effort(value: Any) -> str | None:
-    return _launch_display_reasoning_effort(value)
-
-
-def _display_pi_reasoning_effort(value: Any) -> str | None:
-    return _launch_display_pi_reasoning_effort(value)
+_display_reasoning_effort = _launch_display_reasoning_effort
+_display_pi_reasoning_effort = _launch_display_pi_reasoning_effort
 
 
 def _read_pi_reasoning_efforts_by_model() -> dict[str, list[str]]:
@@ -792,24 +734,11 @@ def _normalize_requested_pi_reasoning_effort(
     )
 
 
-def _normalize_requested_cc_reasoning_effort(value: Any) -> str | None:
-    return _launch_normalize_requested_cc_reasoning_effort(value)
-
-
-def _normalize_requested_model_provider(value: Any, *, allowed: set[str] | None = None) -> str | None:
-    return _launch_normalize_requested_model_provider(value, allowed=allowed)
-
-
-def _normalize_requested_service_tier(value: Any) -> str | None:
-    return _launch_normalize_requested_service_tier(value)
-
-
-def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
-    return _launch_normalize_requested_preferred_auth_method(value)
-
-
-def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
-    return _launch_provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method)
+_normalize_requested_cc_reasoning_effort = _launch_normalize_requested_cc_reasoning_effort
+_normalize_requested_model_provider = _launch_normalize_requested_model_provider
+_normalize_requested_service_tier = _launch_normalize_requested_service_tier
+_normalize_requested_preferred_auth_method = _launch_normalize_requested_preferred_auth_method
+_provider_choice_for_settings = _launch_provider_choice_for_settings
 
 
 def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
@@ -954,12 +883,8 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
     )
 
 
-def _fallback_codex_launch_defaults() -> dict[str, Any]:
-    return _launch_fallback_codex_launch_defaults()
-
-
-def _fallback_pi_launch_defaults() -> dict[str, Any]:
-    return _launch_fallback_pi_launch_defaults()
+_fallback_codex_launch_defaults = _launch_fallback_codex_launch_defaults
+_fallback_pi_launch_defaults = _launch_fallback_pi_launch_defaults
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
@@ -1046,16 +971,14 @@ def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Pat
     )
 
 
-def _extract_chat_events(
-    objs: list[dict[str, Any]],
-    *,
-    initial_cc_pending_tool_ids: set[str] | None = None,
-) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, bool], dict[str, Any]]:
-    return _rollout_log._extract_chat_events(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
-
-
-def _extract_delivery_messages(objs: list[dict[str, Any]], *, initial_cc_pending_tool_ids: set[str] | None = None) -> list[Any]:
-    return _rollout_log._extract_delivery_messages(objs, initial_cc_pending_tool_ids=initial_cc_pending_tool_ids)
+_extract_chat_events = _rollout_log._extract_chat_events
+_extract_delivery_messages = _rollout_log._extract_delivery_messages
+_event_ts = _rollout_log._event_ts
+_has_assistant_output_text = _rollout_log._has_assistant_output_text
+_analyze_log_chunk = _rollout_log._analyze_log_chunk
+_last_conversation_ts_from_tail = _rollout_log._last_conversation_ts_from_tail
+_compute_idle_from_log = _rollout_log._compute_idle_from_log
+_last_chat_role_ts_from_tail = _rollout_log._last_chat_role_ts_from_tail
 
 
 def _read_jsonl_records_from_offset(
@@ -1067,47 +990,8 @@ def _read_jsonl_records_from_offset(
     return _rollout_log._read_jsonl_records_from_offset(path, offset, max_bytes=max_bytes)
 
 
-def _event_ts(obj: dict[str, Any]) -> float | None:
-    return _rollout_log._event_ts(obj)
-
-
-def _has_assistant_output_text(obj: dict[str, Any]) -> bool:
-    return _rollout_log._has_assistant_output_text(obj)
-
-
-def _analyze_log_chunk(
-    objs: list[dict[str, Any]],
-) -> tuple[int, int, int, float | None, dict[str, Any] | None, list[dict[str, Any]]]:
-    return _rollout_log._analyze_log_chunk(objs)
-
-
-def _last_conversation_ts_from_tail(
-    log_path: Path,
-    *,
-    max_scan_bytes: int | None = None,
-) -> float | None:
-    return _rollout_log._last_conversation_ts_from_tail(log_path, max_scan_bytes=max_scan_bytes)
-
-
-def _compute_idle_from_log(path: Path, max_scan_bytes: int = 8 * 1024 * 1024) -> bool | None:
-    return _rollout_log._compute_idle_from_log(path, max_scan_bytes=max_scan_bytes)
-
-
-def _last_chat_role_ts_from_tail(
-    path: Path,
-    *,
-    max_scan_bytes: int,
-    final_assistant_only: bool = False,
-) -> tuple[str, float] | None:
-    return _rollout_log._last_chat_role_ts_from_tail(path, max_scan_bytes=max_scan_bytes, final_assistant_only=final_assistant_only)
-
-
-def _broker_busy_queue_from_state(state: dict[str, Any]) -> tuple[bool, int]:
-    return _runtime_broker_busy_queue(state)
-
-
-def _broker_interrupted_idle_from_state(state: dict[str, Any]) -> bool:
-    return _runtime_broker_interrupted_idle(state)
+_broker_busy_queue_from_state = _runtime_broker_busy_queue
+_broker_interrupted_idle_from_state = _runtime_broker_interrupted_idle
 
 
 def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
