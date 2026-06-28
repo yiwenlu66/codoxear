@@ -174,6 +174,7 @@ from .session_manager_bootstrap import create_voice_push_coordinator as _create_
 from .session_manager_bootstrap import load_manager_persistent_state as _load_manager_persistent_state_impl
 from .session_manager_bootstrap import seed_manager_in_memory_state as _seed_manager_in_memory_state_impl
 from .session_manager_bootstrap import start_manager_worker_threads as _start_manager_worker_threads_impl
+from .session_manager_discovery import discover_existing_for_manager as _discover_existing_for_manager_impl
 from .session_manager_factories import attachment_coordinator_for_manager as _attachment_coordinator_for_manager_impl
 from .session_manager_factories import cleanup_coordinator_for_manager as _cleanup_coordinator_for_manager_impl
 from .session_manager_factories import control_coordinator_for_manager as _control_coordinator_for_manager_impl
@@ -1865,23 +1866,15 @@ class SessionManager:
         return self._discovery_registry_for_manager().upsert_registration(registration)
 
     def _discover_existing(self, *, force: bool = False) -> None:
-        if not force:
-            now = time.time()
-            with self._lock:
-                last = float(self._last_discover_ts)
-            if (now - last) < DISCOVER_MIN_INTERVAL_SECONDS:
-                return
-        with self._lock:
-            hidden_sessions = set(getattr(self, "_hidden_sessions", set()))
-        result = _discover_sessions(
-            SOCK_DIR,
+        return _discover_existing_for_manager_impl(
+            self,
+            force=force,
+            discover_min_interval_seconds=DISCOVER_MIN_INTERVAL_SECONDS,
+            sock_dir=SOCK_DIR,
             proc_root=PROC_ROOT,
-            hidden_sessions=hidden_sessions,
-            deps=self._discovery_deps(),
+            discover_sessions=_discover_sessions,
+            now=time.time,
         )
-        self._apply_discovery_result(result)
-        with self._lock:
-            self._last_discover_ts = time.time()
 
     def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
         return self._prune_coordinator_for_manager().refresh_session_state(session_id, sock_path, timeout_s=timeout_s)
