@@ -406,8 +406,7 @@ def _wait_or_raise(proc: subprocess.Popen[bytes], *, label: str, timeout_s: floa
     return _wait_or_raise_impl(proc, label=label, timeout_s=timeout_s)
 
 
-def _drain_stream(f: Any) -> None:
-    return _drain_stream_impl(f)
+_drain_stream = _drain_stream_impl
 
 
 def _tmux_available() -> bool:
@@ -633,8 +632,7 @@ def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
 def _git_head_blob_oid(cwd: Path, rel: str) -> str | None:
     return _git_ops.git_head_blob_oid(cwd, rel, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
-def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
-    return _resolve_unique_bare_filename_impl(search_root, raw_path)
+_resolve_unique_bare_filename = _resolve_unique_bare_filename_impl
 
 
 def _list_session_relative_files(base: Path) -> list[str]:
@@ -645,12 +643,8 @@ def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, li
     return _git_ops.run_git(cwd, args, timeout_s=timeout_s, max_bytes=max_bytes, literal_pathspecs=literal_pathspecs)
 
 
-def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
-    return _resolve_dir_target_impl(raw, field_name=field_name)
-
-
-def _codex_trust_override_for_path(path: Path) -> str:
-    return _codex_trust_override_for_path_impl(path)
+_resolve_dir_target = _resolve_dir_target_impl
+_codex_trust_override_for_path = _codex_trust_override_for_path_impl
 
 
 def _require_git_repo(cwd: Path) -> None:
@@ -667,17 +661,13 @@ def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
     return _describe_session_cwd_impl(cwd, git_repo_root=_git_repo_root, current_git_branch=_current_git_branch)
 
 
-def _default_worktree_path(source_cwd: Path, branch: str) -> Path:
-    return _git_ops.default_worktree_path(source_cwd, branch)
+_default_worktree_path = _git_ops.default_worktree_path
 
 def _create_git_worktree(source_cwd: Path, worktree_branch: str) -> Path:
     return _git_ops.create_git_worktree(source_cwd, worktree_branch, git_repo_root_func=_git_repo_root, timeout_s=GIT_WORKTREE_TIMEOUT_SECONDS)
 
-def _split_git_nul_paths(text: str) -> list[str]:
-    return _git_ops.split_git_nul_paths(text)
-
-def _parse_git_numstat(text: str) -> dict[str, dict[str, int | None]]:
-    return _git_ops.parse_git_numstat(text)
+_split_git_nul_paths = _git_ops.split_git_nul_paths
+_parse_git_numstat = _git_ops.parse_git_numstat
 
 def _stage_uploaded_file(session_id: str, filename: str, raw: bytes, *, max_bytes: int = ATTACH_UPLOAD_MAX_BYTES) -> Path:
     return _stage_uploaded_file_impl(
