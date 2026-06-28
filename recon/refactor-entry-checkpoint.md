@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `7fe1330 Extract hook route controller`
+Latest functional code checkpoint: `e140a0d Extract confirmed send coordinator`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -108,6 +108,7 @@ Recent committed recovery checkpoints include:
   - auth `/api/me`, `/api/login`, and `/api/logout` HTTP response/cookie route composition now lives in `codoxear/auth_routes.py`, while cookie signing/verification/HMAC secret authority remains in `auth.py`/server helpers and JSON body parsing remains injected from `Handler._read_json_body`.
   - static/index/asset routing, static path containment, content-type selection, CSP/X-Frame/cache headers, static asset versioning, and HTML placeholder replacement now live in `codoxear/static_routes.py`, while server configuration remains injected and prior `codoxear.server` import contracts are re-exported;
   - optional `/api/hooks/notify` acknowledgement policy now lives in `codoxear/hook_routes.py`; it remains intentionally unauthenticated, drains the request body, ignores content, returns `{"ignored": true}`, and propagates body-read errors through the existing route exception mapper.
+  - current `SessionManager` runtime/state extractions include `session_log_runtime.py` for log delta/idle/meta-counter sweeps, `session_discovery_registry.py` for discovery result application/upsert, `session_prune.py` for dead-session pruning/failure recording, and `session_send.py` for confirmed-send orchestration and pre-log submitted-message ledger recording; `SessionManager` now preserves public wrappers and dependency wiring for those seams.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -143,6 +144,12 @@ Latest Docker-only evidence after voice/auth route ownership:
 - Voice route functional commit: `1950ffd Extract voice route controller`; focused Docker on port 18934 passed and full Docker on port 18935 returned `1046 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-voice-routes-review.md` returned `NO BLOCKERS`.
 - Auth route functional commit: `62dd4f2 Extract auth route controller`; focused Docker on port 18936 passed and full Docker on port 18937 returned `1051 passed, 1 skipped, 107 subtests`; clean-room review `/tmp/codoxear-auth-routes-review.md` returned `NO BLOCKERS`.
 - Scoped claim: `server.py` now delegates file, session, voice, auth, static, and hook HTTP controller ownership to route modules while preserving injected runtime/state/security/static authorities. This does not yet claim broader `SessionManager` decomposition, live backend lifecycle expansion, or new mobile/device evidence.
+
+Latest local evidence after SessionManager coordinator tranche:
+
+- Functional commits through `e140a0d Extract confirmed send coordinator` moved log meta-counter scanning, discovery result registry application, dead-session pruning/failure recording, and confirmed-send/prelog orchestration out of `SessionManager` into `session_log_runtime.py`, `session_discovery_registry.py`, `session_prune.py`, and `session_send.py`.
+- Focused validation by slice returned `73 passed, 4 subtests`, `187 passed, 38 subtests`, `163 passed, 34 subtests`, and `115 passed, 22 subtests`; full local `pytest -q` after each slice returned `1157 passed, 107 subtests`.
+- Current size observation: `server.py` is 3592 lines after `e140a0d`; it is increasingly dependency assembly and compatibility wrappers, with the latest moved state machines no longer inline.
 
 Latest Docker-only evidence after backend/server architecture tranche:
 
