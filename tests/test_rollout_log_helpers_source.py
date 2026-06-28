@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_LOG = ROOT / "codoxear" / "rollout_log.py"
 ROLLOUT_JSONL = ROOT / "codoxear" / "rollout_jsonl.py"
+ROLLOUT_EVENTS = ROOT / "codoxear" / "rollout_events.py"
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
@@ -24,8 +25,13 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
 
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
-        self.assertEqual(source.count("def _event_ts("), 1)
-        self.assertEqual(source.count("def _text_message_id("), 1)
+        event_source = ROLLOUT_EVENTS.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_events import _event_ts", source)
+        self.assertIn("from .rollout_events import _text_message_id", source)
+        self.assertNotIn("def _event_ts(", source)
+        self.assertNotIn("def _text_message_id(", source)
+        self.assertEqual(event_source.count("def _event_ts("), 1)
+        self.assertEqual(event_source.count("def _text_message_id("), 1)
         extract_start = source.index("def _extract_chat_events(")
         extract_end = source.index("def _extract_delivery_messages", extract_start)
         extract_block = source[extract_start:extract_end]
