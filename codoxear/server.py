@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import copy
 import errno
 from contextlib import contextmanager
 import hashlib
@@ -98,6 +97,10 @@ from .launch_ledger import launch_failure_tail as _launch_failure_tail_impl
 from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
 from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
 from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
+from .launch_defaults_runtime import launch_defaults_for_request as _launch_defaults_for_request_impl
+from .launch_defaults_runtime import launch_defaults_signature as _launch_defaults_signature_impl
+from .launch_defaults_runtime import path_signature as _path_signature_impl
+from .launch_defaults_runtime import read_new_session_defaults_cached as _read_new_session_defaults_cached_impl
 from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
@@ -471,13 +474,7 @@ _LAUNCH_DEFAULTS_CACHE_LOCK = threading.Lock()
 
 
 def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
-    try:
-        st = path.stat()
-    except FileNotFoundError:
-        return (str(path), False, None, None)
-    except OSError:
-        return (str(path), False, None, None)
-    return (str(path), True, int(st.st_mtime_ns), int(st.st_size))
+    return _path_signature_impl(path)
 
 
 @contextmanager
@@ -1322,34 +1319,32 @@ def _launch_defaults_warning(exc: BaseException) -> str:
 
 
 def _launch_defaults_signature(paths: LaunchConfigPaths) -> tuple[tuple[str, bool, int | None, int | None], ...]:
-    return tuple(_path_signature(path) for path in vars(paths).values() if isinstance(path, Path))
+    return _launch_defaults_signature_impl(paths)
 
 
 def _read_new_session_defaults() -> dict[str, Any]:
     global _LAUNCH_DEFAULTS_CACHE
-    paths = _launch_config_paths()
-    signature = _launch_defaults_signature(paths)
-    with _LAUNCH_DEFAULTS_CACHE_LOCK:
-        if _LAUNCH_DEFAULTS_CACHE is not None and _LAUNCH_DEFAULTS_CACHE[0] == signature:
-            return copy.deepcopy(_LAUNCH_DEFAULTS_CACHE[1])
-    defaults = _launch_read_new_session_defaults(paths, default_agent_backend=DEFAULT_AGENT_BACKEND)
-    with _LAUNCH_DEFAULTS_CACHE_LOCK:
-        _LAUNCH_DEFAULTS_CACHE = (signature, copy.deepcopy(defaults))
-    return defaults
+
+    def _set_cache(value: tuple[tuple[tuple[str, bool, int | None, int | None], ...], dict[str, Any]] | None) -> None:
+        global _LAUNCH_DEFAULTS_CACHE
+        _LAUNCH_DEFAULTS_CACHE = value
+
+    return _read_new_session_defaults_cached_impl(
+        paths_provider=_launch_config_paths,
+        defaults_reader=_launch_read_new_session_defaults,
+        default_agent_backend=DEFAULT_AGENT_BACKEND,
+        cache_lock=_LAUNCH_DEFAULTS_CACHE_LOCK,
+        get_cache=lambda: _LAUNCH_DEFAULTS_CACHE,
+        set_cache=_set_cache,
+    )
 
 
 def _codex_launch_defaults_for_request() -> dict[str, Any]:
-    try:
-        return _read_codex_launch_defaults()
-    except Exception:
-        return _fallback_codex_launch_defaults()
+    return _launch_defaults_for_request_impl(read_defaults=_read_codex_launch_defaults, fallback_defaults=_fallback_codex_launch_defaults)
 
 
 def _pi_launch_defaults_for_request() -> dict[str, Any]:
-    try:
-        return _read_pi_launch_defaults()
-    except Exception:
-        return _fallback_pi_launch_defaults()
+    return _launch_defaults_for_request_impl(read_defaults=_read_pi_launch_defaults, fallback_defaults=_fallback_pi_launch_defaults)
 
 
 def _parse_new_session_launch_request(obj: dict[str, Any]) -> NewSessionLaunchRequest:
