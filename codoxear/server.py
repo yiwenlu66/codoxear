@@ -34,6 +34,15 @@ from .auth import require_auth as _require_auth_impl
 from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
+from .client_file_paths import describe_session_cwd as _describe_session_cwd_impl
+from .client_file_paths import list_session_relative_files as _list_session_relative_files_impl
+from .client_file_paths import path_resolves_inside as _path_resolves_inside_impl
+from .client_file_paths import resolve_client_file_path as _resolve_client_file_path_impl
+from .client_file_paths import resolve_git_client_file_view as _resolve_git_client_file_view_impl
+from .client_file_paths import resolve_git_existing_regular_file as _resolve_git_existing_regular_file_impl
+from .client_file_paths import resolve_tracked_file_by_basename as _resolve_tracked_file_by_basename_impl
+from .client_file_paths import resolve_unique_bare_filename as _resolve_unique_bare_filename_impl
+from .client_file_paths import symlink_payload_view as _symlink_payload_view_impl
 from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
@@ -835,68 +844,21 @@ def _git_head_blob_oid(cwd: Path, rel: str) -> str | None:
     return _git_ops.git_head_blob_oid(cwd, rel, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | None:
-    name = str(raw_path).strip()
-    if not name or "/" in name or "\\" in name or "\x00" in name:
-        return None
-    if "." not in Path(name).name:
-        return None
-    root = search_root.resolve()
-    match: Path | None = None
-    for current_root, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in {".git", ".hg", ".svn", "__pycache__", "node_modules", "build", "dist"}]
-        if name not in filenames:
-            continue
-        candidate = (Path(current_root) / name).resolve()
-        if match is None:
-            match = candidate
-            continue
-        if candidate != match:
-            return None
-    return match
+    return _resolve_unique_bare_filename_impl(search_root, raw_path)
 
 
 def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
-    name = str(raw_path).strip()
-    if not name or "/" in name or "\\" in name or "\x00" in name:
-        return None
-    try:
-        tracked = MANAGER.files_get(session_id)
-    except KeyError:
-        return None
-    match: Path | None = None
-    for raw in tracked:
-        candidate = _expanduser_path(Path(raw)).resolve()
-        if candidate.name != name:
-            continue
-        if match is None:
-            match = candidate
-            continue
-        if candidate != match:
-            return None
-    return match
+    return _resolve_tracked_file_by_basename_impl(
+        session_id,
+        raw_path,
+        files_get=lambda tracked_session_id: MANAGER.files_get(tracked_session_id),
+        expanduser_path=_expanduser_path,
+    )
 
 
 def _list_session_relative_files(base: Path) -> list[str]:
-    root = _expanduser_path(base)
-    if not root.is_absolute():
-        root = root.resolve()
-    if not root.exists():
-        raise FileNotFoundError("session cwd not found")
-    if not root.is_dir():
-        raise ValueError("session cwd is not a directory")
-    out: list[str] = []
+    return _list_session_relative_files_impl(base, expanduser_path=_expanduser_path)
 
-    def _onerror(err: OSError) -> None:
-        raise err
-
-    for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=_onerror, followlinks=False):
-        dirnames[:] = [name for name in sorted(dirnames) if name not in FILE_LIST_IGNORED_DIRS]
-        current_path = Path(current_root)
-        for name in sorted(filenames):
-            rel = (current_path / name).relative_to(root)
-            out.append(rel.as_posix())
-    out.sort()
-    return out
 
 
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
@@ -954,19 +916,7 @@ def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_
 
 
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
-    exists = cwd.exists()
-    if exists and not cwd.is_dir():
-        raise ValueError(f"cwd is not a directory: {cwd}")
-    repo_root = _git_repo_root(cwd) if exists else None
-    git_branch = (_current_git_branch(cwd) or "") if exists else ""
-    return {
-        "cwd": str(cwd),
-        "exists": exists,
-        "will_create": not exists,
-        "git_repo": repo_root is not None,
-        "git_root": str(repo_root) if repo_root is not None else "",
-        "git_branch": git_branch,
-    }
+    return _describe_session_cwd_impl(cwd, git_repo_root=_git_repo_root, current_git_branch=_current_git_branch)
 
 
 def _worktree_path_slug(branch: str) -> str:
@@ -1176,92 +1126,50 @@ def _current_git_branch(cwd: Path) -> str | None:
     return _git_ops.current_git_branch(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
 def _path_resolves_inside(path_obj: Path, root: Path) -> bool:
-    try:
-        path_obj.resolve().relative_to(root)
-        return True
-    except (OSError, ValueError):
-        return False
+    return _path_resolves_inside_impl(path_obj, root)
 
 
 def _symlink_payload_view(path_obj: Path) -> ClientFileView:
-    raw = os.readlink(path_obj).encode("utf-8", errors="surrogateescape")
-    text = raw.decode("utf-8", errors="replace")
-    return ClientFileView(
-        kind="text",
-        size=len(raw),
-        text=text,
-        editable=False,
-        version=hashlib.sha256(raw).hexdigest(),
-    )
+    return _symlink_payload_view_impl(path_obj)
 
 
 def _resolve_git_client_file_view(*, session_id: str, raw_path: str) -> tuple[Path, str, ClientFileView]:
-    if not session_id:
-        raise ValueError("session_id required for git path")
-    MANAGER.refresh_session_meta(session_id)
-    s = MANAGER.get_session(session_id)
-    if s is None:
-        raise FileNotFoundError("unknown session")
-    cwd = _resolve_session_cwd(s.cwd)
-    path_obj, repo_root, rel = _resolve_git_path(cwd, raw_path)
-    if _path_resolves_inside(path_obj.parent, repo_root) and path_obj.is_symlink():
-        return path_obj, rel, _symlink_payload_view(path_obj)
-    try:
-        real = path_obj.resolve()
-        real.relative_to(repo_root)
-    except (OSError, ValueError) as e:
-        raise FileNotFoundError("file not found") from e
-    return real, rel, _read_client_file_view(real)
+    return _resolve_git_client_file_view_impl(
+        session_id=session_id,
+        raw_path=raw_path,
+        refresh_session_meta=MANAGER.refresh_session_meta,
+        get_session=MANAGER.get_session,
+        resolve_session_cwd=_resolve_session_cwd,
+        resolve_git_path=_resolve_git_path,
+        read_client_file_view=_read_client_file_view,
+    )
 
 
 def _resolve_git_existing_regular_file(*, session_id: str, raw_path: str) -> tuple[Path, str]:
-    if not session_id:
-        raise ValueError("session_id required for git path")
-    MANAGER.refresh_session_meta(session_id)
-    s = MANAGER.get_session(session_id)
-    if s is None:
-        raise FileNotFoundError("unknown session")
-    cwd = _resolve_session_cwd(s.cwd)
-    path_obj, repo_root, rel = _resolve_git_path(cwd, raw_path)
-    try:
-        real = path_obj.resolve()
-        real.relative_to(repo_root)
-    except (OSError, ValueError) as e:
-        raise FileNotFoundError("file not found") from e
-    return _require_existing_file(real), rel
+    return _resolve_git_existing_regular_file_impl(
+        session_id=session_id,
+        raw_path=raw_path,
+        refresh_session_meta=MANAGER.refresh_session_meta,
+        get_session=MANAGER.get_session,
+        resolve_session_cwd=_resolve_session_cwd,
+        resolve_git_path=_resolve_git_path,
+        require_existing_file=_require_existing_file,
+    )
 
 
 def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
-    s: Session | None = None
-    if session_id:
-        MANAGER.refresh_session_meta(session_id)
-        s = MANAGER.get_session(session_id)
-        if s is None:
-            raise FileNotFoundError("unknown session")
-    path_obj = _expanduser_path(Path(raw_path))
-    if not path_obj.is_absolute():
-        if s is not None:
-            base = _resolve_session_cwd(s.cwd)
-            direct = (base / path_obj).resolve()
-            if direct.exists():
-                path_obj = direct
-            else:
-                tracked = _resolve_tracked_file_by_basename(session_id, raw_path)
-                if tracked is not None:
-                    path_obj = tracked
-                    return path_obj
-                try:
-                    repo_root = Path(
-                        _run_git(base, ["rev-parse", "--show-toplevel"], timeout_s=GIT_DIFF_TIMEOUT_SECONDS, max_bytes=64 * 1024).strip()
-                    ).resolve()
-                except RuntimeError:
-                    repo_root = base.resolve()
-                path_obj = _resolve_unique_bare_filename(repo_root, raw_path) or direct
-        else:
-            path_obj = (Path.cwd() / path_obj).resolve()
-    else:
-        path_obj = path_obj.resolve()
-    return path_obj
+    return _resolve_client_file_path_impl(
+        session_id=session_id,
+        raw_path=raw_path,
+        refresh_session_meta=MANAGER.refresh_session_meta,
+        get_session=MANAGER.get_session,
+        files_get=lambda tracked_session_id: MANAGER.files_get(tracked_session_id),
+        expanduser_path=_expanduser_path,
+        resolve_session_cwd=_resolve_session_cwd,
+        run_git=_run_git,
+        git_timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
+    )
+
 
 
 def _sessions_dir_for_backend(agent_backend: str) -> Path:
