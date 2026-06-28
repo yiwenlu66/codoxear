@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `816082a Extract web session launch coordinator`
+Latest functional code checkpoint: `50f555b Extract attachment injection coordinator`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -108,7 +108,7 @@ Recent committed recovery checkpoints include:
   - auth `/api/me`, `/api/login`, and `/api/logout` HTTP response/cookie route composition now lives in `codoxear/auth_routes.py`, while cookie signing/verification/HMAC secret authority remains in `auth.py`/server helpers and JSON body parsing remains injected from `Handler._read_json_body`.
   - static/index/asset routing, static path containment, content-type selection, CSP/X-Frame/cache headers, static asset versioning, and HTML placeholder replacement now live in `codoxear/static_routes.py`, while server configuration remains injected and prior `codoxear.server` import contracts are re-exported;
   - optional `/api/hooks/notify` acknowledgement policy now lives in `codoxear/hook_routes.py`; it remains intentionally unauthenticated, drains the request body, ignores content, returns `{"ignored": true}`, and propagates body-read errors through the existing route exception mapper.
-  - current `SessionManager` runtime/state extractions include `session_log_runtime.py` for log delta/idle/meta-counter sweeps, `session_discovery_registry.py` for discovery result application/upsert, `session_prune.py` for dead-session pruning/failure recording, `session_send.py` for confirmed-send orchestration and pre-log submitted-message ledger recording, and `session_web_launch.py` for web-owned launch glue; `SessionManager` now preserves public wrappers and dependency wiring for those seams.
+  - current `SessionManager` runtime/state extractions include `session_log_runtime.py` for log delta/idle/meta-counter sweeps, `session_discovery_registry.py` for discovery result application/upsert, `session_prune.py` for dead-session pruning/failure recording, `session_send.py` for confirmed-send orchestration and pre-log submitted-message ledger recording, `session_web_launch.py` for web-owned launch glue, `session_queue.py` for enqueue orchestration, and `session_attachment.py` for attachment injection response handling; `SessionManager` now preserves public wrappers and dependency wiring for those seams.
 - Browser/desktop UX:
   - desktop notifications focus the target session;
   - Pi custom provider/model browser behavior now has executable JS/VM coverage;
@@ -147,10 +147,11 @@ Latest Docker-only evidence after voice/auth route ownership:
 
 Latest local evidence after SessionManager coordinator tranche:
 
-- Functional commits through `816082a Extract web session launch coordinator` moved log meta-counter scanning, discovery result registry application, dead-session pruning/failure recording, confirmed-send/prelog orchestration, and web-owned launch glue out of `SessionManager` into `session_log_runtime.py`, `session_discovery_registry.py`, `session_prune.py`, `session_send.py`, and `session_web_launch.py`.
+- Functional commits through `50f555b Extract attachment injection coordinator` moved log meta-counter scanning, discovery result registry application, dead-session pruning/failure recording, confirmed-send/prelog orchestration, web-owned launch glue, enqueue orchestration, and attachment injection response handling out of `SessionManager` into `session_log_runtime.py`, `session_discovery_registry.py`, `session_prune.py`, `session_send.py`, `session_web_launch.py`, `session_queue.py`, and `session_attachment.py`.
 - Focused validation by slice returned `73 passed, 4 subtests`, `187 passed, 38 subtests`, `163 passed, 34 subtests`, and `115 passed, 22 subtests`; full local `pytest -q` after each slice returned `1157 passed, 107 subtests`.
-- Current size observation: `server.py` is 3561 lines after `816082a`; it is increasingly dependency assembly and compatibility wrappers, with the latest moved state machines no longer inline.
+- Current size observation: `server.py` is 3530 lines after `50f555b`; it is increasingly dependency assembly and compatibility wrappers, with the latest moved state machines no longer inline.
 - Web-owned launch glue moved in `816082a`; focused launch/session tests returned `84 passed, 12 subtests`, and full local `pytest -q` returned `1157 passed, 107 subtests`.
+- Enqueue orchestration and attachment injection response handling moved in `c1ee391` and `50f555b`; focused tests returned `105 passed, 22 subtests` and `99 passed, 22 subtests`, and full local `pytest -q` returned `1157 passed, 107 subtests` after each slice.
 
 Latest Docker-only evidence after backend/server architecture tranche:
 
