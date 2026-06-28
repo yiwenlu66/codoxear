@@ -184,6 +184,7 @@ from .session_listing import sidebar_priority_elapsed_seconds as _listing_sideba
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_model import Session
 from .session_pending_state import SessionPendingStateCoordinator
+from .session_prune import SessionPruneCoordinator
 from .session_runtime import ListingRuntimeProbes
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
@@ -2512,121 +2513,10 @@ class SessionManager:
             self._last_discover_ts = time.time()
 
     def _refresh_session_state(self, session_id: str, sock_path: Path, timeout_s: float = 0.4) -> tuple[bool, BaseException | None]:
-        try:
-            resp = self._sock_call(sock_path, {"cmd": "state"}, timeout_s=timeout_s)
-        except Exception as e:
-            return False, e
-        try:
-            busy_val, queue_len = self._broker_busy_queue_from_state(resp)
-            interrupted_idle = _broker_interrupted_idle_from_state(resp)
-        except ValueError as e:
-            return False, e
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if s2:
-                s2.busy = busy_val
-                s2.queue_len = queue_len
-                s2.interrupted_idle = interrupted_idle
-                if "token" in resp:
-                    tok = resp.get("token")
-                    if isinstance(tok, dict) or tok is None:
-                        log_available = s2.log_path is not None and s2.log_path.exists()
-                        if not log_available:
-                            s2.token = tok
-        return True, None
+        return self._prune_coordinator_for_manager().refresh_session_state(session_id, sock_path, timeout_s=timeout_s)
 
     def _prune_dead_sessions(self) -> None:
-        with self._lock:
-            items = list(self._sessions.items())
-        dead: list[tuple[str, Path, Session]] = []
-        for sid, s in items:
-            if not s.sock_path.exists():
-                dead.append((sid, s.sock_path, s))
-                continue
-            ok, err = self._refresh_session_state(sid, s.sock_path, timeout_s=0.4)
-            if ok:
-                continue
-            if err is not None and _sock_error_definitely_stale(err):
-                dead.append((sid, s.sock_path, s))
-                continue
-            if _pid_alive(s.broker_pid) or _pid_alive(s.codex_pid):
-                continue
-            dead.append((sid, s.sock_path, s))
-        if not dead:
-            return
-        with self._lock:
-            for sid, _sock, _s in dead:
-                self._sessions.pop(sid, None)
-        for sid, sock, s in dead:
-            existing_launch_failed = False
-            latest_launch_record: dict[str, Any] | None = None
-            if s.launch_id:
-                latest_launch_record = _latest_launch_attempt(s.launch_id)
-                existing_launch_failed = bool(latest_launch_record and latest_launch_record.get("state") == "failed")
-            if s.owned and s.log_path is None and not existing_launch_failed:
-                try:
-                    tmux_snapshot: dict[str, Any] = {}
-                    if s.transport == "tmux":
-                        tmux_bin = shutil.which("tmux")
-                        if tmux_bin is not None:
-                            pane_id = (
-                                _clean_optional_text(latest_launch_record.get("tmux_pane_id"))
-                                if isinstance(latest_launch_record, dict)
-                                else None
-                            )
-                            tmux_snapshot = _tmux_pane_snapshot(tmux_bin, pane_id=pane_id, window=s.tmux_window)
-                    submitted_messages = _submitted_user_messages(latest_launch_record)
-                    prior_tail = _launch_failure_tail(latest_launch_record) if isinstance(latest_launch_record, dict) else ""
-                    snapshot_tail = _launch_failure_tail(tmux_snapshot)
-                    agent_status = None
-                    broker_status = None
-                    if isinstance(latest_launch_record, dict):
-                        prev_agent_status = latest_launch_record.get("agent_exit_status", latest_launch_record.get("exit_code"))
-                        prev_broker_status = latest_launch_record.get("broker_exit_status")
-                        if isinstance(prev_agent_status, int):
-                            agent_status = prev_agent_status
-                        if isinstance(prev_broker_status, int):
-                            broker_status = prev_broker_status
-                    failure_record: dict[str, Any] = {
-                        "launch_id": s.launch_id,
-                        "state": "failed",
-                        "stage": "session_pruned_before_log_bind",
-                        "error": "web-owned session process disappeared before a session log was bound",
-                        "agent_backend": s.agent_backend,
-                        "cwd": s.cwd,
-                        "created_ts": s.start_ts,
-                        "broker_pid": s.broker_pid,
-                        "agent_pid": s.codex_pid,
-                        "transport": s.transport,
-                        "tmux_session": s.tmux_session,
-                        "tmux_window": s.tmux_window,
-                        "spawn_nonce": s.spawn_nonce,
-                        "model_provider": s.model_provider,
-                        "preferred_auth_method": s.preferred_auth_method,
-                        "model": s.model,
-                        "reasoning_effort": s.reasoning_effort,
-                        "service_tier": s.service_tier,
-                    }
-                    if submitted_messages:
-                        failure_record["submitted_user_messages"] = submitted_messages
-                    if prior_tail:
-                        failure_record["pty_tail"] = prior_tail
-                    if snapshot_tail:
-                        failure_record["tmux_pane_tail"] = snapshot_tail
-                    if agent_status is not None:
-                        failure_record["agent_exit_status"] = agent_status
-                    if broker_status is not None:
-                        failure_record["broker_exit_status"] = broker_status
-                    failure_record.update(tmux_snapshot)
-                    _record_launch_attempt(
-                        failure_record
-                    )
-                except Exception as e:
-                    sys.stderr.write(f"error: failed to record pruned launch failure for {sid}: {type(e).__name__}: {e}\n")
-                    sys.stderr.flush()
-            self._clear_deleted_session_state(sid)
-            _unlink_quiet(sock)
-            _unlink_quiet(sock.with_suffix(".json"))
+        return self._prune_coordinator_for_manager().prune_dead_sessions()
 
     def _update_meta_counters(self) -> None:
         return self._log_runtime_for_manager().update_meta_counters()
@@ -2931,6 +2821,27 @@ class SessionManager:
             unlink_quiet=_unlink_quiet,
             remember_recent_cwd=self._remember_recent_cwd,
             save_recent_cwds=self._save_recent_cwds,
+            stderr=sys.stderr,
+        )
+
+    def _prune_coordinator_for_manager(self) -> SessionPruneCoordinator:
+        return SessionPruneCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
+            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
+            broker_interrupted_idle_from_state=_broker_interrupted_idle_from_state,
+            sock_error_definitely_stale=_sock_error_definitely_stale,
+            pid_alive=_pid_alive,
+            latest_launch_attempt=_latest_launch_attempt,
+            submitted_user_messages=_submitted_user_messages,
+            launch_failure_tail=lambda record: _launch_failure_tail(record or {}),
+            which_tmux=shutil.which,
+            tmux_pane_snapshot=_tmux_pane_snapshot,
+            clean_optional_text=_clean_optional_text,
+            record_launch_attempt=_record_launch_attempt,
+            clear_deleted_session_state=self._clear_deleted_session_state,
+            unlink_quiet=_unlink_quiet,
             stderr=sys.stderr,
         )
 
