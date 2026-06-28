@@ -8,6 +8,42 @@ from .util import atomic_write_json
 from .util import load_json_file
 
 
+UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
+
+- Maintain four internal sections:
+  1. Deliverables
+     - The concrete outputs the agent owes the user by the end of the task.
+     - Stable unless the user changes the request.
+  2. Completed
+     - Verified facts already established while producing the Deliverables.
+  3. Next actions
+     - Ordered concrete steps from the current state toward the Deliverables.
+  4. Parked user decisions
+     - Decisions or inputs that only the user can provide.
+
+- Working rules:
+  - Keep these sections internal. Surface them only when yielding is necessary.
+  - Default to continuing in the same turn.
+  - Before each action, reason until the approach, failure modes, and verification path are clear.
+  - Exploration should happen through reading, tracing, inspection, and reasoning.
+  - Avoid trial and error.
+  - Resolve crashes, bugs, and design mistakes yourself unless a true user decision is required.
+  - Use the strongest available verification.
+  - Do not repeat the same command, edit, or analysis without a concrete new reason.
+
+- Yield only when:
+  - all Deliverables are finished and supported by Completed;
+  - the only remaining gap is a Parked user decision;
+  - or the next step is irreversible or high-risk and needs explicit user confirmation.
+
+- End-of-turn gate (only when yielding is necessary):
+  - Run a clean-room adversarial review via a dedicated subagent.
+  - Give it: user intent, Deliverables, Completed, remaining Next actions, Parked user decisions, constraints, and changed artifacts.
+  - Apply findings before yielding, or surface the exact remaining user decision or risk.
+"""
+
+
+
 @dataclass(frozen=True)
 class UnattendedConfigState:
     enabled: bool

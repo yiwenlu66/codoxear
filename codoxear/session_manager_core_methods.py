@@ -7,10 +7,24 @@ from .session_registry import SessionRegistry
 from .session_registry import session_registry_for_manager
 
 
+def session_store_paths_for_server(server: Any) -> Any:
+    return server._session_store_paths_impl(
+        aliases=server.ALIAS_PATH,
+        sidebar_meta=server.SIDEBAR_META_PATH,
+        hidden_sessions=server.HIDDEN_SESSIONS_PATH,
+        files=server.FILE_HISTORY_PATH,
+        queues=server.QUEUE_PATH,
+        pending_attachments=server.PENDING_ATTACHMENTS_PATH,
+        commit_unknown_sends=server.COMMIT_UNKNOWN_SENDS_PATH,
+        recent_cwds=server.RECENT_CWD_PATH,
+        unattended=server.UNATTENDED_PATH,
+    )
+
+
 def init_for_manager(manager: Any, server: Any) -> None:
     registry = SessionRegistry()
     manager._registry = registry
-    manager._store = manager._new_session_store_for_manager(server._session_store_paths_for_manager())
+    manager._store = manager._new_session_store_for_manager(session_store_paths_for_server(server))
     server._seed_manager_in_memory_state_impl(manager)
     server._load_manager_persistent_state_impl(manager)
     manager._voice_push = server._create_voice_push_coordinator_impl(
@@ -88,7 +102,7 @@ def new_session_store_for_manager(manager: Any, server: Any, paths: Any) -> Any:
 def session_store_for_manager(manager: Any, server: Any) -> Any:
     store = server._session_store_for_manager_impl(
         existing=getattr(manager, "_store", None),
-        paths=server._session_store_paths_for_manager(),
+        paths=session_store_paths_for_server(server),
         create_store=manager._new_session_store_for_manager,
     )
     manager._store = store

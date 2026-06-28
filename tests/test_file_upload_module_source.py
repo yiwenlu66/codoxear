@@ -41,6 +41,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
 
     def test_inject_file_route_checks_session_idle_before_staging(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
+        config_source = (SERVER_PY.parent / "server_config.py").read_text(encoding="utf-8")
         listing_source = SESSION_LISTING_PY.read_text(encoding="utf-8")
         input_source = SESSION_INPUT_PY.read_text(encoding="utf-8")
         control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
@@ -93,7 +94,8 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("except deps.session_injection_error as e:", block)
         self.assertIn("self.set_pending_attachment(session_id, True)", attachment_source)
         self.assertIn("self.set_pending_attachment(session_id, False)", send_source)
-        self.assertIn("PENDING_ATTACHMENTS_PATH", source)
+        self.assertIn('"PENDING_ATTACHMENTS_PATH"', config_source)
+        self.assertIn("_export_server_config(globals(), _SERVER_CONFIG)", source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:", input_source)
         self.assertIn("if session.pending_attachment:\n                    raise self.not_ready_error(\"send the pending attachment before queueing another prompt\")", queue_source)
         self.assertIn('pending_attachment=bool(s.pending_attachment)', listing_source)

@@ -118,6 +118,10 @@ from .session_cleaners import clean_priority_offset as _clean_priority_offset_im
 from .session_cleaners import clean_recent_cwd as _clean_recent_cwd_impl
 from .session_cleaners import clean_snooze_until as _clean_snooze_until_impl
 from .session_discovery import discover_sessions as _discover_sessions
+from .session_errors import SessionCommitUnknownError
+from .session_errors import SessionInjectionError
+from .session_errors import SessionLaunchError
+from .session_errors import SessionNotReadyError
 from .session_launcher import drain_stream as _drain_stream_impl
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
@@ -132,6 +136,7 @@ from .session_log_metadata import turn_context_run_settings as _turn_context_run
 from .session_resume import coerce_main_thread_log as _coerce_main_thread_log_impl
 from .session_resume import first_user_message_preview_from_log as _first_user_message_preview_from_log_impl
 from .session_resume import list_resume_candidates_for_cwd as _list_resume_candidates_for_cwd_impl
+from .session_refresh import broker_tail_has_session_detach_marker as _broker_tail_has_session_detach_marker
 from .session_resume import resume_candidate_from_log as _resume_candidate_from_log_impl
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
@@ -237,11 +242,11 @@ from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
 from .util import redact_launch_failure_text as _redact_launch_failure_text
 from .util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
-from .util import redacted_launch_attempt_response_record as _redacted_launch_attempt_record
 from .util import read_jsonl_from_offset as _read_jsonl_from_offset_impl
 from .util import read_session_meta_payload as _read_session_meta_payload_impl
 from .util import session_id_from_rollout_path as _session_id_from_rollout_path
 from .util import subagent_parent_thread_id as _subagent_parent_thread_id
+from .unattended import UNATTENDED_PROMPT_PREFIX as _UNATTENDED_PROMPT_PREFIX
 from .unattended import UnattendedStore
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
@@ -261,39 +266,7 @@ def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> di
     return _static_cache_control_headers_impl(enabled=enabled)
 
 
-UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hours, minimal turns, minimal repetition, maximal progress)
-
-- Maintain four internal sections:
-  1. Deliverables
-     - The concrete outputs the agent owes the user by the end of the task.
-     - Stable unless the user changes the request.
-  2. Completed
-     - Verified facts already established while producing the Deliverables.
-  3. Next actions
-     - Ordered concrete steps from the current state toward the Deliverables.
-  4. Parked user decisions
-     - Decisions or inputs that only the user can provide.
-
-- Working rules:
-  - Keep these sections internal. Surface them only when yielding is necessary.
-  - Default to continuing in the same turn.
-  - Before each action, reason until the approach, failure modes, and verification path are clear.
-  - Exploration should happen through reading, tracing, inspection, and reasoning.
-  - Avoid trial and error.
-  - Resolve crashes, bugs, and design mistakes yourself unless a true user decision is required.
-  - Use the strongest available verification.
-  - Do not repeat the same command, edit, or analysis without a concrete new reason.
-
-- Yield only when:
-  - all Deliverables are finished and supported by Completed;
-  - the only remaining gap is a Parked user decision;
-  - or the next step is irreversible or high-risk and needs explicit user confirmation.
-
-- End-of-turn gate (only when yielding is necessary):
-  - Run a clean-room adversarial review via a dedicated subagent.
-  - Give it: user intent, Deliverables, Completed, remaining Next actions, Parked user decisions, constraints, and changed artifacts.
-  - Apply findings before yielding, or surface the exact remaining user decision or risk.
-"""
+UNATTENDED_PROMPT_PREFIX = _UNATTENDED_PROMPT_PREFIX
 
 
 def _clean_unattended_cooldown_minutes(raw: Any) -> int:
@@ -491,24 +464,6 @@ def _verify_cookie(value: str) -> dict[str, Any] | None:
     return _verify_cookie_impl(value, secret=HMAC_SECRET)
 
 
-class SessionLaunchError(RuntimeError):
-    def __init__(self, record: dict[str, Any]):
-        safe = _redacted_launch_attempt_record(record)
-        msg = str(safe.get("error") or safe.get("message") or "session launch failed")
-        super().__init__(msg)
-        self.record = safe
-
-
-class SessionNotReadyError(RuntimeError):
-    pass
-
-
-class SessionInjectionError(RuntimeError):
-    pass
-
-
-class SessionCommitUnknownError(RuntimeError):
-    pass
 
 
 def _encode_message_cursor(*, kind: str, session: "Session", pos: int) -> str:
@@ -917,24 +872,6 @@ _broker_busy_queue_from_state = _runtime_broker_busy_queue
 _broker_interrupted_idle_from_state = _runtime_broker_interrupted_idle
 
 
-def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
-    if agent_backend != "codex" or not isinstance(tail, str):
-        return False
-    return "To continue this session, run " in tail
-
-
-def _session_store_paths_for_manager() -> SessionStorePaths:
-    return _session_store_paths_impl(
-        aliases=ALIAS_PATH,
-        sidebar_meta=SIDEBAR_META_PATH,
-        hidden_sessions=HIDDEN_SESSIONS_PATH,
-        files=FILE_HISTORY_PATH,
-        queues=QUEUE_PATH,
-        pending_attachments=PENDING_ATTACHMENTS_PATH,
-        commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
-        recent_cwds=RECENT_CWD_PATH,
-        unattended=UNATTENDED_PATH,
-    )
 
 
 @_bind_session_manager_methods(__name__)

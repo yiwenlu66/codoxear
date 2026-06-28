@@ -17,6 +17,12 @@ from .sidecar_metadata import start_ts as metadata_start_ts
 from .sidecar_metadata import sync_send_supported as metadata_sync_send_supported
 
 
+def broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
+    if agent_backend != "codex" or not isinstance(tail, str):
+        return False
+    return "To continue this session, run " in tail
+
+
 @dataclass(frozen=True)
 class SessionRefreshCoordinator:
     lock: Any
