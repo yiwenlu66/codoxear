@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `50f555b Extract attachment injection coordinator`
+Latest functional code checkpoint: `756ee7d Bind manager factory methods`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -391,14 +391,14 @@ The branch is stronger than the historical `develop` summary, but these limits r
 
 The pure-helper extraction wave and endpoint-controller extraction wave are closed. Launch-attempt record composition, direct/tmux process orchestration, tmux metadata polling, launch process context construction, direct-process wait/drain mechanics, tmux pane snapshot parsing, launch precondition/plan sequencing, session-list row projection/orchestration, file/sidebar/recent-cwd overlay repair, listing priority math, failed-launch overlay selection, runtime backfill mutation rules, active session listing snapshot composition, active-listing runtime enrichment, confirmed-send runtime probes, session readiness precondition predicates/orchestration, queue promotion item-state mechanics, session queue promotion flag mechanics, queue local mutation/promotion coordination, queue sweep orchestration, confirmed-send input protocol, control-socket client transport, session control/direct-send operation orchestration, metadata refresh, unattended sweep policy/orchestration, voice/log runtime, file-history wrappers, UI state, deleted-state cleanup, pending recovery state, recent cwd memory, lifecycle kill/delete, and live resume matching are now separated from their former server-manager implementations. The active work is semantic cleanup of the remaining non-route `server.py` responsibilities: next target discovery result application/upsert or send/prelog path with explicit dependencies.
 
-## 2026-06-28 manager-factory checkpoint
+## 2026-06-28 manager-factory and compatibility-binding checkpoint
 
 Additional structural moves after the earlier coordinator tranches:
 
 - Central HTTP/helper code no longer lives in `server.py`: handler dispatch, route dependency factories, server startup, HTTP response primitives, process termination, resume preview/candidate logic, shared path resolution, client/git file path resolution, log metadata/run settings, launch defaults/path handling, route prefix matching, metrics, file-write locks, and tmux availability are owned by explicit modules.
 - `SessionManager` dependency assembly no longer lives inline. `session_manager_factories.py` owns coordinator factory wiring and imports coordinator classes directly while receiving the live `codoxear.server` module for monkeypatch-sensitive wrappers/constants.
 - `SessionManager` bootstrap/store mechanics no longer live inline. `session_manager_store.py`, `session_manager_store_attrs.py`, `session_manager_bootstrap.py`, and `session_manager_discovery.py` own store creation/copy-forward, store-backed descriptors/load-save generation, initial load/thread/input-lock/loop policy, and discovery orchestration.
-- After commit `1990400`, `codoxear/server.py` is 1963 lines. The manager is now a compatibility facade and lock-bearing registry/cache access point, not the owner of the major route/runtime/coordinator state machines.
-- Latest validation for this tranche is local `pytest -q` after each slice, consistently `1157 passed, 107 subtests passed`. Docker evidence was not rerun for this local refactor tranche and should not be claimed for promotion.
+- After commit `1990400`, `codoxear/server.py` was 1963 lines. After commits `32e7c78` and `756ee7d`, generated manager compatibility bindings live in `codoxear/session_manager_method_bindings.py`; `server.py` is 1616 lines, and `SessionManager` has 26 concrete methods.
+- Latest validation for the compatibility-binding tranche is local: focused manager/queue/route/source tests returned `156 passed, 22 subtests passed`, and full `python3 -m pytest -q` returned `1161 passed, 107 subtests passed`. Docker evidence was not rerun for this local refactor tranche and should not be claimed for promotion.
 
-Recommended next step: continue shrinking compatibility surface only where it has semantic ownership value. Do not move the registry/cache authority itself unless the target module can preserve public monkeypatch seams and make lock/registry invariants explicit under tests.
+Recommended next step: continue shrinking compatibility surface only where it has semantic ownership value. Module-level wrappers in `server.py` are a mix of source sentinels, injected-constant adapters, and monkeypatch seams; classify before moving. Do not move the registry/cache authority itself unless the target module can preserve public monkeypatch seams and make lock/registry invariants explicit under tests.

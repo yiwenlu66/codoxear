@@ -3581,3 +3581,16 @@
 - Reviewer scope: commits `9812e91` through `1990400`, docs commit `6835a7e`, clean working tree, 1963-line `server.py`, all extracted modules, import/circular hazards, manager factory wiring, monkeypatch seams, fail-closed/no-silent-fallback semantics, and docs evidence scope.
 - Reviewer observations: no extracted module statically imports `codoxear.server`; `session_manager_factories.py` receives the live server module as a parameter; `Handler.deps.manager()` resolves patched `server.MANAGER`; all modules importable in isolation; full local pytest reproduced as `1157 passed, 107 subtests passed`; docs correctly state this tranche has local pytest evidence only and no Docker promotion claim.
 - Non-blocking reviewer notes: coordinator instances are freshly created on each call but frozen/semantically harmless; `_unattended_last_injected*` are runtime state seeded during bootstrap rather than persisted descriptors; `server.py` remains a large compatibility facade but implementation lives in extracted modules.
+
+## 2026-06-28T20:42:34Z Manager compatibility binding tranche
+- Functional commits after `a7d7a36 Record manager factory review gate`:
+  - `32e7c78 Collapse manager coordinator forwards`: introduced `codoxear/session_manager_method_bindings.py` and moved the repetitive `SessionManager` coordinator-operation compatibility forwards into generated class bindings. Literal high-value public/source-sentinel wrappers for `spawn_web_session`, `send`, and `inject_keys` remained in `server.py`.
+  - `756ee7d Bind manager factory methods`: extended the same binding module to attach one-line coordinator-factory methods through late `sys.modules[server_module_name]` lookup, preserving the live `codoxear.server` monkeypatch seam used by route dependencies and factory wiring.
+- Validation evidence:
+  - Focused test run after operation-forwarder binding: `python3 -m pytest -q tests/test_session_manager_method_bindings.py tests/test_server_queue_persistence.py tests/test_session_file_history.py tests/test_unattended_sweep.py tests/test_session_sidebar_priority.py tests/test_session_routes.py tests/test_control_routes.py tests/test_file_routes.py tests/test_file_upload_module_source.py tests/test_interrupt_semantics_source.py` returned `155 passed, 22 subtests passed`.
+  - Full local test run after operation-forwarder binding: `python3 -m pytest -q` returned `1160 passed, 107 subtests passed`.
+  - Focused test run after factory-method binding returned `156 passed, 22 subtests passed` for the same focused suite.
+  - Full local test run after factory-method binding returned `1161 passed, 107 subtests passed`.
+- New regression coverage: `tests/test_session_manager_method_bindings.py` verifies public method-name preservation, delegation when public and target method names differ, negative source ownership for generated manager forwards, preservation of literal `inject_keys` signature, and late live-server-module lookup for generated factory methods.
+- Size observation: `codoxear/server.py` is now 1616 lines; `SessionManager` has 26 concrete methods and generated compatibility methods are owned by `session_manager_method_bindings.py`.
+- Scope note: this tranche has local pytest evidence only. Docker evidence was not rerun and must not be claimed for promotion.
