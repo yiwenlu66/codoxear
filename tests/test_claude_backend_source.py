@@ -32,7 +32,7 @@ class TestClaudeBackendSource(unittest.TestCase):
         launch_source = BACKEND_LAUNCH_PY.read_text(encoding="utf-8")
         config_source = LAUNCH_CONFIG_PY.read_text(encoding="utf-8")
         self.assertIn('CC_SETTINGS_PATH=cc_home / "settings.json"', server_config_source)
-        self.assertIn("CC_SETTINGS_PATH = _SERVER_CONFIG.CC_SETTINGS_PATH", server_source)
+        self.assertIn("_export_server_config(globals(), _SERVER_CONFIG)", server_source)
         self.assertIn('def _read_cc_launch_defaults()', server_source)
         self.assertIn('"cc": cc', config_source)
         self.assertIn('args = ["--dangerously-skip-permissions"]', launch_source)

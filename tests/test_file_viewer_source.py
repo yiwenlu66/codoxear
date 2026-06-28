@@ -748,7 +748,7 @@ class TestFileViewerSource(unittest.TestCase):
         file_routes_source = (SERVER_PY.parent / "file_routes.py").read_text(encoding="utf-8")
         route_deps_source = (SERVER_PY.parent / "server_route_deps.py").read_text(encoding="utf-8")
         self.assertIn('VIDEO_PREVIEW_DIR=app_dir / "video_previews"', config_source)
-        self.assertIn("VIDEO_PREVIEW_DIR = _SERVER_CONFIG.VIDEO_PREVIEW_DIR", server_source)
+        self.assertIn("_export_server_config(globals(), _SERVER_CONFIG)", server_source)
         self.assertIn("def _ensure_video_preview(path: Path) -> Path:", server_source)
         self.assertIn("return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)", server_source)
         self.assertIn("ensure_video_preview=server._ensure_video_preview", route_deps_source)

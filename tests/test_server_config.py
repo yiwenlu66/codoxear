@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from codoxear.server_config import build_server_config
+from codoxear.server_config import SERVER_CONFIG_EXPORT_NAMES, build_server_config, export_server_config
 
 
 def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_env() -> None:
@@ -51,3 +51,18 @@ def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_e
     assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"
     assert config.VIDEO_PREVIEW_DIR == config.APP_DIR / "video_previews"
     assert config.CC_SETTINGS_PATH == config.CC_HOME / "settings.json"
+
+
+def test_export_server_config_populates_legacy_server_global_names() -> None:
+    config = build_server_config(environ={})
+    target = {"APP_DIR": "old"}
+
+    export_server_config(target, config)
+
+    assert target["_DOTENV"] == config.DOTENV_PATH
+    assert target["APP_DIR"] == config.APP_DIR
+    assert target["VIDEO_PREVIEW_DIR"] == config.VIDEO_PREVIEW_DIR
+    assert target["UNATTENDED_PATH"] == config.UNATTENDED_PATH
+    assert target["CC_SETTINGS_PATH"] == config.CC_SETTINGS_PATH
+    assert target["ATTACH_UPLOAD_MAX_BYTES"] == config.ATTACH_UPLOAD_MAX_BYTES
+    assert set(SERVER_CONFIG_EXPORT_NAMES).issubset(target)

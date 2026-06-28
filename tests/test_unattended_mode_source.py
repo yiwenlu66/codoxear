@@ -163,7 +163,7 @@ class TestUnattendedModeSource(unittest.TestCase):
         self.assertIn('"unattended cooldown_minutes must be an integer"', unattended_source)
         self.assertIn('"unattended remaining_injections must be an integer"', unattended_source)
         self.assertIn('UNATTENDED_PATH=app_dir / "unattended.json"', config_source)
-        self.assertIn('UNATTENDED_PATH = _SERVER_CONFIG.UNATTENDED_PATH', source)
+        self.assertIn("_export_server_config(globals(), _SERVER_CONFIG)", source)
         self.assertIn('CODEX_WEB_UNATTENDED_SWEEP_SECONDS', config_source)
         self.assertNotIn('"harness cooldown_minutes must', source + unattended_source)
         self.assertNotIn('"harness remaining_injections must', source + unattended_source)
