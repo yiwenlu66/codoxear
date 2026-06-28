@@ -163,6 +163,14 @@ from .session_store import SessionStore
 from .session_store import SessionStorePaths
 from .session_web_launch import SessionWebLaunchCoordinator
 from .server_handler import make_server_handler
+from .server_http import BadRequestError
+from .server_http import RequestPayloadTooLargeError
+from .server_http import handle_route_exception as _handle_route_exception_impl
+from .server_http import if_none_match_contains as _if_none_match_contains_impl
+from .server_http import is_client_disconnect as _is_client_disconnect_impl
+from .server_http import json_response as _json_response_impl
+from .server_http import json_response_with_etag as _json_response_with_etag_impl
+from .server_http import read_body as _read_body_impl
 from .server_main import ThreadingHTTPServer
 from .server_main import ThreadingHTTPServerV6
 from .server_main import run_main as _run_server_main
@@ -673,97 +681,29 @@ def _ensure_video_preview(path: Path) -> Path:
     return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
 
 
-_CLIENT_DISCONNECT_ERRNOS = {errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED}
-_CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
-
-
-class BadRequestError(Exception):
-    """Client request body or shape was invalid."""
-
-
-class RequestPayloadTooLargeError(Exception):
-    """Client request body exceeded the configured size limit."""
-
 
 def _is_client_disconnect(exc: BaseException) -> bool:
-    if isinstance(exc, _CLIENT_DISCONNECT_ERRORS):
-        return True
-    return isinstance(exc, OSError) and getattr(exc, "errno", None) in _CLIENT_DISCONNECT_ERRNOS
+    return _is_client_disconnect_impl(exc)
 
 
 def _handle_route_exception(handler: http.server.BaseHTTPRequestHandler, exc: BaseException) -> None:
-    if _is_client_disconnect(exc):
-        return
-    if isinstance(exc, BadRequestError):
-        _json_response(handler, 400, {"error": str(exc)})
-        return
-    if isinstance(exc, RequestPayloadTooLargeError):
-        _json_response(handler, 413, {"error": str(exc)})
-        return
-    traceback.print_exc()
-    payload = {"error": str(exc)}
-    if os.environ.get("CODEX_WEB_DEBUG_ERRORS") == "1":
-        payload["trace"] = traceback.format_exc()
-    _json_response(handler, 500, payload)
+    return _handle_route_exception_impl(handler, exc, json_response=_json_response)
 
 
 def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any) -> None:
-    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-    handler.send_response(status)
-    if getattr(handler, "_codoxear_refresh_auth_cookie", False):
-        _set_auth_cookie(handler)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.end_headers()
-    handler.wfile.write(body)
+    return _json_response_impl(handler, status, obj, set_auth_cookie=_set_auth_cookie)
 
 
 def _if_none_match_contains(header_value: str | None, etag: str) -> bool:
-    if header_value is None:
-        return False
-    values = [part.strip() for part in str(header_value).split(",")]
-    return "*" in values or etag in values
+    return _if_none_match_contains_impl(header_value, etag)
 
 
 def _json_response_with_etag(handler: http.server.BaseHTTPRequestHandler, obj: Any) -> None:
-    body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-    etag = '"' + _sha256_hex(body) + '"'
-    if _if_none_match_contains(handler.headers.get("If-None-Match"), etag):
-        handler.send_response(304)
-        if getattr(handler, "_codoxear_refresh_auth_cookie", False):
-            _set_auth_cookie(handler)
-        handler.send_header("ETag", etag)
-        handler.send_header("Cache-Control", "private, no-cache")
-        handler.send_header("Content-Length", "0")
-        handler.end_headers()
-        return
-    handler.send_response(200)
-    if getattr(handler, "_codoxear_refresh_auth_cookie", False):
-        _set_auth_cookie(handler)
-    handler.send_header("Content-Type", "application/json; charset=utf-8")
-    handler.send_header("Content-Length", str(len(body)))
-    handler.send_header("ETag", etag)
-    handler.send_header("Cache-Control", "private, no-cache")
-    handler.end_headers()
-    handler.wfile.write(body)
+    return _json_response_with_etag_impl(handler, obj, sha256_hex=_sha256_hex, set_auth_cookie=_set_auth_cookie)
 
 
 def _read_body(handler: http.server.BaseHTTPRequestHandler, limit: int = 2 * 1024 * 1024) -> bytes:
-    cl = handler.headers.get("Content-Length")
-    if cl is None:
-        cl = "0"
-    cl2 = str(cl).strip()
-    if not cl2:
-        cl2 = "0"
-    try:
-        n = int(cl2)
-    except (TypeError, ValueError) as e:
-        raise BadRequestError("invalid content-length") from e
-    if n < 0:
-        raise BadRequestError(f"invalid content-length: {n}")
-    if n > limit:
-        raise RequestPayloadTooLargeError(f"request body too large (max {limit} bytes)")
-    return handler.rfile.read(n)
+    return _read_body_impl(handler, limit=limit)
 
 
 def _sha256_hex(data: bytes) -> str:
