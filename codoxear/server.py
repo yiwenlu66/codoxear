@@ -40,6 +40,8 @@ from .auth_routes import AuthRouteDeps
 from .auth_routes import handle_auth_get_route as _handle_auth_get_route
 from .auth_routes import handle_auth_post_route as _handle_auth_post_route
 from . import rollout_log as _rollout_log
+from .control_socket import ControlSocketCallError
+from .control_socket import call_control_socket as _call_control_socket_impl
 from .control_routes import ControlRouteDeps
 from .control_routes import handle_control_post_route as _handle_control_post_route
 from .diagnostics_routes import DiagnosticsRouteDeps
@@ -852,12 +854,6 @@ class SessionInjectionError(RuntimeError):
 
 class SessionCommitUnknownError(RuntimeError):
     pass
-
-
-class ControlSocketCallError(RuntimeError):
-    def __init__(self, message: str, *, request_sent: bool):
-        super().__init__(message)
-        self.request_sent = bool(request_sent)
 
 
 def _sign_message_cursor(payload: dict[str, Any]) -> str:
@@ -3653,29 +3649,7 @@ class SessionManager:
         return bool(idle)
 
     def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(timeout_s)
-        request_sent = False
-        try:
-            s.connect(str(sock_path))
-            s.sendall((json.dumps(req) + "\n").encode("utf-8"))
-            request_sent = True
-            buf = b""
-            while b"\n" not in buf:
-                chunk = s.recv(65536)
-                if not chunk:
-                    break
-                buf += chunk
-            line = buf.split(b"\n", 1)[0]
-            if not line:
-                return {"error": "empty response"}
-            return json.loads(line.decode("utf-8"))
-        except Exception as e:
-            if track_request_sent:
-                raise ControlSocketCallError(str(e), request_sent=request_sent) from e
-            raise
-        finally:
-            s.close()
+        return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
 
     def _kill_session_via_pids(self, s: Session) -> bool:
         group_alive = _process_group_alive(int(s.codex_pid))
