@@ -153,6 +153,14 @@ from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
 from .session_control import SessionControlCoordinator
 from .session_lifecycle import SessionLifecycleCoordinator
+from .session_log_metadata import find_new_session_log as _find_new_session_log_metadata_impl
+from .session_log_metadata import find_session_log_for_session_id as _find_session_log_for_session_id_metadata_impl
+from .session_log_metadata import iter_session_logs_for_backend as _iter_session_logs_for_backend_impl
+from .session_log_metadata import read_run_settings_from_log as _read_run_settings_from_log_impl
+from .session_log_metadata import read_session_meta as _read_session_meta_impl
+from .session_log_metadata import read_session_meta_or_none as _read_session_meta_or_none_impl
+from .session_log_metadata import sessions_dir_for_backend as _sessions_dir_for_backend_impl
+from .session_log_metadata import turn_context_run_settings as _turn_context_run_settings_impl
 from .session_log_runtime import SessionLogRuntimeCoordinator
 from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
@@ -1173,24 +1181,29 @@ def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
 
 
 def _sessions_dir_for_backend(agent_backend: str) -> Path:
-    backend_name = normalize_agent_backend(agent_backend)
-    if backend_name == "codex":
-        return CODEX_SESSIONS_DIR
-    if backend_name == "pi":
-        return PI_SESSIONS_DIR
-    if backend_name == "cc":
-        return CC_SESSIONS_DIR
-    raise ValueError(f"unsupported agent_backend: {backend_name}")
+    return _sessions_dir_for_backend_impl(
+        agent_backend,
+        codex_sessions_dir=CODEX_SESSIONS_DIR,
+        pi_sessions_dir=PI_SESSIONS_DIR,
+        cc_sessions_dir=CC_SESSIONS_DIR,
+    )
 
 
 def _iter_session_logs(*, agent_backend: str = "codex") -> list[Path]:
-    backend_name = normalize_agent_backend(agent_backend)
-    return _iter_session_logs_impl(_sessions_dir_for_backend(backend_name), agent_backend=backend_name)
+    return _iter_session_logs_for_backend_impl(
+        agent_backend=agent_backend,
+        sessions_dir_for_backend_func=_sessions_dir_for_backend,
+        iter_session_logs=_iter_session_logs_impl,
+    )
 
 
 def _find_session_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
-    backend_name = normalize_agent_backend(agent_backend)
-    return _find_session_log_for_session_id_impl(_sessions_dir_for_backend(backend_name), session_id, agent_backend=backend_name)
+    return _find_session_log_for_session_id_metadata_impl(
+        session_id,
+        agent_backend=agent_backend,
+        sessions_dir_for_backend_func=_sessions_dir_for_backend,
+        find_session_log_for_session_id_func=_find_session_log_for_session_id_impl,
+    )
 
 
 def _find_new_session_log(
@@ -1200,15 +1213,15 @@ def _find_new_session_log(
     preexisting: set[Path],
     timeout_s: float = 15.0,
 ) -> tuple[str, Path] | None:
-    backend_name = normalize_agent_backend(agent_backend)
-    sessions_dir = _sessions_dir_for_backend(backend_name)
-    return _find_new_session_log_impl(
-        sessions_dir=sessions_dir,
-        agent_backend=backend_name,
+    return _find_new_session_log_metadata_impl(
+        agent_backend=agent_backend,
         after_ts=after_ts,
         preexisting=preexisting,
         timeout_s=timeout_s,
+        sessions_dir_for_backend_func=_sessions_dir_for_backend,
+        find_new_session_log_func=_find_new_session_log_impl,
     )
+
 
 
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 * 1024) -> tuple[list[dict[str, Any]], int]:
@@ -1220,66 +1233,49 @@ def _discover_log_for_session_id(session_id: str, *, agent_backend: str = "codex
 
 
 def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> dict[str, Any]:
-    if agent_backend is None:
-        try:
-            log_path.resolve().relative_to(PI_SESSIONS_DIR.resolve())
-            inferred = "pi"
-        except Exception:
-            try:
-                log_path.resolve().relative_to(CC_SESSIONS_DIR.resolve())
-                inferred = "cc"
-            except Exception:
-                inferred = "codex"
-        backend_name = inferred
-    else:
-        backend_name = normalize_agent_backend(agent_backend)
-    payload = _read_session_meta_payload_impl(log_path, agent_backend=backend_name, timeout_s=0.0)
-    if payload is None:
-        raise ValueError(f"missing session metadata in {log_path}")
-    return payload
+    return _read_session_meta_impl(
+        log_path,
+        agent_backend=agent_backend,
+        pi_sessions_dir=PI_SESSIONS_DIR,
+        cc_sessions_dir=CC_SESSIONS_DIR,
+        read_session_meta_payload=_read_session_meta_payload_impl,
+    )
 
 
 _INVALID_SESSION_META_WARNINGS: set[tuple[str, str]] = set()
 
 
 def _read_session_meta_or_none(log_path: Path, *, agent_backend: str | None = None, context: str) -> dict[str, Any] | None:
-    try:
-        return _read_session_meta(log_path, agent_backend=agent_backend)
-    except (FileNotFoundError, ValueError) as e:
-        warning_key = (context, str(log_path))
-        if warning_key not in _INVALID_SESSION_META_WARNINGS:
-            _INVALID_SESSION_META_WARNINGS.add(warning_key)
-            sys.stderr.write(f"warning: {context}: ignoring invalid session metadata in {log_path}: {type(e).__name__}: {e}\n")
-            sys.stderr.flush()
-        return None
+    return _read_session_meta_or_none_impl(
+        log_path,
+        agent_backend=agent_backend,
+        context=context,
+        read_session_meta_func=_read_session_meta,
+        invalid_warnings=_INVALID_SESSION_META_WARNINGS,
+        stderr=sys.stderr,
+    )
 
 
 def _turn_context_run_settings(payload: Any) -> tuple[str | None, str | None]:
-    if not isinstance(payload, dict):
-        return None, None
-    return (
-        _clean_optional_text(payload.get("model")),
-        _display_reasoning_effort(payload.get("reasoning_effort") or payload.get("effort")),
+    return _turn_context_run_settings_impl(
+        payload,
+        clean_optional_text=_clean_optional_text,
+        display_reasoning_effort=_display_reasoning_effort,
     )
 
 
 def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex") -> tuple[str | None, str | None, str | None]:
-    backend_name = normalize_agent_backend(agent_backend)
-    if backend_name == "pi":
-        return _read_pi_run_settings(log_path)
-    if backend_name == "cc":
-        return _read_cc_run_settings(log_path)
-    meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="run settings")
-    model_provider = _clean_optional_text(meta.get("model_provider")) if meta is not None else None
-    model = _clean_optional_text(meta.get("model")) if meta is not None else None
-    reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort")) if meta is not None else None
-    if model is None or reasoning_effort is None:
-        ctx_model, ctx_effort = _turn_context_run_settings(_rollout_log._find_latest_turn_context(log_path, max_scan_bytes=8 * 1024 * 1024))
-        if model is None:
-            model = ctx_model
-        if reasoning_effort is None:
-            reasoning_effort = ctx_effort
-    return model_provider, model, reasoning_effort
+    return _read_run_settings_from_log_impl(
+        log_path,
+        agent_backend=agent_backend,
+        read_pi_run_settings=_read_pi_run_settings,
+        read_cc_run_settings=_read_cc_run_settings,
+        read_session_meta_or_none_func=_read_session_meta_or_none,
+        clean_optional_text=_clean_optional_text,
+        display_reasoning_effort=_display_reasoning_effort,
+        find_latest_turn_context=_rollout_log._find_latest_turn_context,
+    )
+
 
 
 def _new_queue_item_id() -> str:
