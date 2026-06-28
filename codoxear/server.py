@@ -431,10 +431,6 @@ UNATTENDED_PROMPT_PREFIX = """Unattended-mode instructions (optimize for 8+ hour
 """
 
 
-def _render_unattended_prompt(request: str | None) -> str:
-    return _render_unattended_prompt_impl(request, prompt_prefix=UNATTENDED_PROMPT_PREFIX)
-
-
 def _clean_unattended_cooldown_minutes(raw: Any) -> int:
     return _clean_unattended_cooldown_minutes_impl(raw, default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES)
 
@@ -456,10 +452,6 @@ _LAUNCH_DEFAULTS_CACHE: tuple[tuple[tuple[str, bool, int | None, int | None], ..
 _LAUNCH_DEFAULTS_CACHE_LOCK = threading.Lock()
 
 
-def _path_signature(path: Path) -> tuple[str, bool, int | None, int | None]:
-    return _path_signature_impl(path)
-
-
 def _file_write_lock(path: Path) -> Any:
     return _file_write_lock_impl(path, locks_lock=_FILE_WRITE_LOCKS_LOCK, locks=_FILE_WRITE_LOCKS)
 
@@ -472,10 +464,6 @@ def _record_metric(name: str, value_ms: float) -> None:
         metrics=_METRICS,
         metrics_window=METRICS_WINDOW,
     )
-
-
-def _metric_percentile(sorted_values: list[float], p: float) -> float:
-    return _metric_percentile_impl(sorted_values, p)
 
 
 def _metrics_snapshot() -> dict[str, dict[str, float | int]]:
@@ -525,10 +513,6 @@ def _record_launch_attempt(record: dict[str, Any]) -> dict[str, Any]:
     return _record_launch_attempt_impl(record, path=LAUNCH_ATTEMPTS_PATH, stderr=sys.stderr)
 
 
-def _launch_attempt_id(record: dict[str, Any]) -> str:
-    return _launch_attempt_id_impl(record)
-
-
 def _latest_launch_attempt(launch_id: str) -> dict[str, Any] | None:
     return _latest_launch_attempt_impl(launch_id, path=LAUNCH_ATTEMPTS_PATH)
 
@@ -562,7 +546,6 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
         unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
         unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
     )
-
 
 
 def _terminate_process_group(root_pid: int, *, wait_seconds: float = 1.0) -> bool:
@@ -600,13 +583,8 @@ def _sock_error_definitely_stale(exc: BaseException) -> bool:
     return False
 
 
-def _video_preview_path(path: Path) -> Path:
-    return _video_preview_path_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
-
-
 def _ensure_video_preview(path: Path) -> Path:
     return _ensure_video_preview_impl(path, preview_dir=VIDEO_PREVIEW_DIR)
-
 
 
 def _is_client_disconnect(exc: BaseException) -> bool:
@@ -619,10 +597,6 @@ def _handle_route_exception(handler: http.server.BaseHTTPRequestHandler, exc: Ba
 
 def _json_response(handler: http.server.BaseHTTPRequestHandler, status: int, obj: Any) -> None:
     return _json_response_impl(handler, status, obj, set_auth_cookie=_set_auth_cookie)
-
-
-def _if_none_match_contains(header_value: str | None, etag: str) -> bool:
-    return _if_none_match_contains_impl(header_value, etag)
 
 
 def _json_response_with_etag(handler: http.server.BaseHTTPRequestHandler, obj: Any) -> None:
@@ -682,28 +656,12 @@ class SessionCommitUnknownError(RuntimeError):
     pass
 
 
-def _sign_message_cursor(payload: dict[str, Any]) -> str:
-    return _sign_message_cursor_impl(payload, secret=HMAC_SECRET)
-
-
-def _verify_message_cursor(token: str) -> dict[str, Any]:
-    return _verify_message_cursor_impl(token, secret=HMAC_SECRET)
-
-
 def _encode_message_cursor(*, kind: str, session: "Session", pos: int) -> str:
     return _encode_message_cursor_impl(kind=kind, session=session, pos=pos, secret=HMAC_SECRET)
 
 
 def _decode_message_cursor(token: str, *, kind: str, session: "Session") -> int:
     return _decode_message_cursor_impl(token, kind=kind, session=session, secret=HMAC_SECRET)
-
-
-def _attach_history_cursors(events: list[dict[str, Any]], *, session: "Session") -> list[dict[str, Any]]:
-    return _attach_history_cursors_impl(events, session=session, encode_cursor=_encode_message_cursor)
-
-
-def _parse_cookies(header: str | None) -> dict[str, str]:
-    return _parse_cookies_impl(header)
 
 
 def _require_auth(handler: http.server.BaseHTTPRequestHandler) -> bool:
@@ -736,16 +694,6 @@ def _is_same_password(pw: str) -> bool:
     return hmac.compare_digest(_sha256_hex(pw.encode("utf-8")), _password_hash())
 
 
-def _safe_read_text(path: Path, max_bytes: int = 512 * 1024) -> str:
-    try:
-        b = path.read_bytes()
-        if len(b) > max_bytes:
-            b = b[-max_bytes:]
-        return b.decode("utf-8", errors="replace")
-    except FileNotFoundError:
-        return ""
-
-
 def _resolve_under(base: Path, rel: str) -> Path:
     return _resolve_under_impl(base, rel)
 
@@ -774,12 +722,9 @@ def _resolve_existing_absolute_file(raw_path: str) -> Path:
     return _resolve_existing_absolute_file_impl(raw_path)
 
 
-
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:
     return _git_ops.resolve_git_path(cwd, raw_path, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
 
-def _git_error_is_missing_head(message: str) -> bool:
-    return _git_ops.git_error_is_missing_head(message)
 
 def _git_head_blob_oid(cwd: Path, rel: str) -> str | None:
     return _git_ops.git_head_blob_oid(cwd, rel, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
@@ -788,29 +733,12 @@ def _resolve_unique_bare_filename(search_root: Path, raw_path: str) -> Path | No
     return _resolve_unique_bare_filename_impl(search_root, raw_path)
 
 
-def _resolve_tracked_file_by_basename(session_id: str, raw_path: str) -> Path | None:
-    return _resolve_tracked_file_by_basename_impl(
-        session_id,
-        raw_path,
-        files_get=lambda tracked_session_id: MANAGER.files_get(tracked_session_id),
-        expanduser_path=_expanduser_path,
-    )
-
-
 def _list_session_relative_files(base: Path) -> list[str]:
     return _list_session_relative_files_impl(base, expanduser_path=_expanduser_path)
 
 
-
 def _run_git(cwd: Path, args: list[str], *, timeout_s: float, max_bytes: int, literal_pathspecs: bool = False) -> str:
     return _git_ops.run_git(cwd, args, timeout_s=timeout_s, max_bytes=max_bytes, literal_pathspecs=literal_pathspecs)
-
-def _expand_user_path(raw: str) -> Path:
-    return _expand_user_path_impl(raw)
-
-
-def _resolve_existing_dir(raw: str, *, field_name: str) -> Path:
-    return _resolve_existing_dir_impl(raw, field_name=field_name)
 
 
 def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
@@ -820,13 +748,6 @@ def _resolve_dir_target(raw: str, *, field_name: str) -> Path:
 def _codex_trust_override_for_path(path: Path) -> str:
     return _codex_trust_override_for_path_impl(path)
 
-
-def _resolve_new_path(raw: str, *, field_name: str) -> Path:
-    return _resolve_new_path_impl(raw, field_name=field_name)
-
-
-def _clean_worktree_branch(raw: str) -> str:
-    return _git_ops.clean_worktree_branch(raw)
 
 def _require_git_repo(cwd: Path) -> None:
     _git_ops.require_git_repo(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
@@ -841,9 +762,6 @@ def _search_session_relative_files(base: Path, *, query: str, limit: int = FILE_
 def _describe_session_cwd(cwd: Path) -> dict[str, Any]:
     return _describe_session_cwd_impl(cwd, git_repo_root=_git_repo_root, current_git_branch=_current_git_branch)
 
-
-def _worktree_path_slug(branch: str) -> str:
-    return _git_ops.worktree_path_slug(branch)
 
 def _default_worktree_path(source_cwd: Path, branch: str) -> Path:
     return _git_ops.default_worktree_path(source_cwd, branch)
@@ -907,10 +825,6 @@ def _launch_config_paths() -> LaunchConfigPaths:
     )
 
 
-def _normalize_requested_model(value: Any) -> str | None:
-    return _launch_normalize_requested_model(value)
-
-
 def _display_reasoning_effort(value: Any) -> str | None:
     return _launch_display_reasoning_effort(value)
 
@@ -919,38 +833,8 @@ def _display_pi_reasoning_effort(value: Any) -> str | None:
     return _launch_display_pi_reasoning_effort(value)
 
 
-def _normalize_requested_reasoning_effort(value: Any) -> str | None:
-    return _launch_normalize_requested_reasoning_effort(value)
-
-
-def _clean_reasoning_effort_list(raw: Any, *, supported: tuple[str, ...]) -> list[str] | None:
-    return _launch_clean_reasoning_effort_list(raw, supported=supported)
-
-
-def _pi_reasoning_efforts_for_model_row(row: dict[str, Any]) -> list[str] | None:
-    return _launch_pi_reasoning_efforts_for_model_row(row)
-
-
-def _pi_reasoning_effort_key(provider: str | None, model: str | None) -> str | None:
-    return _launch_pi_reasoning_effort_key(provider, model)
-
-
 def _read_pi_reasoning_efforts_by_model() -> dict[str, list[str]]:
     return _launch_read_pi_reasoning_efforts_by_model(_launch_config_paths())
-
-
-def _pi_allowed_reasoning_efforts_for_model(
-    *,
-    model_provider: str | None,
-    model: str | None,
-    reasoning_efforts_by_model: Mapping[str, list[str]] | None = None,
-) -> list[str] | None:
-    return _launch_pi_allowed_reasoning_efforts_for_model(
-        model_provider=model_provider,
-        model=model,
-        reasoning_efforts_by_model=reasoning_efforts_by_model,
-        paths=_launch_config_paths(),
-    )
 
 
 def _normalize_requested_pi_reasoning_effort(
@@ -985,19 +869,8 @@ def _normalize_requested_preferred_auth_method(value: Any) -> str | None:
     return _launch_normalize_requested_preferred_auth_method(value)
 
 
-def _configured_model_providers(data: dict[str, Any]) -> list[str]:
-    return _launch_configured_model_providers(data)
-
-
 def _provider_choice_for_settings(*, model_provider: str | None, preferred_auth_method: str | None) -> str:
     return _launch_provider_choice_for_settings(model_provider=model_provider, preferred_auth_method=preferred_auth_method)
-
-def _priority_from_elapsed_seconds(elapsed_s: float) -> float:
-    return _listing_priority_from_elapsed_seconds(elapsed_s, half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS)
-
-
-def _sidebar_priority_elapsed_seconds(elapsed_s: float) -> float:
-    return _listing_sidebar_priority_elapsed_seconds(elapsed_s, bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS)
 
 
 def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
@@ -1010,13 +883,6 @@ def _sidebar_time_priority_from_elapsed_seconds(elapsed_s: float) -> float:
 
 def _current_git_branch(cwd: Path) -> str | None:
     return _git_ops.current_git_branch(cwd, run_git_func=_run_git, timeout_s=GIT_DIFF_TIMEOUT_SECONDS)
-
-def _path_resolves_inside(path_obj: Path, root: Path) -> bool:
-    return _path_resolves_inside_impl(path_obj, root)
-
-
-def _symlink_payload_view(path_obj: Path) -> ClientFileView:
-    return _symlink_payload_view_impl(path_obj)
 
 
 def _resolve_git_client_file_view(*, session_id: str, raw_path: str) -> tuple[Path, str, ClientFileView]:
@@ -1055,7 +921,6 @@ def _resolve_client_file_path(*, session_id: str, raw_path: str) -> Path:
         run_git=_run_git,
         git_timeout_s=GIT_DIFF_TIMEOUT_SECONDS,
     )
-
 
 
 def _sessions_dir_for_backend(agent_backend: str) -> Path:
@@ -1101,13 +966,8 @@ def _find_new_session_log(
     )
 
 
-
 def _read_jsonl_from_offset(path: Path, offset: int, max_bytes: int = 2 * 1024 * 1024) -> tuple[list[dict[str, Any]], int]:
     return _read_jsonl_from_offset_impl(path, offset, max_bytes=max_bytes)
-
-
-def _discover_log_for_session_id(session_id: str, *, agent_backend: str = "codex") -> Path | None:
-    return _find_session_log_for_session_id(session_id, agent_backend=agent_backend)
 
 
 def _read_session_meta(log_path: Path, *, agent_backend: str | None = None) -> dict[str, Any]:
@@ -1155,32 +1015,12 @@ def _read_run_settings_from_log(log_path: Path, *, agent_backend: str = "codex")
     )
 
 
-
-def _new_queue_item_id() -> str:
-    return _queue_store_new_item_id()
-
-
-def _new_queue_item(text: str, *, created_ts: float | None = None) -> dict[str, Any]:
-    return _queue_store_new_item(text, created_ts=created_ts)
-
-
-def _copy_queue_item(item: dict[str, Any]) -> dict[str, Any]:
-    return _queue_store_copy_item(item)
-
-
-def _coerce_queue_item(raw: Any) -> dict[str, Any] | None:
-    return _queue_store_coerce_item(raw)
-
 def _fallback_codex_launch_defaults() -> dict[str, Any]:
     return _launch_fallback_codex_launch_defaults()
 
 
 def _fallback_pi_launch_defaults() -> dict[str, Any]:
     return _launch_fallback_pi_launch_defaults()
-
-
-def _fallback_cc_launch_defaults() -> dict[str, Any]:
-    return _launch_fallback_cc_launch_defaults()
 
 
 def _read_codex_launch_defaults() -> dict[str, Any]:
@@ -1193,14 +1033,6 @@ def _read_pi_launch_defaults() -> dict[str, Any]:
 
 def _read_cc_launch_defaults() -> dict[str, Any]:
     return _launch_read_cc_launch_defaults(_launch_config_paths())
-
-
-def _launch_defaults_warning(exc: BaseException) -> str:
-    return _launch_defaults_warning_impl(exc)
-
-
-def _launch_defaults_signature(paths: LaunchConfigPaths) -> tuple[tuple[str, bool, int | None, int | None], ...]:
-    return _launch_defaults_signature_impl(paths)
 
 
 def _read_new_session_defaults() -> dict[str, Any]:
@@ -1255,18 +1087,6 @@ def _list_resume_candidates_for_cwd(cwd: str, *, agent_backend: str = "codex", l
     )
 
 
-def _resume_preview_from_text(text: str, *, max_chars: int = 120) -> str:
-    return _resume_preview_from_text_impl(text, max_chars=max_chars)
-
-
-def _user_message_text(payload: dict[str, Any]) -> str:
-    return _user_message_text_impl(payload)
-
-
-def _is_scaffold_user_text(text: str) -> bool:
-    return _is_scaffold_user_text_impl(text)
-
-
 def _first_user_message_preview_from_log(log_path: Path, *, max_scan_bytes: int = 256 * 1024) -> str:
     return _first_user_message_preview_from_log_impl(
         log_path,
@@ -1285,7 +1105,6 @@ def _coerce_main_thread_log(*, thread_id: str, log_path: Path) -> tuple[str, Pat
         subagent_parent_thread_id=_subagent_parent_thread_id,
         find_session_log_for_session_id=lambda parent: _find_session_log_for_session_id_impl(CODEX_SESSIONS_DIR, parent),
     )
-
 
 
 def _extract_chat_events(
@@ -1350,10 +1169,6 @@ def _broker_busy_queue_from_state(state: dict[str, Any]) -> tuple[bool, int]:
 
 def _broker_interrupted_idle_from_state(state: dict[str, Any]) -> bool:
     return _runtime_broker_interrupted_idle(state)
-
-
-def _broker_allows_interrupted_idle_override(state: dict[str, Any]) -> bool:
-    return _runtime_broker_allows_interrupted_idle_override(state)
 
 
 def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> bool:
@@ -1589,8 +1404,6 @@ class SessionManager:
             interrupt=interrupt,
         )
 
-    def mark_turn_complete(self, session_id: str, payload: dict[str, Any]) -> None:
-        return
 
 MANAGER = SessionManager()
 
