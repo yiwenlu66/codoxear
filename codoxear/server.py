@@ -187,6 +187,28 @@ from .session_manager_bootstrap import create_voice_push_coordinator as _create_
 from .session_manager_bootstrap import load_manager_persistent_state as _load_manager_persistent_state_impl
 from .session_manager_bootstrap import seed_manager_in_memory_state as _seed_manager_in_memory_state_impl
 from .session_manager_bootstrap import start_manager_worker_threads as _start_manager_worker_threads_impl
+from .session_manager_factories import attachment_coordinator_for_manager as _attachment_coordinator_for_manager_impl
+from .session_manager_factories import cleanup_coordinator_for_manager as _cleanup_coordinator_for_manager_impl
+from .session_manager_factories import control_coordinator_for_manager as _control_coordinator_for_manager_impl
+from .session_manager_factories import discovery_registry_for_manager as _discovery_registry_for_manager_impl
+from .session_manager_factories import files_coordinator_for_manager as _files_coordinator_for_manager_impl
+from .session_manager_factories import lifecycle_coordinator_for_manager as _lifecycle_coordinator_for_manager_impl
+from .session_manager_factories import list_coordinator_for_manager as _list_coordinator_for_manager_impl
+from .session_manager_factories import log_runtime_for_manager as _log_runtime_for_manager_impl
+from .session_manager_factories import pending_state_coordinator_for_manager as _pending_state_coordinator_for_manager_impl
+from .session_manager_factories import prelog_user_message_recorder_for_manager as _prelog_user_message_recorder_for_manager_impl
+from .session_manager_factories import prune_coordinator_for_manager as _prune_coordinator_for_manager_impl
+from .session_manager_factories import queue_coordinator_for_manager as _queue_coordinator_for_manager_impl
+from .session_manager_factories import queue_sweep_coordinator_for_manager as _queue_sweep_coordinator_for_manager_impl
+from .session_manager_factories import readiness_coordinator_for_manager as _readiness_coordinator_for_manager_impl
+from .session_manager_factories import recent_cwd_coordinator_for_manager as _recent_cwd_coordinator_for_manager_impl
+from .session_manager_factories import refresh_coordinator_for_manager as _refresh_coordinator_for_manager_impl
+from .session_manager_factories import send_coordinator_for_manager as _send_coordinator_for_manager_impl
+from .session_manager_factories import unattended_config_coordinator_for_manager as _unattended_config_coordinator_for_manager_impl
+from .session_manager_factories import unattended_sweep_coordinator_for_manager as _unattended_sweep_coordinator_for_manager_impl
+from .session_manager_factories import ui_state_coordinator_for_manager as _ui_state_coordinator_for_manager_impl
+from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
+from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
 from .session_manager_store import create_session_store as _create_session_store_impl
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
@@ -1662,23 +1684,7 @@ class SessionManager:
         return self._session_store_for_manager().queue_store
 
     def _queue_coordinator_for_manager(self) -> SessionQueueCoordinator:
-        return SessionQueueCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            queues=lambda: self._queues,
-            queue_store=self._queue_store_for_manager,
-            commit_unknown_sends=lambda: self._commit_unknown_sends,
-            save_queues=self._save_queues,
-            input_lock_for_session=self._input_lock_for_session,
-            remote_ready=lambda session_id, log_path: self._queue_remote_ready(session_id, log_path=log_path),
-            send=self.send,
-            not_ready_error=SessionNotReadyError,
-            retryable_send_errors=(SessionNotReadyError, SessionInjectionError),
-            commit_unknown_error=SessionCommitUnknownError,
-            queue_idle_grace_seconds=QUEUE_IDLE_GRACE_SECONDS,
-            now=time.time,
-            recovery_items_locked=lambda session_id: self._queue_has_recovery_items_locked(session_id),
-        )
+        return _queue_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         with self._lock:
@@ -2021,343 +2027,64 @@ class SessionManager:
         return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
 
     def _control_coordinator_for_manager(self) -> SessionControlCoordinator:
-        return SessionControlCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
-            pid_alive=_pid_alive,
-            unlink_quiet=_unlink_quiet,
-            clear_deleted_session_state=self._clear_deleted_session_state,
-            broker_busy_queue=self._broker_busy_queue_from_state,
-            broker_interrupted_idle=_broker_interrupted_idle_from_state,
-            control_socket_call_error=ControlSocketCallError,
-            commit_unknown_error=SessionCommitUnknownError,
-        )
+        return _control_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _attachment_coordinator_for_manager(self) -> SessionAttachmentCoordinator:
-        return SessionAttachmentCoordinator(
-            input_lock_for_session=self._input_lock_for_session,
-            attachment_injection_ready=self.attachment_injection_ready,
-            inject_keys=self.inject_keys,
-            set_pending_attachment=self._set_pending_attachment,
-            not_ready_error=SessionNotReadyError,
-            injection_error=SessionInjectionError,
-            commit_unknown_error=SessionCommitUnknownError,
-        )
+        return _attachment_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _list_coordinator_for_manager(self) -> SessionListCoordinator:
-        return SessionListCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            queues=lambda: self._queues,
-            unattended=lambda: self._unattended,
-            aliases=lambda: self._aliases,
-            hidden_sessions=lambda: self._hidden_sessions,
-            commit_unknown_sends=lambda: self._commit_unknown_sends,
-            store=self._session_store_for_manager(),
-            discover_existing_if_stale=self._discover_existing_if_stale,
-            prune_dead_sessions=self._prune_dead_sessions,
-            update_meta_counters=self._update_meta_counters,
-            save_files=self._save_files,
-            save_sidebar_meta=self._save_sidebar_meta,
-            save_recent_cwds=self._save_recent_cwds,
-            now=time.time,
-            runtime_probes=ListingRuntimeProbes(
-                last_conversation_ts_from_tail=lambda path: _last_conversation_ts_from_tail(path),
-                read_run_settings_from_log=lambda path, agent_backend: _read_run_settings_from_log(path, agent_backend=agent_backend),
-                log_size_or_none=self._log_size_or_none,
-                send_boundary_unresolved=self._confirmed_send_boundary_unresolved_for_session,
-                idle_from_log_path=self.idle_from_log_path,
-                current_git_branch=_current_git_branch,
-            ),
-            include_launch_attempts=lambda: bool(getattr(self, "_include_launch_attempts", False)),
-            read_launch_attempts=lambda: _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
-            launch_attempt_row=_launch_attempt_row,
-            clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
-            clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
-            provider_choice_for_settings=_provider_choice_for_settings,
-            resolve_session_cwd=_resolve_session_cwd,
-            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-            priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
-            priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
-        )
+        return _list_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _refresh_coordinator_for_manager(self) -> SessionRefreshCoordinator:
-        return SessionRefreshCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            prune_stale_socket_without_metadata=self._prune_stale_socket_without_metadata,
-            log_invalid_sidecar_metadata=_log_invalid_sidecar_metadata,
-            session_transport=self._session_transport,
-            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
-            broker_tail_has_session_detach_marker=_broker_tail_has_session_detach_marker,
-            pid_alive=_pid_alive,
-            proc_find_open_rollout_log=_proc_find_open_rollout_log,
-            proc_root=PROC_ROOT,
-            read_session_meta_or_none=_read_session_meta_or_none,
-            coerce_main_thread_log=_coerce_main_thread_log,
-            clean_optional_text=_clean_optional_text,
-            session_run_settings=self._session_run_settings,
-            normalize_requested_service_tier=_normalize_requested_service_tier,
-            reset_log_caches=lambda session, log_off: self._reset_log_caches(session, meta_log_off=log_off),
-            queue_len=self._queue_len,
-            maybe_drain_session_queue=self._maybe_drain_session_queue,
-        )
+        return _refresh_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _readiness_coordinator_for_manager(self) -> SessionReadinessCoordinator:
-        return SessionReadinessCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            refresh_session_meta_if_sidecar_exists=self._refresh_session_meta_if_sidecar_exists,
-            get_state=self.get_state,
-            log_size_or_none=self._log_size_or_none,
-            confirmed_send_boundary_unresolved_for_session=self._confirmed_send_boundary_unresolved_for_session,
-            idle_from_log=self.idle_from_log,
-            queue_len=lambda session_id: self._queue_store_for_manager().queue_len(self._queues, session_id),
-            not_ready_error=SessionNotReadyError,
-        )
+        return _readiness_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _unattended_sweep_coordinator_for_manager(self) -> UnattendedSweepCoordinator:
-        return UnattendedSweepCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            unattended=lambda: self._unattended,
-            unattended_last_injected=lambda: self._unattended_last_injected,
-            unattended_last_injected_scope=lambda: self._unattended_last_injected_scope,
-            discover_existing_if_stale=self._discover_existing_if_stale,
-            prune_dead_sessions=self._prune_dead_sessions,
-            input_lock_for_session=self._input_lock_for_session,
-            save_unattended=self._save_unattended,
-            get_state=self.get_state,
-            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
-            queue_len=self._queue_len,
-            last_chat_role_ts_from_tail=_last_chat_role_ts_from_tail,
-            send=self.send,
-            now=time.time,
-            prompt_prefix=UNATTENDED_PROMPT_PREFIX,
-            default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-            default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-            max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES,
-        )
+        return _unattended_sweep_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _queue_sweep_coordinator_for_manager(self) -> QueueSweepCoordinator:
-        return QueueSweepCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            queues=lambda: self._queues,
-            commit_unknown_sends=lambda: self._commit_unknown_sends,
-            queue_store=self._queue_store_for_manager(),
-            discover_existing_if_stale=self._discover_existing_if_stale,
-            prune_dead_sessions=self._prune_dead_sessions,
-            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
-            save_queues=self._save_queues,
-            maybe_drain_session_queue=self._maybe_drain_session_queue,
-        )
+        return _queue_sweep_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _voice_runtime_for_manager(self) -> VoiceRuntimeCoordinator:
-        return VoiceRuntimeCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            aliases=lambda: self._aliases,
-            voice_push=lambda: getattr(self, "_voice_push", None),
-            discover_existing_if_stale=self._discover_existing_if_stale,
-            prune_dead_sessions=self._prune_dead_sessions,
-            refresh_session_meta=lambda session_id: self.refresh_session_meta(session_id),
-            read_jsonl_from_offset=_read_jsonl_from_offset,
-            extract_delivery_messages=lambda objs, **kwargs: _extract_delivery_messages(objs, **kwargs),
-            cc_pending_tool_ids_before=_rollout_log._cc_pending_tool_ids_before,
-        )
+        return _voice_runtime_for_manager_impl(self, sys.modules[__name__])
 
     def _log_runtime_for_manager(self) -> SessionLogRuntimeCoordinator:
-        return SessionLogRuntimeCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            analyze_log_chunk=_analyze_log_chunk,
-            turn_context_run_settings=_turn_context_run_settings,
-            compute_idle_from_log=_compute_idle_from_log,
-            read_jsonl_from_offset=_read_jsonl_from_offset,
-            find_latest_token_update=_rollout_log._find_latest_token_update,
-        )
+        return _log_runtime_for_manager_impl(self, sys.modules[__name__])
 
     def _files_coordinator_for_manager(self) -> SessionFilesCoordinator:
-        return SessionFilesCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            store=self._session_store_for_manager(),
-            save_files=self._save_files,
-        )
+        return _files_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _ui_state_coordinator_for_manager(self) -> SessionUiStateCoordinator:
-        return SessionUiStateCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            aliases=lambda: self._aliases,
-            set_aliases=lambda value: setattr(self, "_aliases", value),
-            sidebar_meta=lambda: self._sidebar_meta,
-            set_sidebar_meta=lambda value: setattr(self, "_sidebar_meta", value),
-            hidden_sessions=lambda: self._hidden_sessions,
-            set_hidden_sessions=lambda value: setattr(self, "_hidden_sessions", value),
-            save_aliases=self._save_aliases,
-            save_sidebar_meta=self._save_sidebar_meta,
-            save_hidden_sessions=self._save_hidden_sessions,
-            clean_alias=_clean_alias,
-            clean_priority_offset=_clean_priority_offset,
-            clean_snooze_until=_clean_snooze_until,
-            clean_dependency_session_id=_clean_dependency_session_id,
-        )
+        return _ui_state_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _unattended_config_coordinator_for_manager(self) -> SessionUnattendedConfigCoordinator:
-        return SessionUnattendedConfigCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            unattended=lambda: self._unattended,
-            unattended_last_injected=lambda: self._unattended_last_injected,
-            input_lock_for_session=self._input_lock_for_session,
-            save_unattended=self._save_unattended,
-            clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
-            clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
-        )
+        return _unattended_config_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _cleanup_coordinator_for_manager(self) -> SessionCleanupCoordinator:
-        return SessionCleanupCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            aliases=lambda: self._aliases,
-            sidebar_meta=lambda: self._sidebar_meta,
-            unattended=lambda: self._unattended,
-            files=lambda: self._files,
-            queues=lambda: self._queues,
-            commit_unknown_sends=lambda: self._commit_unknown_sends,
-            input_locks=lambda: getattr(self, "_input_locks", {}),
-            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", set()),
-            unhide_session=self._unhide_session,
-            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
-            unlink_quiet=_unlink_quiet,
-            save_pending_attachments=self._save_pending_attachments,
-            save_commit_unknown_sends=self._save_commit_unknown_sends,
-            save_aliases=self._save_aliases,
-            save_sidebar_meta=self._save_sidebar_meta,
-            save_unattended=self._save_unattended,
-            save_files=self._save_files,
-            save_queues=self._save_queues,
-        )
+        return _cleanup_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _pending_state_coordinator_for_manager(self) -> SessionPendingStateCoordinator:
-        return SessionPendingStateCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", None),
-            set_pending_attachment_ids=lambda value: setattr(self, "_pending_attachment_ids", value),
-            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", None),
-            set_commit_unknown_sends=lambda value: setattr(self, "_commit_unknown_sends", value),
-            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
-            save_pending_attachments=self._save_pending_attachments,
-            save_commit_unknown_sends=self._save_commit_unknown_sends,
-            save_queues=self._save_queues,
-            now=time.time,
-            commit_unknown_orphan_prune_seconds=COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS,
-        )
+        return _pending_state_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _recent_cwd_coordinator_for_manager(self) -> SessionRecentCwdCoordinator:
-        return SessionRecentCwdCoordinator(
-            lock=self._lock,
-            recent_cwds=lambda: getattr(self, "_recent_cwds", None),
-            set_recent_cwds=lambda value: setattr(self, "_recent_cwds", value),
-            clean_recent_cwd=_clean_recent_cwd,
-            iter_session_logs=_iter_session_logs,
-            resume_candidate_from_log=_resume_candidate_from_log,
-            save_recent_cwds=self._save_recent_cwds,
-            now=time.time,
-            max_recent_cwds=RECENT_CWD_MAX,
-        )
+        return _recent_cwd_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _lifecycle_coordinator_for_manager(self) -> SessionLifecycleCoordinator:
-        return SessionLifecycleCoordinator(
-            lock=getattr(self, "_lock", threading.RLock()),
-            sessions=lambda: getattr(self, "_sessions", {}),
-            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
-            process_group_alive=_process_group_alive,
-            pid_alive=_pid_alive,
-            terminate_process_group=_terminate_process_group,
-            terminate_process=_terminate_process,
-            unlink_quiet=_unlink_quiet,
-            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", {}),
-            queue_has_recovery_items_locked=self._queue_has_recovery_items_locked,
-            clear_deleted_session_state=self._clear_deleted_session_state,
-            read_launch_attempts=lambda: _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
-            launch_attempt_row=_launch_attempt_row,
-            hide_session=self._hide_session,
-            files_clear=self.files_clear,
-            clean_optional_text=_clean_optional_text,
-            kill_session_via_pids_fallback=self._kill_session_via_pids,
-        )
+        return _lifecycle_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _discovery_registry_for_manager(self) -> SessionDiscoveryRegistryCoordinator:
-        return SessionDiscoveryRegistryCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", set()),
-            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", {}),
-            reset_log_caches=lambda session, log_off: self._reset_log_caches(session, meta_log_off=log_off),
-            record_launch_attempt=_record_launch_attempt,
-            prune_stale_socket_without_metadata=self._prune_stale_socket_without_metadata,
-            unhide_session=self._unhide_session,
-            unlink_quiet=_unlink_quiet,
-            remember_recent_cwd=self._remember_recent_cwd,
-            save_recent_cwds=self._save_recent_cwds,
-            stderr=sys.stderr,
-        )
+        return _discovery_registry_for_manager_impl(self, sys.modules[__name__])
 
     def _prune_coordinator_for_manager(self) -> SessionPruneCoordinator:
-        return SessionPruneCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
-            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
-            broker_interrupted_idle_from_state=_broker_interrupted_idle_from_state,
-            sock_error_definitely_stale=_sock_error_definitely_stale,
-            pid_alive=_pid_alive,
-            latest_launch_attempt=_latest_launch_attempt,
-            submitted_user_messages=_submitted_user_messages,
-            launch_failure_tail=lambda record: _launch_failure_tail(record or {}),
-            which_tmux=shutil.which,
-            tmux_pane_snapshot=_tmux_pane_snapshot,
-            clean_optional_text=_clean_optional_text,
-            record_launch_attempt=_record_launch_attempt,
-            clear_deleted_session_state=self._clear_deleted_session_state,
-            unlink_quiet=_unlink_quiet,
-            stderr=sys.stderr,
-        )
+        return _prune_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _send_coordinator_for_manager(self) -> SessionSendCoordinator:
-        return SessionSendCoordinator(
-            lock=self._lock,
-            sessions=lambda: self._sessions,
-            input_lock_for_session=self._input_lock_for_session,
-            queue_len=lambda session_id: self._queue_store_for_manager().queue_len(getattr(self, "_queues", {}), session_id),
-            send_remote_ready=self._send_remote_ready,
-            log_size_or_none=self._log_size_or_none,
-            call_confirmed_send=lambda session_id, **kwargs: self._control_coordinator_for_manager().call_confirmed_send(session_id, **kwargs),
-            set_pending_attachment=self._set_pending_attachment,
-            set_commit_unknown_send=self._set_commit_unknown_send,
-            record_prelog_user_message=lambda session, text: self._record_prelog_user_message(session, text, source="send"),
-            now=time.time,
-            send_commit_timeout_seconds=SEND_COMMIT_TIMEOUT_SECONDS,
-            not_ready_error=SessionNotReadyError,
-            commit_unknown_error=SessionCommitUnknownError,
-            injection_error=SessionInjectionError,
-            timeout_errors=(TimeoutError, socket.timeout),
-        )
+        return _send_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _prelog_user_message_recorder_for_manager(self) -> PrelogUserMessageRecorder:
-        return PrelogUserMessageRecorder(
-            latest_launch_attempt=_latest_launch_attempt,
-            submitted_user_messages=_submitted_user_messages,
-            clean_optional_text=_clean_optional_text,
-            record_launch_attempt=_record_launch_attempt,
-            now=time.time,
-        )
+        return _prelog_user_message_recorder_for_manager_impl(self, sys.modules[__name__])
 
     def _kill_session_via_pids(self, s: Session) -> bool:
         return self._lifecycle_coordinator_for_manager().kill_session_via_pids(s)
@@ -2369,31 +2096,7 @@ class SessionManager:
         return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(resume_id, resume_row)
 
     def _web_launch_coordinator_for_manager(self) -> SessionWebLaunchCoordinator:
-        return SessionWebLaunchCoordinator(
-            resolve_dir_target=_resolve_dir_target,
-            create_git_worktree=_create_git_worktree,
-            codex_trust_override_for_path=_codex_trust_override_for_path,
-            list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
-            live_session_for_resume_target=self._live_session_for_resume_target,
-            load_env_file=_load_env_file,
-            environ=os.environ,
-            dotenv_path=_DOTENV,
-            homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
-            python_executable=sys.executable,
-            tmux_session_name=TMUX_SESSION_NAME,
-            repo_root=Path(__file__).resolve().parent.parent,
-            record_launch_attempt=_record_launch_attempt,
-            now=time.time,
-            stderr=sys.stderr,
-            which_tmux=shutil.which,
-            run=subprocess.run,
-            popen=subprocess.Popen,
-            wait_or_raise=_wait_or_raise,
-            wait_for_spawned_broker_meta=_wait_for_spawned_broker_meta,
-            tmux_pane_snapshot=_tmux_pane_snapshot,
-            drain_stream=_drain_stream,
-            launch_error=SessionLaunchError,
-        )
+        return _web_launch_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def spawn_web_session(
         self,
