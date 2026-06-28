@@ -23,20 +23,16 @@ from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .auth import CookieAuthSettings
 from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
-from .auth import parse_cookies as _parse_cookies_impl
 from .auth import require_auth as _require_auth_impl
 from .auth import set_auth_cookie as _set_auth_cookie_impl
 from .auth import sign_cookie as _sign_cookie_impl
 from .auth import verify_cookie as _verify_cookie_impl
 from .client_file_paths import describe_session_cwd as _describe_session_cwd_impl
 from .client_file_paths import list_session_relative_files as _list_session_relative_files_impl
-from .client_file_paths import path_resolves_inside as _path_resolves_inside_impl
 from .client_file_paths import resolve_client_file_path as _resolve_client_file_path_impl
 from .client_file_paths import resolve_git_client_file_view as _resolve_git_client_file_view_impl
 from .client_file_paths import resolve_git_existing_regular_file as _resolve_git_existing_regular_file_impl
-from .client_file_paths import resolve_tracked_file_by_basename as _resolve_tracked_file_by_basename_impl
 from .client_file_paths import resolve_unique_bare_filename as _resolve_unique_bare_filename_impl
-from .client_file_paths import symlink_payload_view as _symlink_payload_view_impl
 from . import rollout_log as _rollout_log
 from .control_socket import ControlSocketCallError
 from .control_socket import call_control_socket as _call_control_socket_impl
@@ -60,32 +56,22 @@ from .launch_config import NewSessionLaunchRequest
 from .launch_config import SUPPORTED_CC_REASONING_EFFORTS
 from .launch_config import SUPPORTED_PI_REASONING_EFFORTS
 from .launch_config import SUPPORTED_REASONING_EFFORTS
-from .launch_config import clean_reasoning_effort_list as _launch_clean_reasoning_effort_list
-from .launch_config import configured_model_providers as _launch_configured_model_providers
 from .launch_config import display_pi_reasoning_effort as _launch_display_pi_reasoning_effort
 from .launch_config import display_reasoning_effort as _launch_display_reasoning_effort
-from .launch_config import fallback_cc_launch_defaults as _launch_fallback_cc_launch_defaults
 from .launch_config import fallback_codex_launch_defaults as _launch_fallback_codex_launch_defaults
 from .launch_config import fallback_pi_launch_defaults as _launch_fallback_pi_launch_defaults
-from .launch_config import launch_defaults_warning as _launch_defaults_warning_impl
 from .launch_config import normalize_requested_cc_reasoning_effort as _launch_normalize_requested_cc_reasoning_effort
-from .launch_config import normalize_requested_model as _launch_normalize_requested_model
 from .launch_config import normalize_requested_model_provider as _launch_normalize_requested_model_provider
 from .launch_config import normalize_requested_pi_reasoning_effort as _launch_normalize_requested_pi_reasoning_effort
 from .launch_config import normalize_requested_preferred_auth_method as _launch_normalize_requested_preferred_auth_method
-from .launch_config import normalize_requested_reasoning_effort as _launch_normalize_requested_reasoning_effort
 from .launch_config import normalize_requested_service_tier as _launch_normalize_requested_service_tier
 from .launch_config import parse_new_session_launch_request as _launch_parse_new_session_launch_request
-from .launch_config import pi_allowed_reasoning_efforts_for_model as _launch_pi_allowed_reasoning_efforts_for_model
-from .launch_config import pi_reasoning_effort_key as _launch_pi_reasoning_effort_key
-from .launch_config import pi_reasoning_efforts_for_model_row as _launch_pi_reasoning_efforts_for_model_row
 from .launch_config import provider_choice_for_settings as _launch_provider_choice_for_settings
 from .launch_config import read_cc_launch_defaults as _launch_read_cc_launch_defaults
 from .launch_config import read_codex_launch_defaults as _launch_read_codex_launch_defaults
 from .launch_config import read_new_session_defaults as _launch_read_new_session_defaults
 from .launch_config import read_pi_launch_defaults as _launch_read_pi_launch_defaults
 from .launch_config import read_pi_reasoning_efforts_by_model as _launch_read_pi_reasoning_efforts_by_model
-from .launch_ledger import launch_attempt_id as _launch_attempt_id_impl
 from .launch_ledger import launch_attempt_row as _launch_attempt_row_impl
 from .launch_ledger import launch_attempt_transcript_for_session_id as _launch_attempt_transcript_for_session_id_impl
 from .launch_ledger import launch_attempt_transcript_payload as _launch_attempt_transcript_payload_impl
@@ -94,41 +80,26 @@ from .launch_ledger import latest_launch_attempt as _latest_launch_attempt_impl
 from .launch_ledger import record_launch_attempt as _record_launch_attempt_impl
 from .launch_ledger import submitted_user_messages as _submitted_user_messages_impl
 from .launch_path_runtime import codex_trust_override_for_path as _codex_trust_override_for_path_impl
-from .launch_path_runtime import expand_user_path as _expand_user_path_impl
 from .launch_path_runtime import load_env_file as _load_env_file_impl
 from .launch_path_runtime import resolve_dir_target as _resolve_dir_target_impl
-from .launch_path_runtime import resolve_existing_dir as _resolve_existing_dir_impl
-from .launch_path_runtime import resolve_new_path as _resolve_new_path_impl
 from .launch_defaults_runtime import launch_defaults_for_request as _launch_defaults_for_request_impl
-from .launch_defaults_runtime import launch_defaults_signature as _launch_defaults_signature_impl
-from .launch_defaults_runtime import path_signature as _path_signature_impl
 from .launch_defaults_runtime import read_new_session_defaults_cached as _read_new_session_defaults_cached_impl
 from .file_view import ClientFileView
 from .file_view import download_disposition as _download_disposition
 from .file_view import inspect_client_path as _inspect_client_path
 from .file_view import inspect_downloadable_file as _inspect_downloadable_file
 from .file_view import inspect_openable_file as _inspect_openable_file
-from .file_view import inspect_path_metadata as _inspect_path_metadata
 from .file_view import read_client_file_view as _read_client_file_view
 from .file_view import read_text_or_image as _read_text_or_image
 from .video_preview import ensure_video_preview as _ensure_video_preview_impl
-from .video_preview import video_preview_path as _video_preview_path_impl
 from .cc_log import cc_user_text as _cc_user_text
 from .cc_log import read_cc_run_settings as _read_cc_run_settings
 from .message_cursor import MessageCursorError
 from .message_cursor import attach_history_cursors as _attach_history_cursors_impl
 from .message_cursor import decode_message_cursor as _decode_message_cursor_impl
 from .message_cursor import encode_message_cursor as _encode_message_cursor_impl
-from .message_cursor import sign_message_cursor as _sign_message_cursor_impl
-from .message_cursor import verify_message_cursor as _verify_message_cursor_impl
 from .transcript_search import TRANSCRIPT_SEARCH_MAX_LINE_BYTES
-from .transcript_search import casefold_match_span as _casefold_match_span
-from .transcript_search import chat_event_matches_query as _chat_event_matches_query
 from .transcript_search import clip_search_match_text as _clip_search_match_text
-from .transcript_search import clip_search_text_around_query as _clip_search_text_around_query
-from .transcript_search import iter_jsonl_records_forward_bounded as _iter_jsonl_records_forward_bounded
-from .transcript_search import iter_positioned_chat_events_forward as _iter_positioned_chat_events_forward
-from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .path_runtime import expanduser_path as _expanduser_path_impl
 from .path_runtime import require_existing_file as _require_existing_file_impl
@@ -141,7 +112,6 @@ from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .process_runtime import terminate_process as _terminate_process_impl
 from .process_runtime import terminate_process_group as _terminate_process_group_impl
-from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .session_cleaners import clean_alias as _clean_alias_impl
 from .session_cleaners import clean_dependency_session_id as _clean_dependency_session_id_impl
 from .session_cleaners import clean_optional_text as _clean_optional_text_impl
@@ -162,14 +132,9 @@ from .session_log_metadata import sessions_dir_for_backend as _sessions_dir_for_
 from .session_log_metadata import turn_context_run_settings as _turn_context_run_settings_impl
 from .session_resume import coerce_main_thread_log as _coerce_main_thread_log_impl
 from .session_resume import first_user_message_preview_from_log as _first_user_message_preview_from_log_impl
-from .session_resume import is_scaffold_user_text as _is_scaffold_user_text_impl
 from .session_resume import list_resume_candidates_for_cwd as _list_resume_candidates_for_cwd_impl
 from .session_resume import resume_candidate_from_log as _resume_candidate_from_log_impl
-from .session_resume import resume_preview_from_text as _resume_preview_from_text_impl
-from .session_resume import user_message_text as _user_message_text_impl
 from .session_listing import clip01 as _listing_clip01
-from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
-from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_manager_bootstrap import create_voice_push_coordinator as _create_voice_push_coordinator_impl
 from .session_manager_bootstrap import input_lock_for_session as _input_lock_for_session_impl
@@ -221,7 +186,6 @@ from .session_runtime import log_path_size_or_none as _log_path_size_or_none
 from .session_runtime import reset_session_log_caches as _reset_session_log_caches_impl
 from .session_runtime import session_run_settings_from_meta as _session_run_settings_from_meta_impl
 from .session_runtime import session_transport_from_meta as _session_transport_from_meta_impl
-from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
 from .session_runtime import broker_runtime_state as _runtime_broker_state
@@ -231,7 +195,6 @@ from .server_handler import make_server_handler
 from .server_http import BadRequestError
 from .server_http import RequestPayloadTooLargeError
 from .server_http import handle_route_exception as _handle_route_exception_impl
-from .server_http import if_none_match_contains as _if_none_match_contains_impl
 from .server_http import is_client_disconnect as _is_client_disconnect_impl
 from .server_http import json_response as _json_response_impl
 from .server_http import json_response_with_etag as _json_response_with_etag_impl
@@ -239,7 +202,6 @@ from .server_http import read_body as _read_body_impl
 from .server_main import ThreadingHTTPServer
 from .server_main import ThreadingHTTPServerV6
 from .server_main import run_main as _run_server_main
-from .server_metrics import metric_percentile as _metric_percentile_impl
 from .server_metrics import metrics_snapshot as _metrics_snapshot_impl
 from .server_metrics import record_metric as _record_metric_impl
 from .server_route_deps import ServerRouteDepsFactory
@@ -259,13 +221,8 @@ from .static_routes import static_asset_version as _static_asset_version
 from .static_routes import static_cache_control_headers as _static_cache_control_headers_impl
 from .tmux_runtime import tmux_available as _tmux_available_impl
 from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
-from .queue_store import copy_queue_item as _queue_store_copy_item
-from .queue_store import new_queue_item as _queue_store_new_item
-from .queue_store import new_queue_item_id as _queue_store_new_item_id
 from .util import append_launch_attempt as _append_launch_attempt
-from .util import atomic_write_json as _atomic_write_json
 from .util import default_app_dir as _default_app_dir
-from .util import classify_session_log as _classify_session_log
 from .util import find_new_session_log as _find_new_session_log_impl
 from .util import find_session_log_for_session_id as _find_session_log_for_session_id_impl
 from .util import is_subagent_session_meta as _is_subagent_session_meta
@@ -277,7 +234,6 @@ from .util import pid_alive as _pid_alive
 from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
 from .util import read_launch_attempts as _read_launch_attempts
-from .util import load_json_file as _load_json_file
 from .util import redact_launch_failure_text as _redact_launch_failure_text
 from .util import redacted_launch_attempt_persist_record as _redacted_launch_attempt_persist_record
 from .util import redacted_launch_attempt_response_record as _redacted_launch_attempt_record
@@ -288,7 +244,6 @@ from .util import subagent_parent_thread_id as _subagent_parent_thread_id
 from .unattended import UnattendedStore
 from .unattended import clean_unattended_cooldown_minutes as _clean_unattended_cooldown_minutes_impl
 from .unattended import clean_unattended_remaining_injections as _clean_unattended_remaining_injections_impl
-from .unattended import render_unattended_prompt as _render_unattended_prompt_impl
 from .voice_push import VoicePushCoordinator
 
 
