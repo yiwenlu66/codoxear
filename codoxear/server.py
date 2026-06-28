@@ -246,10 +246,7 @@ from .unattended import clean_unattended_remaining_injections as _clean_unattend
 from .voice_push import VoicePushCoordinator
 
 
-def _load_env_file(path: Path) -> dict[str, str]:
-    return _load_env_file_impl(path)
-
-
+_load_env_file = _load_env_file_impl
 _normalize_url_prefix = _normalize_url_prefix_impl
 _match_session_route = _match_session_route_impl
 _strip_url_prefix = _strip_url_prefix_impl
