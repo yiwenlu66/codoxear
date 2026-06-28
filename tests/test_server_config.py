@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from codoxear.server_config import build_server_config
+
+
+def test_server_config_applies_dotenv_before_deriving_paths_without_overriding_env() -> None:
+    with TemporaryDirectory() as td:
+        cwd = Path(td)
+        (cwd / ".env").write_text(
+            "\n".join(
+                [
+                    "CODEX_WEB_URL_PREFIX=/phone",
+                    "CODEX_WEB_COOKIE_SECURE=1",
+                    "CODEX_WEB_TMUX_SESSION=mobile-agent",
+                    "CODEX_HOME=/dotenv-codex",
+                    "PI_HOME=/dotenv-pi",
+                    "CLAUDE_CONFIG_DIR=/dotenv-cc",
+                    "CODEX_WEB_ATTACH_MAX_BYTES=6",
+                    "CODEX_WEB_DEFAULT_AGENT_BACKEND=pi",
+                    "CODEX_WEB_PORT=12345",
+                    "CODEX_WEB_UNATTENDED_SWEEP_SECONDS=7.5",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        environ = {"PI_HOME": "/real-pi"}
+
+        config = build_server_config(cwd=cwd, environ=environ)
+
+    assert environ["CODEX_HOME"] == "/dotenv-codex"
+    assert environ["PI_HOME"] == "/real-pi"
+    assert environ["CLAUDE_CONFIG_DIR"] == "/dotenv-cc"
+    assert config.CODEX_HOME == Path("/dotenv-codex")
+    assert config.CODEX_SESSIONS_DIR == Path("/dotenv-codex/sessions")
+    assert config.PI_HOME == Path("/real-pi")
+    assert config.PI_SESSIONS_DIR == Path("/real-pi/agent/sessions")
+    assert config.CC_HOME == Path("/dotenv-cc")
+    assert config.CC_SESSIONS_DIR == Path("/dotenv-cc/projects")
+    assert config.URL_PREFIX == "/phone"
+    assert config.COOKIE_PATH == "/phone/"
+    assert config.COOKIE_SECURE is True
+    assert config.TMUX_SESSION_NAME == "mobile-agent"
+    assert config.DEFAULT_AGENT_BACKEND == "pi"
+    assert config.DEFAULT_PORT == 12345
+    assert config.UNATTENDED_SWEEP_SECONDS == 7.5
+    assert config.ATTACH_UPLOAD_MAX_BYTES == 6
+    assert config.ATTACH_UPLOAD_BODY_MAX_BYTES == 65544
+    assert config.UNATTENDED_PATH == config.APP_DIR / "unattended.json"
+    assert config.VIDEO_PREVIEW_DIR == config.APP_DIR / "video_previews"
+    assert config.CC_SETTINGS_PATH == config.CC_HOME / "settings.json"

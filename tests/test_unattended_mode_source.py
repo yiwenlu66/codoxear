@@ -158,15 +158,17 @@ class TestUnattendedModeSource(unittest.TestCase):
 
     def test_api_validation_errors_use_unattended_term_for_user_inputs(self) -> None:
         source = SERVER_PY.read_text(encoding="utf-8")
+        config_source = (SERVER_PY.parent / "server_config.py").read_text(encoding="utf-8")
         unattended_source = UNATTENDED_PY.read_text(encoding="utf-8")
         self.assertIn('"unattended cooldown_minutes must be an integer"', unattended_source)
         self.assertIn('"unattended remaining_injections must be an integer"', unattended_source)
-        self.assertIn('APP_DIR / "unattended.json"', source)
-        self.assertIn('CODEX_WEB_UNATTENDED_SWEEP_SECONDS', source)
+        self.assertIn('UNATTENDED_PATH=app_dir / "unattended.json"', config_source)
+        self.assertIn('UNATTENDED_PATH = _SERVER_CONFIG.UNATTENDED_PATH', source)
+        self.assertIn('CODEX_WEB_UNATTENDED_SWEEP_SECONDS', config_source)
         self.assertNotIn('"harness cooldown_minutes must', source + unattended_source)
         self.assertNotIn('"harness remaining_injections must', source + unattended_source)
-        self.assertNotIn('APP_DIR / "harness.json"', source)
-        self.assertNotIn('CODEX_WEB_HARNESS_SWEEP_SECONDS', source)
+        self.assertNotIn('APP_DIR / "harness.json"', source + config_source)
+        self.assertNotIn('CODEX_WEB_HARNESS_SWEEP_SECONDS', source + config_source)
 
     def test_readme_documents_unattended_mode_not_harness_mode(self) -> None:
         readme = README.read_text(encoding="utf-8")

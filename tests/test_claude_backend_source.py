@@ -28,9 +28,11 @@ class TestClaudeBackendSource(unittest.TestCase):
 
     def test_server_exposes_cc_launch_contract(self) -> None:
         server_source = SERVER_PY.read_text(encoding="utf-8")
+        server_config_source = (SERVER_PY.parent / "server_config.py").read_text(encoding="utf-8")
         launch_source = BACKEND_LAUNCH_PY.read_text(encoding="utf-8")
         config_source = LAUNCH_CONFIG_PY.read_text(encoding="utf-8")
-        self.assertIn('CC_SETTINGS_PATH = CC_HOME / "settings.json"', server_source)
+        self.assertIn('CC_SETTINGS_PATH=cc_home / "settings.json"', server_config_source)
+        self.assertIn("CC_SETTINGS_PATH = _SERVER_CONFIG.CC_SETTINGS_PATH", server_source)
         self.assertIn('def _read_cc_launch_defaults()', server_source)
         self.assertIn('"cc": cc', config_source)
         self.assertIn('args = ["--dangerously-skip-permissions"]', launch_source)

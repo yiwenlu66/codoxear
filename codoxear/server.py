@@ -19,7 +19,6 @@ import traceback
 from pathlib import Path
 from typing import Any, Mapping
 
-from .agent_backend import get_agent_backend
 from .agent_backend import normalize_agent_backend
 from .auth import CookieAuthSettings
 from .auth import load_or_create_hmac_secret as _load_or_create_hmac_secret_impl
@@ -206,6 +205,7 @@ from .server_metrics import metrics_snapshot as _metrics_snapshot_impl
 from .server_metrics import record_metric as _record_metric_impl
 from .server_route_deps import ServerRouteDepsFactory
 from .server_route_deps import server_route_caps as _server_route_caps_impl
+from .server_config import build_server_config as _build_server_config
 from .server_routing import match_session_route as _match_session_route_impl
 from .server_routing import normalize_url_prefix as _normalize_url_prefix_impl
 from .server_routing import strip_url_prefix as _strip_url_prefix_impl
@@ -222,12 +222,10 @@ from .static_routes import static_cache_control_headers as _static_cache_control
 from .tmux_runtime import tmux_available as _tmux_available_impl
 from .tmux_runtime import tmux_pane_snapshot as _tmux_pane_snapshot_impl
 from .util import append_launch_attempt as _append_launch_attempt
-from .util import default_app_dir as _default_app_dir
 from .util import find_new_session_log as _find_new_session_log_impl
 from .util import find_session_log_for_session_id as _find_session_log_for_session_id_impl
 from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
-from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
 from .sidecar_metadata import log_invalid as _log_invalid_sidecar_metadata
 from .util import pid_alive as _pid_alive
@@ -263,90 +261,75 @@ def _strip_url_prefix(prefix: str, path: str) -> str | None:
     return _strip_url_prefix_impl(prefix, path)
 
 
-APP_DIR = _default_app_dir()
-PROC_ROOT = Path("/proc")
-SOCK_DIR = APP_DIR / "socks"
-STATE_PATH = APP_DIR / "state.json"
-HMAC_SECRET_PATH = APP_DIR / "hmac_secret"
-LAUNCH_ATTEMPTS_PATH = _launch_attempts_path(APP_DIR)
-UPLOAD_DIR = APP_DIR / "uploads"
-UNATTENDED_PATH = APP_DIR / "unattended.json"
-ALIAS_PATH = APP_DIR / "session_aliases.json"
-SIDEBAR_META_PATH = APP_DIR / "session_sidebar.json"
-HIDDEN_SESSIONS_PATH = APP_DIR / "hidden_sessions.json"
-FILE_HISTORY_PATH = APP_DIR / "session_files.json"
-VIDEO_PREVIEW_DIR = APP_DIR / "video_previews"
-QUEUE_PATH = APP_DIR / "session_queues.json"
-PENDING_ATTACHMENTS_PATH = APP_DIR / "pending_attachments.json"
-COMMIT_UNKNOWN_SENDS_PATH = APP_DIR / "commit_unknown_sends.json"
-RECENT_CWD_PATH = APP_DIR / "recent_cwds.json"
-VOICE_SETTINGS_PATH = APP_DIR / "voice_settings.json"
-PUSH_SUBSCRIPTIONS_PATH = APP_DIR / "push_subscriptions.json"
-DELIVERY_LEDGER_PATH = APP_DIR / "voice_delivery_ledger.json"
-VAPID_PRIVATE_KEY_PATH = APP_DIR / "webpush_vapid_private.pem"
-
-_DOTENV = (Path.cwd() / ".env").resolve()
-if _DOTENV.exists():
-    for _k, _v in _load_env_file(_DOTENV).items():
-        os.environ.setdefault(_k, _v)
-
-COOKIE_NAME = "codoxear_auth"
-COOKIE_EXPIRES = "Fri, 31 Dec 9999 23:59:59 GMT"
-COOKIE_SECURE = os.environ.get("CODEX_WEB_COOKIE_SECURE", "0") == "1"
-URL_PREFIX = _normalize_url_prefix(os.environ.get("CODEX_WEB_URL_PREFIX"))
-COOKIE_PATH = (URL_PREFIX + "/") if URL_PREFIX else "/"
-TMUX_SESSION_NAME = (os.environ.get("CODEX_WEB_TMUX_SESSION") or "codoxear").strip() or "codoxear"
-TMUX_META_WAIT_SECONDS = 3.0
-TMUX_AVAILABLE_TTL_SECONDS = float(os.environ.get("CODEX_WEB_TMUX_AVAILABLE_TTL_SECONDS", "30.0"))
-
-_CODEX_HOME_ENV = os.environ.get("CODEX_HOME")
-if _CODEX_HOME_ENV is None or (not _CODEX_HOME_ENV.strip()):
-    CODEX_HOME = Path.home() / ".codex"
-else:
-    CODEX_HOME = Path(_CODEX_HOME_ENV)
-CODEX_SESSIONS_DIR = CODEX_HOME / "sessions"
-CODEX_CONFIG_PATH = CODEX_HOME / "config.toml"
-MODELS_CACHE_PATH = CODEX_HOME / "models_cache.json"
-PI_HOME = get_agent_backend("pi").home()
-PI_SESSIONS_DIR = get_agent_backend("pi").sessions_dir()
-PI_SETTINGS_PATH = PI_HOME / "agent" / "settings.json"
-PI_MODELS_PATH = PI_HOME / "agent" / "models.json"
-PI_AUTH_PATH = PI_HOME / "agent" / "auth.json"
-CC_HOME = get_agent_backend("cc").home()
-CC_SESSIONS_DIR = get_agent_backend("cc").sessions_dir()
-CC_SETTINGS_PATH = CC_HOME / "settings.json"
-DEFAULT_AGENT_BACKEND = normalize_agent_backend(os.environ.get("CODEX_WEB_DEFAULT_AGENT_BACKEND"), default="codex")
-DEFAULT_HOST = os.environ.get("CODEX_WEB_HOST", "::")
-DEFAULT_PORT = int(os.environ.get("CODEX_WEB_PORT", "8743"))
-UNATTENDED_DEFAULT_IDLE_MINUTES = 5
-UNATTENDED_DEFAULT_MAX_INJECTIONS = 10
-UNATTENDED_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_UNATTENDED_SWEEP_SECONDS", "2.5"))
-QUEUE_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_SWEEP_SECONDS", "1.0"))
-VOICE_PUSH_SWEEP_SECONDS = float(os.environ.get("CODEX_WEB_VOICE_PUSH_SWEEP_SECONDS", "1.0"))
-QUEUE_IDLE_GRACE_SECONDS = float(os.environ.get("CODEX_WEB_QUEUE_IDLE_GRACE_SECONDS", "10.0"))
-UNATTENDED_MAX_SCAN_BYTES = int(os.environ.get("CODEX_WEB_UNATTENDED_MAX_SCAN_BYTES", str(8 * 1024 * 1024)))
-DISCOVER_MIN_INTERVAL_SECONDS = float(os.environ.get("CODEX_WEB_DISCOVER_MIN_INTERVAL_SECONDS", "1.0"))
-METRICS_WINDOW = int(os.environ.get("CODEX_WEB_METRICS_WINDOW", "256"))
-FILE_HISTORY_MAX = int(os.environ.get("CODEX_WEB_FILE_HISTORY_MAX", "20"))
-GIT_DIFF_MAX_BYTES = int(os.environ.get("CODEX_WEB_GIT_DIFF_MAX_BYTES", str(800 * 1024)))
-GIT_DIFF_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_DIFF_TIMEOUT_SECONDS", "4.0"))
-GIT_WORKTREE_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_GIT_WORKTREE_TIMEOUT_SECONDS", "10.0"))
-GIT_CHANGED_FILES_MAX = int(os.environ.get("CODEX_WEB_GIT_CHANGED_FILES_MAX", "400"))
-ATTACH_UPLOAD_MAX_BYTES = int(os.environ.get("CODEX_WEB_ATTACH_MAX_BYTES", str(16 * 1024 * 1024)))
-ATTACH_UPLOAD_BODY_MAX_BYTES = int(
-    os.environ.get(
-        "CODEX_WEB_ATTACH_BODY_MAX_BYTES",
-        str((4 * ((ATTACH_UPLOAD_MAX_BYTES + 2) // 3)) + (64 * 1024)),
-    )
-)
-SEND_COMMIT_TIMEOUT_SECONDS = float(os.environ.get("CODEX_WEB_SEND_COMMIT_TIMEOUT_SECONDS", "30"))
-COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS = float(os.environ.get("CODEX_WEB_COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS", str(7 * 24 * 3600)))
-SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = 8.0 * 3600.0
-SIDEBAR_PRIORITY_BUCKET_SECONDS = float(os.environ.get("CODEX_WEB_SIDEBAR_PRIORITY_BUCKET_SECONDS", "10.0"))
-RECENT_CWD_MAX = int(os.environ.get("CODEX_WEB_RECENT_CWD_MAX", "256"))
-STATIC_CACHE_ENABLED = str(os.environ.get("CODEX_WEB_STATIC_CACHE") or "").strip() == "1"
-TRANSCRIPT_EXPORT_MAX_BYTES = int(os.environ.get("CODEX_WEB_TRANSCRIPT_EXPORT_MAX_BYTES", str(50 * 1024 * 1024)))
-
+_SERVER_CONFIG = _build_server_config()
+_DOTENV = _SERVER_CONFIG.DOTENV_PATH
+APP_DIR = _SERVER_CONFIG.APP_DIR
+PROC_ROOT = _SERVER_CONFIG.PROC_ROOT
+SOCK_DIR = _SERVER_CONFIG.SOCK_DIR
+STATE_PATH = _SERVER_CONFIG.STATE_PATH
+HMAC_SECRET_PATH = _SERVER_CONFIG.HMAC_SECRET_PATH
+LAUNCH_ATTEMPTS_PATH = _SERVER_CONFIG.LAUNCH_ATTEMPTS_PATH
+UPLOAD_DIR = _SERVER_CONFIG.UPLOAD_DIR
+UNATTENDED_PATH = _SERVER_CONFIG.UNATTENDED_PATH
+ALIAS_PATH = _SERVER_CONFIG.ALIAS_PATH
+SIDEBAR_META_PATH = _SERVER_CONFIG.SIDEBAR_META_PATH
+HIDDEN_SESSIONS_PATH = _SERVER_CONFIG.HIDDEN_SESSIONS_PATH
+FILE_HISTORY_PATH = _SERVER_CONFIG.FILE_HISTORY_PATH
+VIDEO_PREVIEW_DIR = _SERVER_CONFIG.VIDEO_PREVIEW_DIR
+QUEUE_PATH = _SERVER_CONFIG.QUEUE_PATH
+PENDING_ATTACHMENTS_PATH = _SERVER_CONFIG.PENDING_ATTACHMENTS_PATH
+COMMIT_UNKNOWN_SENDS_PATH = _SERVER_CONFIG.COMMIT_UNKNOWN_SENDS_PATH
+RECENT_CWD_PATH = _SERVER_CONFIG.RECENT_CWD_PATH
+VOICE_SETTINGS_PATH = _SERVER_CONFIG.VOICE_SETTINGS_PATH
+PUSH_SUBSCRIPTIONS_PATH = _SERVER_CONFIG.PUSH_SUBSCRIPTIONS_PATH
+DELIVERY_LEDGER_PATH = _SERVER_CONFIG.DELIVERY_LEDGER_PATH
+VAPID_PRIVATE_KEY_PATH = _SERVER_CONFIG.VAPID_PRIVATE_KEY_PATH
+COOKIE_NAME = _SERVER_CONFIG.COOKIE_NAME
+COOKIE_EXPIRES = _SERVER_CONFIG.COOKIE_EXPIRES
+COOKIE_SECURE = _SERVER_CONFIG.COOKIE_SECURE
+URL_PREFIX = _SERVER_CONFIG.URL_PREFIX
+COOKIE_PATH = _SERVER_CONFIG.COOKIE_PATH
+TMUX_SESSION_NAME = _SERVER_CONFIG.TMUX_SESSION_NAME
+TMUX_META_WAIT_SECONDS = _SERVER_CONFIG.TMUX_META_WAIT_SECONDS
+TMUX_AVAILABLE_TTL_SECONDS = _SERVER_CONFIG.TMUX_AVAILABLE_TTL_SECONDS
+CODEX_HOME = _SERVER_CONFIG.CODEX_HOME
+CODEX_SESSIONS_DIR = _SERVER_CONFIG.CODEX_SESSIONS_DIR
+CODEX_CONFIG_PATH = _SERVER_CONFIG.CODEX_CONFIG_PATH
+MODELS_CACHE_PATH = _SERVER_CONFIG.MODELS_CACHE_PATH
+PI_HOME = _SERVER_CONFIG.PI_HOME
+PI_SESSIONS_DIR = _SERVER_CONFIG.PI_SESSIONS_DIR
+PI_SETTINGS_PATH = _SERVER_CONFIG.PI_SETTINGS_PATH
+PI_MODELS_PATH = _SERVER_CONFIG.PI_MODELS_PATH
+PI_AUTH_PATH = _SERVER_CONFIG.PI_AUTH_PATH
+CC_HOME = _SERVER_CONFIG.CC_HOME
+CC_SESSIONS_DIR = _SERVER_CONFIG.CC_SESSIONS_DIR
+CC_SETTINGS_PATH = _SERVER_CONFIG.CC_SETTINGS_PATH
+DEFAULT_AGENT_BACKEND = _SERVER_CONFIG.DEFAULT_AGENT_BACKEND
+DEFAULT_HOST = _SERVER_CONFIG.DEFAULT_HOST
+DEFAULT_PORT = _SERVER_CONFIG.DEFAULT_PORT
+UNATTENDED_DEFAULT_IDLE_MINUTES = _SERVER_CONFIG.UNATTENDED_DEFAULT_IDLE_MINUTES
+UNATTENDED_DEFAULT_MAX_INJECTIONS = _SERVER_CONFIG.UNATTENDED_DEFAULT_MAX_INJECTIONS
+UNATTENDED_SWEEP_SECONDS = _SERVER_CONFIG.UNATTENDED_SWEEP_SECONDS
+QUEUE_SWEEP_SECONDS = _SERVER_CONFIG.QUEUE_SWEEP_SECONDS
+VOICE_PUSH_SWEEP_SECONDS = _SERVER_CONFIG.VOICE_PUSH_SWEEP_SECONDS
+QUEUE_IDLE_GRACE_SECONDS = _SERVER_CONFIG.QUEUE_IDLE_GRACE_SECONDS
+UNATTENDED_MAX_SCAN_BYTES = _SERVER_CONFIG.UNATTENDED_MAX_SCAN_BYTES
+DISCOVER_MIN_INTERVAL_SECONDS = _SERVER_CONFIG.DISCOVER_MIN_INTERVAL_SECONDS
+METRICS_WINDOW = _SERVER_CONFIG.METRICS_WINDOW
+FILE_HISTORY_MAX = _SERVER_CONFIG.FILE_HISTORY_MAX
+GIT_DIFF_MAX_BYTES = _SERVER_CONFIG.GIT_DIFF_MAX_BYTES
+GIT_DIFF_TIMEOUT_SECONDS = _SERVER_CONFIG.GIT_DIFF_TIMEOUT_SECONDS
+GIT_WORKTREE_TIMEOUT_SECONDS = _SERVER_CONFIG.GIT_WORKTREE_TIMEOUT_SECONDS
+GIT_CHANGED_FILES_MAX = _SERVER_CONFIG.GIT_CHANGED_FILES_MAX
+ATTACH_UPLOAD_MAX_BYTES = _SERVER_CONFIG.ATTACH_UPLOAD_MAX_BYTES
+ATTACH_UPLOAD_BODY_MAX_BYTES = _SERVER_CONFIG.ATTACH_UPLOAD_BODY_MAX_BYTES
+SEND_COMMIT_TIMEOUT_SECONDS = _SERVER_CONFIG.SEND_COMMIT_TIMEOUT_SECONDS
+COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS = _SERVER_CONFIG.COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS
+SIDEBAR_PRIORITY_HALF_LIFE_SECONDS = _SERVER_CONFIG.SIDEBAR_PRIORITY_HALF_LIFE_SECONDS
+SIDEBAR_PRIORITY_BUCKET_SECONDS = _SERVER_CONFIG.SIDEBAR_PRIORITY_BUCKET_SECONDS
+RECENT_CWD_MAX = _SERVER_CONFIG.RECENT_CWD_MAX
+STATIC_CACHE_ENABLED = _SERVER_CONFIG.STATIC_CACHE_ENABLED
+TRANSCRIPT_EXPORT_MAX_BYTES = _SERVER_CONFIG.TRANSCRIPT_EXPORT_MAX_BYTES
 
 def _static_cache_control_headers(*, enabled: bool = STATIC_CACHE_ENABLED) -> dict[str, str]:
     return _static_cache_control_headers_impl(enabled=enabled)
