@@ -157,18 +157,10 @@ from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
 from .session_discovery_registry import SessionDiscoveryRegistryCoordinator
 from .session_files import SessionFilesCoordinator
-from .session_launcher import LaunchContextRequest
-from .session_launcher import LaunchProcessDeps
-from .session_launcher import LaunchProcessFailure
 from .session_launcher import drain_stream as _drain_stream_impl
-from .session_launcher import launch_broker_process as _launch_broker_process
-from .session_launcher import prepare_launch_process_context as _prepare_launch_process_context
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
 from .session_launcher import wait_or_raise as _wait_or_raise_impl
-from .session_launch_plan import LaunchPlanDeps
-from .session_launch_plan import LaunchPlanRequest
 from .session_control import SessionControlCoordinator
-from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_lifecycle import SessionLifecycleCoordinator
 from .session_log_runtime import SessionLogRuntimeCoordinator
 from .session_list import SessionListCoordinator
@@ -196,6 +188,7 @@ from .session_runtime import resolve_runtime_status as _resolve_runtime_status
 from .session_runtime import select_runtime_token as _select_runtime_token
 from .session_store import SessionStore
 from .session_store import SessionStorePaths
+from .session_web_launch import SessionWebLaunchCoordinator
 from .session_ui_state import SessionUiStateCoordinator
 from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .static_routes import CONTENT_SECURITY_POLICY
@@ -2882,6 +2875,33 @@ class SessionManager:
     def _live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
         return self._lifecycle_coordinator_for_manager().live_session_for_resume_target(resume_id, resume_row)
 
+    def _web_launch_coordinator_for_manager(self) -> SessionWebLaunchCoordinator:
+        return SessionWebLaunchCoordinator(
+            resolve_dir_target=_resolve_dir_target,
+            create_git_worktree=_create_git_worktree,
+            codex_trust_override_for_path=_codex_trust_override_for_path,
+            list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
+            live_session_for_resume_target=self._live_session_for_resume_target,
+            load_env_file=_load_env_file,
+            environ=os.environ,
+            dotenv_path=_DOTENV,
+            homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
+            python_executable=sys.executable,
+            tmux_session_name=TMUX_SESSION_NAME,
+            repo_root=Path(__file__).resolve().parent.parent,
+            record_launch_attempt=_record_launch_attempt,
+            now=time.time,
+            stderr=sys.stderr,
+            which_tmux=shutil.which,
+            run=subprocess.run,
+            popen=subprocess.Popen,
+            wait_or_raise=_wait_or_raise,
+            wait_for_spawned_broker_meta=_wait_for_spawned_broker_meta,
+            tmux_pane_snapshot=_tmux_pane_snapshot,
+            drain_stream=_drain_stream,
+            launch_error=SessionLaunchError,
+        )
+
     def spawn_web_session(
         self,
         *,
@@ -2897,70 +2917,19 @@ class SessionManager:
         service_tier: str | None = None,
         create_in_tmux: bool = False,
     ) -> dict[str, Any]:
-        launch_plan = _prepare_launch_plan(
-            LaunchPlanRequest(
-                cwd=cwd,
-                args=args,
-                agent_backend=agent_backend,
-                resume_session_id=resume_session_id,
-                worktree_branch=worktree_branch,
-                model_provider=model_provider,
-                preferred_auth_method=preferred_auth_method,
-                model=model,
-                reasoning_effort=reasoning_effort,
-                service_tier=service_tier,
-                create_in_tmux=create_in_tmux,
-            ),
-            deps=LaunchPlanDeps(
-                resolve_dir_target=_resolve_dir_target,
-                create_git_worktree=_create_git_worktree,
-                codex_trust_override_for_path=_codex_trust_override_for_path,
-                list_resume_candidates_for_cwd=_list_resume_candidates_for_cwd,
-                live_session_for_resume_target=self._live_session_for_resume_target,
-                load_env_file=_load_env_file,
-                environ=os.environ,
-                dotenv_path=_DOTENV,
-                homes={"codex": CODEX_HOME, "pi": PI_HOME, "cc": CC_HOME},
-                python_executable=sys.executable,
-            ),
+        return self._web_launch_coordinator_for_manager().spawn_web_session(
+            cwd=cwd,
+            args=args,
+            agent_backend=agent_backend,
+            resume_session_id=resume_session_id,
+            worktree_branch=worktree_branch,
+            model_provider=model_provider,
+            preferred_auth_method=preferred_auth_method,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            service_tier=service_tier,
+            create_in_tmux=create_in_tmux,
         )
-
-        launch_context = _prepare_launch_process_context(
-            LaunchContextRequest(
-                argv=launch_plan.argv,
-                env=launch_plan.env,
-                agent_backend=launch_plan.backend_name,
-                spawn_cwd=launch_plan.spawn_cwd,
-                requested_cwd=launch_plan.requested_cwd,
-                create_in_tmux=launch_plan.create_in_tmux,
-                tmux_session_name=TMUX_SESSION_NAME,
-                repo_root=Path(__file__).resolve().parent.parent,
-                resume_session_id=launch_plan.resume_session_id,
-                worktree_branch=launch_plan.worktree_branch,
-                model_provider=launch_plan.model_provider,
-                preferred_auth_method=launch_plan.preferred_auth_method,
-                model=launch_plan.model,
-                reasoning_effort=launch_plan.reasoning_effort,
-                service_tier=launch_plan.service_tier,
-            ),
-            record_launch_attempt=_record_launch_attempt,
-            now=time.time,
-            stderr=sys.stderr,
-        )
-
-        process_deps = LaunchProcessDeps(
-            which_tmux=shutil.which,
-            run=subprocess.run,
-            popen=subprocess.Popen,
-            wait_or_raise=_wait_or_raise,
-            wait_for_spawned_broker_meta=_wait_for_spawned_broker_meta,
-            tmux_pane_snapshot=_tmux_pane_snapshot,
-            drain_stream=_drain_stream,
-        )
-        try:
-            return _launch_broker_process(launch_context.request, recorder=launch_context.recorder, deps=process_deps)
-        except LaunchProcessFailure as e:
-            raise SessionLaunchError(e.record) from e
 
     def delete_session(self, session_id: str) -> bool:
         return self._lifecycle_coordinator_for_manager().delete_session(session_id)
