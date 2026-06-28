@@ -3728,3 +3728,16 @@
   - Focused chat/idle/message/source group returned `138 passed, 4 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1175 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T23:48:00Z Rollout token/context scanner split
+- Functional commit `1e5d1a0 Extract rollout token scanners` moved token/context evidence scanning out of `rollout_log.py` into `rollout_tokens.py`:
+  - `_extract_token_update`
+  - `_find_latest_token_update`
+  - `_find_latest_turn_context`
+- Compatibility preserved: `rollout_log.py` imports/re-exports these names and still owns live-delta/pagination orchestration that calls them.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts token/context scanners live in `rollout_tokens.py` and are imported by `rollout_log.py`.
+- Size observation: `rollout_log.py` is now 815 lines; `rollout_tokens.py` is 69 lines.
+- Validation after `1e5d1a0`:
+  - Focused chat/idle/message/source group returned `151 passed, 4 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1176 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
