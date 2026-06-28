@@ -197,6 +197,7 @@ from .session_manager_factories import ui_state_coordinator_for_manager as _ui_s
 from .session_manager_factories import voice_runtime_for_manager as _voice_runtime_for_manager_impl
 from .session_manager_factories import web_launch_coordinator_for_manager as _web_launch_coordinator_for_manager_impl
 from .session_manager_store import create_session_store as _create_session_store_impl
+from .session_manager_store_attrs import store_backed_attr as _store_backed_attr
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
 from .session_model import Session
@@ -1401,77 +1402,15 @@ def _session_store_paths_for_manager() -> SessionStorePaths:
 
 
 class SessionManager:
-    @property
-    def _unattended(self) -> dict[str, dict[str, Any]]:
-        return self._session_store_for_manager().unattended
-
-    @_unattended.setter
-    def _unattended(self, value: dict[str, dict[str, Any]]) -> None:
-        self._session_store_for_manager().unattended = value
-
-    @property
-    def _aliases(self) -> dict[str, str]:
-        return self._session_store_for_manager().aliases
-
-    @_aliases.setter
-    def _aliases(self, value: dict[str, str]) -> None:
-        self._session_store_for_manager().aliases = value
-
-    @property
-    def _sidebar_meta(self) -> dict[str, dict[str, Any]]:
-        return self._session_store_for_manager().sidebar_meta
-
-    @_sidebar_meta.setter
-    def _sidebar_meta(self, value: dict[str, dict[str, Any]]) -> None:
-        self._session_store_for_manager().sidebar_meta = value
-
-    @property
-    def _hidden_sessions(self) -> set[str]:
-        return self._session_store_for_manager().hidden_sessions
-
-    @_hidden_sessions.setter
-    def _hidden_sessions(self, value: set[str]) -> None:
-        self._session_store_for_manager().hidden_sessions = value
-
-    @property
-    def _files(self) -> dict[str, list[str]]:
-        return self._session_store_for_manager().files
-
-    @_files.setter
-    def _files(self, value: dict[str, list[str]]) -> None:
-        self._session_store_for_manager().files = value
-
-    @property
-    def _queues(self) -> dict[str, list[dict[str, Any]]]:
-        return self._session_store_for_manager().queues
-
-    @_queues.setter
-    def _queues(self, value: dict[str, list[dict[str, Any]]]) -> None:
-        self._session_store_for_manager().queues = value
-
-    @property
-    def _pending_attachment_ids(self) -> set[str]:
-        return self._session_store_for_manager().pending_attachment_ids
-
-    @_pending_attachment_ids.setter
-    def _pending_attachment_ids(self, value: set[str]) -> None:
-        self._session_store_for_manager().pending_attachment_ids = value
-
-    @property
-    def _commit_unknown_sends(self) -> dict[str, dict[str, Any]]:
-        return self._session_store_for_manager().commit_unknown_sends
-
-    @_commit_unknown_sends.setter
-    def _commit_unknown_sends(self, value: dict[str, dict[str, Any]]) -> None:
-        self._session_store_for_manager().commit_unknown_sends = value
-
-    @property
-    def _recent_cwds(self) -> dict[str, float]:
-        return self._session_store_for_manager().recent_cwds
-
-    @_recent_cwds.setter
-    def _recent_cwds(self, value: dict[str, float]) -> None:
-        self._session_store_for_manager().recent_cwds = value
+    _unattended = _store_backed_attr("unattended")
+    _aliases = _store_backed_attr("aliases")
+    _sidebar_meta = _store_backed_attr("sidebar_meta")
+    _hidden_sessions = _store_backed_attr("hidden_sessions")
+    _files = _store_backed_attr("files")
+    _queues = _store_backed_attr("queues")
+    _pending_attachment_ids = _store_backed_attr("pending_attachment_ids")
+    _commit_unknown_sends = _store_backed_attr("commit_unknown_sends")
+    _recent_cwds = _store_backed_attr("recent_cwds")
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
