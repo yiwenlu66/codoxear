@@ -3643,3 +3643,12 @@
   - `SessionManager` in `server.py` has only five concrete literal methods: `refresh_session_meta`, `spawn_web_session`, `send`, `_refresh_session_meta_if_sidecar_exists`, and `inject_keys`.
   - New ownership modules: `server_config.py`, `session_registry.py`, `session_manager_core_methods.py`, and `session_errors.py`.
 - Scope note: validation is local pytest only. Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T22:36:00Z Registry fallback repair
+- Clean-room review in progress surfaced a residual lifecycle factory fallback: `lifecycle_coordinator_for_manager` still used `getattr(manager, "_lock", ...)` and `getattr(manager, "_sessions", {})`.
+- Functional commit `2e73e8a Use registry helpers in lifecycle factory` replaced those with `_registry_lock(manager)` and `_registry_sessions(manager)` and removed the now-unused `threading` import from `session_manager_factories.py`.
+- Validation after `2e73e8a`:
+  - Strict grep for `manager._lock`, `manager._sessions`, `getattr(manager, "_lock"`, `getattr(manager, "_sessions"`, `manager._stop`, `manager._last_discover_ts`, and `getattr(manager, "_input_locks"` in `codoxear/session_manager_*.py` and `codoxear/server.py` returned no matches.
+  - Focused registry/factory/manager/resume/queue tests returned `129 passed, 22 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1171 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun.
