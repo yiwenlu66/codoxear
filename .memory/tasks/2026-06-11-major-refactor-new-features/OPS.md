@@ -3461,3 +3461,10 @@
 - Source sentinel update: file-upload send-path source checks now target `session_input.py` for direct-send preconditions and direct-send response classification while keeping attachment-specific checks in `server.py`.
 - Size observation: `server.py` is now 4666 lines; `session_input.py` is 81 lines.
 - Validation: py-compile of `session_input.py`, `server.py`, and `test_session_input.py` passed. Focused send/input/queue/attachment/diagnostics/session-route group returned `146 passed, 26 subtests`; full local `pytest -q` returned `1144 passed, 107 subtests`.
+
+## 2026-06-27T00:40:00Z Control socket client-call checkpoint
+- Functional commit `af60173 Move control socket client call`: moved client-side Unix control-socket request/response mechanics from `SessionManager._sock_call` into `codoxear/control_socket.py`.
+- Actual architecture moved: `control_socket.call_control_socket` now owns AF_UNIX socket creation, timeout assignment, connect, JSON-line request serialization, request-sent tracking, 65536-byte receive loop, empty-response result, JSON-line response decode, tracked `ControlSocketCallError`, and socket close. `ControlSocketCallError` also now lives in `control_socket.py` and is imported/re-exported by `server.py` for compatibility.
+- What intentionally remains in `SessionManager`: `_sock_call` as a patch seam; stale session cleanup on state/tail/send/key failures; process liveness checks; unlinking sidecar/socket artifacts; and higher-level response semantics.
+- Size observation: `server.py` is now 4637 lines; `control_socket.py` is 80 lines.
+- Validation: py-compile of `control_socket.py`, `server.py`, and `test_control_socket.py` passed. Focused control/send/session group returned `137 passed, 22 subtests`; full local `pytest -q` returned `1146 passed, 107 subtests`.
