@@ -180,6 +180,7 @@ from .session_listing import priority_from_elapsed_seconds as _listing_priority_
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_model import Session
+from .session_pending_state import SessionPendingStateCoordinator
 from .session_runtime import ListingRuntimeProbes
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
@@ -2234,45 +2235,13 @@ class SessionManager:
         self._session_store_for_manager().save_pending_attachments(ids)
 
     def _set_pending_attachment(self, session_id: str, value: bool) -> None:
-        with self._lock:
-            ids = getattr(self, "_pending_attachment_ids", None)
-            if not isinstance(ids, set):
-                self._pending_attachment_ids = set()
-                ids = self._pending_attachment_ids
-            s = self._sessions.get(session_id)
-            if s:
-                s.pending_attachment = bool(value)
-            if value:
-                ids.add(session_id)
-            else:
-                ids.discard(session_id)
-        self._save_pending_attachments()
+        return self._pending_state_coordinator_for_manager().set_pending_attachment(session_id, value)
 
     def clear_pending_attachment(self, session_id: str) -> dict[str, Any]:
-        with self._lock:
-            if session_id not in self._sessions:
-                raise KeyError("unknown session")
-        self._set_pending_attachment(session_id, False)
-        return {"ok": True, "pending_attachment": False}
+        return self._pending_state_coordinator_for_manager().clear_pending_attachment(session_id)
 
     def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
-        if not isinstance(raw, dict):
-            return None
-        text = raw.get("text")
-        if not isinstance(text, str) or not text.strip():
-            return None
-        ts_raw = raw.get("created_ts")
-        try:
-            created_ts = float(ts_raw) if ts_raw is not None else time.time()
-        except (TypeError, ValueError):
-            created_ts = time.time()
-        if not math.isfinite(created_ts) or created_ts <= 0:
-            created_ts = time.time()
-        error = raw.get("error")
-        record: dict[str, Any] = {"text": text, "created_ts": created_ts}
-        if isinstance(error, str) and error.strip():
-            record["error"] = error.strip()
-        return record
+        return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(raw)
 
     def _load_commit_unknown_sends(self) -> None:
         cleaned = self._session_store_for_manager().load_commit_unknown_sends()
@@ -2285,66 +2254,13 @@ class SessionManager:
         self._session_store_for_manager().save_commit_unknown_sends(source)
 
     def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
-        cleaned = self._clean_commit_unknown_send_record(record) if record is not None else None
-        with self._lock:
-            unknown_sends = getattr(self, "_commit_unknown_sends", None)
-            if not isinstance(unknown_sends, dict):
-                self._commit_unknown_sends = {}
-                unknown_sends = self._commit_unknown_sends
-            s = self._sessions.get(session_id)
-            if cleaned is None:
-                unknown_sends.pop(session_id, None)
-                if s:
-                    s.commit_unknown_send = None
-            else:
-                unknown_sends[session_id] = dict(cleaned)
-                if s:
-                    s.commit_unknown_send = dict(cleaned)
-        self._save_commit_unknown_sends()
+        return self._pending_state_coordinator_for_manager().set_commit_unknown_send(session_id, record)
 
     def clear_commit_unknown_send(self, session_id: str) -> dict[str, Any]:
-        queue_changed = False
-        with self._lock:
-            unknown_sends = getattr(self, "_commit_unknown_sends", None)
-            has_orphan_marker = isinstance(unknown_sends, dict) and session_id in unknown_sends
-            if session_id not in self._sessions and not has_orphan_marker:
-                raise KeyError("unknown session")
-            if has_orphan_marker:
-                queue_changed = self._mark_queue_orphan_recovery_locked(session_id)
-        if queue_changed:
-            self._save_queues()
-        self._set_commit_unknown_send(session_id, None)
-        return {"ok": True, "commit_unknown_send": False}
+        return self._pending_state_coordinator_for_manager().clear_commit_unknown_send(session_id)
 
     def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
-        changed = False
-        queue_changed = False
-        now_ts = time.time()
-        with self._lock:
-            unknown_sends = getattr(self, "_commit_unknown_sends", None)
-            if not isinstance(unknown_sends, dict):
-                self._commit_unknown_sends = {}
-                return False
-            active_ids = set(getattr(self, "_sessions", {}).keys())
-            for sid, record in list(unknown_sends.items()):
-                if sid in active_ids:
-                    continue
-                created_raw = record.get("created_ts") if isinstance(record, dict) else None
-                try:
-                    created_ts = float(created_raw)
-                except (TypeError, ValueError):
-                    created_ts = now_ts
-                if math.isfinite(created_ts) and created_ts > 0 and (now_ts - created_ts) < max_age_seconds:
-                    continue
-                if self._mark_queue_orphan_recovery_locked(str(sid)):
-                    queue_changed = True
-                unknown_sends.pop(sid, None)
-                changed = True
-        if queue_changed:
-            self._save_queues()
-        if changed:
-            self._save_commit_unknown_sends()
-        return changed
+        return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(max_age_seconds=max_age_seconds)
 
     def _load_recent_cwds(self) -> None:
         cleaned = self._session_store_for_manager().load_recent_cwds()
@@ -3145,6 +3061,22 @@ class SessionManager:
             save_unattended=self._save_unattended,
             save_files=self._save_files,
             save_queues=self._save_queues,
+        )
+
+    def _pending_state_coordinator_for_manager(self) -> SessionPendingStateCoordinator:
+        return SessionPendingStateCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", None),
+            set_pending_attachment_ids=lambda value: setattr(self, "_pending_attachment_ids", value),
+            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", None),
+            set_commit_unknown_sends=lambda value: setattr(self, "_commit_unknown_sends", value),
+            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
+            save_pending_attachments=self._save_pending_attachments,
+            save_commit_unknown_sends=self._save_commit_unknown_sends,
+            save_queues=self._save_queues,
+            now=time.time,
+            commit_unknown_orphan_prune_seconds=COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
