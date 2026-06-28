@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `289af96 Make route dependencies explicit`
+Latest functional code checkpoint: `f7297ac Trim unused server imports`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -399,7 +399,7 @@ Additional structural moves after the earlier coordinator tranches:
 - `SessionManager` dependency assembly no longer lives inline. `session_manager_factories.py` owns coordinator factory wiring and imports coordinator classes directly while receiving the live `codoxear.server` module for monkeypatch-sensitive wrappers/constants.
 - `SessionManager` bootstrap/store mechanics no longer live inline. `session_manager_store.py`, `session_manager_store_attrs.py`, `session_manager_bootstrap.py`, and `session_manager_discovery.py` own store creation/copy-forward, store-backed descriptors/load-save generation, initial load/thread/input-lock/loop policy, and discovery orchestration.
 - After commit `1990400`, `codoxear/server.py` was 1963 lines. After commits `32e7c78` and `756ee7d`, generated manager compatibility bindings live in `codoxear/session_manager_method_bindings.py`; `server.py` was 1616 lines, and `SessionManager` had 26 concrete methods.
-- Commits `9f510e5` and `289af96` replaced whole-server consumption in manager factories and route dependency assembly with explicit caps objects built lazily from the live server module, preserving monkeypatch timing while making dependency surfaces auditable. Commit `4aeb91b` removed private zero-reference wrappers and a no-op manager stub. `server.py` is now 1432 lines.
-- Latest validation for the compatibility-binding/caps tranche is local: final full `python3 -m pytest -q` returned `1165 passed, 107 subtests passed`. Docker evidence was not rerun for this local refactor tranche and should not be claimed for promotion.
+- Commits `9f510e5` and `289af96` replaced whole-server consumption in manager factories and route dependency assembly with explicit caps objects built lazily from the live server module, preserving monkeypatch timing while making dependency surfaces auditable. Commit `4aeb91b` removed private zero-reference wrappers and a no-op manager stub; commit `f7297ac` removed exact-dead import aliases. `server.py` is now 1387 lines.
+- Latest validation for the compatibility-binding/caps/import-cleanup tranche is local: final full `python3 -m pytest -q` returned `1165 passed, 107 subtests passed`; clean-room reviews `4a94e6a4-4a98-46dd-b908-71522845d9d6` and `4ce68474-f742-46b5-b19e-78219522c01b` returned PASS/no blockers. Docker evidence was not rerun for this local refactor tranche and should not be claimed for promotion.
 
 Recommended next step: continue shrinking compatibility surface only where it has semantic ownership value. Module-level wrappers in `server.py` are now mostly source sentinels, injected-constant adapters, or monkeypatch seams; classify before moving. Do not move the registry/cache authority itself unless the target module can preserve public monkeypatch seams and make lock/registry invariants explicit under tests.

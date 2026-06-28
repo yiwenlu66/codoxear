@@ -3610,3 +3610,14 @@
   - Final full local suite after route caps returned `1165 passed, 107 subtests passed`.
 - Size observation: after `4aeb91b` and `289af96`, `codoxear/server.py` is 1432 lines. `session_manager_factories.py` and `server_route_deps.py` are larger because they now make previously implicit server-derived dependency surfaces explicit.
 - Scope note: this tranche has local pytest evidence only. Docker evidence was not rerun and must not be claimed for promotion.
+
+## 2026-06-28T21:21:30Z Review gate and import cleanup
+- Clean-room review results:
+  - Reviewer run `4a94e6a4-4a98-46dd-b908-71522845d9d6` returned PASS/no blockers. It verified import/circular safety, generated manager binding public names, live `sys.modules` factory lookup, route caps timing, deleted wrapper reachability, source sentinel update validity, no static `codoxear.server` imports from extracted modules, local pytest evidence, clean working tree, and Docker-scope honesty. Non-blocking notes: two factory functions accept unused `caps` by design, large caps dataclasses are an explicit-surface tradeoff, and one dead queue-store import existed before cleanup.
+  - Narrow delegate review `4ce68474-f742-46b5-b19e-78219522c01b` returned PASS/no blockers. It independently verified the latest tranche, reran `python3 -m pytest -q` -> `1165 passed, 107 subtests passed`, and noted residual local-only validation plus remaining potential server import cleanup.
+- Follow-up commit `f7297ac Trim unused server imports`: removed exact-dead import aliases from `codoxear/server.py` after wrapper deletion. A precise alias-level scan reported zero exact-dead server import aliases afterward.
+- Validation after `f7297ac`:
+  - Focused source/caps/queue tests returned `143 passed, 22 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1165 passed, 107 subtests passed`.
+- Size observation: `codoxear/server.py` is now 1387 lines.
+- Scope note: Docker evidence was not rerun after `f7297ac`; do not claim Docker acceptance/promotion evidence for this tranche.
