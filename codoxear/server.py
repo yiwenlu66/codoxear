@@ -175,6 +175,7 @@ from .session_log_runtime import SessionLogRuntimeCoordinator
 from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
 from .session_readiness import SessionReadinessCoordinator
+from .session_recent_cwd import SessionRecentCwdCoordinator
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
@@ -2273,58 +2274,13 @@ class SessionManager:
         self._session_store_for_manager().save_recent_cwds(obj)
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
-        cleaned = _clean_recent_cwd(cwd)
-        if cleaned is None:
-            return False
-        if isinstance(ts, bool):
-            ts_value = time.time()
-        else:
-            try:
-                ts_value = float(ts) if ts is not None else time.time()
-            except (TypeError, ValueError, OverflowError):
-                ts_value = time.time()
-        if not math.isfinite(ts_value) or ts_value <= 0:
-            ts_value = time.time()
-        with self._lock:
-            recent = getattr(self, "_recent_cwds", None)
-            if not isinstance(recent, dict):
-                self._recent_cwds = {}
-                recent = self._recent_cwds
-            prev = recent.get(cleaned)
-            if prev is not None and prev >= ts_value:
-                return False
-            recent[cleaned] = ts_value
-            if len(recent) > RECENT_CWD_MAX * 2:
-                keep = dict(sorted(recent.items(), key=lambda item: (-float(item[1]), item[0]))[:RECENT_CWD_MAX])
-                recent.clear()
-                recent.update(keep)
-        return True
+        return self._recent_cwd_coordinator_for_manager().remember(cwd, ts=ts)
 
     def _backfill_recent_cwds_from_logs(self) -> None:
-        changed = False
-        seen: set[str] = set()
-        for log_path in _iter_session_logs():
-            try:
-                row = _resume_candidate_from_log(log_path)
-            except Exception:
-                continue
-            if not isinstance(row, dict):
-                continue
-            cwd = row.get("cwd")
-            if not isinstance(cwd, str) or not cwd or cwd in seen:
-                continue
-            seen.add(cwd)
-            if self._remember_recent_cwd(cwd, ts=row.get("updated_ts")):
-                changed = True
-            if len(seen) >= RECENT_CWD_MAX:
-                break
-        if changed:
-            self._save_recent_cwds()
+        return self._recent_cwd_coordinator_for_manager().backfill_from_logs()
 
     def recent_cwds(self, *, limit: int = RECENT_CWD_MAX) -> list[str]:
-        with self._lock:
-            items = sorted(getattr(self, "_recent_cwds", {}).items(), key=lambda item: (-float(item[1]), item[0]))
-        return [cwd for cwd, _ts in items[: max(0, int(limit))]]
+        return self._recent_cwd_coordinator_for_manager().list_recent(limit=limit)
 
     def _queue_len(self, session_id: str) -> int:
         return self._queue_coordinator_for_manager().queue_len(session_id)
@@ -3077,6 +3033,19 @@ class SessionManager:
             save_queues=self._save_queues,
             now=time.time,
             commit_unknown_orphan_prune_seconds=COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS,
+        )
+
+    def _recent_cwd_coordinator_for_manager(self) -> SessionRecentCwdCoordinator:
+        return SessionRecentCwdCoordinator(
+            lock=self._lock,
+            recent_cwds=lambda: getattr(self, "_recent_cwds", None),
+            set_recent_cwds=lambda value: setattr(self, "_recent_cwds", value),
+            clean_recent_cwd=_clean_recent_cwd,
+            iter_session_logs=_iter_session_logs,
+            resume_candidate_from_log=_resume_candidate_from_log,
+            save_recent_cwds=self._save_recent_cwds,
+            now=time.time,
+            max_recent_cwds=RECENT_CWD_MAX,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
