@@ -3476,3 +3476,14 @@
 - Source sentinel update: file-upload and interrupt source tests now check `session_control.py` for key-injection request/commit-unknown/interrupt semantics while preserving manager wrapper expectations.
 - Size observation: `server.py` is now 4582 lines; `session_control.py` is 101 lines.
 - Validation: py-compile of `session_control.py`, `server.py`, and `test_session_control.py` passed. Focused control/source/send/stale/diagnostics/session-route group returned `173 passed, 26 subtests`; full local `pytest -q` returned `1151 passed, 107 subtests`.
+
+## 2026-06-27T02:10:00Z Coordinator extraction tranche
+- Functional commits after the session-control checkpoint:
+  - `e559660 Move direct send socket control`: direct send socket dispatch, request-sent commit-unknown conversion, unsent dead-session cleanup, live unsent not-ready conversion, and timeout commit-unknown conversion moved into `SessionControlCoordinator.call_confirmed_send`.
+  - `bcde64f Extract session listing coordinator`: `codoxear/session_list.py` now owns list prelude, active snapshot, runtime enrichment, failed-launch overlay, orphan recovery rows, dirty-store saves, and final sorting; `SessionManager.list_sessions` is a wrapper plus dependency wiring.
+  - `33f11d5 Extract session metadata refresh coordinator`: `codoxear/session_refresh.py` now owns sidecar validation, missing-sidecar prune handoff, invalid-sidecar logging, transport/capability refresh, detach-tail handling, open-log rediscovery, Codex main-log coercion, run-settings/service-tier refresh, session mutation, cache reset, and optional queue drain.
+  - `259ebb4 Extract session readiness coordinator`: `codoxear/session_readiness.py` now owns remote-ready resolution from broker/log/boundary state, state-after-metadata-probe sequencing, direct-send readiness, queue-promotion readiness, and attachment-injection readiness.
+  - `ebeac59 Extract unattended sweep coordinator`: `codoxear/unattended_sweep.py` now owns unattended scheduler orchestration: discovery/prune prelude, enabled-session snapshots, exhausted-budget disable, scope cooldown checks, broker/queue/tail gates, input-lock prompt decision, send, success bookkeeping, persistence, and per-session error isolation.
+  - `ea42dbd Extract queue sweep coordinator`: `codoxear/queue_sweep.py` now owns queue sweep discovery/prune, orphan-recovery marking, missing-session queue dropping, queue-save triggering, and one-head-per-sweep drain sequencing.
+- Validation evidence per functional slice: each slice passed focused tests; full local `pytest -q` after each of the listing, refresh, readiness, unattended-sweep, and queue-sweep moves returned `1157 passed, 107 subtests`.
+- Current size observation: see `wc -l` output in this OPS entry command; `server.py` is materially smaller and increasingly composed of wrappers/dependency wiring rather than embedded state machines.
