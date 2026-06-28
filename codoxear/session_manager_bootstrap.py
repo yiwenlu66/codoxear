@@ -65,6 +65,51 @@ def start_worker_thread(
     return thread
 
 
+def input_lock_for_session(manager: Any, session_id: str, *, lock_factory: Callable[[], threading.RLock] = threading.RLock) -> threading.RLock:
+    with manager._lock:
+        locks = getattr(manager, "_input_locks", None)
+        if not isinstance(locks, dict):
+            manager._input_locks = {}
+            locks = manager._input_locks
+        lock = locks.get(session_id)
+        if lock is None:
+            lock = lock_factory()
+            locks[session_id] = lock
+        return lock
+
+
+def voice_push_scan_loop(manager: Any, *, wait_seconds: float, stderr: Any, print_exc: Callable[..., None]) -> None:
+    while not manager._stop.is_set():
+        try:
+            manager._voice_push_scan_sweep()
+        except Exception as exc:
+            stderr.write(f"error: voice-push scan failed: {type(exc).__name__}: {exc}\n")
+            print_exc(file=stderr)
+            stderr.flush()
+        manager._stop.wait(wait_seconds)
+
+
+def unattended_loop(manager: Any, *, wait_seconds: float, stderr: Any, print_exc: Callable[..., None]) -> None:
+    while not manager._stop.is_set():
+        try:
+            manager._unattended_sweep()
+        except Exception as exc:
+            stderr.write(f"error: unattended sweep failed: {type(exc).__name__}: {exc}\n")
+            print_exc(file=stderr)
+            stderr.flush()
+        manager._stop.wait(wait_seconds)
+
+
+def queue_loop(manager: Any, *, wait_seconds: float, stderr: Any) -> None:
+    while not manager._stop.is_set():
+        try:
+            manager._queue_sweep()
+        except Exception:
+            stderr.write("error: queue sweep crashed; continuing\n")
+            stderr.flush()
+        manager._stop.wait(wait_seconds)
+
+
 def start_manager_worker_threads(*, manager: Any, thread_factory: Callable[..., threading.Thread]) -> None:
     manager._unattended_thr = start_worker_thread(
         thread_factory=thread_factory,

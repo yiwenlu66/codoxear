@@ -176,10 +176,15 @@ from .session_listing import priority_from_elapsed_seconds as _listing_priority_
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
 from .session_manager_bootstrap import create_voice_push_coordinator as _create_voice_push_coordinator_impl
+from .session_manager_bootstrap import input_lock_for_session as _input_lock_for_session_impl
 from .session_manager_bootstrap import load_manager_persistent_state as _load_manager_persistent_state_impl
+from .session_manager_bootstrap import queue_loop as _queue_loop_impl
 from .session_manager_bootstrap import seed_manager_in_memory_state as _seed_manager_in_memory_state_impl
 from .session_manager_bootstrap import start_manager_worker_threads as _start_manager_worker_threads_impl
+from .session_manager_bootstrap import unattended_loop as _unattended_loop_impl
+from .session_manager_bootstrap import voice_push_scan_loop as _voice_push_scan_loop_impl
 from .session_manager_discovery import discover_existing_for_manager as _discover_existing_for_manager_impl
+from .session_manager_discovery import discover_existing_if_stale_for_manager as _discover_existing_if_stale_for_manager_impl
 from .session_manager_factories import attachment_coordinator_for_manager as _attachment_coordinator_for_manager_impl
 from .session_manager_factories import cleanup_coordinator_for_manager as _cleanup_coordinator_for_manager_impl
 from .session_manager_factories import control_coordinator_for_manager as _control_coordinator_for_manager_impl
@@ -1426,15 +1431,12 @@ class SessionManager:
         return _session_transport_from_meta_impl(meta=meta, clean_optional_text=_clean_optional_text)
 
     def _discover_existing_if_stale(self, *, force: bool = False) -> None:
-        now = time.time()
-        with self._lock:
-            last = float(getattr(self, "_last_discover_ts", 0.0))
-        if (not force) and ((now - last) < DISCOVER_MIN_INTERVAL_SECONDS):
-            return
-        try:
-            self._discover_existing(force=force)
-        except TypeError:
-            self._discover_existing()
+        return _discover_existing_if_stale_for_manager_impl(
+            self,
+            force=force,
+            discover_min_interval_seconds=DISCOVER_MIN_INTERVAL_SECONDS,
+            now=time.time,
+        )
 
     def _new_session_store_for_manager(self, paths: SessionStorePaths) -> SessionStore:
         return _create_session_store_impl(
@@ -1573,16 +1575,7 @@ class SessionManager:
         return _queue_coordinator_for_manager_impl(self, sys.modules[__name__])
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
-        with self._lock:
-            locks = getattr(self, "_input_locks", None)
-            if not isinstance(locks, dict):
-                self._input_locks = {}
-                locks = self._input_locks
-            lock = locks.get(session_id)
-            if lock is None:
-                lock = threading.RLock()
-                locks[session_id] = lock
-            return lock
+        return _input_lock_for_session_impl(self, session_id)
 
     def _load_queues(self) -> None:
         cleaned = self._session_store_for_manager().load_queues()
@@ -1782,40 +1775,19 @@ class SessionManager:
         )
 
     def _voice_push_scan_loop(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self._voice_push_scan_sweep()
-            except Exception as e:
-                sys.stderr.write(f"error: voice-push scan failed: {type(e).__name__}: {e}\n")
-                traceback.print_exc(file=sys.stderr)
-                sys.stderr.flush()
-            self._stop.wait(VOICE_PUSH_SWEEP_SECONDS)
+        return _voice_push_scan_loop_impl(self, wait_seconds=VOICE_PUSH_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
 
     def _voice_push_scan_sweep(self) -> None:
         return self._voice_runtime_for_manager().scan_sweep()
 
     def _unattended_loop(self) -> None:
-        # Persist across browser disconnects: server is the scheduler.
-        while not self._stop.is_set():
-            try:
-                self._unattended_sweep()
-            except Exception as e:
-                sys.stderr.write(f"error: unattended sweep failed: {type(e).__name__}: {e}\n")
-                traceback.print_exc(file=sys.stderr)
-                sys.stderr.flush()
-            self._stop.wait(UNATTENDED_SWEEP_SECONDS)
+        return _unattended_loop_impl(self, wait_seconds=UNATTENDED_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
 
     def _unattended_sweep(self) -> None:
         return self._unattended_sweep_coordinator_for_manager().sweep()
 
     def _queue_loop(self) -> None:
-        while not self._stop.is_set():
-            try:
-                self._queue_sweep()
-            except Exception:
-                sys.stderr.write("error: queue sweep crashed; continuing\n")
-                sys.stderr.flush()
-            self._stop.wait(QUEUE_SWEEP_SECONDS)
+        return _queue_loop_impl(self, wait_seconds=QUEUE_SWEEP_SECONDS, stderr=sys.stderr)
 
     def _maybe_drain_session_queue(self, session_id: str, *, now_ts: float | None = None) -> bool:
         resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=True, now_ts=now_ts)

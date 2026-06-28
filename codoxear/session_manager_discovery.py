@@ -4,6 +4,25 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+def discover_existing_if_stale_for_manager(
+    manager: Any,
+    *,
+    force: bool,
+    discover_min_interval_seconds: float,
+    now: Callable[[], float],
+) -> None:
+    now_ts = now()
+    with manager._lock:
+        last = float(getattr(manager, "_last_discover_ts", 0.0))
+    if (not force) and ((now_ts - last) < discover_min_interval_seconds):
+        return
+    try:
+        manager._discover_existing(force=force)
+    except TypeError:
+        manager._discover_existing()
+
+
+
 def discover_existing_for_manager(
     manager: Any,
     *,
