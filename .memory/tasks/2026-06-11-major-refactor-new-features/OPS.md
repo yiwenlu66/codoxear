@@ -3741,3 +3741,14 @@
   - Focused chat/idle/message/source group returned `151 passed, 4 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1176 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T23:54:00Z Rollout delivery message split
+- Functional commit `9a6950a Extract rollout delivery messages` moved voice-notification delivery-message extraction out of `rollout_log.py` into `rollout_delivery.py`:
+  - `_extract_delivery_messages`
+- Compatibility preserved: `rollout_log.py` imports/re-exports `_extract_delivery_messages`, so existing imports in tests, server facades, manager factories, and voice runtime remain valid.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts delivery extraction lives in `rollout_delivery.py`; the `_extract_chat_events` source slice now ends at `_read_chat_tail_snapshot` because delivery extraction no longer follows it in `rollout_log.py`.
+- Size observation: `rollout_log.py` is now 733 lines; `rollout_delivery.py` is 104 lines.
+- Validation after `9a6950a`:
+  - Focused chat/idle/message/voice/source group returned `145 passed, 4 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1177 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.

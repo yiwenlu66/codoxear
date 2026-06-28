@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `1e5d1a0 Extract rollout token scanners`
+Latest functional code checkpoint: `9a6950a Extract rollout delivery messages`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -406,5 +406,6 @@ Additional structural moves after the earlier coordinator tranches:
 - Commit `87e0fe4` split pure rollout event identity/text helpers into `rollout_events.py` while preserving `rollout_log.py` aliases. An initial focused run caught accidental deletion of `_with_chat_position`; that helper remains local to chat pagination. `rollout_log.py` is now 1103 lines. Local validation after repair returned focused `121 passed, 4 subtests passed` and full `1174 passed, 107 subtests passed`; Docker was not rerun.
 - Commit `992dbf7` split backend single-row chat event interpretation and assistant dedupe policy into `rollout_chat_events.py` while preserving `rollout_log.py` aliases. `rollout_log.py` is now 869 lines. Local validation returned focused `138 passed, 4 subtests passed` and full `1175 passed, 107 subtests passed`; Docker was not rerun.
 - Commit `1e5d1a0` split token/context update scanning into `rollout_tokens.py` while preserving `rollout_log.py` aliases. `rollout_log.py` is now 815 lines. Local validation returned focused `151 passed, 4 subtests passed` and full `1176 passed, 107 subtests passed`; Docker was not rerun.
+- Commit `9a6950a` split delivery-message extraction into `rollout_delivery.py` while preserving `rollout_log.py` aliases. `rollout_log.py` is now 733 lines. Local validation returned focused `145 passed, 4 subtests passed` and full `1177 passed, 107 subtests passed`; Docker was not rerun.
 
-Recommended next step: keep `server.py` as a compatibility facade and continue subsystem-specific refactors with explicit ownership models and focused validation. After `b51db3e`, `f5a76d2`, `87e0fe4`, `992dbf7`, and `1e5d1a0`, `voice_push.py` is no longer the top large-module target and rollout JSONL/event/chat-row/token mechanics are isolated; the next high-value candidates are further `rollout_log.py` parser-layer splits or `broker.py` once PTY/control lifecycle invariants are explicitly modeled.
+Recommended next step: keep `server.py` as a compatibility facade and continue subsystem-specific refactors with explicit ownership models and focused validation. After `b51db3e`, `f5a76d2`, `87e0fe4`, `992dbf7`, `1e5d1a0`, and `9a6950a`, `voice_push.py` is no longer the top large-module target and rollout JSONL/event/chat-row/token/delivery mechanics are isolated; the next high-value candidates are further `rollout_log.py` parser-layer splits or `broker.py` once PTY/control lifecycle invariants are explicitly modeled.
