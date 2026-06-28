@@ -3,6 +3,33 @@ from __future__ import annotations
 import sys
 from typing import Any
 
+from . import session_manager_core_methods as _core_methods
+
+
+SESSION_MANAGER_CORE_METHODS: tuple[tuple[str, str], ...] = (
+    ("__init__", "init_for_manager"),
+    ("stop", "stop_for_manager"),
+    ("_reset_log_caches", "reset_log_caches_for_manager"),
+    ("_session_run_settings", "session_run_settings_for_manager"),
+    ("_session_transport", "session_transport_for_manager"),
+    ("_discover_existing_if_stale", "discover_existing_if_stale_for_manager"),
+    ("_new_session_store_for_manager", "new_session_store_for_manager"),
+    ("_session_store_for_manager", "session_store_for_manager"),
+    ("_queue_store_for_manager", "queue_store_for_manager"),
+    ("_input_lock_for_session", "input_lock_for_session"),
+    ("_broker_busy_queue_from_state", "broker_busy_queue_from_state_for_manager"),
+    ("_log_size_or_none", "log_size_or_none_for_manager"),
+    ("_clear_confirmed_send_boundary_locked", "clear_confirmed_send_boundary_locked_for_manager"),
+    ("_confirmed_send_boundary_unresolved_for_session", "confirmed_send_boundary_unresolved_for_manager"),
+    ("_voice_push_scan_loop", "voice_push_scan_loop_for_manager"),
+    ("_unattended_loop", "unattended_loop_for_manager"),
+    ("_queue_loop", "queue_loop_for_manager"),
+    ("_maybe_drain_session_queue", "maybe_drain_session_queue_for_manager"),
+    ("_discover_existing", "discover_existing_for_manager"),
+    ("get_session", "get_session_for_manager"),
+    ("_sock_call", "sock_call_for_manager"),
+)
+
 
 SESSION_MANAGER_SERVER_FACTORY_METHODS: tuple[tuple[str, str], ...] = (
     ("_discovery_deps", "_discovery_deps_for_manager_impl"),
@@ -125,6 +152,24 @@ def server_factory_method(public_name: str, impl_name: str, server_module_name: 
     return method
 
 
+def core_method(public_name: str, impl_name: str, server_module_name: str) -> Any:
+    def method(manager: Any, *args: Any, **kwargs: Any) -> Any:
+        server_module = sys.modules[server_module_name]
+        return getattr(_core_methods, impl_name)(manager, server_module, *args, **kwargs)
+
+    method.__name__ = public_name
+    method.__qualname__ = public_name
+    return method
+
+
+def bind_session_manager_core_methods(cls: type[Any], *, server_module_name: str) -> type[Any]:
+    for public_name, impl_name in SESSION_MANAGER_CORE_METHODS:
+        method = core_method(public_name, impl_name, server_module_name)
+        method.__qualname__ = f"{cls.__qualname__}.{public_name}"
+        setattr(cls, public_name, method)
+    return cls
+
+
 def bind_session_manager_forwarders(cls: type[Any]) -> type[Any]:
     for public_name, coordinator_factory_name, method_name in SESSION_MANAGER_FORWARD_METHODS:
         method = coordinator_forwarder(public_name, coordinator_factory_name, method_name)
@@ -143,6 +188,7 @@ def bind_session_manager_server_factories(cls: type[Any], *, server_module_name:
 
 def bind_session_manager_methods(server_module_name: str) -> Any:
     def decorator(cls: type[Any]) -> type[Any]:
+        bind_session_manager_core_methods(cls, server_module_name=server_module_name)
         bind_session_manager_forwarders(cls)
         bind_session_manager_server_factories(cls, server_module_name=server_module_name)
         return cls

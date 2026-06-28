@@ -179,7 +179,6 @@ from .session_manager_store_attrs import store_backed_attr as _store_backed_attr
 from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
 from .session_manager_store import session_store_paths as _session_store_paths_impl
 from .session_model import Session
-from .session_registry import SessionRegistry
 from .session_registry import registry_backed_attr as _registry_backed_attr
 from .session_registry import session_registry_for_manager as _session_registry_for_manager
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
@@ -974,133 +973,8 @@ class SessionManager:
     _load_recent_cwds = _load_store_attr("_recent_cwds", "load_recent_cwds")
     _save_recent_cwds = _save_dict_store_attr("_recent_cwds", "save_recent_cwds")
 
-    def __init__(self) -> None:
-        self._registry = SessionRegistry()
-        self._store = self._new_session_store_for_manager(_session_store_paths_for_manager())
-        _seed_manager_in_memory_state_impl(self)
-        _load_manager_persistent_state_impl(self)
-        self._voice_push = _create_voice_push_coordinator_impl(
-            voice_push_factory=VoicePushCoordinator,
-            app_dir=APP_DIR,
-            stop_event=self._registry.stop_event,
-            settings_path=VOICE_SETTINGS_PATH,
-            subscriptions_path=PUSH_SUBSCRIPTIONS_PATH,
-            delivery_ledger_path=DELIVERY_LEDGER_PATH,
-            vapid_private_key_path=VAPID_PRIVATE_KEY_PATH,
-        )
-        self._discover_existing(force=True)
-        self._prune_missing_commit_unknown_sends()
-        _start_manager_worker_threads_impl(manager=self, thread_factory=threading.Thread)
-
-    def stop(self) -> None:
-        self._registry.stop_event.set()
-
-    def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
-        return _reset_session_log_caches_impl(s, meta_log_off=meta_log_off)
-
-    def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None, agent_backend: str) -> tuple[str | None, str | None, str | None, str | None]:
-        return _session_run_settings_from_meta_impl(
-            meta=meta,
-            log_path=log_path,
-            agent_backend=agent_backend,
-            clean_optional_text=_clean_optional_text,
-            normalize_requested_preferred_auth_method=_normalize_requested_preferred_auth_method,
-            display_reasoning_effort=_display_reasoning_effort,
-            display_pi_reasoning_effort=_display_pi_reasoning_effort,
-            normalize_requested_cc_reasoning_effort=_normalize_requested_cc_reasoning_effort,
-            read_run_settings_from_log=_read_run_settings_from_log,
-        )
-
-    def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
-        return _session_transport_from_meta_impl(meta=meta, clean_optional_text=_clean_optional_text)
-
-    def _discover_existing_if_stale(self, *, force: bool = False) -> None:
-        return _discover_existing_if_stale_for_manager_impl(
-            self,
-            force=force,
-            discover_min_interval_seconds=DISCOVER_MIN_INTERVAL_SECONDS,
-            now=time.time,
-        )
-
-    def _new_session_store_for_manager(self, paths: SessionStorePaths) -> SessionStore:
-        return _create_session_store_impl(
-            paths=paths,
-            file_history_max=FILE_HISTORY_MAX,
-            recent_cwd_max=RECENT_CWD_MAX,
-            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-            clean_alias=_clean_alias,
-            clean_priority_offset=_clean_priority_offset,
-            clean_snooze_until=_clean_snooze_until,
-            clean_dependency_session_id=_clean_dependency_session_id,
-            clean_recent_cwd=_clean_recent_cwd,
-            clean_commit_unknown_send_record=self._clean_commit_unknown_send_record,
-        )
-
-    def _session_store_for_manager(self) -> SessionStore:
-        store = _session_store_for_manager_impl(
-            existing=getattr(self, "_store", None),
-            paths=_session_store_paths_for_manager(),
-            create_store=self._new_session_store_for_manager,
-        )
-        self._store = store
-        return store
-
-    def _queue_store_for_manager(self) -> QueueStore:
-        return self._session_store_for_manager().queue_store
-
-    def _input_lock_for_session(self, session_id: str) -> threading.RLock:
-        return _input_lock_for_session_impl(self, session_id)
-
-    def _broker_busy_queue_from_state(self, state: dict[str, Any]) -> tuple[bool, int]:
-        return _broker_busy_queue_from_state(state)
-
-    def _log_size_or_none(self, log_path: Path | None) -> int | None:
-        return _log_path_size_or_none(log_path)
-
-    def _clear_confirmed_send_boundary_locked(self, s: Session) -> None:
-        _clear_session_confirmed_send_boundary(s)
-
-    def _confirmed_send_boundary_unresolved_for_session(self, session_id: str, log_path: Path | None, log_size: int | None) -> bool:
-        registry = _session_registry_for_manager(self)
-        with registry.lock:
-            s = registry.sessions.get(session_id)
-            return _consume_session_confirmed_send_boundary(s, log_path, log_size)
-
-    def _voice_push_scan_loop(self) -> None:
-        return _voice_push_scan_loop_impl(self, wait_seconds=VOICE_PUSH_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
-
-    def _unattended_loop(self) -> None:
-        return _unattended_loop_impl(self, wait_seconds=UNATTENDED_SWEEP_SECONDS, stderr=sys.stderr, print_exc=traceback.print_exc)
-
-    def _queue_loop(self) -> None:
-        return _queue_loop_impl(self, wait_seconds=QUEUE_SWEEP_SECONDS, stderr=sys.stderr)
-
-    def _maybe_drain_session_queue(self, session_id: str, *, now_ts: float | None = None) -> bool:
-        resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=True, now_ts=now_ts)
-        return isinstance(resp, dict)
-
-    def _discover_existing(self, *, force: bool = False) -> None:
-        return _discover_existing_for_manager_impl(
-            self,
-            force=force,
-            discover_min_interval_seconds=DISCOVER_MIN_INTERVAL_SECONDS,
-            sock_dir=SOCK_DIR,
-            proc_root=PROC_ROOT,
-            discover_sessions=_discover_sessions,
-            now=time.time,
-        )
-
-    def get_session(self, session_id: str) -> Session | None:
-        registry = _session_registry_for_manager(self)
-        with registry.lock:
-            return registry.sessions.get(session_id)
-
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
         return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
-
-    def _sock_call(self, sock_path: Path, req: dict[str, Any], timeout_s: float | None = 2.0, *, track_request_sent: bool = False) -> dict[str, Any]:
-        return _call_control_socket_impl(sock_path, req, timeout_s=timeout_s, track_request_sent=track_request_sent)
 
     def spawn_web_session(
         self,
