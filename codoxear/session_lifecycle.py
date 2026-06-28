@@ -24,7 +24,35 @@ class SessionLifecycleCoordinator:
     launch_attempt_row: Callable[[dict[str, Any]], dict[str, Any] | None]
     hide_session: Callable[[str], None]
     files_clear: Callable[[str], None]
+    clean_optional_text: Callable[[Any], str | None] = lambda value: value if isinstance(value, str) and value.strip() else None
     kill_session_via_pids_fallback: Callable[[Session], bool] | None = None
+
+    def live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
+        sessions = self.sessions()
+        if not isinstance(sessions, dict):
+            return None
+        target_log_raw = self.clean_optional_text(resume_row.get("log_path") if isinstance(resume_row, dict) else None)
+        try:
+            target_log = str(Path(target_log_raw).expanduser().resolve(strict=False)) if target_log_raw is not None else None
+        except OSError:
+            target_log = target_log_raw
+
+        with self.lock:
+            values = list(sessions.values())
+        for session in values:
+            if not isinstance(session, Session):
+                continue
+            same_thread = session.session_id == resume_id or session.thread_id == resume_id
+            same_log = False
+            if target_log is not None and session.log_path is not None:
+                try:
+                    session_log = str(session.log_path.expanduser().resolve(strict=False))
+                except OSError:
+                    session_log = str(session.log_path)
+                same_log = session_log == target_log
+            if (same_thread or same_log) and (self.pid_alive(session.broker_pid) or self.pid_alive(session.codex_pid)):
+                return session
+        return None
 
     def kill_session_via_pids(self, session: Session) -> bool:
         group_alive = self.process_group_alive(int(session.codex_pid))
