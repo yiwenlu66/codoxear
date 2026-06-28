@@ -145,6 +145,7 @@ from .queue_routes import handle_queue_get_route as _handle_queue_get_route
 from .queue_routes import handle_queue_post_route as _handle_queue_post_route
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
+from .queue_sweep import QueueSweepCoordinator
 from .session_queue import SessionQueueCoordinator
 from .session_routes import SessionRouteDeps
 from .session_routes import handle_session_get_route as _handle_session_get_route
@@ -2839,25 +2840,7 @@ class SessionManager:
         return isinstance(resp, dict)
 
     def _queue_sweep(self) -> None:
-        self._discover_existing_if_stale()
-        self._prune_dead_sessions()
-        with self._lock:
-            # Drop queues for sessions that no longer exist unless they contain recovery evidence.
-            active_ids = set(self._sessions.keys())
-            direct_unknown_ids = set(getattr(self, "_commit_unknown_sends", {}).keys())
-            marked_recovery = False
-            for sid, queue in list(self._queues.items()):
-                if sid in active_ids or sid not in direct_unknown_ids or not isinstance(queue, list):
-                    continue
-                if self._mark_queue_orphan_recovery_locked(str(sid)):
-                    marked_recovery = True
-            dropped = self._queue_store_for_manager().drop_missing_sessions(self._queues, active_ids)
-            session_ids = [sid for sid in self._queue_store_for_manager().nonempty_session_ids(self._queues) if sid in active_ids]
-        if dropped or marked_recovery:
-            self._save_queues()
-        for sid in session_ids:
-            if self._maybe_drain_session_queue(sid):
-                break
+        return self._queue_sweep_coordinator_for_manager().sweep()
 
     def _discovery_deps(self) -> DiscoveryDeps:
         return DiscoveryDeps(
@@ -3387,6 +3370,20 @@ class SessionManager:
             default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
             default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
             max_scan_bytes=UNATTENDED_MAX_SCAN_BYTES,
+        )
+
+    def _queue_sweep_coordinator_for_manager(self) -> QueueSweepCoordinator:
+        return QueueSweepCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            queues=lambda: self._queues,
+            commit_unknown_sends=lambda: self._commit_unknown_sends,
+            queue_store=self._queue_store_for_manager(),
+            discover_existing_if_stale=self._discover_existing_if_stale,
+            prune_dead_sessions=self._prune_dead_sessions,
+            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
+            save_queues=self._save_queues,
+            maybe_drain_session_queue=self._maybe_drain_session_queue,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
