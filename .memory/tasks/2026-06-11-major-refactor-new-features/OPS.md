@@ -3621,3 +3621,25 @@
   - Full local `python3 -m pytest -q` returned `1165 passed, 107 subtests passed`.
 - Size observation: `codoxear/server.py` is now 1387 lines.
 - Scope note: Docker evidence was not rerun after `f7297ac`; do not claim Docker acceptance/promotion evidence for this tranche.
+
+## 2026-06-28T22:31:00Z Server facade and registry extraction tranche
+- Functional commits after `aadf389 Document import cleanup review`:
+  - `99c0fcd Extract server configuration bootstrap`: introduced `codoxear/server_config.py` with `ServerConfig`, `.env` application, and config derivation tests. `server.py` now builds `_SERVER_CONFIG` and re-exports legacy config names so patch-sensitive `codoxear.server.NAME` seams remain mutable.
+  - `a4b021c Alias pure server facade wrappers`, `c885a87 Alias remaining pure utility facades`, and `d26f2e1 Alias env-file facade wrapper`: replaced pure one-line module-level wrappers with direct aliases to owning modules when no server state/defaults/secrets were bound.
+  - `89ded45 Consolidate server config exports`: moved the mechanical config re-export list into `server_config.export_server_config()`, preserving concrete server globals while removing the assignment band from `server.py`.
+  - `0488c50 Move manager registry state into explicit owner`: introduced `codoxear/session_registry.py`; `SessionRegistry` owns the manager lock, session mapping, stop event, discovery timestamp, input locks, and store slot. `SessionManager` exposes registry-backed compatibility properties for `_lock`, `_sessions`, `_stop`, `_last_discover_ts`, `_input_locks`, and `_store`; manager bootstrap/discovery/factory/store-attr modules consume the registry rather than raw manager fields. Added `tests/test_session_registry.py`.
+  - `56aef5f Bind manager core methods outside server`: introduced `codoxear/session_manager_core_methods.py` and extended `session_manager_method_bindings.py` so non-sentinel `SessionManager` core methods, including `__init__`, bind through late live-server lookup. Literal/source-sentinel methods remain in `server.py`: `refresh_session_meta`, `spawn_web_session`, `send`, `_refresh_session_meta_if_sidecar_exists`, and `inject_keys`.
+  - `1f2306d Extract remaining server policy constants`: moved the unattended prompt literal to `unattended.py`, session exception classes to `session_errors.py`, session store path composition to manager core methods, and the broker detach-tail predicate to `session_refresh.py`, with `server.py` preserving public re-export names.
+- Validation evidence:
+  - Config extraction focused suite returned `238 passed, 74 subtests passed`; full local suite returned `1166 passed, 107 subtests passed`.
+  - First wrapper alias focused suite returned `170 passed, 52 subtests passed`; full local suite returned `1166 passed, 107 subtests passed`.
+  - Second wrapper alias focused suite returned `138 passed, 52 subtests passed`; full local suite returned `1166 passed, 107 subtests passed`.
+  - Config export consolidation focused suite returned `163 passed, 52 subtests passed`; full local suite returned `1167 passed, 107 subtests passed`.
+  - Registry extraction focused suite returned `223 passed, 38 subtests passed`; grep for raw `manager._lock`, `manager._sessions`, `manager._stop`, `manager._last_discover_ts`, and `getattr(manager, "_input_locks"` in `codoxear/session_manager_*.py` and `codoxear/server.py` returned no matches; full local suite returned `1170 passed, 107 subtests passed`.
+  - Manager-core binding focused suite returned `218 passed, 38 subtests passed`; full local suite returned `1171 passed, 107 subtests passed`.
+  - Prompt/error/detach extraction: first focused command included a nonexistent test path and produced no evidence; corrected focused suite returned `184 passed, 34 subtests passed`; full local suite returned `1171 passed, 107 subtests passed`.
+- Size/shape observations:
+  - `codoxear/server.py` is now 995 lines.
+  - `SessionManager` in `server.py` has only five concrete literal methods: `refresh_session_meta`, `spawn_web_session`, `send`, `_refresh_session_meta_if_sidecar_exists`, and `inject_keys`.
+  - New ownership modules: `server_config.py`, `session_registry.py`, `session_manager_core_methods.py`, and `session_errors.py`.
+- Scope note: validation is local pytest only. Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
