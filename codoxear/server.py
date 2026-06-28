@@ -116,6 +116,13 @@ from .transcript_search import iter_jsonl_records_forward_bounded as _iter_jsonl
 from .transcript_search import iter_positioned_chat_events_forward as _iter_positioned_chat_events_forward
 from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
+from .path_runtime import expanduser_path as _expanduser_path_impl
+from .path_runtime import require_existing_file as _require_existing_file_impl
+from .path_runtime import resolve_existing_absolute_file as _resolve_existing_absolute_file_impl
+from .path_runtime import resolve_existing_session_file as _resolve_existing_session_file_impl
+from .path_runtime import resolve_session_cwd as _resolve_session_cwd_impl
+from .path_runtime import resolve_session_path as _resolve_session_path_impl
+from .path_runtime import resolve_under as _resolve_under_impl
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .process_runtime import terminate_process as _terminate_process_impl
@@ -790,73 +797,32 @@ def _safe_read_text(path: Path, max_bytes: int = 512 * 1024) -> str:
 
 
 def _resolve_under(base: Path, rel: str) -> Path:
-    if not isinstance(rel, str) or not rel.strip():
-        raise ValueError("path required")
-    if "\x00" in rel:
-        raise ValueError("invalid path")
-    p = Path(rel)
-    if p.is_absolute():
-        raise ValueError("path must be relative")
-    resolved_base = base.resolve()
-    resolved = (resolved_base / p).resolve()
-    try:
-        resolved.relative_to(resolved_base)
-    except ValueError as e:
-        raise ValueError("path escapes session cwd") from e
-    return resolved
+    return _resolve_under_impl(base, rel)
 
 
 def _expanduser_path(path: Path) -> Path:
-    try:
-        return path.expanduser()
-    except RuntimeError as e:
-        raise ValueError(str(e)) from e
+    return _expanduser_path_impl(path)
 
 
 def _resolve_session_cwd(raw_cwd: str) -> Path:
-    if not isinstance(raw_cwd, str) or not raw_cwd.strip() or "\x00" in raw_cwd:
-        raise ValueError("invalid session cwd")
-    try:
-        cwd = _expanduser_path(Path(raw_cwd))
-        if not cwd.is_absolute():
-            cwd = cwd.resolve()
-    except (OSError, ValueError) as e:
-        raise ValueError(str(e)) from e
-    return cwd
+    return _resolve_session_cwd_impl(raw_cwd)
 
 
 def _resolve_session_path(base: Path, raw_path: str) -> Path:
-    if not isinstance(raw_path, str) or raw_path == "":
-        raise ValueError("path required")
-    if "\x00" in raw_path:
-        raise ValueError("invalid path")
-    p = Path(raw_path)
-    if p.is_absolute():
-        return _expanduser_path(p).resolve()
-    resolved_base = _expanduser_path(base)
-    if not resolved_base.is_absolute():
-        resolved_base = resolved_base.resolve()
-    return (resolved_base / p).resolve()
+    return _resolve_session_path_impl(base, raw_path)
 
 
 def _require_existing_file(path: Path) -> Path:
-    try:
-        st = path.stat()
-    except FileNotFoundError:
-        raise FileNotFoundError("file not found")
-    except PermissionError:
-        raise
-    if not stat.S_ISREG(st.st_mode):
-        raise ValueError("path is not a file")
-    return path
+    return _require_existing_file_impl(path)
 
 
 def _resolve_existing_session_file(base: Path, raw_path: str) -> Path:
-    return _require_existing_file(_resolve_session_path(base, raw_path))
+    return _resolve_existing_session_file_impl(base, raw_path)
 
 
 def _resolve_existing_absolute_file(raw_path: str) -> Path:
-    return _require_existing_file(_expanduser_path(Path(raw_path)).resolve())
+    return _resolve_existing_absolute_file_impl(raw_path)
+
 
 
 def _resolve_git_path(cwd: Path, raw_path: str) -> tuple[Path, Path, str]:

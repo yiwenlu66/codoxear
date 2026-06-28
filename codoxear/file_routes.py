@@ -10,6 +10,7 @@ from .file_text import FILE_READ_MAX_BYTES
 from .file_text import read_text_file_for_write
 from .file_text import write_new_text_file_atomic
 from .file_text import write_text_file_atomic
+from .path_runtime import expanduser_path as _expanduser_path
 from .file_view import ClientFileView
 from .video_preview import video_response_payload
 
@@ -896,10 +897,3 @@ def _update_session_file(
         except ValueError as e:
             raise FileRouteError(400, {"error": str(e)}) from e
     return path_obj, size, next_version
-
-
-def _expanduser_path(path: Path) -> Path:
-    try:
-        return path.expanduser()
-    except RuntimeError as e:
-        raise ValueError(str(e)) from e
