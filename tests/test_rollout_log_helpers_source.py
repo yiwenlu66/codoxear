@@ -2,7 +2,9 @@ import unittest
 from pathlib import Path
 
 
-ROLLOUT_LOG = Path(__file__).resolve().parents[1] / "codoxear" / "rollout_log.py"
+ROOT = Path(__file__).resolve().parents[1]
+ROLLOUT_LOG = ROOT / "codoxear" / "rollout_log.py"
+ROLLOUT_JSONL = ROOT / "codoxear" / "rollout_jsonl.py"
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
@@ -10,6 +12,15 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
         self.assertIn("from .voice_push_state import ClassifiedAssistantMessage", source)
         self.assertNotIn("from .voice_push import ClassifiedAssistantMessage", source)
+
+    def test_jsonl_reader_primitives_have_dedicated_owner(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        jsonl_source = ROLLOUT_JSONL.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_jsonl import JsonlRecord", source)
+        self.assertNotIn("class JsonlRecord", source)
+        self.assertNotIn("def _read_jsonl_records_from_offset", source)
+        self.assertIn("class JsonlRecord", jsonl_source)
+        self.assertIn("def _read_jsonl_records_from_offset", jsonl_source)
 
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
