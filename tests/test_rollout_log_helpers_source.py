@@ -10,6 +10,7 @@ ROLLOUT_CHAT_EVENTS = ROOT / "codoxear" / "rollout_chat_events.py"
 ROLLOUT_CHAT_BATCH = ROOT / "codoxear" / "rollout_chat_batch.py"
 ROLLOUT_TOKENS = ROOT / "codoxear" / "rollout_tokens.py"
 ROLLOUT_DELIVERY = ROOT / "codoxear" / "rollout_delivery.py"
+ROLLOUT_IDLE = ROOT / "codoxear" / "rollout_idle.py"
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
@@ -61,6 +62,16 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         self.assertNotIn("def _extract_delivery_messages", source)
         self.assertIn("def _extract_delivery_messages", delivery_source)
         self.assertIn("ClassifiedAssistantMessage", delivery_source)
+
+    def test_idle_analysis_has_dedicated_owner(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        idle_source = ROLLOUT_IDLE.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_idle import _compute_idle_from_log", source)
+        self.assertIn("from .rollout_idle import _analyze_log_chunk", source)
+        self.assertNotIn("def _compute_idle_from_log", source)
+        self.assertNotIn("def _analyze_log_chunk", source)
+        self.assertIn("def _compute_idle_from_log", idle_source)
+        self.assertIn("def _analyze_log_chunk", idle_source)
 
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
