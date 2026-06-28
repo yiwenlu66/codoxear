@@ -170,6 +170,7 @@ from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
+from .session_readiness import SessionReadinessCoordinator
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
@@ -179,8 +180,6 @@ from .session_runtime import ListingRuntimeProbes
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
-from .session_runtime import session_allows_direct_send as _session_allows_direct_send
-from .session_runtime import session_allows_queue_promotion as _session_allows_queue_promotion
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -2631,61 +2630,22 @@ class SessionManager:
             return _consume_session_confirmed_send_boundary(s, log_path, log_size)
 
     def _remote_ready_from_state_and_log(self, session_id: str, state: dict[str, Any], log_path: Path | None) -> bool:
-        broker = _runtime_broker_state(state)
-        if broker.queue_len > 0:
-            return False
-        log_exists = isinstance(log_path, Path) and log_path.exists()
-        log_size = self._log_size_or_none(log_path)
-        boundary_unresolved = self._confirmed_send_boundary_unresolved_for_session(session_id, log_path, log_size)
-        log_idle = bool(self.idle_from_log(session_id)) if log_exists and not boundary_unresolved else None
-        return _resolve_runtime_status(
-            broker=broker,
-            log_exists=log_exists,
-            log_idle=log_idle,
-            send_boundary_unresolved=boundary_unresolved,
-        ).remote_ready
+        return self._readiness_coordinator_for_manager().remote_ready_from_state_and_log(session_id, state, log_path)
 
     def _remote_state_after_metadata_probe(self, session_id: str, *, log_path_before_state: Path | None) -> tuple[dict[str, Any], Path | None]:
-        state = self.get_state(session_id)
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            log_path = s.log_path
-        if log_path != log_path_before_state:
-            state = self.get_state(session_id)
-        return state, log_path
+        return self._readiness_coordinator_for_manager().remote_state_after_metadata_probe(
+            session_id,
+            log_path_before_state=log_path_before_state,
+        )
 
     def _send_remote_ready(self, session_id: str, *, allow_pending_attachment: bool = False) -> bool:
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if not _session_allows_direct_send(s, allow_pending_attachment=allow_pending_attachment):
-                return False
-            log_path_before_state = s.log_path
-        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
-        return self._remote_ready_from_state_and_log(session_id, state, log_path)
+        return self._readiness_coordinator_for_manager().send_remote_ready(
+            session_id,
+            allow_pending_attachment=allow_pending_attachment,
+        )
 
     def _queue_remote_ready(self, session_id: str, *, log_path: Path | None) -> bool:
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if not _session_allows_queue_promotion(s):
-                return False
-            log_path_before_state = s.log_path
-        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if not _session_allows_queue_promotion(s):
-                return False
-        return self._remote_ready_from_state_and_log(session_id, state, log_path)
+        return self._readiness_coordinator_for_manager().queue_remote_ready(session_id, log_path=log_path)
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
         s = self._sessions.get(session_id)
@@ -3518,6 +3478,19 @@ class SessionManager:
             maybe_drain_session_queue=self._maybe_drain_session_queue,
         )
 
+    def _readiness_coordinator_for_manager(self) -> SessionReadinessCoordinator:
+        return SessionReadinessCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            refresh_session_meta_if_sidecar_exists=self._refresh_session_meta_if_sidecar_exists,
+            get_state=self.get_state,
+            log_size_or_none=self._log_size_or_none,
+            confirmed_send_boundary_unresolved_for_session=self._confirmed_send_boundary_unresolved_for_session,
+            idle_from_log=self.idle_from_log,
+            queue_len=lambda session_id: self._queue_store_for_manager().queue_len(self._queues, session_id),
+            not_ready_error=SessionNotReadyError,
+        )
+
     def _kill_session_via_pids(self, s: Session) -> bool:
         group_alive = _process_group_alive(int(s.codex_pid))
         broker_alive = _pid_alive(int(s.broker_pid))
@@ -3835,36 +3808,7 @@ class SessionManager:
             self.refresh_session_meta(session_id, drain_queue=drain_queue)
 
     def attachment_injection_ready(self, session_id: str) -> bool:
-        self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if s.commit_unknown_send:
-                raise SessionNotReadyError("resolve the unknown send before attaching a file")
-            if not (s.sync_send_supported and s.key_write_errors_supported):
-                raise SessionNotReadyError("broker must be restarted before file attachments are available")
-            if s.pending_attachment:
-                return False
-            if s.queue_sending_item_id is not None:
-                return False
-            if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
-                return False
-            log_path_before_state = s.log_path
-        state, log_path = self._remote_state_after_metadata_probe(session_id, log_path_before_state=log_path_before_state)
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                raise KeyError("unknown session")
-            if s.commit_unknown_send:
-                raise SessionNotReadyError("resolve the unknown send before attaching a file")
-            if s.pending_attachment:
-                return False
-            if s.queue_sending_item_id is not None:
-                return False
-            if self._queue_store_for_manager().queue_len(self._queues, session_id) > 0:
-                return False
-        return self._remote_ready_from_state_and_log(session_id, state, log_path)
+        return self._readiness_coordinator_for_manager().attachment_injection_ready(session_id)
 
     def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
         input_lock = self._input_lock_for_session(session_id)

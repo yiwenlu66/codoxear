@@ -7,6 +7,7 @@ SERVER_PY = ROOT / "codoxear" / "server.py"
 SESSION_LISTING_PY = ROOT / "codoxear" / "session_listing.py"
 SESSION_INPUT_PY = ROOT / "codoxear" / "session_input.py"
 SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
+SESSION_READINESS_PY = ROOT / "codoxear" / "session_readiness.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -39,6 +40,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         listing_source = SESSION_LISTING_PY.read_text(encoding="utf-8")
         input_source = SESSION_INPUT_PY.read_text(encoding="utf-8")
         control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
+        readiness_source = SESSION_READINESS_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -47,7 +49,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("attachment_inject_text=_attachment_inject_text", source)
         self.assertIn("ready_for_attachment = manager.attachment_injection_ready(session_id)", block)
         self.assertIn("resp = manager.inject_attachment_keys(session_id, seq)", block)
-        self.assertIn("self._refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)", source)
+        self.assertIn("self.refresh_session_meta_if_sidecar_exists(session_id, drain_queue=False)", readiness_source)
         self.assertIn("def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False)", source)
         self.assertIn("def _refresh_session_meta_if_sidecar_exists(self, session_id: str, *, drain_queue: bool = False)", source)
         self.assertIn("except deps.session_not_ready_error as e:", block)
@@ -70,7 +72,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn('(\"pending_attachment\", \"clear\", _handle_pending_attachment_clear)', route_source)
         self.assertIn("res = manager.clear_pending_attachment(session_id)", route_source)
         self.assertIn("if not session.sync_send_supported:", input_source)
-        self.assertIn("if not (s.sync_send_supported and s.key_write_errors_supported):", source)
+        self.assertIn("if not (session.sync_send_supported and session.key_write_errors_supported):", readiness_source)
         self.assertIn("resp = self.inject_keys(session_id, seq, track_request_sent=True)", source)
         self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)", source)
         self.assertIn("attachment commit status unknown; broker response failed", control_runtime_source)
@@ -91,7 +93,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn('(\"commit_unknown_send\", \"clear\", _handle_commit_unknown_send_clear)', route_source)
         self.assertIn("res = manager.clear_commit_unknown_send(session_id)", route_source)
         self.assertIn("if session.commit_unknown_send:\n        raise not_ready_error(\"resolve the unknown send before submitting more text\")", input_source)
-        self.assertIn("if s.commit_unknown_send:\n                raise SessionNotReadyError(\"resolve the unknown send before attaching a file\")", source)
+        self.assertIn("if session.commit_unknown_send:\n                raise self.not_ready_error(\"resolve the unknown send before attaching a file\")", readiness_source)
         self.assertIn("if s.commit_unknown_send:\n                    raise SessionNotReadyError(\"resolve the unknown send before queueing another prompt\")", source)
 
     def test_control_sidecars_advertise_sync_send_capability(self) -> None:
