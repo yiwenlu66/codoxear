@@ -177,6 +177,7 @@ from .session_manager_bootstrap import start_manager_worker_threads as _start_ma
 from .session_manager_factories import attachment_coordinator_for_manager as _attachment_coordinator_for_manager_impl
 from .session_manager_factories import cleanup_coordinator_for_manager as _cleanup_coordinator_for_manager_impl
 from .session_manager_factories import control_coordinator_for_manager as _control_coordinator_for_manager_impl
+from .session_manager_factories import discovery_deps_for_manager as _discovery_deps_for_manager_impl
 from .session_manager_factories import discovery_registry_for_manager as _discovery_registry_for_manager_impl
 from .session_manager_factories import files_coordinator_for_manager as _files_coordinator_for_manager_impl
 from .session_manager_factories import lifecycle_coordinator_for_manager as _lifecycle_coordinator_for_manager_impl
@@ -1855,33 +1856,7 @@ class SessionManager:
         return self._queue_sweep_coordinator_for_manager().sweep()
 
     def _discovery_deps(self) -> DiscoveryDeps:
-        return DiscoveryDeps(
-            pid_alive=_pid_alive,
-            proc_find_open_rollout_log=lambda proc_root, root_pid, agent_backend, cwd, ignored_paths: _proc_find_open_rollout_log(
-                proc_root=proc_root,
-                root_pid=root_pid,
-                agent_backend=agent_backend,
-                cwd=cwd,
-                ignored_paths=ignored_paths,
-            ),
-            read_session_meta_or_none=lambda log_path, agent_backend, context: _read_session_meta_or_none(
-                log_path,
-                agent_backend=agent_backend,
-                context=context,
-            ),
-            coerce_main_thread_log=lambda thread_id, log_path: _coerce_main_thread_log(thread_id=thread_id, log_path=log_path),
-            session_transport=lambda meta: self._session_transport(meta=meta),
-            session_run_settings=lambda meta, log_path, agent_backend: self._session_run_settings(
-                meta=meta,
-                log_path=log_path,
-                agent_backend=agent_backend,
-            ),
-            sock_call=lambda sock, req, timeout_s: self._sock_call(sock, req, timeout_s=timeout_s),
-            broker_busy_queue_from_state=self._broker_busy_queue_from_state,
-            broker_interrupted_idle_from_state=_broker_interrupted_idle_from_state,
-            sock_error_definitely_stale=_sock_error_definitely_stale,
-            token_update_finder=_rollout_log._find_latest_token_update,
-        )
+        return _discovery_deps_for_manager_impl(self, sys.modules[__name__])
 
     def _apply_discovery_result(self, result: DiscoveryResult) -> None:
         return self._discovery_registry_for_manager().apply_result(result)

@@ -4,6 +4,7 @@ import threading
 from typing import Any
 
 from .queue_sweep import QueueSweepCoordinator
+from .session_discovery import DiscoveryDeps
 from .session_attachment import SessionAttachmentCoordinator
 from .session_cleanup import SessionCleanupCoordinator
 from .session_control import SessionControlCoordinator
@@ -26,6 +27,36 @@ from .session_unattended_config import SessionUnattendedConfigCoordinator
 from .session_web_launch import SessionWebLaunchCoordinator
 from .unattended_sweep import UnattendedSweepCoordinator
 from .voice_runtime import VoiceRuntimeCoordinator
+
+
+def discovery_deps_for_manager(manager: Any, server: Any) -> DiscoveryDeps:
+    return DiscoveryDeps(
+        pid_alive=server._pid_alive,
+        proc_find_open_rollout_log=lambda proc_root, root_pid, agent_backend, cwd, ignored_paths: server._proc_find_open_rollout_log(
+            proc_root=proc_root,
+            root_pid=root_pid,
+            agent_backend=agent_backend,
+            cwd=cwd,
+            ignored_paths=ignored_paths,
+        ),
+        read_session_meta_or_none=lambda log_path, agent_backend, context: server._read_session_meta_or_none(
+            log_path,
+            agent_backend=agent_backend,
+            context=context,
+        ),
+        coerce_main_thread_log=lambda thread_id, log_path: server._coerce_main_thread_log(thread_id=thread_id, log_path=log_path),
+        session_transport=lambda meta: manager._session_transport(meta=meta),
+        session_run_settings=lambda meta, log_path, agent_backend: manager._session_run_settings(
+            meta=meta,
+            log_path=log_path,
+            agent_backend=agent_backend,
+        ),
+        sock_call=lambda sock, req, timeout_s: manager._sock_call(sock, req, timeout_s=timeout_s),
+        broker_busy_queue_from_state=manager._broker_busy_queue_from_state,
+        broker_interrupted_idle_from_state=server._broker_interrupted_idle_from_state,
+        sock_error_definitely_stale=server._sock_error_definitely_stale,
+        token_update_finder=server._rollout_log._find_latest_token_update,
+    )
 
 
 def queue_coordinator_for_manager(manager: Any, server: Any) -> Any:
