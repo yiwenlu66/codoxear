@@ -9,6 +9,7 @@ SESSION_INPUT_PY = ROOT / "codoxear" / "session_input.py"
 SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
 SESSION_READINESS_PY = ROOT / "codoxear" / "session_readiness.py"
 SESSION_SEND_PY = ROOT / "codoxear" / "session_send.py"
+SESSION_QUEUE_PY = ROOT / "codoxear" / "session_queue.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -43,6 +44,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         control_runtime_source = SESSION_CONTROL_PY.read_text(encoding="utf-8")
         readiness_source = SESSION_READINESS_PY.read_text(encoding="utf-8")
         send_source = SESSION_SEND_PY.read_text(encoding="utf-8")
+        queue_source = SESSION_QUEUE_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -58,7 +60,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn('{"error": "session is busy; wait before attaching a file"}', block)
         self.assertLess(block.index("ready_for_attachment = manager.attachment_injection_ready(session_id)"), block.index("raw = base64.b64decode"))
         self.assertLess(block.index("ready_for_attachment = manager.attachment_injection_ready(session_id)"), block.index("out_path = deps.stage_uploaded_file"))
-        self.assertIn("with input_lock:\n            with self._lock:\n                s = self._sessions.get(session_id)", source)
+        self.assertIn("with input_lock:\n            with self.lock:\n                session = self.sessions().get(session_id)", send_source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:\n        raise not_ready_error", input_source)
         self.assertIn("if not self.send_remote_ready(session_id, allow_pending_attachment=allow_pending_attachment):\n                raise self.not_ready_error(\"session is busy; wait before sending\")", send_source)
         self.assertIn("timeout_s = self.send_commit_timeout_seconds if self.send_commit_timeout_seconds > 0 else None", send_source)
@@ -79,7 +81,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)", source)
         self.assertIn("attachment commit status unknown; broker response failed", control_runtime_source)
         self.assertIn("except deps.session_not_ready_error as e:", block)
-        self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
+        self.assertIn("if session.pending_attachment:\n                    raise self.not_ready_error(\"send the pending attachment before queueing another prompt\")", queue_source)
         self.assertNotIn("self._record_prelog_user_message(s, text, source=\"enqueue\")", source)
         self.assertIn("if resp.get(\"error\"):", source)
         self.assertIn("if resp.get(\"ok\") is not True:", source)
@@ -89,14 +91,14 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("self.set_pending_attachment(session_id, False)", send_source)
         self.assertIn("PENDING_ATTACHMENTS_PATH", source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:", input_source)
-        self.assertIn("if s.pending_attachment:\n                    raise SessionNotReadyError(\"send the pending attachment before queueing another prompt\")", source)
+        self.assertIn("if session.pending_attachment:\n                    raise self.not_ready_error(\"send the pending attachment before queueing another prompt\")", queue_source)
         self.assertIn('pending_attachment=bool(s.pending_attachment)', listing_source)
         self.assertIn('commit_unknown_send=s.commit_unknown_send if isinstance(s.commit_unknown_send, dict) else None', listing_source)
         self.assertIn('(\"commit_unknown_send\", \"clear\", _handle_commit_unknown_send_clear)', route_source)
         self.assertIn("res = manager.clear_commit_unknown_send(session_id)", route_source)
         self.assertIn("if session.commit_unknown_send:\n        raise not_ready_error(\"resolve the unknown send before submitting more text\")", input_source)
         self.assertIn("if session.commit_unknown_send:\n                raise self.not_ready_error(\"resolve the unknown send before attaching a file\")", readiness_source)
-        self.assertIn("if s.commit_unknown_send:\n                    raise SessionNotReadyError(\"resolve the unknown send before queueing another prompt\")", source)
+        self.assertIn("if session.commit_unknown_send:\n                    raise self.not_ready_error(\"resolve the unknown send before queueing another prompt\")", queue_source)
 
     def test_control_sidecars_advertise_sync_send_capability(self) -> None:
         broker_source = BROKER_PY.read_text(encoding="utf-8")

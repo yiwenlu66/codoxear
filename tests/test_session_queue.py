@@ -63,6 +63,7 @@ def _coordinator(
         queue_store=lambda: store,
         commit_unknown_sends=lambda: unknown_map,
         save_queues=lambda: saves.append({sid: [dict(item) for item in items] for sid, items in queue_map.items()}),
+        input_lock_for_session=lambda _session_id: threading.RLock(),
         remote_ready=remote_ready,
         send=send,
         not_ready_error=NotReady,

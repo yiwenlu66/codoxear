@@ -2189,6 +2189,7 @@ class SessionManager:
             queue_store=self._queue_store_for_manager,
             commit_unknown_sends=lambda: self._commit_unknown_sends,
             save_queues=self._save_queues,
+            input_lock_for_session=self._input_lock_for_session,
             remote_ready=lambda session_id, log_path: self._queue_remote_ready(session_id, log_path=log_path),
             send=self.send,
             not_ready_error=SessionNotReadyError,
@@ -2196,6 +2197,7 @@ class SessionManager:
             commit_unknown_error=SessionCommitUnknownError,
             queue_idle_grace_seconds=QUEUE_IDLE_GRACE_SECONDS,
             now=time.time,
+            recovery_items_locked=lambda session_id: self._queue_has_recovery_items_locked(session_id),
         )
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
@@ -2946,27 +2948,7 @@ class SessionManager:
         )
 
     def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
-        input_lock = self._input_lock_for_session(session_id)
-        with input_lock:
-            with self._lock:
-                s = self._sessions.get(session_id)
-                if not s:
-                    raise KeyError("unknown session")
-                if s.commit_unknown_send:
-                    raise SessionNotReadyError("resolve the unknown send before queueing another prompt")
-                if s.pending_attachment:
-                    raise SessionNotReadyError("send the pending attachment before queueing another prompt")
-                if self._queue_has_recovery_items_locked(session_id):
-                    raise SessionNotReadyError("resolve the recovery queue before queueing another prompt")
-                if not s.sync_send_supported:
-                    raise SessionNotReadyError("broker must be restarted before queueing prompts")
-            item, ql = self._queue_append_item_local(session_id, text, reject_recovery_barrier=True)
-        if ql != 1:
-            return {"queued": True, "queue_len": int(ql), "item": item}
-        resp = self._promote_queue_head_if_sendable(session_id, require_idle_grace=False, expected_item_id=str(item["id"]))
-        if isinstance(resp, dict):
-            return resp
-        return {"queued": True, "queue_len": 1, "item": item}
+        return self._queue_coordinator_for_manager().enqueue(session_id, text)
 
     def queue_list(self, session_id: str) -> list[dict[str, Any]]:
         return self._queue_list_local(session_id)

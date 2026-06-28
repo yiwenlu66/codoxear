@@ -22,6 +22,7 @@ class SessionQueueCoordinator:
     queue_store: Callable[[], QueueStore]
     commit_unknown_sends: Callable[[], Mapping[str, Any]]
     save_queues: Callable[[], None]
+    input_lock_for_session: Callable[[str], Any]
     remote_ready: Callable[[str, Path | None], bool]
     send: Callable[..., dict[str, Any]]
     not_ready_error: type[BaseException]
@@ -29,6 +30,12 @@ class SessionQueueCoordinator:
     commit_unknown_error: type[BaseException]
     queue_idle_grace_seconds: float
     now: Callable[[], float] = time.time
+    recovery_items_locked: Callable[[str], bool] | None = None
+
+    def _recovery_items_locked(self, session_id: str) -> bool:
+        if self.recovery_items_locked is not None:
+            return self.recovery_items_locked(session_id)
+        return self.has_recovery_items_locked(session_id)
 
     def queue_len(self, session_id: str) -> int:
         with self.lock:
@@ -81,7 +88,7 @@ class SessionQueueCoordinator:
         with self.lock:
             if session_id not in self.sessions():
                 raise KeyError("unknown session")
-            if reject_recovery_barrier and self.has_recovery_items_locked(session_id):
+            if reject_recovery_barrier and self._recovery_items_locked(session_id):
                 raise self.not_ready_error("resolve the recovery queue before queueing another prompt")
             item, ql = self.queue_store().append(self.queues(), session_id, text)
         self.save_queues()
@@ -90,6 +97,29 @@ class SessionQueueCoordinator:
     def enqueue_local(self, session_id: str, text: str) -> dict[str, Any]:
         item, ql = self.append_item_local(session_id, text, reject_recovery_barrier=True)
         return {"queued": True, "queue_len": int(ql), "item": item}
+
+    def enqueue(self, session_id: str, text: str) -> dict[str, Any]:
+        input_lock = self.input_lock_for_session(session_id)
+        with input_lock:
+            with self.lock:
+                session = self.sessions().get(session_id)
+                if not session:
+                    raise KeyError("unknown session")
+                if session.commit_unknown_send:
+                    raise self.not_ready_error("resolve the unknown send before queueing another prompt")
+                if session.pending_attachment:
+                    raise self.not_ready_error("send the pending attachment before queueing another prompt")
+                if self._recovery_items_locked(session_id):
+                    raise self.not_ready_error("resolve the recovery queue before queueing another prompt")
+                if not session.sync_send_supported:
+                    raise self.not_ready_error("broker must be restarted before queueing prompts")
+            item, queue_len = self.append_item_local(session_id, text, reject_recovery_barrier=True)
+        if queue_len != 1:
+            return {"queued": True, "queue_len": int(queue_len), "item": item}
+        response = self.promote_head_if_sendable(session_id, require_idle_grace=False, expected_item_id=str(item["id"]))
+        if isinstance(response, dict):
+            return response
+        return {"queued": True, "queue_len": 1, "item": item}
 
     def delete_local(
         self,
