@@ -117,7 +117,8 @@ def coordinator_forwarder(public_name: str, coordinator_factory_name: str, metho
 def server_factory_method(public_name: str, impl_name: str, server_module_name: str) -> Any:
     def method(manager: Any) -> Any:
         server_module = sys.modules[server_module_name]
-        return getattr(server_module, impl_name)(manager, server_module)
+        factory_caps = server_module._session_manager_factory_caps_impl(server_module)
+        return getattr(server_module, impl_name)(manager, factory_caps)
 
     method.__name__ = public_name
     method.__qualname__ = public_name

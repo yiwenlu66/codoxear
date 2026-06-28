@@ -73,6 +73,8 @@ def test_server_factory_binding_uses_live_server_module_lookup() -> None:
         calls.append((manager, server_module))
         return {"server": server_module}
 
+    caps = types.SimpleNamespace(name="caps")
+    module._session_manager_factory_caps_impl = lambda server_module: caps
     module._queue_coordinator_for_manager_impl = impl
     sys.modules[module_name] = module  # type: ignore[assignment]
     try:
@@ -83,13 +85,15 @@ def test_server_factory_binding_uses_live_server_module_lookup() -> None:
         manager = FactoryBound()
 
         assert FactoryBound._queue_coordinator_for_manager.__name__ == "_queue_coordinator_for_manager"
-        assert manager._queue_coordinator_for_manager() == {"server": module}
-        assert calls == [(manager, module)]
+        assert manager._queue_coordinator_for_manager() == {"server": caps}
+        assert calls == [(manager, caps)]
 
+        replacement_caps = types.SimpleNamespace(name="replacement-caps")
         replacement = types.SimpleNamespace()
-        replacement._queue_coordinator_for_manager_impl = lambda manager, server_module: {"server": server_module, "manager": manager}
+        replacement._session_manager_factory_caps_impl = lambda server_module: replacement_caps
+        replacement._queue_coordinator_for_manager_impl = lambda manager, factory_caps: {"server": factory_caps, "manager": manager}
         sys.modules[module_name] = replacement  # type: ignore[assignment]
-        assert manager._queue_coordinator_for_manager() == {"server": replacement, "manager": manager}
+        assert manager._queue_coordinator_for_manager() == {"server": replacement_caps, "manager": manager}
     finally:
         sys.modules.pop(module_name, None)
 
@@ -107,4 +111,5 @@ def test_session_manager_compatibility_forwards_live_outside_server() -> None:
     assert '("queue_delete", "_queue_coordinator_for_manager", "delete_local")' in binding_source
     assert '("inject_attachment_keys", "_attachment_coordinator_for_manager", "inject_attachment_keys")' in binding_source
     assert '("_queue_coordinator_for_manager", "_queue_coordinator_for_manager_impl")' in binding_source
+    assert "_session_manager_factory_caps_impl(server_module)" in binding_source
     assert "def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)" in server_source
