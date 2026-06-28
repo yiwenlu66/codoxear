@@ -154,6 +154,7 @@ from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
 from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
+from .session_files import SessionFilesCoordinator
 from .session_launcher import LaunchContextRequest
 from .session_launcher import LaunchProcessDeps
 from .session_launcher import LaunchProcessFailure
@@ -2645,40 +2646,16 @@ class SessionManager:
         return self._readiness_coordinator_for_manager().queue_remote_ready(session_id, log_path=log_path)
 
     def _files_key_for_session(self, session_id: str) -> tuple[str, list[str], "Session"]:
-        s = self._sessions.get(session_id)
-        if not s:
-            raise KeyError("unknown session")
-        sid_key = f"sid:{session_id}"
-        return sid_key, [session_id], s
+        return self._files_coordinator_for_manager().files_key_for_session(session_id)
 
     def files_get(self, session_id: str) -> list[str]:
-        dirty = False
-        out: list[str] = []
-        with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            out, dirty = self._session_store_for_manager().file_history_for_keys(key, legacy_keys)
-        if dirty:
-            self._save_files()
-        return list(out)
+        return self._files_coordinator_for_manager().get(session_id)
 
     def files_add(self, session_id: str, path: str) -> list[str]:
-        p = str(path)
-        if p == "":
-            return self.files_get(session_id)
-        with self._lock:
-            key, legacy_keys, _s = self._files_key_for_session(session_id)
-            cur = self._session_store_for_manager().add_file_history_entry(key, legacy_keys, p)
-        self._save_files()
-        return list(cur)
+        return self._files_coordinator_for_manager().add(session_id, path)
 
     def files_clear(self, session_id: str) -> None:
-        dirty = False
-        with self._lock:
-            key, legacy_keys, s = self._files_key_for_session(session_id)
-            cwd = str(getattr(s, "cwd", "") or "")
-            dirty = self._session_store_for_manager().clear_file_history_for_keys(key, legacy_keys, cwd=cwd)
-        if dirty:
-            self._save_files()
+        return self._files_coordinator_for_manager().clear(session_id)
 
     def unattended_get(self, session_id: str) -> dict[str, Any]:
         with self._lock:
@@ -3289,6 +3266,14 @@ class SessionManager:
             analyze_log_chunk=_analyze_log_chunk,
             turn_context_run_settings=_turn_context_run_settings,
             compute_idle_from_log=_compute_idle_from_log,
+        )
+
+    def _files_coordinator_for_manager(self) -> SessionFilesCoordinator:
+        return SessionFilesCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            store=self._session_store_for_manager(),
+            save_files=self._save_files,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
