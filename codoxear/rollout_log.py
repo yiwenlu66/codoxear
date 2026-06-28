@@ -36,6 +36,13 @@ from .rollout_events import _event_ts
 from .rollout_events import _parse_iso8601_to_epoch
 from .rollout_events import _strip_oai_mem_citation_tail
 from .rollout_events import _text_message_id
+from .rollout_chat_events import _cc_message_keeps_turn_busy
+from .rollout_chat_events import _chat_assistant_dedupe_key
+from .rollout_chat_events import _dedupe_assistant_chat_events
+from .rollout_chat_events import _pi_message_keeps_turn_busy
+from .rollout_chat_events import _sidebar_conversation_ts
+from .rollout_chat_events import _single_chat_event
+from .rollout_chat_events import _update_cc_pending_tool_ids
 
 
 def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None) -> dict[str, Any]:
@@ -46,212 +53,10 @@ def _with_chat_position(event: dict[str, Any], *, before_byte: int | None = None
     return out
 
 
-def _sidebar_conversation_ts(obj: dict[str, Any]) -> float | None:
-    typ = obj.get("type")
-    if typ == "event_msg":
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid event_msg payload")
-        pt = p.get("type")
-        if pt == "user_message" and isinstance(p.get("message"), str):
-            return _event_ts(obj)
-        if pt in ("task_complete", "turn_complete"):
-            last_msg = p.get("last_agent_message")
-            if isinstance(last_msg, str) and last_msg.strip():
-                return _event_ts(obj)
-        if pt == "agent_message":
-            msg = p.get("message")
-            phase = p.get("phase")
-            if isinstance(msg, str) and msg.strip() and phase == "final_answer":
-                return _event_ts(obj)
-        return None
-
-    if typ == "message":
-        if pi_user_text(obj):
-            return _event_ts(obj)
-        if pi_assistant_is_aborted_turn(obj):
-            return None
-        if pi_assistant_text(obj) or pi_assistant_error_text(obj):
-            return _event_ts(obj)
-        return None
-
-    if typ == "user":
-        if cc_user_text(obj):
-            return _event_ts(obj)
-        return None
-
-    if typ == "assistant":
-        if cc_assistant_text(obj):
-            return _event_ts(obj)
-        return None
-
-    if typ == "response_item":
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return None
-        phase = p.get("phase")
-        end_turn = p.get("end_turn")
-        if phase != "final_answer" and end_turn is not True:
-            return None
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str) and part.get("text"):
-                return _event_ts(obj)
-        return None
-
-    return None
 
 
-def _update_cc_pending_tool_ids(obj: dict[str, Any], pending: set[str]) -> None:
-    typ = obj.get("type")
-    if typ == "user":
-        user_text = cc_user_text(obj)
-        if isinstance(user_text, str) and user_text:
-            pending.clear()
-            return
-        if cc_message_role(obj) == "toolResult":
-            cc_apply_tool_result_to_pending(obj, pending)
-            return
-    if typ == "assistant" and cc_assistant_tool_use_count(obj) > 0:
-        pending.update(cc_assistant_pending_tool_use_ids(obj))
 
 
-def _single_chat_event(obj: dict[str, Any], *, cc_pending_tool_ids: set[str] | None = None) -> dict[str, Any] | None:
-    typ = obj.get("type")
-    if typ == "user":
-        user_text = cc_user_text(obj)
-        if isinstance(user_text, str) and user_text:
-            if cc_pending_tool_ids is not None:
-                cc_pending_tool_ids.clear()
-            ets = _event_ts(obj)
-            evcc: dict[str, Any] = {"role": "user", "text": user_text}
-            if ets is not None:
-                evcc["ts"] = ets
-            return evcc
-        if cc_pending_tool_ids is not None:
-            _update_cc_pending_tool_ids(obj, cc_pending_tool_ids)
-        return None
-
-    if typ == "assistant":
-        if cc_pending_tool_ids is not None and cc_assistant_tool_use_count(obj) > 0:
-            cc_pending_tool_ids.update(cc_assistant_pending_tool_use_ids(obj))
-        assistant_text = cc_assistant_text(obj)
-        if isinstance(assistant_text, str) and assistant_text:
-            ets = _event_ts(obj)
-            message_class = "final_response" if cc_assistant_is_final_turn_end(obj) and not cc_pending_tool_ids else "narration"
-            evcca: dict[str, Any] = {
-                "role": "assistant",
-                "text": assistant_text,
-                "message_class": message_class,
-                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
-            }
-            if ets is not None:
-                evcca["ts"] = ets
-            return evcca
-        return None
-
-    if typ == "message":
-        user_text = pi_user_text(obj)
-        if isinstance(user_text, str) and user_text:
-            ets = _event_ts(obj)
-            evp: dict[str, Any] = {"role": "user", "text": user_text}
-            if ets is not None:
-                evp["ts"] = ets
-            return evp
-
-        if pi_assistant_is_aborted_turn(obj):
-            return None
-        assistant_text = pi_assistant_text(obj)
-        if isinstance(assistant_text, str) and assistant_text:
-            ets = _event_ts(obj)
-            message_class = "final_response" if pi_assistant_is_final_turn_end(obj) else "narration"
-            eva: dict[str, Any] = {
-                "role": "assistant",
-                "text": assistant_text,
-                "message_class": message_class,
-                "message_id": _text_message_id(message_class=message_class, text=assistant_text, ts=ets),
-            }
-            if ets is not None:
-                eva["ts"] = ets
-            return eva
-        error_text = pi_assistant_error_text(obj)
-        if isinstance(error_text, str) and error_text:
-            ets = _event_ts(obj)
-            return {
-                "role": "assistant",
-                "text": error_text,
-                "message_class": "error",
-                "message_id": _text_message_id(message_class="error", text=error_text, ts=ets),
-                **({"ts": ets} if ets is not None else {}),
-            }
-        return None
-
-    if typ == "event_msg":
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid event_msg payload")
-        if p.get("type") != "user_message":
-            pt = p.get("type")
-            if pt in ("error", "stream_error", "warning"):
-                text = _codex_event_text(p)
-                if text is None:
-                    return None
-                ets = _event_ts(obj)
-                message_class = "warning" if pt == "warning" else "error"
-                ev_err: dict[str, Any] = {
-                    "role": "assistant",
-                    "text": text,
-                    "message_class": message_class,
-                    "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
-                }
-                if ets is not None:
-                    ev_err["ts"] = ets
-                return ev_err
-            return None
-        msg = p.get("message")
-        if not isinstance(msg, str):
-            return None
-        ets = _event_ts(obj)
-        ev: dict[str, Any] = {"role": "user", "text": msg}
-        if ets is not None:
-            ev["ts"] = ets
-        return ev
-
-    if typ == "response_item":
-        p = obj.get("payload")
-        if not isinstance(p, dict):
-            raise ValueError("invalid response_item payload")
-        if p.get("type") != "message" or p.get("role") != "assistant":
-            return None
-        content = p.get("content")
-        if not isinstance(content, list):
-            raise ValueError("invalid assistant message content")
-        out_text_parts: list[str] = []
-        for part in content:
-            if not isinstance(part, dict):
-                continue
-            if part.get("type") == "output_text" and isinstance(part.get("text"), str):
-                out_text_parts.append(part["text"])
-        if not out_text_parts:
-            return None
-        text = "".join(out_text_parts)
-        ets = _event_ts(obj)
-        message_class = "final_response" if (p.get("phase") == "final_answer" or p.get("end_turn") is True) else "narration"
-        ev2: dict[str, Any] = {
-            "role": "assistant",
-            "text": text,
-            "message_class": message_class,
-            "message_id": _text_message_id(message_class=message_class, text=text, ts=ets),
-        }
-        if ets is not None:
-            ev2["ts"] = ets
-        return ev2
-
-    return None
 
 
 def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -285,51 +90,12 @@ def _extract_token_update(objs: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
-def _pi_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
-    role = pi_message_role(obj)
-    if role == "toolResult":
-        return True
-    return (pi_assistant_thinking_count(obj) > 0) or (pi_assistant_tool_use_count(obj) > 0)
 
 
-def _cc_message_keeps_turn_busy(obj: dict[str, Any]) -> bool:
-    role = cc_message_role(obj)
-    if role == "toolResult":
-        return True
-    return (cc_assistant_thinking_count(obj) > 0) or (cc_assistant_tool_use_count(obj) > 0)
 
 
-def _chat_assistant_dedupe_key(event: dict[str, Any]) -> tuple[str, str] | None:
-    if event.get("role") != "assistant":
-        return None
-    text = event.get("text")
-    if not isinstance(text, str) or not text.strip():
-        return None
-    message_class = event.get("message_class")
-    normalized_text = " ".join(_strip_oai_mem_citation_tail(text).split())
-    if not normalized_text:
-        return None
-    return (str(message_class or ""), normalized_text)
 
 
-def _dedupe_assistant_chat_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    last_assistant_key: tuple[str, str] | None = None
-    for event in events:
-        role = event.get("role")
-        if role == "user":
-            last_assistant_key = None
-            out.append(event)
-            continue
-        if role == "assistant":
-            key = _chat_assistant_dedupe_key(event)
-            if key is not None and key == last_assistant_key:
-                continue
-            last_assistant_key = key
-            out.append(event)
-            continue
-        out.append(event)
-    return out
 
 
 def _cc_pending_tool_ids_before(log_path: Path, before: int, *, max_scan_bytes: int | None = None) -> set[str]:

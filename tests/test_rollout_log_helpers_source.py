@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ROLLOUT_LOG = ROOT / "codoxear" / "rollout_log.py"
 ROLLOUT_JSONL = ROOT / "codoxear" / "rollout_jsonl.py"
 ROLLOUT_EVENTS = ROOT / "codoxear" / "rollout_events.py"
+ROLLOUT_CHAT_EVENTS = ROOT / "codoxear" / "rollout_chat_events.py"
 
 
 class TestRolloutLogHelpersSource(unittest.TestCase):
@@ -22,6 +23,16 @@ class TestRolloutLogHelpersSource(unittest.TestCase):
         self.assertNotIn("def _read_jsonl_records_from_offset", source)
         self.assertIn("class JsonlRecord", jsonl_source)
         self.assertIn("def _read_jsonl_records_from_offset", jsonl_source)
+
+    def test_single_row_chat_event_policy_has_dedicated_owner(self) -> None:
+        source = ROLLOUT_LOG.read_text(encoding="utf-8")
+        chat_source = ROLLOUT_CHAT_EVENTS.read_text(encoding="utf-8")
+        self.assertIn("from .rollout_chat_events import _single_chat_event", source)
+        self.assertIn("from .rollout_chat_events import _dedupe_assistant_chat_events", source)
+        self.assertNotIn("def _single_chat_event", source)
+        self.assertNotIn("def _dedupe_assistant_chat_events", source)
+        self.assertIn("def _single_chat_event", chat_source)
+        self.assertIn("def _dedupe_assistant_chat_events", chat_source)
 
     def test_chat_event_timestamp_and_message_id_helpers_are_not_redeclared(self) -> None:
         source = ROLLOUT_LOG.read_text(encoding="utf-8")
