@@ -118,6 +118,8 @@ from .transcript_search import search_chat_events as _search_chat_events
 from .transcript_search import search_chat_log_bounded as _search_chat_log_bounded
 from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
+from .process_runtime import terminate_process as _terminate_process_impl
+from .process_runtime import terminate_process_group as _terminate_process_group_impl
 from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .queue_sweep import QueueSweepCoordinator
@@ -598,64 +600,25 @@ def _launch_attempt_row(record: dict[str, Any]) -> dict[str, Any] | None:
     )
 
 
+
 def _terminate_process_group(root_pid: int, *, wait_seconds: float = 1.0) -> bool:
-    if not _process_group_alive(root_pid):
-        return True
-    try:
-        os.killpg(root_pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    deadline = _now() + max(wait_seconds, 0.0)
-    while _process_group_alive(root_pid):
-        if _now() >= deadline:
-            break
-        time.sleep(0.05)
-    if not _process_group_alive(root_pid):
-        return True
-    try:
-        os.killpg(root_pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    deadline = _now() + 0.2
-    while _process_group_alive(root_pid):
-        if _now() >= deadline:
-            break
-        time.sleep(0.05)
-    return not _process_group_alive(root_pid)
+    return _terminate_process_group_impl(
+        root_pid,
+        process_group_alive=_process_group_alive,
+        now=_now,
+        sleep=time.sleep,
+        wait_seconds=wait_seconds,
+    )
 
 
 def _terminate_process(pid: int, *, wait_seconds: float = 1.0) -> bool:
-    if not _pid_alive(pid):
-        return True
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    deadline = _now() + max(wait_seconds, 0.0)
-    while _pid_alive(pid):
-        if _now() >= deadline:
-            break
-        time.sleep(0.05)
-    if not _pid_alive(pid):
-        return True
-    try:
-        os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    deadline = _now() + 0.2
-    while _pid_alive(pid):
-        if _now() >= deadline:
-            break
-        time.sleep(0.05)
-    return not _pid_alive(pid)
+    return _terminate_process_impl(
+        pid,
+        pid_alive=_pid_alive,
+        now=_now,
+        sleep=time.sleep,
+        wait_seconds=wait_seconds,
+    )
 
 
 def _unlink_quiet(path: Path) -> None:
