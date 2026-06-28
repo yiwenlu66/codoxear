@@ -3764,3 +3764,21 @@
   - Focused chat/idle/message/voice/source group returned `146 passed, 4 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1178 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-29T00:10:00Z Rollout idle analysis split
+- Functional commit `cf08730 Extract rollout idle analysis` moved chunk/idle analysis from `rollout_log.py` into `rollout_idle.py`:
+  - `_has_assistant_output_text`
+  - `_analyze_log_chunk`
+  - `_last_conversation_ts_from_tail`
+  - `_compute_cc_idle_from_current_turn`
+  - `_compute_idle_from_log`
+  - `_last_chat_role_ts_from_tail`
+- Compatibility preserved: `rollout_log.py` imports/re-exports these names, so server aliases and tests still use the `rollout_log` facade. `rollout_log.py` now primarily owns positioned pagination/live-delta/tail-snapshot orchestration.
+- Negative evidence: the first focused idle run failed because `rollout_idle.py` missed `pi_assistant_error_text`; the Pi assistant error-idle test caught it. Adding that import repaired the focused suite, preserving Pi error-row idle semantics.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts idle/chunk analysis lives in `rollout_idle.py` and is imported by `rollout_log.py`.
+- Size observation: `rollout_log.py` is now 232 lines; `rollout_idle.py` is 390 lines.
+- Validation after `cf08730`:
+  - Focused chat/idle/message/voice/source group returned `159 passed, 4 subtests passed` after the Pi error dependency repair.
+  - Full local `python3 -m pytest -q` returned `1179 passed, 107 subtests passed`.
+  - `git diff --check` caught and the commit fixed an EOF whitespace issue in `rollout_log.py`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
