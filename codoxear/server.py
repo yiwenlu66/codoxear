@@ -171,6 +171,7 @@ from .session_input import parse_confirmed_send_response as _parse_confirmed_sen
 from .session_input import require_send_preconditions as _require_send_preconditions
 from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
+from .session_lifecycle import SessionLifecycleCoordinator
 from .session_log_runtime import SessionLogRuntimeCoordinator
 from .session_list import SessionListCoordinator
 from .session_refresh import SessionRefreshCoordinator
@@ -3048,37 +3049,31 @@ class SessionManager:
             max_recent_cwds=RECENT_CWD_MAX,
         )
 
+    def _lifecycle_coordinator_for_manager(self) -> SessionLifecycleCoordinator:
+        return SessionLifecycleCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
+            process_group_alive=_process_group_alive,
+            pid_alive=_pid_alive,
+            terminate_process_group=_terminate_process_group,
+            terminate_process=_terminate_process,
+            unlink_quiet=_unlink_quiet,
+            commit_unknown_sends=lambda: getattr(self, "_commit_unknown_sends", {}),
+            queue_has_recovery_items_locked=self._queue_has_recovery_items_locked,
+            clear_deleted_session_state=self._clear_deleted_session_state,
+            read_launch_attempts=lambda: _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
+            launch_attempt_row=_launch_attempt_row,
+            hide_session=self._hide_session,
+            files_clear=self.files_clear,
+            kill_session_via_pids_fallback=self._kill_session_via_pids,
+        )
+
     def _kill_session_via_pids(self, s: Session) -> bool:
-        group_alive = _process_group_alive(int(s.codex_pid))
-        broker_alive = _pid_alive(int(s.broker_pid))
-        if not group_alive and not broker_alive:
-            _unlink_quiet(s.sock_path)
-            _unlink_quiet(s.sock_path.with_suffix(".json"))
-            return True
-        if group_alive and (not _terminate_process_group(int(s.codex_pid), wait_seconds=1.0)):
-            return False
-        if _pid_alive(int(s.broker_pid)) and (not _terminate_process(int(s.broker_pid), wait_seconds=1.0)):
-            return False
-        group_dead = not _process_group_alive(int(s.codex_pid))
-        broker_dead = not _pid_alive(int(s.broker_pid))
-        if group_dead and broker_dead:
-            _unlink_quiet(s.sock_path)
-            _unlink_quiet(s.sock_path.with_suffix(".json"))
-            return True
-        return False
+        return self._lifecycle_coordinator_for_manager().kill_session_via_pids(s)
 
     def kill_session(self, session_id: str) -> bool:
-        with self._lock:
-            s = self._sessions.get(session_id)
-        if not s:
-            return False
-        try:
-            resp = self._sock_call(s.sock_path, {"cmd": "shutdown"}, timeout_s=1.0)
-        except Exception:
-            return self._kill_session_via_pids(s)
-        if resp.get("ok") is True:
-            return True
-        return self._kill_session_via_pids(s)
+        return self._lifecycle_coordinator_for_manager().kill_session(session_id)
 
     def _live_session_for_resume_target(self, resume_id: str, resume_row: dict[str, Any] | None) -> Session | None:
         sessions = getattr(self, "_sessions", None)
@@ -3192,31 +3187,7 @@ class SessionManager:
             raise SessionLaunchError(e.record) from e
 
     def delete_session(self, session_id: str) -> bool:
-        with self._lock:
-            s = self._sessions.get(session_id)
-        if not s:
-            with self._lock:
-                has_direct_unknown = session_id in getattr(self, "_commit_unknown_sends", {})
-                has_queue_recovery = self._queue_has_recovery_items_locked(session_id)
-            if has_direct_unknown or has_queue_recovery:
-                self._clear_deleted_session_state(session_id, clear_recovery=True)
-                return True
-            for rec in _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600):
-                row = _launch_attempt_row(rec)
-                if row is not None and row.get("session_id") == session_id:
-                    self._hide_session(session_id)
-                    return True
-            return False
-        ok = self.kill_session(session_id)
-        if ok:
-            launch_id = s.launch_id
-            self.files_clear(session_id)
-            with self._lock:
-                self._sessions.pop(session_id, None)
-            if launch_id:
-                self._hide_session(launch_id)
-            self._clear_deleted_session_state(session_id, clear_recovery=True)
-        return ok
+        return self._lifecycle_coordinator_for_manager().delete_session(session_id)
 
     def _record_prelog_user_message(self, session: Session, text: str, *, source: str) -> None:
         if not session.owned or session.log_path is not None or not session.launch_id:
