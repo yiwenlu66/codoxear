@@ -199,6 +199,9 @@ from .session_runtime import ListingRuntimeProbes
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
+from .session_runtime import reset_session_log_caches as _reset_session_log_caches_impl
+from .session_runtime import session_run_settings_from_meta as _session_run_settings_from_meta_impl
+from .session_runtime import session_transport_from_meta as _session_transport_from_meta_impl
 from .session_runtime import broker_allows_interrupted_idle_override as _runtime_broker_allows_interrupted_idle_override
 from .session_runtime import broker_busy_queue as _runtime_broker_busy_queue
 from .session_runtime import broker_interrupted_idle as _runtime_broker_interrupted_idle
@@ -1567,51 +1570,23 @@ class SessionManager:
         self._stop.set()
 
     def _reset_log_caches(self, s: Session, *, meta_log_off: int) -> None:
-        s.meta_thinking = 0
-        s.meta_tools = 0
-        s.meta_system = 0
-        s.last_chat_ts = None
-        s.last_chat_history_scanned = False
-        s.meta_log_off = int(meta_log_off)
-        s.delivery_log_off = int(meta_log_off)
-        s.idle_cache_log_off = -1
-        s.idle_cache_value = None
-        s.queue_idle_since = None
-        s.queue_sending_item_id = None
-        s.model_provider = None
-        s.preferred_auth_method = None
-        s.model = None
-        s.reasoning_effort = None
-        s.service_tier = None
+        return _reset_session_log_caches_impl(s, meta_log_off=meta_log_off)
 
     def _session_run_settings(self, *, meta: dict[str, Any], log_path: Path | None, agent_backend: str) -> tuple[str | None, str | None, str | None, str | None]:
-        backend_name = normalize_agent_backend(agent_backend)
-        model_provider = _clean_optional_text(meta.get("model_provider"))
-        preferred_auth_method = _normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
-        model = _clean_optional_text(meta.get("model"))
-        if backend_name == "codex":
-            reasoning_effort = _display_reasoning_effort(meta.get("reasoning_effort"))
-        elif backend_name == "pi":
-            reasoning_effort = _display_pi_reasoning_effort(meta.get("reasoning_effort"))
-        else:
-            reasoning_effort = _normalize_requested_cc_reasoning_effort(meta.get("reasoning_effort"))
-        if log_path is not None and log_path.exists():
-            log_provider, log_model, log_effort = _read_run_settings_from_log(log_path, agent_backend=backend_name)
-            if log_provider is not None:
-                model_provider = log_provider
-            if log_model is not None:
-                model = log_model
-            if log_effort is not None:
-                reasoning_effort = log_effort
-        return model_provider, preferred_auth_method, model, reasoning_effort
+        return _session_run_settings_from_meta_impl(
+            meta=meta,
+            log_path=log_path,
+            agent_backend=agent_backend,
+            clean_optional_text=_clean_optional_text,
+            normalize_requested_preferred_auth_method=_normalize_requested_preferred_auth_method,
+            display_reasoning_effort=_display_reasoning_effort,
+            display_pi_reasoning_effort=_display_pi_reasoning_effort,
+            normalize_requested_cc_reasoning_effort=_normalize_requested_cc_reasoning_effort,
+            read_run_settings_from_log=_read_run_settings_from_log,
+        )
 
     def _session_transport(self, *, meta: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
-        transport = _clean_optional_text(meta.get("transport"))
-        tmux_session = _clean_optional_text(meta.get("tmux_session"))
-        tmux_window = _clean_optional_text(meta.get("tmux_window"))
-        if transport is None and (tmux_session is not None or tmux_window is not None):
-            transport = "tmux"
-        return transport, tmux_session, tmux_window
+        return _session_transport_from_meta_impl(meta=meta, clean_optional_text=_clean_optional_text)
 
     def _discover_existing_if_stale(self, *, force: bool = False) -> None:
         now = time.time()

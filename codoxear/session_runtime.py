@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Mapping, MutableMapping
 
+from .agent_backend import normalize_agent_backend
 from .session_listing import build_public_session_row
 from .session_listing import listing_priority
 from .session_model import Session
@@ -189,6 +190,67 @@ def session_allows_queue_promotion(session: Session) -> bool:
     if session.pending_attachment:
         return False
     return True
+
+
+def reset_session_log_caches(session: Session, *, meta_log_off: int) -> None:
+    session.meta_thinking = 0
+    session.meta_tools = 0
+    session.meta_system = 0
+    session.last_chat_ts = None
+    session.last_chat_history_scanned = False
+    session.meta_log_off = int(meta_log_off)
+    session.delivery_log_off = int(meta_log_off)
+    session.idle_cache_log_off = -1
+    session.idle_cache_value = None
+    session.queue_idle_since = None
+    session.queue_sending_item_id = None
+    session.model_provider = None
+    session.preferred_auth_method = None
+    session.model = None
+    session.reasoning_effort = None
+    session.service_tier = None
+
+
+def session_transport_from_meta(*, meta: dict[str, Any], clean_optional_text: Callable[[Any], str | None]) -> tuple[str | None, str | None, str | None]:
+    transport = clean_optional_text(meta.get("transport"))
+    tmux_session = clean_optional_text(meta.get("tmux_session"))
+    tmux_window = clean_optional_text(meta.get("tmux_window"))
+    if transport is None and (tmux_session is not None or tmux_window is not None):
+        transport = "tmux"
+    return transport, tmux_session, tmux_window
+
+
+def session_run_settings_from_meta(
+    *,
+    meta: dict[str, Any],
+    log_path: Path | None,
+    agent_backend: str,
+    clean_optional_text: Callable[[Any], str | None],
+    normalize_requested_preferred_auth_method: Callable[[Any], str | None],
+    display_reasoning_effort: Callable[[Any], str | None],
+    display_pi_reasoning_effort: Callable[[Any], str | None],
+    normalize_requested_cc_reasoning_effort: Callable[[Any], str | None],
+    read_run_settings_from_log: Callable[..., tuple[str | None, str | None, str | None]],
+) -> tuple[str | None, str | None, str | None, str | None]:
+    backend_name = normalize_agent_backend(agent_backend)
+    model_provider = clean_optional_text(meta.get("model_provider"))
+    preferred_auth_method = normalize_requested_preferred_auth_method(meta.get("preferred_auth_method"))
+    model = clean_optional_text(meta.get("model"))
+    if backend_name == "codex":
+        reasoning_effort = display_reasoning_effort(meta.get("reasoning_effort"))
+    elif backend_name == "pi":
+        reasoning_effort = display_pi_reasoning_effort(meta.get("reasoning_effort"))
+    else:
+        reasoning_effort = normalize_requested_cc_reasoning_effort(meta.get("reasoning_effort"))
+    if log_path is not None and log_path.exists():
+        log_provider, log_model, log_effort = read_run_settings_from_log(log_path, agent_backend=backend_name)
+        if log_provider is not None:
+            model_provider = log_provider
+        if log_model is not None:
+            model = log_model
+        if log_effort is not None:
+            reasoning_effort = log_effort
+    return model_provider, preferred_auth_method, model, reasoning_effort
 
 
 def apply_history_backfill(
