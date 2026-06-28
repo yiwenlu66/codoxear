@@ -3487,3 +3487,17 @@
   - `ea42dbd Extract queue sweep coordinator`: `codoxear/queue_sweep.py` now owns queue sweep discovery/prune, orphan-recovery marking, missing-session queue dropping, queue-save triggering, and one-head-per-sweep drain sequencing.
 - Validation evidence per functional slice: each slice passed focused tests; full local `pytest -q` after each of the listing, refresh, readiness, unattended-sweep, and queue-sweep moves returned `1157 passed, 107 subtests`.
 - Current size observation: see `wc -l` output in this OPS entry command; `server.py` is materially smaller and increasingly composed of wrappers/dependency wiring rather than embedded state machines.
+
+## 2026-06-27T03:15:00Z Runtime/state coordinator tranche
+- Functional commits after `97e47b5 Document coordinator extraction tranche`:
+  - `b31012f Extract voice runtime coordinator`: `codoxear/voice_runtime.py` now owns notification-text attachment, session display-name lookup for notifications, delivery offset mutation, rollout-delta voice observation, resume-session muting, CC pending-tool seed lookup, and voice-push scan sweep.
+  - `ffc8c33 Extract session log runtime coordinator`: `codoxear/session_log_runtime.py` now owns log-delta session mutation, turn-context model/effort backfill, idle-cache lookup/update, missing-log errors, and invalid idle-state errors.
+  - `17df7f1 Extract session file history coordinator`: `codoxear/session_files.py` now owns session file-history keying, legacy key repair entry points, add/get/clear, and save triggering.
+  - `2258c60 Extract session UI state coordinator`: `codoxear/session_ui_state.py` now owns hide/unhide, alias get/set/clear, sidebar metadata get/set, combined edit-session validation/mutation, and save triggering.
+  - `f4320f6 Extract session unattended config coordinator`: `codoxear/session_unattended_config.py` now owns per-session Unattended get/set normalization, input-lock mutation, remaining-injection disable behavior, and save triggering.
+  - `48e9bc2 Extract deleted session cleanup coordinator`: `codoxear/session_cleanup.py` now owns stale-socket prune cleanup, deleted-session state cleanup across aliases/sidebar/unattended/files/queues/input-locks/pending attachments/direct-unknown sends, recovery-preserving queue marking, unlinking, and save triggering.
+  - `98e30e5 Extract session pending state coordinator`: `codoxear/session_pending_state.py` now owns pending-attachment mutation, direct unknown-send record cleaning/mutation/clear, orphan pruning, queue recovery marking, and persistence.
+  - `c28c85e Extract recent cwd coordinator`: `codoxear/session_recent_cwd.py` now owns recent cwd remember/backfill/list behavior.
+  - `baeb59a Extract session lifecycle coordinator` and `16d12bd Move live resume lookup into lifecycle`: `codoxear/session_lifecycle.py` now owns process/control-socket kill fallback, delete-session recovery/launch-failure hiding, active-session removal cleanup, launch-id hiding, and live resume-target matching while preserving the `_kill_session_via_pids` monkeypatch seam.
+- Validation evidence per functional slice: each slice passed focused tests; full local `pytest -q` after each of voice runtime, log runtime, file history, UI state, Unattended config, cleanup, pending state, recent cwd, and lifecycle moves returned `1157 passed, 107 subtests`.
+- Current size observation: `server.py` is now 3874 lines. The manager is mostly wrappers, dependency assembly, discovery application, launch orchestration, send/prelog path, route dependency assembly, and compatibility helpers.
