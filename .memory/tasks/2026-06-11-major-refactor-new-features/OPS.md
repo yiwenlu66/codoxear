@@ -3752,3 +3752,15 @@
   - Focused chat/idle/message/voice/source group returned `145 passed, 4 subtests passed`.
   - Full local `python3 -m pytest -q` returned `1177 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-29T00:02:00Z Rollout chat batch analysis split
+- Functional commit `94279a2 Extract rollout chat batch analysis` moved multi-row chat extraction/batch analysis out of `rollout_log.py` into `rollout_chat_batch.py`:
+  - `_extract_chat_events`
+- Ownership after this split: `rollout_chat_events.py` owns single-row backend row interpretation; `rollout_chat_batch.py` owns accumulation of chat events, thinking/tool/system counts, turn start/end/aborted flags, tool-name diagnostics, and CC pending-tool state across a batch. `rollout_log.py` remains pagination/live-delta/snapshot/idle orchestration and imports/re-exports `_extract_chat_events`.
+- Compatibility preserved: server facade aliases, message routes, tests, and external callers that import `codoxear.rollout_log._extract_chat_events` continue to use the `rollout_log` facade.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts `_extract_chat_events` lives in `rollout_chat_batch.py` and preserves the `_single_chat_event`/`events.append` linkage there.
+- Size observation: `rollout_log.py` is now 593 lines; `rollout_chat_batch.py` is 159 lines.
+- Validation after `94279a2`:
+  - Focused chat/idle/message/voice/source group returned `146 passed, 4 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1178 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
