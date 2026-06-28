@@ -10,6 +10,7 @@ SESSION_CONTROL_PY = ROOT / "codoxear" / "session_control.py"
 SESSION_READINESS_PY = ROOT / "codoxear" / "session_readiness.py"
 SESSION_SEND_PY = ROOT / "codoxear" / "session_send.py"
 SESSION_QUEUE_PY = ROOT / "codoxear" / "session_queue.py"
+SESSION_ATTACHMENT_PY = ROOT / "codoxear" / "session_attachment.py"
 FILE_UPLOAD_PY = ROOT / "codoxear" / "file_upload.py"
 CONTROL_ROUTES_PY = ROOT / "codoxear" / "control_routes.py"
 BROKER_PY = ROOT / "codoxear" / "broker.py"
@@ -45,6 +46,7 @@ class TestFileUploadModuleSource(unittest.TestCase):
         readiness_source = SESSION_READINESS_PY.read_text(encoding="utf-8")
         send_source = SESSION_SEND_PY.read_text(encoding="utf-8")
         queue_source = SESSION_QUEUE_PY.read_text(encoding="utf-8")
+        attachment_source = SESSION_ATTACHMENT_PY.read_text(encoding="utf-8")
         route_source = CONTROL_ROUTES_PY.read_text(encoding="utf-8")
         start = route_source.index("def _handle_inject_attachment")
         block = route_source[start:]
@@ -72,22 +74,22 @@ class TestFileUploadModuleSource(unittest.TestCase):
         self.assertIn("except deps.session_commit_unknown_error as e:", route_source)
         self.assertIn('"commit_unknown": True', route_source + source)
         self.assertIn("if bool(response.get(\"commit_unknown\")):\n        raise_commit_unknown(\"send commit status unknown; broker marked commit unknown\")", input_source)
-        self.assertIn("if bool(resp.get(\"commit_unknown\")):\n                self._set_pending_attachment(session_id, True)\n                raise SessionCommitUnknownError(\"attachment commit status unknown; broker marked commit unknown\")", source)
+        self.assertIn("if bool(response.get(\"commit_unknown\")):\n                self.set_pending_attachment(session_id, True)\n                raise self.commit_unknown_error(\"attachment commit status unknown; broker marked commit unknown\")", attachment_source)
         self.assertIn('(\"pending_attachment\", \"clear\", _handle_pending_attachment_clear)', route_source)
         self.assertIn("res = manager.clear_pending_attachment(session_id)", route_source)
         self.assertIn("if not session.sync_send_supported:", input_source)
         self.assertIn("if not (session.sync_send_supported and session.key_write_errors_supported):", readiness_source)
-        self.assertIn("resp = self.inject_keys(session_id, seq, track_request_sent=True)", source)
+        self.assertIn("response = self.inject_keys(session_id, seq, track_request_sent=True)", attachment_source)
         self.assertIn("def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False)", source)
         self.assertIn("attachment commit status unknown; broker response failed", control_runtime_source)
         self.assertIn("except deps.session_not_ready_error as e:", block)
         self.assertIn("if session.pending_attachment:\n                    raise self.not_ready_error(\"send the pending attachment before queueing another prompt\")", queue_source)
         self.assertNotIn("self._record_prelog_user_message(s, text, source=\"enqueue\")", source)
-        self.assertIn("if resp.get(\"error\"):", source)
-        self.assertIn("if resp.get(\"ok\") is not True:", source)
-        self.assertIn("raise SessionInjectionError(err)", source)
+        self.assertIn("if response.get(\"error\"):", attachment_source)
+        self.assertIn("if response.get(\"ok\") is not True:", attachment_source)
+        self.assertIn("raise self.injection_error(err)", attachment_source)
         self.assertIn("except deps.session_injection_error as e:", block)
-        self.assertIn("self._set_pending_attachment(session_id, True)", source)
+        self.assertIn("self.set_pending_attachment(session_id, True)", attachment_source)
         self.assertIn("self.set_pending_attachment(session_id, False)", send_source)
         self.assertIn("PENDING_ATTACHMENTS_PATH", source)
         self.assertIn("if session.pending_attachment and not allow_pending_attachment:", input_source)

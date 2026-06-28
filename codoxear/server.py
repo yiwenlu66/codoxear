@@ -150,6 +150,7 @@ from .session_queue import SessionQueueCoordinator
 from .session_routes import SessionRouteDeps
 from .session_routes import handle_session_get_route as _handle_session_get_route
 from .session_routes import handle_session_post_route as _handle_session_post_route
+from .session_attachment import SessionAttachmentCoordinator
 from .session_cleanup import SessionCleanupCoordinator
 from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
@@ -2554,6 +2555,17 @@ class SessionManager:
             commit_unknown_error=SessionCommitUnknownError,
         )
 
+    def _attachment_coordinator_for_manager(self) -> SessionAttachmentCoordinator:
+        return SessionAttachmentCoordinator(
+            input_lock_for_session=self._input_lock_for_session,
+            attachment_injection_ready=self.attachment_injection_ready,
+            inject_keys=self.inject_keys,
+            set_pending_attachment=self._set_pending_attachment,
+            not_ready_error=SessionNotReadyError,
+            injection_error=SessionInjectionError,
+            commit_unknown_error=SessionCommitUnknownError,
+        )
+
     def _list_coordinator_for_manager(self) -> SessionListCoordinator:
         return SessionListCoordinator(
             lock=self._lock,
@@ -2981,32 +2993,7 @@ class SessionManager:
         return self._readiness_coordinator_for_manager().attachment_injection_ready(session_id)
 
     def inject_attachment_keys(self, session_id: str, seq: str) -> dict[str, Any]:
-        input_lock = self._input_lock_for_session(session_id)
-        with input_lock:
-            if not self.attachment_injection_ready(session_id):
-                raise SessionNotReadyError("session is busy; wait before attaching a file")
-            try:
-                resp = self.inject_keys(session_id, seq, track_request_sent=True)
-            except SessionCommitUnknownError:
-                self._set_pending_attachment(session_id, True)
-                raise
-            if not isinstance(resp, dict):
-                self._set_pending_attachment(session_id, True)
-                raise SessionCommitUnknownError("attachment commit status unknown; broker response was malformed")
-            if bool(resp.get("commit_unknown")):
-                self._set_pending_attachment(session_id, True)
-                raise SessionCommitUnknownError("attachment commit status unknown; broker marked commit unknown")
-            if resp.get("error"):
-                err = str(resp.get("error"))
-                if bool(resp.get("commit_unknown")) or err == "empty response":
-                    self._set_pending_attachment(session_id, True)
-                    raise SessionCommitUnknownError(f"attachment commit status unknown; {err}")
-                raise SessionInjectionError(err)
-            if resp.get("ok") is not True:
-                self._set_pending_attachment(session_id, True)
-                raise SessionCommitUnknownError("attachment commit status unknown; broker response was incomplete")
-            self._set_pending_attachment(session_id, True)
-            return resp
+        return self._attachment_coordinator_for_manager().inject_attachment_keys(session_id, seq)
 
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         return self._control_coordinator_for_manager().inject_keys(
