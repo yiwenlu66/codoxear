@@ -183,6 +183,9 @@ from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
+from .session_manager_store import create_session_store as _create_session_store_impl
+from .session_manager_store import session_store_for_manager as _session_store_for_manager_impl
+from .session_manager_store import session_store_paths as _session_store_paths_impl
 from .session_model import Session
 from .session_pending_state import SessionPendingStateCoordinator
 from .session_prune import SessionPruneCoordinator
@@ -1448,6 +1451,20 @@ def _broker_tail_has_session_detach_marker(agent_backend: str, tail: Any) -> boo
     return "To continue this session, run " in tail
 
 
+def _session_store_paths_for_manager() -> SessionStorePaths:
+    return _session_store_paths_impl(
+        aliases=ALIAS_PATH,
+        sidebar_meta=SIDEBAR_META_PATH,
+        hidden_sessions=HIDDEN_SESSIONS_PATH,
+        files=FILE_HISTORY_PATH,
+        queues=QUEUE_PATH,
+        pending_attachments=PENDING_ATTACHMENTS_PATH,
+        commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
+        recent_cwds=RECENT_CWD_PATH,
+        unattended=UNATTENDED_PATH,
+    )
+
+
 class SessionManager:
     @property
     def _unattended(self) -> dict[str, dict[str, Any]]:
@@ -1526,29 +1543,7 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._stop = threading.Event()
         self._last_discover_ts = 0.0
-        self._store = SessionStore(
-            paths=SessionStorePaths(
-                aliases=ALIAS_PATH,
-                sidebar_meta=SIDEBAR_META_PATH,
-                hidden_sessions=HIDDEN_SESSIONS_PATH,
-                files=FILE_HISTORY_PATH,
-                queues=QUEUE_PATH,
-                pending_attachments=PENDING_ATTACHMENTS_PATH,
-                commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
-                recent_cwds=RECENT_CWD_PATH,
-                unattended=UNATTENDED_PATH,
-            ),
-            file_history_max=FILE_HISTORY_MAX,
-            recent_cwd_max=RECENT_CWD_MAX,
-            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-            clean_alias=_clean_alias,
-            clean_priority_offset=_clean_priority_offset,
-            clean_snooze_until=_clean_snooze_until,
-            clean_dependency_session_id=_clean_dependency_session_id,
-            clean_recent_cwd=_clean_recent_cwd,
-            clean_commit_unknown_send_record=self._clean_commit_unknown_send_record,
-        )
+        self._store = self._new_session_store_for_manager(_session_store_paths_for_manager())
         self._unattended: dict[str, dict[str, Any]] = {}
         self._aliases: dict[str, str] = {}
         self._sidebar_meta: dict[str, dict[str, Any]] = {}
@@ -1650,22 +1645,8 @@ class SessionManager:
         except TypeError:
             self._discover_existing()
 
-    def _session_store_for_manager(self) -> SessionStore:
-        paths = SessionStorePaths(
-            aliases=ALIAS_PATH,
-            sidebar_meta=SIDEBAR_META_PATH,
-            hidden_sessions=HIDDEN_SESSIONS_PATH,
-            files=FILE_HISTORY_PATH,
-            queues=QUEUE_PATH,
-            pending_attachments=PENDING_ATTACHMENTS_PATH,
-            commit_unknown_sends=COMMIT_UNKNOWN_SENDS_PATH,
-            recent_cwds=RECENT_CWD_PATH,
-            unattended=UNATTENDED_PATH,
-        )
-        existing = getattr(self, "_store", None)
-        if isinstance(existing, SessionStore) and existing.paths == paths:
-            return existing
-        store = SessionStore(
+    def _new_session_store_for_manager(self, paths: SessionStorePaths) -> SessionStore:
+        return _create_session_store_impl(
             paths=paths,
             file_history_max=FILE_HISTORY_MAX,
             recent_cwd_max=RECENT_CWD_MAX,
@@ -1678,16 +1659,13 @@ class SessionManager:
             clean_recent_cwd=_clean_recent_cwd,
             clean_commit_unknown_send_record=self._clean_commit_unknown_send_record,
         )
-        if isinstance(existing, SessionStore):
-            store.unattended = existing.unattended
-            store.aliases = existing.aliases
-            store.sidebar_meta = existing.sidebar_meta
-            store.hidden_sessions = existing.hidden_sessions
-            store.files = existing.files
-            store.queues = existing.queues
-            store.pending_attachment_ids = existing.pending_attachment_ids
-            store.commit_unknown_sends = existing.commit_unknown_sends
-            store.recent_cwds = existing.recent_cwds
+
+    def _session_store_for_manager(self) -> SessionStore:
+        store = _session_store_for_manager_impl(
+            existing=getattr(self, "_store", None),
+            paths=_session_store_paths_for_manager(),
+            create_store=self._new_session_store_for_manager,
+        )
         self._store = store
         return store
 
