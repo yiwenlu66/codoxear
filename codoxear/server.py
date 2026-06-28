@@ -2727,63 +2727,7 @@ class SessionManager:
             _unlink_quiet(sock.with_suffix(".json"))
 
     def _update_meta_counters(self) -> None:
-        with self._lock:
-            items = list(self._sessions.items())
-        for sid, s in items:
-            lp = s.log_path
-            if lp is None or (not lp.exists()):
-                continue
-            sz = int(lp.stat().st_size)
-            off = int(s.meta_log_off)
-            reset_last_chat = False
-            if sz < off:
-                off = 0
-                reset_last_chat = True
-
-            total_th = 0
-            total_tools = 0
-            total_sys = 0
-            latest_chat_ts: float | None = None
-            latest_token: dict[str, Any] | None = None
-            loops = 0
-            while off < sz and loops < 16:
-                objs, new_off = _read_jsonl_from_offset(lp, off, max_bytes=256 * 1024)
-                if new_off <= off:
-                    break
-                d_th, d_tools, d_sys, chunk_chat_ts, token_update, _chat_events = _analyze_log_chunk(objs)
-                total_th += d_th
-                total_tools += d_tools
-                total_sys += d_sys
-                if chunk_chat_ts is not None:
-                    latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
-                if token_update is not None:
-                    latest_token = token_update
-                off = new_off
-                loops += 1
-
-            if latest_token is None and s.token is None:
-                latest_token = _rollout_log._find_latest_token_update(lp)
-
-            with self._lock:
-                s2 = self._sessions.get(sid)
-                if not s2:
-                    continue
-                if reset_last_chat:
-                    s2.last_chat_ts = None
-                    s2.last_chat_history_scanned = False
-                if latest_chat_ts is not None:
-                    s2.last_chat_ts = latest_chat_ts if s2.last_chat_ts is None else max(s2.last_chat_ts, latest_chat_ts)
-                if latest_token is not None:
-                    s2.token = latest_token
-                if s2.busy:
-                    s2.meta_thinking += total_th
-                    s2.meta_tools += total_tools
-                    s2.meta_system += total_sys
-                else:
-                    s2.meta_thinking = 0
-                    s2.meta_tools = 0
-                    s2.meta_system = 0
-                s2.meta_log_off = off if off >= 0 else s2.meta_log_off
+        return self._log_runtime_for_manager().update_meta_counters()
 
     def list_sessions(self) -> list[dict[str, Any]]:
         return self._list_coordinator_for_manager().list_sessions()
@@ -2955,6 +2899,8 @@ class SessionManager:
             analyze_log_chunk=_analyze_log_chunk,
             turn_context_run_settings=_turn_context_run_settings,
             compute_idle_from_log=_compute_idle_from_log,
+            read_jsonl_from_offset=_read_jsonl_from_offset,
+            find_latest_token_update=_rollout_log._find_latest_token_update,
         )
 
     def _files_coordinator_for_manager(self) -> SessionFilesCoordinator:

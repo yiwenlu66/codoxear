@@ -14,6 +14,67 @@ class SessionLogRuntimeCoordinator:
     analyze_log_chunk: Callable[[list[dict[str, Any]]], tuple[Any, Any, Any, Any, Any, Any]]
     turn_context_run_settings: Callable[[Any], tuple[str | None, str | None]]
     compute_idle_from_log: Callable[[Path], bool | None]
+    read_jsonl_from_offset: Callable[..., tuple[list[dict[str, Any]], int]]
+    find_latest_token_update: Callable[[Path], dict[str, Any] | None]
+
+    def update_meta_counters(self) -> None:
+        with self.lock:
+            items = list(self.sessions().items())
+        for sid, session in items:
+            log_path = session.log_path
+            if log_path is None or (not log_path.exists()):
+                continue
+            size = int(log_path.stat().st_size)
+            offset = int(session.meta_log_off)
+            reset_last_chat = False
+            if size < offset:
+                offset = 0
+                reset_last_chat = True
+
+            total_thinking = 0
+            total_tools = 0
+            total_system = 0
+            latest_chat_ts: float | None = None
+            latest_token: dict[str, Any] | None = None
+            loops = 0
+            while offset < size and loops < 16:
+                objs, new_offset = self.read_jsonl_from_offset(log_path, offset, max_bytes=256 * 1024)
+                if new_offset <= offset:
+                    break
+                delta_thinking, delta_tools, delta_system, chunk_chat_ts, token_update, _chat_events = self.analyze_log_chunk(objs)
+                total_thinking += delta_thinking
+                total_tools += delta_tools
+                total_system += delta_system
+                if chunk_chat_ts is not None:
+                    latest_chat_ts = chunk_chat_ts if latest_chat_ts is None else max(latest_chat_ts, chunk_chat_ts)
+                if token_update is not None:
+                    latest_token = token_update
+                offset = new_offset
+                loops += 1
+
+            if latest_token is None and session.token is None:
+                latest_token = self.find_latest_token_update(log_path)
+
+            with self.lock:
+                current = self.sessions().get(sid)
+                if not current:
+                    continue
+                if reset_last_chat:
+                    current.last_chat_ts = None
+                    current.last_chat_history_scanned = False
+                if latest_chat_ts is not None:
+                    current.last_chat_ts = latest_chat_ts if current.last_chat_ts is None else max(current.last_chat_ts, latest_chat_ts)
+                if latest_token is not None:
+                    current.token = latest_token
+                if current.busy:
+                    current.meta_thinking += total_thinking
+                    current.meta_tools += total_tools
+                    current.meta_system += total_system
+                else:
+                    current.meta_thinking = 0
+                    current.meta_tools = 0
+                    current.meta_system = 0
+                current.meta_log_off = offset if offset >= 0 else current.meta_log_off
 
     def mark_log_delta(self, session_id: str, *, objs: list[dict[str, Any]], new_off: int) -> None:
         _thinking, _tools, _system, last_ts, _token_update, _chat_events = self.analyze_log_chunk(objs)
