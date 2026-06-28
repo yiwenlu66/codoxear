@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -531,8 +530,8 @@ def recent_cwd_coordinator_for_manager(manager: Any, caps: SessionManagerFactory
 
 def lifecycle_coordinator_for_manager(manager: Any, caps: SessionManagerFactoryCaps) -> Any:
     return SessionLifecycleCoordinator(
-        lock=getattr(manager, "_lock", threading.RLock()),
-        sessions=lambda: getattr(manager, "_sessions", {}),
+        lock=_registry_lock(manager),
+        sessions=lambda: _registry_sessions(manager),
         sock_call=lambda sock, req, **kwargs: manager._sock_call(sock, req, **kwargs),
         process_group_alive=caps.process_group_alive,
         pid_alive=caps.pid_alive,
