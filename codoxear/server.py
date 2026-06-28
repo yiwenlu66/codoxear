@@ -3901,22 +3901,17 @@ class SessionManager:
                     raise SessionCommitUnknownError(message)
                 raise SessionCommitUnknownError(message) from cause
 
-            try:
-                timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
-                resp = self._sock_call(sock, {"cmd": "send", "text": text, "sync": True}, timeout_s=timeout_s, track_request_sent=True)
-            except ControlSocketCallError as e:
-                if e.request_sent:
-                    raise_commit_unknown("send commit status unknown; broker response failed", e)
-                if not _pid_alive(s.broker_pid) and not _pid_alive(s.codex_pid):
-                    with self._lock:
-                        self._sessions.pop(session_id, None)
-                    self._clear_deleted_session_state(session_id)
-                    _unlink_quiet(sock)
-                    _unlink_quiet(sock.with_suffix(".json"))
-                    raise KeyError("unknown session")
-                raise SessionNotReadyError("session control socket unavailable") from e
-            except (TimeoutError, socket.timeout) as e:
-                raise_commit_unknown("send commit status unknown; broker did not reply before timeout", e)
+            timeout_s = SEND_COMMIT_TIMEOUT_SECONDS if SEND_COMMIT_TIMEOUT_SECONDS > 0 else None
+            resp = self._control_coordinator_for_manager().call_confirmed_send(
+                session_id,
+                session=s,
+                sock=sock,
+                text=text,
+                timeout_s=timeout_s,
+                raise_commit_unknown=raise_commit_unknown,
+                not_ready_error=SessionNotReadyError,
+                timeout_errors=(TimeoutError, socket.timeout),
+            )
             parsed_send = _parse_confirmed_send_response(
                 resp,
                 raise_commit_unknown=raise_commit_unknown,

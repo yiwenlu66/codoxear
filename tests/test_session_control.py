@@ -13,6 +13,10 @@ class CommitUnknown(Exception):
     pass
 
 
+class NotReady(Exception):
+    pass
+
+
 def _session() -> Session:
     return Session(
         session_id="s1",
@@ -124,3 +128,92 @@ def test_session_control_drops_dead_session_without_deleted_state_for_tail_and_k
     assert sessions == {}
     assert unlinked == [Path("/tmp/s1.sock"), Path("/tmp/s1.json")]
     assert cleared == []
+
+
+def test_session_control_confirmed_send_converts_request_sent_failure_to_unknown() -> None:
+    def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        assert sock == Path("/tmp/s1.sock")
+        assert req == {"cmd": "send", "text": "hello", "sync": True}
+        assert kwargs == {"timeout_s": 3.0, "track_request_sent": True}
+        raise ControlSocketCallError("reset", request_sent=True)
+
+    coordinator, _unlinked, _cleared = _coordinator(sock_call=sock_call)
+    messages: list[str] = []
+
+    def raise_unknown(message: str, cause: BaseException | None) -> None:
+        messages.append(message)
+        raise CommitUnknown(message) from cause
+
+    with pytest.raises(CommitUnknown, match="send commit status unknown; broker response failed"):
+        coordinator.call_confirmed_send(
+            "s1",
+            session=coordinator.sessions()["s1"],
+            sock=Path("/tmp/s1.sock"),
+            text="hello",
+            timeout_s=3.0,
+            raise_commit_unknown=raise_unknown,
+            not_ready_error=NotReady,
+            timeout_errors=(TimeoutError,),
+        )
+    assert messages == ["send commit status unknown; broker response failed"]
+
+
+def test_session_control_confirmed_send_drops_dead_session_on_unsent_failure() -> None:
+    def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        raise ControlSocketCallError("connect failed", request_sent=False)
+
+    sessions = {"s1": _session()}
+    coordinator, unlinked, cleared = _coordinator(sessions=sessions, sock_call=sock_call, alive=lambda pid: False)
+    session = sessions["s1"]
+
+    with pytest.raises(KeyError, match="unknown session"):
+        coordinator.call_confirmed_send(
+            "s1",
+            session=session,
+            sock=Path("/tmp/s1.sock"),
+            text="hello",
+            timeout_s=3.0,
+            raise_commit_unknown=lambda message, cause: (_ for _ in ()).throw(CommitUnknown(message)),
+            not_ready_error=NotReady,
+            timeout_errors=(TimeoutError,),
+        )
+    assert sessions == {}
+    assert unlinked == [Path("/tmp/s1.sock"), Path("/tmp/s1.json")]
+    assert cleared == ["s1"]
+
+
+def test_session_control_confirmed_send_unsent_failure_reports_not_ready_when_processes_live() -> None:
+    def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        raise ControlSocketCallError("connect failed", request_sent=False)
+
+    coordinator, _unlinked, _cleared = _coordinator(sock_call=sock_call, alive=lambda pid: True)
+
+    with pytest.raises(NotReady, match="session control socket unavailable"):
+        coordinator.call_confirmed_send(
+            "s1",
+            session=coordinator.sessions()["s1"],
+            sock=Path("/tmp/s1.sock"),
+            text="hello",
+            timeout_s=3.0,
+            raise_commit_unknown=lambda message, cause: (_ for _ in ()).throw(CommitUnknown(message)),
+            not_ready_error=NotReady,
+            timeout_errors=(TimeoutError,),
+        )
+
+
+def test_session_control_confirmed_send_timeout_is_commit_unknown() -> None:
+    def sock_call(sock: Path, req: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        raise TimeoutError("late")
+
+    coordinator, _unlinked, _cleared = _coordinator(sock_call=sock_call)
+    with pytest.raises(CommitUnknown, match="send commit status unknown; broker did not reply before timeout"):
+        coordinator.call_confirmed_send(
+            "s1",
+            session=coordinator.sessions()["s1"],
+            sock=Path("/tmp/s1.sock"),
+            text="hello",
+            timeout_s=3.0,
+            raise_commit_unknown=lambda message, cause: (_ for _ in ()).throw(CommitUnknown(message)),
+            not_ready_error=NotReady,
+            timeout_errors=(TimeoutError,),
+        )

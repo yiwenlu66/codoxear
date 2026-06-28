@@ -79,6 +79,35 @@ class SessionControlCoordinator:
             raise ValueError("invalid broker tail response")
         return tail
 
+    def call_confirmed_send(
+        self,
+        session_id: str,
+        *,
+        session: Session,
+        sock: Path,
+        text: str,
+        timeout_s: float | None,
+        raise_commit_unknown: Callable[[str, BaseException | None], None],
+        not_ready_error: type[BaseException],
+        timeout_errors: tuple[type[BaseException], ...],
+    ) -> dict[str, Any]:
+        try:
+            return self.sock_call(
+                sock,
+                {"cmd": "send", "text": text, "sync": True},
+                timeout_s=timeout_s,
+                track_request_sent=True,
+            )
+        except self.control_socket_call_error as exc:
+            if bool(getattr(exc, "request_sent", False)):
+                raise_commit_unknown("send commit status unknown; broker response failed", exc)
+            if self._dead_processes(session):
+                self._drop_dead_session(session_id, sock, clear_deleted_state=True)
+                raise KeyError("unknown session")
+            raise not_ready_error("session control socket unavailable") from exc
+        except timeout_errors as exc:
+            raise_commit_unknown("send commit status unknown; broker did not reply before timeout", exc)
+
     def inject_keys(self, session_id: str, seq: str, *, track_request_sent: bool = False, interrupt: bool = False) -> dict[str, Any]:
         session, sock = self._session_and_sock(session_id)
         try:
