@@ -150,6 +150,7 @@ from .session_queue import SessionQueueCoordinator
 from .session_routes import SessionRouteDeps
 from .session_routes import handle_session_get_route as _handle_session_get_route
 from .session_routes import handle_session_post_route as _handle_session_post_route
+from .session_cleanup import SessionCleanupCoordinator
 from .session_discovery import DiscoveryDeps
 from .session_discovery import DiscoveryRegistration
 from .session_discovery import DiscoveryResult
@@ -2165,82 +2166,10 @@ class SessionManager:
         )
 
     def _prune_stale_socket_without_metadata(self, session_id: str, sock: Path) -> None:
-        with self._lock:
-            self._sessions.pop(session_id, None)
-        self._unhide_session(session_id)
-        self._clear_deleted_session_state(session_id)
-        _unlink_quiet(sock)
-        _unlink_quiet(sock.with_suffix(".json"))
+        return self._cleanup_coordinator_for_manager().prune_stale_socket_without_metadata(session_id, sock)
 
     def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False) -> None:
-        changed_sidebar = False
-        changed_unattended = False
-        changed_files = False
-        changed_queues = False
-        changed_unknown_sends = False
-        with self._lock:
-            aliases = getattr(self, "_aliases", None)
-            if isinstance(aliases, dict):
-                aliases.pop(session_id, None)
-            meta_map = getattr(self, "_sidebar_meta", None)
-            if isinstance(meta_map, dict) and session_id in meta_map:
-                meta_map.pop(session_id, None)
-                changed_sidebar = True
-            if isinstance(meta_map, dict):
-                for entry in meta_map.values():
-                    if not isinstance(entry, dict):
-                        continue
-                    if entry.get("dependency_session_id") != session_id:
-                        continue
-                    entry.pop("dependency_session_id", None)
-                    changed_sidebar = True
-            unattended = getattr(self, "_unattended", None)
-            if isinstance(unattended, dict) and session_id in unattended:
-                unattended.pop(session_id, None)
-                changed_unattended = True
-            files = getattr(self, "_files", None)
-            if isinstance(files, dict):
-                for key in [f"sid:{session_id}", session_id]:
-                    if key in files:
-                        files.pop(key, None)
-                        changed_files = True
-            unknown_sends = getattr(self, "_commit_unknown_sends", None)
-            has_direct_unknown = isinstance(unknown_sends, dict) and session_id in unknown_sends
-            queues = getattr(self, "_queues", None)
-            if isinstance(queues, dict) and session_id in queues:
-                q0 = queues.get(session_id)
-                has_queued_recovery = isinstance(q0, list) and any(
-                    isinstance(item, dict) and (bool(item.get("commit_unknown")) or bool(item.get("orphan_recovery")))
-                    for item in q0
-                )
-                if isinstance(q0, list) and q0 and has_direct_unknown:
-                    if self._mark_queue_orphan_recovery_locked(session_id):
-                        changed_queues = True
-                    has_queued_recovery = True
-                if clear_recovery or not has_queued_recovery:
-                    queues.pop(session_id, None)
-                    changed_queues = True
-            input_locks = getattr(self, "_input_locks", None)
-            if isinstance(input_locks, dict):
-                input_locks.pop(session_id, None)
-            pending_attachment_ids = getattr(self, "_pending_attachment_ids", None)
-            if isinstance(pending_attachment_ids, set):
-                pending_attachment_ids.discard(session_id)
-            if clear_recovery and isinstance(unknown_sends, dict) and session_id in unknown_sends:
-                unknown_sends.pop(session_id, None)
-                changed_unknown_sends = True
-        self._save_pending_attachments()
-        if changed_unknown_sends:
-            self._save_commit_unknown_sends()
-        self._save_aliases()
-        if changed_sidebar:
-            self._save_sidebar_meta()
-        if changed_unattended:
-            self._save_unattended()
-        if changed_files:
-            self._save_files()
-        if changed_queues:
-            self._save_queues()
+        return self._cleanup_coordinator_for_manager().clear_deleted_session_state(session_id, clear_recovery=clear_recovery)
 
     def _load_files(self) -> None:
         cleaned = self._session_store_for_manager().load_files()
@@ -3192,6 +3121,30 @@ class SessionManager:
             save_unattended=self._save_unattended,
             clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
             clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
+        )
+
+    def _cleanup_coordinator_for_manager(self) -> SessionCleanupCoordinator:
+        return SessionCleanupCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            aliases=lambda: self._aliases,
+            sidebar_meta=lambda: self._sidebar_meta,
+            unattended=lambda: self._unattended,
+            files=lambda: self._files,
+            queues=lambda: self._queues,
+            commit_unknown_sends=lambda: self._commit_unknown_sends,
+            input_locks=lambda: getattr(self, "_input_locks", {}),
+            pending_attachment_ids=lambda: getattr(self, "_pending_attachment_ids", set()),
+            unhide_session=self._unhide_session,
+            mark_queue_orphan_recovery_locked=self._mark_queue_orphan_recovery_locked,
+            unlink_quiet=_unlink_quiet,
+            save_pending_attachments=self._save_pending_attachments,
+            save_commit_unknown_sends=self._save_commit_unknown_sends,
+            save_aliases=self._save_aliases,
+            save_sidebar_meta=self._save_sidebar_meta,
+            save_unattended=self._save_unattended,
+            save_files=self._save_files,
+            save_queues=self._save_queues,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
