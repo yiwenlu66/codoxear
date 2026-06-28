@@ -3594,3 +3594,19 @@
 - New regression coverage: `tests/test_session_manager_method_bindings.py` verifies public method-name preservation, delegation when public and target method names differ, negative source ownership for generated manager forwards, preservation of literal `inject_keys` signature, and late live-server-module lookup for generated factory methods.
 - Size observation: `codoxear/server.py` is now 1616 lines; `SessionManager` has 26 concrete methods and generated compatibility methods are owned by `session_manager_method_bindings.py`.
 - Scope note: this tranche has local pytest evidence only. Docker evidence was not rerun and must not be claimed for promotion.
+
+## 2026-06-28T21:08:23Z Explicit dependency caps and dead-wrapper cleanup
+- Functional commits after `d58c594 Document manager binding checkpoint`:
+  - `9f510e5 Make manager factory dependencies explicit`: introduced `SessionManagerFactoryCaps` in `codoxear/session_manager_factories.py`; generated manager factory bindings now pass caps built from the live `codoxear.server` module instead of handing factory functions the whole server module. `tests/test_session_manager_factories.py` guards that factory bodies do not regress to `server.*` access after caps construction.
+  - `4aeb91b Remove unused server wrapper seams`: removed private module-level wrappers and the no-op `SessionManager.mark_turn_complete` stub that had no source/test references after the caps/binding refactors. Imports/constants used by route dependencies or compatibility source sentinels were intentionally left intact.
+  - `289af96 Make route dependencies explicit`: introduced `ServerRouteCaps` in `codoxear/server_route_deps.py`; `_route_deps_factory()` now builds caps from the live server module before constructing `ServerRouteDepsFactory`. `tests/test_server_route_deps_caps.py` guards that route dependency factory methods no longer dereference `server.*` after caps construction.
+- Validation evidence:
+  - Manager factory caps focused suite: `python3 -m pytest -q tests/test_session_manager_factories.py tests/test_session_manager_method_bindings.py tests/test_server_queue_persistence.py tests/test_session_file_history.py tests/test_unattended_sweep.py tests/test_session_sidebar_priority.py tests/test_session_routes.py tests/test_control_routes.py tests/test_file_routes.py tests/test_file_upload_module_source.py tests/test_interrupt_semantics_source.py` returned `158 passed, 22 subtests passed`.
+  - Full local suite after manager factory caps: `python3 -m pytest -q` returned `1163 passed, 107 subtests passed`.
+  - Dead-wrapper cleanup focused source/manager/route suite returned `152 passed, 22 subtests passed`; full local suite returned `1163 passed, 107 subtests passed`.
+  - First route-caps focused command was invalid because `tests/test_git_routes.py` does not exist; this is a measurement error, not product evidence.
+  - Corrected route-caps focused suite returned `62 passed`; a full local suite then exposed one source-sentinel mismatch in `tests/test_file_upload_module_source.py`, still expecting `session_commit_unknown_error=server.SessionCommitUnknownError` inside `server_route_deps.py`.
+  - Updated that source sentinel to the new caps boundary (`session_commit_unknown_error=caps.SessionCommitUnknownError`); corrected focused route/source suite returned `63 passed`.
+  - Final full local suite after route caps returned `1165 passed, 107 subtests passed`.
+- Size observation: after `4aeb91b` and `289af96`, `codoxear/server.py` is 1432 lines. `session_manager_factories.py` and `server_route_deps.py` are larger because they now make previously implicit server-derived dependency surfaces explicit.
+- Scope note: this tranche has local pytest evidence only. Docker evidence was not rerun and must not be claimed for promotion.
