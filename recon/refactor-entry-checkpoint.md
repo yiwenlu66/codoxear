@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 Branch: `recovery/product-gaps`
-Latest functional code checkpoint: `87e0fe4 Extract rollout event helpers`
+Latest functional code checkpoint: `992dbf7 Extract rollout chat event policy`
 Protected checkout: `/home/yiwen/codex-web` on `main` was not modified or merged.
 
 This checkpoint records the product-gap recovery state before any broad structural/frontend refactor. It is not merge approval.
@@ -404,5 +404,6 @@ Additional structural moves after the earlier coordinator tranches:
 - Commit `b51db3e` began the post-server large-subsystem refactor by splitting voice push runtime ownership out of `voice_push.py`: state/dataclasses, OpenAI client, HLS stream, WebPush/VAPID delivery, persistence, projections, queue policy, and ledger mutation rules now have explicit modules. `voice_push.py` is 740 lines and remains the coordinator/facade plus public import seam; `rollout_log.py` imports `ClassifiedAssistantMessage` from the lightweight state module. Local validation after this voice tranche returned focused `88 passed` and full `1173 passed, 107 subtests passed`; Docker was not rerun.
 - Commit `f5a76d2` split low-level rollout JSONL reader mechanics into `rollout_jsonl.py` while preserving `rollout_log.py` aliases for existing callers. `rollout_log.py` is now 1164 lines. Local validation after this rollout tranche returned focused `121 passed, 4 subtests passed` and full `1174 passed, 107 subtests passed`; Docker was not rerun.
 - Commit `87e0fe4` split pure rollout event identity/text helpers into `rollout_events.py` while preserving `rollout_log.py` aliases. An initial focused run caught accidental deletion of `_with_chat_position`; that helper remains local to chat pagination. `rollout_log.py` is now 1103 lines. Local validation after repair returned focused `121 passed, 4 subtests passed` and full `1174 passed, 107 subtests passed`; Docker was not rerun.
+- Commit `992dbf7` split backend single-row chat event interpretation and assistant dedupe policy into `rollout_chat_events.py` while preserving `rollout_log.py` aliases. `rollout_log.py` is now 869 lines. Local validation returned focused `138 passed, 4 subtests passed` and full `1175 passed, 107 subtests passed`; Docker was not rerun.
 
-Recommended next step: keep `server.py` as a compatibility facade and continue subsystem-specific refactors with explicit ownership models and focused validation. After `b51db3e`, `f5a76d2`, and `87e0fe4`, `voice_push.py` is no longer the top large-module target and rollout JSONL/event-helper mechanics are isolated; the next high-value candidates are further `rollout_log.py` parser-layer splits or `broker.py` once PTY/control lifecycle invariants are explicitly modeled.
+Recommended next step: keep `server.py` as a compatibility facade and continue subsystem-specific refactors with explicit ownership models and focused validation. After `b51db3e`, `f5a76d2`, `87e0fe4`, and `992dbf7`, `voice_push.py` is no longer the top large-module target and rollout JSONL/event/chat-row mechanics are isolated; the next high-value candidates are further `rollout_log.py` parser-layer splits or `broker.py` once PTY/control lifecycle invariants are explicitly modeled.

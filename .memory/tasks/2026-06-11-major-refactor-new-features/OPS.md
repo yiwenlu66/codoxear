@@ -3711,3 +3711,20 @@
   - Focused rollout/jsonl/idle/message group returned `121 passed, 4 subtests passed` after the `_with_chat_position` repair.
   - Full local `python3 -m pytest -q` returned `1174 passed, 107 subtests passed`.
 - Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
+
+## 2026-06-28T23:41:00Z Rollout chat event policy split
+- Functional commit `992dbf7 Extract rollout chat event policy` moved single-row chat event interpretation and assistant dedupe policy from `rollout_log.py` into `rollout_chat_events.py`:
+  - `_sidebar_conversation_ts`
+  - `_update_cc_pending_tool_ids`
+  - `_single_chat_event`
+  - `_pi_message_keeps_turn_busy`
+  - `_cc_message_keeps_turn_busy`
+  - `_chat_assistant_dedupe_key`
+  - `_dedupe_assistant_chat_events`
+- Compatibility preserved: `rollout_log.py` imports/re-exports these names, so existing callers such as `tests/test_server_chat_flags.py` and `transcript_search.py` can still use the `rollout_log` facade. Pagination, live-delta cursoring, token/context scanning, delivery-message extraction, chunk idle analysis, and final idle computations remain in `rollout_log.py`.
+- Source sentinel update: `tests/test_rollout_log_helpers_source.py` now asserts single-row chat event policy lives in `rollout_chat_events.py` while `rollout_log.py` imports it.
+- Size observation: `rollout_log.py` is now 869 lines; `rollout_chat_events.py` is 281 lines.
+- Validation after `992dbf7`:
+  - Focused chat/idle/message/source group returned `138 passed, 4 subtests passed`.
+  - Full local `python3 -m pytest -q` returned `1175 passed, 107 subtests passed`.
+- Scope note: Docker evidence was not rerun and must not be claimed for promotion/acceptance for this tranche.
