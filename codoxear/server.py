@@ -141,7 +141,6 @@ from .pi_log import pi_user_text as _pi_user_text
 from .pi_log import read_pi_run_settings as _read_pi_run_settings
 from .process_runtime import terminate_process as _terminate_process_impl
 from .process_runtime import terminate_process_group as _terminate_process_group_impl
-from .queue_store import QueueStore
 from .queue_store import coerce_queue_item as _queue_store_coerce_item
 from .session_cleaners import clean_alias as _clean_alias_impl
 from .session_cleaners import clean_dependency_session_id as _clean_dependency_session_id_impl
@@ -149,9 +148,6 @@ from .session_cleaners import clean_optional_text as _clean_optional_text_impl
 from .session_cleaners import clean_priority_offset as _clean_priority_offset_impl
 from .session_cleaners import clean_recent_cwd as _clean_recent_cwd_impl
 from .session_cleaners import clean_snooze_until as _clean_snooze_until_impl
-from .session_discovery import DiscoveryDeps
-from .session_discovery import DiscoveryRegistration
-from .session_discovery import DiscoveryResult
 from .session_discovery import discover_sessions as _discover_sessions
 from .session_launcher import drain_stream as _drain_stream_impl
 from .session_launcher import wait_for_spawned_broker_meta as _wait_for_spawned_broker_meta_impl
@@ -229,8 +225,6 @@ from .session_runtime import broker_interrupted_idle as _runtime_broker_interrup
 from .session_runtime import broker_runtime_state as _runtime_broker_state
 from .session_runtime import resolve_runtime_status as _resolve_runtime_status
 from .session_runtime import select_runtime_token as _select_runtime_token
-from .session_store import SessionStore
-from .session_store import SessionStorePaths
 from .server_handler import make_server_handler
 from .server_http import BadRequestError
 from .server_http import RequestPayloadTooLargeError
@@ -1409,7 +1403,6 @@ class SessionManager:
     _load_recent_cwds = _load_store_attr("_recent_cwds", "load_recent_cwds")
     _save_recent_cwds = _save_dict_store_attr("_recent_cwds", "save_recent_cwds")
 
-
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._sessions: dict[str, Session] = {}
@@ -1485,14 +1478,6 @@ class SessionManager:
         self._store = store
         return store
 
-
-
-
-
-
-
-
-
     def _hide_session(self, session_id: str) -> None:
         return self._ui_state_coordinator_for_manager().hide_session(session_id)
 
@@ -1549,8 +1534,6 @@ class SessionManager:
     def _clear_deleted_session_state(self, session_id: str, *, clear_recovery: bool = False) -> None:
         return self._cleanup_coordinator_for_manager().clear_deleted_session_state(session_id, clear_recovery=clear_recovery)
 
-
-
     def _queue_store_for_manager(self) -> QueueStore:
         return self._session_store_for_manager().queue_store
 
@@ -1559,10 +1542,6 @@ class SessionManager:
 
     def _input_lock_for_session(self, session_id: str) -> threading.RLock:
         return _input_lock_for_session_impl(self, session_id)
-
-
-
-
 
     def _set_pending_attachment(self, session_id: str, value: bool) -> None:
         return self._pending_state_coordinator_for_manager().set_pending_attachment(session_id, value)
@@ -1573,8 +1552,6 @@ class SessionManager:
     def _clean_commit_unknown_send_record(self, raw: Any) -> dict[str, Any] | None:
         return self._pending_state_coordinator_for_manager().clean_commit_unknown_send_record(raw)
 
-
-
     def _set_commit_unknown_send(self, session_id: str, record: dict[str, Any] | None) -> None:
         return self._pending_state_coordinator_for_manager().set_commit_unknown_send(session_id, record)
 
@@ -1583,8 +1560,6 @@ class SessionManager:
 
     def _prune_missing_commit_unknown_sends(self, *, max_age_seconds: float = COMMIT_UNKNOWN_ORPHAN_PRUNE_SECONDS) -> bool:
         return self._pending_state_coordinator_for_manager().prune_missing_commit_unknown_sends(max_age_seconds=max_age_seconds)
-
-
 
     def _remember_recent_cwd(self, cwd: Any, *, ts: Any = None) -> bool:
         return self._recent_cwd_coordinator_for_manager().remember(cwd, ts=ts)
@@ -1963,18 +1938,13 @@ class SessionManager:
     def mark_turn_complete(self, session_id: str, payload: dict[str, Any]) -> None:
         return
 
-
 MANAGER = SessionManager()
-
 
 def _read_static_bytes(path: Path) -> bytes:
     return _read_static_bytes_impl(path, attach_upload_max_bytes=ATTACH_UPLOAD_MAX_BYTES)
 
-
-
 def _route_deps_factory() -> ServerRouteDepsFactory:
     return ServerRouteDepsFactory(sys.modules[__name__])
-
 
 def _message_runtime_snapshot(
     session_id: str,
@@ -1984,15 +1954,10 @@ def _message_runtime_snapshot(
 ) -> tuple[dict[str, Any], bool, int, dict[str, Any] | None]:
     return _route_deps_factory().message_runtime_snapshot(session_id, s, token_update=token_update)
 
-
-
 Handler = make_server_handler(sys.modules[__name__])
-
-
 
 def main() -> None:
     return _run_server_main(sys.modules[__name__])
-
 
 if __name__ == "__main__":
     main()
