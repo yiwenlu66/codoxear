@@ -168,17 +168,13 @@ from .session_input import parse_confirmed_send_response as _parse_confirmed_sen
 from .session_input import require_send_preconditions as _require_send_preconditions
 from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
+from .session_list import SessionListCoordinator
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
 from .session_listing import sidebar_time_priority_from_elapsed_seconds as _listing_sidebar_time_priority_from_elapsed_seconds
-from .session_listing import build_active_session_rows_snapshot as _build_active_session_rows_snapshot
-from .session_listing import build_launch_attempt_rows as _build_launch_attempt_rows
-from .session_listing import build_orphan_recovery_rows as _build_orphan_recovery_rows
-from .session_listing import sort_session_rows as _sort_session_rows
 from .session_model import Session
 from .session_runtime import ListingRuntimeProbes
-from .session_runtime import build_runtime_enriched_session_rows as _build_runtime_enriched_session_rows
 from .session_runtime import clear_session_confirmed_send_boundary as _clear_session_confirmed_send_boundary
 from .session_runtime import consume_session_confirmed_send_boundary as _consume_session_confirmed_send_boundary
 from .session_runtime import log_path_size_or_none as _log_path_size_or_none
@@ -3366,111 +3362,7 @@ class SessionManager:
                 s2.meta_log_off = off if off >= 0 else s2.meta_log_off
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        # Rescan sockets to pick up sessions created before the server started.
-        self._discover_existing_if_stale()
-        self._prune_dead_sessions()
-        self._update_meta_counters()
-        files_dirty = False
-        sidebar_dirty = False
-        recent_cwd_dirty = False
-        now_ts = time.time()
-        with self._lock:
-            snapshot = _build_active_session_rows_snapshot(
-                sessions=list(self._sessions.values()),
-                queues=getattr(self, "_queues", None),
-                unattended=getattr(self, "_unattended", {}),
-                aliases=getattr(self, "_aliases", {}),
-                store=self._session_store_for_manager(),
-                now_ts=now_ts,
-                unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-                unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-                clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
-                clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
-                provider_choice_for_settings=_provider_choice_for_settings,
-                resolve_session_cwd=_resolve_session_cwd,
-                priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
-                priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
-            )
-            items = snapshot.rows
-            files_dirty = files_dirty or snapshot.files_dirty
-            sidebar_dirty = sidebar_dirty or snapshot.sidebar_dirty
-            recent_cwd_dirty = recent_cwd_dirty or snapshot.recent_cwd_dirty
-
-        runtime_result = _build_runtime_enriched_session_rows(
-            staged_rows=items,
-            sessions=self._sessions,
-            lock=self._lock,
-            store=self._session_store_for_manager(),
-            probes=ListingRuntimeProbes(
-                last_conversation_ts_from_tail=lambda path: _last_conversation_ts_from_tail(path),
-                read_run_settings_from_log=lambda path, agent_backend: _read_run_settings_from_log(path, agent_backend=agent_backend),
-                log_size_or_none=self._log_size_or_none,
-                send_boundary_unresolved=self._confirmed_send_boundary_unresolved_for_session,
-                idle_from_log_path=self.idle_from_log_path,
-                current_git_branch=_current_git_branch,
-            ),
-            now_ts=now_ts,
-            provider_choice_for_settings=lambda model_provider, preferred_auth_method: _provider_choice_for_settings(
-                model_provider=model_provider,
-                preferred_auth_method=preferred_auth_method,
-            ),
-            priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
-            priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
-        )
-        out = runtime_result.rows
-        recent_cwd_dirty = recent_cwd_dirty or runtime_result.recent_cwd_dirty
-        if bool(getattr(self, "_include_launch_attempts", False)):
-            with self._lock:
-                hidden_failure_ids = set(getattr(self, "_hidden_sessions", set()))
-                active_launch_ids = {
-                    s.launch_id
-                    for s in self._sessions.values()
-                    if isinstance(s.launch_id, str) and s.launch_id
-                }
-                active_spawn_nonces = {
-                    s.spawn_nonce
-                    for s in self._sessions.values()
-                    if isinstance(s.spawn_nonce, str) and s.spawn_nonce
-                }
-            out.extend(
-                _build_launch_attempt_rows(
-                    records=_read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
-                    hidden_failure_ids=hidden_failure_ids,
-                    active_launch_ids=active_launch_ids,
-                    active_spawn_nonces=active_spawn_nonces,
-                    row_from_record=_launch_attempt_row,
-                )
-            )
-        with self._lock:
-            active_ids = set(self._sessions.keys())
-            commit_unknown_snapshot = {
-                str(sid): dict(record) if isinstance(record, dict) else record
-                for sid, record in getattr(self, "_commit_unknown_sends", {}).items()
-            }
-            queue_snapshot = {
-                str(sid): list(queue) if isinstance(queue, list) else queue
-                for sid, queue in getattr(self, "_queues", {}).items()
-            }
-        existing_out_ids = {str(item.get("session_id")) for item in out if isinstance(item, dict)}
-        out.extend(
-            _build_orphan_recovery_rows(
-                active_session_ids=active_ids,
-                commit_unknown_sends=commit_unknown_snapshot,
-                queues=queue_snapshot,
-                existing_session_ids=existing_out_ids,
-                now_ts=now_ts,
-                unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
-                unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
-            )
-        )
-        if files_dirty:
-            self._save_files()
-        if sidebar_dirty:
-            self._save_sidebar_meta()
-        if recent_cwd_dirty:
-            self._save_recent_cwds()
-        _sort_session_rows(out)
-        return out
+        return self._list_coordinator_for_manager().list_sessions()
 
     def get_session(self, session_id: str) -> Session | None:
         with self._lock:
@@ -3664,6 +3556,44 @@ class SessionManager:
             broker_interrupted_idle=_broker_interrupted_idle_from_state,
             control_socket_call_error=ControlSocketCallError,
             commit_unknown_error=SessionCommitUnknownError,
+        )
+
+    def _list_coordinator_for_manager(self) -> SessionListCoordinator:
+        return SessionListCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            queues=lambda: self._queues,
+            unattended=lambda: self._unattended,
+            aliases=lambda: self._aliases,
+            hidden_sessions=lambda: self._hidden_sessions,
+            commit_unknown_sends=lambda: self._commit_unknown_sends,
+            store=self._session_store_for_manager(),
+            discover_existing_if_stale=self._discover_existing_if_stale,
+            prune_dead_sessions=self._prune_dead_sessions,
+            update_meta_counters=self._update_meta_counters,
+            save_files=self._save_files,
+            save_sidebar_meta=self._save_sidebar_meta,
+            save_recent_cwds=self._save_recent_cwds,
+            now=time.time,
+            runtime_probes=ListingRuntimeProbes(
+                last_conversation_ts_from_tail=lambda path: _last_conversation_ts_from_tail(path),
+                read_run_settings_from_log=lambda path, agent_backend: _read_run_settings_from_log(path, agent_backend=agent_backend),
+                log_size_or_none=self._log_size_or_none,
+                send_boundary_unresolved=self._confirmed_send_boundary_unresolved_for_session,
+                idle_from_log_path=self.idle_from_log_path,
+                current_git_branch=_current_git_branch,
+            ),
+            include_launch_attempts=lambda: bool(getattr(self, "_include_launch_attempts", False)),
+            read_launch_attempts=lambda: _read_launch_attempts(path=LAUNCH_ATTEMPTS_PATH, max_records=100, max_age_s=24 * 3600),
+            launch_attempt_row=_launch_attempt_row,
+            clean_unattended_cooldown_minutes=_clean_unattended_cooldown_minutes,
+            clean_unattended_remaining_injections=_clean_unattended_remaining_injections,
+            provider_choice_for_settings=_provider_choice_for_settings,
+            resolve_session_cwd=_resolve_session_cwd,
+            unattended_default_idle_minutes=UNATTENDED_DEFAULT_IDLE_MINUTES,
+            unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
+            priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
+            priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:
