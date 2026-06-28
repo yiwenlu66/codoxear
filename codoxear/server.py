@@ -169,6 +169,7 @@ from .session_input import require_send_preconditions as _require_send_precondit
 from .session_control import SessionControlCoordinator
 from .session_launch_plan import prepare_launch_plan as _prepare_launch_plan
 from .session_list import SessionListCoordinator
+from .session_refresh import SessionRefreshCoordinator
 from .session_listing import clip01 as _listing_clip01
 from .session_listing import priority_from_elapsed_seconds as _listing_priority_from_elapsed_seconds
 from .session_listing import sidebar_priority_elapsed_seconds as _listing_sidebar_priority_elapsed_seconds
@@ -214,16 +215,7 @@ from .util import is_subagent_session_meta as _is_subagent_session_meta
 from .util import iter_session_logs as _iter_session_logs_impl
 from .util import launch_attempts_path as _launch_attempts_path
 from .util import now as _now
-from .sidecar_metadata import detaches_current_log as _metadata_detaches_current_log
-from .sidecar_metadata import ignored_rollout_paths as _metadata_ignored_rollout_paths
-from .sidecar_metadata import key_write_errors_supported as _metadata_key_write_errors_supported
 from .sidecar_metadata import log_invalid as _log_invalid_sidecar_metadata
-from .sidecar_metadata import log_path as _metadata_log_path
-from .sidecar_metadata import read_metadata as _read_sidecar_metadata
-from .sidecar_metadata import required_int as _metadata_required_int
-from .sidecar_metadata import required_text as _metadata_required_text
-from .sidecar_metadata import start_ts as _metadata_start_ts
-from .sidecar_metadata import sync_send_supported as _metadata_sync_send_supported
 from .util import pid_alive as _pid_alive
 from .util import process_group_alive as _process_group_alive
 from .util import proc_find_open_rollout_log as _proc_find_open_rollout_log
@@ -3369,99 +3361,7 @@ class SessionManager:
             return self._sessions.get(session_id)
 
     def refresh_session_meta(self, session_id: str, *, drain_queue: bool = False) -> None:
-        # The broker may rewrite the sock .json when Codex switches threads (/new, /resume).
-        # Refresh the log path and thread id without requiring the UI to poll /api/sessions.
-        with self._lock:
-            s = self._sessions.get(session_id)
-            if not s:
-                return
-            sock = s.sock_path
-            current_log_path = s.log_path
-        meta_path = sock.with_suffix(".json")
-        if not meta_path.exists():
-            self._prune_stale_socket_without_metadata(session_id, sock)
-            return
-        try:
-            meta = _read_sidecar_metadata(meta_path, sock=sock)
-            _metadata_required_int(meta, "codex_pid", sock=sock)
-            _metadata_required_int(meta, "broker_pid", sock=sock)
-            _metadata_start_ts(meta, sock=sock)
-            cwd = _metadata_required_text(meta, "cwd", sock=sock)
-            log_path = _metadata_log_path(meta, sock=sock)
-            ignored_rollout_paths = _metadata_ignored_rollout_paths(meta, sock=sock)
-        except ValueError as e:
-            _log_invalid_sidecar_metadata("refresh", sock, e)
-            return
-
-        thread_id = meta.get("session_id") if isinstance(meta.get("session_id"), str) and meta.get("session_id") else s.thread_id
-        owned = (meta.get("owner") == "web") if isinstance(meta.get("owner"), str) else s.owned
-        agent_backend = normalize_agent_backend(meta.get("agent_backend"), default=s.agent_backend)
-        transport, tmux_session, tmux_window = self._session_transport(meta=meta)
-        sync_send_supported = _metadata_sync_send_supported(meta)
-        key_write_errors_supported = _metadata_key_write_errors_supported(meta)
-        if log_path is not None and not log_path.exists():
-            log_path = None
-        if _metadata_detaches_current_log(meta, current_log_path):
-            try:
-                tail_state = self._sock_call(sock, {"cmd": "tail"}, timeout_s=0.4)
-            except Exception:
-                tail_state = {}
-            if _broker_tail_has_session_detach_marker(agent_backend, tail_state.get("tail") if isinstance(tail_state, dict) else None):
-                ignored_rollout_paths.add(current_log_path)
-        if log_path is None and agent_backend in {"codex", "cc"} and _pid_alive(s.codex_pid):
-            discovered_log_path = _proc_find_open_rollout_log(
-                proc_root=PROC_ROOT,
-                root_pid=s.codex_pid,
-                agent_backend=agent_backend,
-                cwd=cwd,
-                ignored_paths=ignored_rollout_paths,
-            )
-            if discovered_log_path is not None and discovered_log_path.exists():
-                log_path = discovered_log_path
-        if log_path is not None and agent_backend == "codex":
-            session_meta = _read_session_meta_or_none(log_path, agent_backend="codex", context="session refresh")
-            meta_session_id = session_meta.get("id") if session_meta else None
-            if isinstance(meta_session_id, str) and meta_session_id:
-                thread_id = meta_session_id
-            thread_id, log_path = _coerce_main_thread_log(thread_id=thread_id, log_path=log_path)
-
-        resume_session_id = _clean_optional_text(meta.get("resume_session_id"))
-        model_provider, preferred_auth_method, model, reasoning_effort = self._session_run_settings(
-            meta=meta,
-            log_path=log_path,
-            agent_backend=agent_backend,
-        )
-        service_tier = _normalize_requested_service_tier(meta.get("service_tier")) if agent_backend == "codex" else None
-
-        with self._lock:
-            s2 = self._sessions.get(session_id)
-            if not s2:
-                return
-            s2.thread_id = thread_id
-            s2.agent_backend = agent_backend
-            s2.cwd = str(cwd)
-            s2.owned = bool(owned)
-            s2.transport = transport
-            if s2.log_path != log_path:
-                s2.log_path = log_path
-                s2.interrupted_idle = False
-                if log_path is not None:
-                    log_off = int(log_path.stat().st_size)
-                else:
-                    log_off = 0
-                self._reset_log_caches(s2, meta_log_off=log_off)
-            s2.model_provider = model_provider
-            s2.preferred_auth_method = preferred_auth_method
-            s2.model = model
-            s2.reasoning_effort = reasoning_effort
-            s2.service_tier = service_tier
-            s2.tmux_session = tmux_session
-            s2.tmux_window = tmux_window
-            s2.resume_session_id = resume_session_id
-            s2.sync_send_supported = sync_send_supported
-            s2.key_write_errors_supported = key_write_errors_supported
-        if drain_queue and self._queue_len(session_id) > 0:
-            self._maybe_drain_session_queue(session_id)
+        return self._refresh_coordinator_for_manager().refresh_session_meta(session_id, drain_queue=drain_queue)
 
     def _attach_notification_texts(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         voice_push = getattr(self, "_voice_push", None)
@@ -3594,6 +3494,28 @@ class SessionManager:
             unattended_default_max_injections=UNATTENDED_DEFAULT_MAX_INJECTIONS,
             priority_half_life_seconds=SIDEBAR_PRIORITY_HALF_LIFE_SECONDS,
             priority_bucket_seconds=SIDEBAR_PRIORITY_BUCKET_SECONDS,
+        )
+
+    def _refresh_coordinator_for_manager(self) -> SessionRefreshCoordinator:
+        return SessionRefreshCoordinator(
+            lock=self._lock,
+            sessions=lambda: self._sessions,
+            prune_stale_socket_without_metadata=self._prune_stale_socket_without_metadata,
+            log_invalid_sidecar_metadata=_log_invalid_sidecar_metadata,
+            session_transport=self._session_transport,
+            sock_call=lambda sock, req, **kwargs: self._sock_call(sock, req, **kwargs),
+            broker_tail_has_session_detach_marker=_broker_tail_has_session_detach_marker,
+            pid_alive=_pid_alive,
+            proc_find_open_rollout_log=_proc_find_open_rollout_log,
+            proc_root=PROC_ROOT,
+            read_session_meta_or_none=_read_session_meta_or_none,
+            coerce_main_thread_log=_coerce_main_thread_log,
+            clean_optional_text=_clean_optional_text,
+            session_run_settings=self._session_run_settings,
+            normalize_requested_service_tier=_normalize_requested_service_tier,
+            reset_log_caches=lambda session, log_off: self._reset_log_caches(session, meta_log_off=log_off),
+            queue_len=self._queue_len,
+            maybe_drain_session_queue=self._maybe_drain_session_queue,
         )
 
     def _kill_session_via_pids(self, s: Session) -> bool:

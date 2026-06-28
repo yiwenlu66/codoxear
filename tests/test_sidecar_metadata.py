@@ -77,14 +77,17 @@ class TestSidecarMetadata(unittest.TestCase):
 
 
 class TestServerSidecarMetadataBoundary(unittest.TestCase):
-    def test_server_uses_sidecar_metadata_helpers(self) -> None:
-        from codoxear import server
+    def test_refresh_coordinator_uses_sidecar_metadata_helpers(self) -> None:
+        from codoxear import session_refresh
 
-        self.assertIs(server._read_sidecar_metadata, sidecar_metadata.read_metadata)
-        self.assertIs(server._metadata_required_int, sidecar_metadata.required_int)
-        source = (Path(__file__).resolve().parents[1] / "codoxear" / "server.py").read_text(encoding="utf-8")
-        self.assertNotIn("def _read_sidecar_metadata(", source)
-        self.assertNotIn("def _metadata_required_int(", source)
+        self.assertIs(session_refresh.read_sidecar_metadata, sidecar_metadata.read_metadata)
+        self.assertIs(session_refresh.metadata_required_int, sidecar_metadata.required_int)
+        server_source = (Path(__file__).resolve().parents[1] / "codoxear" / "server.py").read_text(encoding="utf-8")
+        refresh_source = (Path(__file__).resolve().parents[1] / "codoxear" / "session_refresh.py").read_text(encoding="utf-8")
+        self.assertNotIn("def _read_sidecar_metadata(", server_source)
+        self.assertNotIn("def _metadata_required_int(", server_source)
+        self.assertIn("read_sidecar_metadata(meta_path, sock=sock)", refresh_source)
+        self.assertIn("metadata_required_int(meta, \"codex_pid\", sock=sock)", refresh_source)
 
 
 if __name__ == "__main__":
